@@ -1,0 +1,155 @@
+# Quality Factory Line — dimension registry (8090-inspired)
+# Each dimension: tool to run, threshold, phase where it applies.
+# Runners read this config and write results to the `validations` table.
+# See: https://github.com/macaron-software/software-factory
+
+version: 1
+
+dimensions:
+  - id: complexity
+    name: Code Complexity
+    description: Cyclomatic complexity via radon or lizard
+    phase: codegen
+    tool: radon
+    tool_config:
+      metric: cc
+      average: true
+    threshold:
+      max_average_complexity: 10
+      max_function_complexity: 20
+    score_expression: "1 - (avg_complexity / max_average_complexity)"
+
+  - id: coverage
+    name: Test Coverage
+    description: Line/branch coverage via coverage.py or istanbul
+    phase: unit_test
+    tool: coverage
+    tool_config:
+      type: line
+    threshold:
+      min_coverage: 0.80
+    score_expression: "coverage_pct"
+
+  - id: static_analysis
+    name: Static Analysis
+    description: Security and code quality via semgrep or bandit
+    phase: codegen
+    tool: semgrep
+    tool_config:
+      config: auto
+      severity_threshold: warning
+    threshold:
+      max_errors: 0
+      max_warnings: 10
+    score_expression: "1 - (error_count / 10)"
+
+  - id: test_pass_rate
+    name: Test Pass Rate
+    description: Percentage of tests passing
+    phase: unit_test
+    tool: test_runner
+    tool_config:
+      framework: auto
+    threshold:
+      min_pass_rate: 1.0
+    score_expression: "passed / total"
+
+  - id: lint
+    name: Lint
+    description: Code style and formatting via eslint or ruff
+    phase: codegen
+    tool: eslint
+    tool_config:
+      config: auto
+    threshold:
+      max_errors: 0
+      max_warnings: 20
+    score_expression: "1 - (errors / 20)"
+
+  - id: type_check
+    name: Type Check
+    description: TypeScript or mypy type checking
+    phase: codegen
+    tool: tsc
+    tool_config:
+      strict: true
+    threshold:
+      max_errors: 0
+    score_expression: "errors == 0 ? 1.0 : 0.0"
+
+  - id: dependency_audit
+    name: Dependency Audit
+    description: Known vulnerabilities in dependencies via npm audit or pip-audit
+    phase: codegen
+    tool: npm_audit
+    tool_config:
+      severity: high
+    threshold:
+      max_high_vulnerabilities: 0
+    score_expression: "high_vulns == 0 ? 1.0 : 0.0"
+
+  - id: accessibility
+    name: Accessibility
+    description: WCAG compliance via pa11y or axe
+    phase: code_review
+    tool: pa11y
+    tool_config:
+      standard: WCAG2AA
+    threshold:
+      max_errors: 0
+    score_expression: "1 - (errors / 10)"
+
+  - id: bundle_size
+    name: Bundle Size
+    description: Output bundle size check
+    phase: codegen
+    tool: size_limit
+    tool_config:
+      max_kb: 500
+    threshold:
+      max_size_kb: 500
+    score_expression: "size_kb <= max_size_kb ? 1.0 : 0.0"
+
+  - id: circular_deps
+    name: Circular Dependencies
+    description: Detect circular imports via madge
+    phase: codegen
+    tool: madge
+    tool_config:
+      circular: true
+    threshold:
+      max_circular: 0
+    score_expression: "circular_count == 0 ? 1.0 : 0.0"
+
+# Gates group dimensions into named checkpoints.
+# A gate passes when ALL its dimensions pass their thresholds.
+gates:
+  - id: code_quality
+    name: Code Quality Gate
+    phase: codegen
+    dimensions: [complexity, static_analysis, lint, type_check, circular_deps]
+    pass_rule: all_pass
+
+  - id: test_quality
+    name: Test Quality Gate
+    phase: unit_test
+    dimensions: [coverage, test_pass_rate]
+    pass_rule: all_pass
+
+  - id: security
+    name: Security Gate
+    phase: codegen
+    dimensions: [static_analysis, dependency_audit]
+    pass_rule: all_pass
+
+  - id: review_quality
+    name: Review Quality Gate
+    phase: code_review
+    dimensions: [accessibility]
+    pass_rule: all_pass
+
+  - id: release_ready
+    name: Release Readiness
+    phase: release
+    dimensions: [complexity, coverage, static_analysis, test_pass_rate, lint, type_check, dependency_audit, bundle_size, circular_deps]
+    pass_rule: all_pass

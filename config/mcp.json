@@ -1,0 +1,16 @@
+[
+  {
+    "name": "github",
+    "server_type": "http",
+    "url_or_cmd": "https://mcp-github.example.com",
+    "auth_header": "Bearer ${GITHUB_TOKEN}",
+    "capabilities": ["github"]
+  },
+  {
+    "name": "filesystem",
+    "server_type": "stdio",
+    "url_or_cmd": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"],
+    "capabilities": ["filesystem"]
+  }
+]

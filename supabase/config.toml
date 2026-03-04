@@ -1,0 +1,13 @@
+# Supabase local config (optional). Use for supabase start.
+# Migrations apply via: supabase db push or CI.
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+shadow_port = 54320
+
+[migrations]
+# Migrations in supabase/migrations/ applied in order.

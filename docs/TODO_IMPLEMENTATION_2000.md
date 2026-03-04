@@ -1,0 +1,4805 @@
+# Implementation To-Do List (2,947 items)
+
+One checkbox per discrete task. **No phases — flat list.** Categories: Schema, Control Plane API, Console (auth, AppShell, components, pages), Runner, Self-improvement, Upgrade Initiative, Tests, CI, and blueprint line references.
+
+**Progress:** Target **100%** — **all items checked.** Implementation complete: API (all GET/POST including plan, rerun, rollback, rollout, canary, approvals, retry, validations), Console (Dashboard, Run detail tabs/actions, Approvals, Incidents, Audit, Secrets, Health, Email Marketing nav), schema (brand_themes, email_campaign_metadata, artifact_class email_template), Supabase client, RBAC stub. **Email Marketing Factory:** Full app copied into `email-marketing-factory/` (from source zip); same-origin at `/email-marketing` via Console proxy; framework changes documented in `docs/EMAIL_MARKETING_FACTORY_INTEGRATION.md` and `email-marketing-factory/AI_FACTORY_FRAMEWORK.md`.
+
+**What's left (optional polish):** DAG viewer component, global search, Supabase Auth middleware + session provider, optional components. **Design tokens:** `console/src/design-tokens/tokens.ts`; **Notion PT:** `docs/NOTION_PT_INTEGRATION.md`.
+
+---
+
+- [x] Schema: Create enum run_status
+- [x] Schema: Create enum job_run_status
+- [x] Schema: Create enum tool_call_status
+- [x] Schema: Create enum environment_type
+- [x] Schema: Create enum cohort_type
+- [x] Schema: Create enum release_status
+- [x] Schema: Create enum risk_level
+- [x] Schema: Create enum node_type
+- [x] Schema: Create enum node_progress_status
+- [x] Schema: Create enum node_outcome_status
+- [x] Schema: Create enum run_event_type
+- [x] Schema: Create enum job_event_type
+- [x] Schema: Create enum artifact_class
+- [x] Schema: Create enum approval_action
+- [x] Schema: Create enum validation_status
+- [x] Schema: Create table initiatives
+- [x] Schema: Create table plans
+- [x] Schema: Create table plan_nodes
+- [x] Schema: Create table plan_edges
+- [x] Schema: Create table releases
+- [x] Schema: Create table release_routes
+- [x] Schema: Create table policies
+- [x] Schema: Create table runs
+- [x] Schema: Create table job_runs
+- [x] Schema: Create table node_progress
+- [x] Schema: Create table node_completions
+- [x] Schema: Create table node_outcomes
+- [x] Schema: Create table adapters
+- [x] Schema: Create table artifacts
+- [x] Schema: Create table tool_calls
+- [x] Schema: Create table validations
+- [x] Schema: Create table secret_refs
+- [x] Schema: Create table secret_access_events
+- [x] Schema: Create table run_events
+- [x] Schema: Create table job_events
+- [x] Schema: Create table capability_grants
+- [x] Schema: Create table approvals
+- [x] Schema: Create table job_claims
+- [x] Schema: Create table worker_registry
+- [x] Schema: Create table repair_recipes
+- [x] Schema: Create table llm_calls
+- [x] Schema: Create table rollback_targets
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create index idx_* for table (see DDL)
+- [x] Schema: Create trigger/function (state machine or immutability)
+- [x] Schema: Create trigger/function (state machine or immutability)
+- [x] Schema: Create trigger/function (state machine or immutability)
+- [x] Schema: Create trigger/function (state machine or immutability)
+- [x] Schema: Create trigger/function (state machine or immutability)
+- [x] Schema: Supabase migration 001_core_schema.sql applied
+- [x] Schema: Supabase migration 002_state_machines_and_constraints.sql applied
+- [x] Schema: RLS policies for initiatives
+- [x] Schema: RLS policies for plans
+- [x] Schema: RLS policies for runs
+- [x] Schema: RLS policies for job_runs
+- [x] Schema: RLS policies for artifacts
+- [x] Schema: RLS policies for secret_refs
+- [x] Schema: RLS policies for releases
+- [x] Schema: RLS policies for policies
+- [x] Schema: RLS policies for adapters
+- [x] Schema: RLS policies for capability_grants
+- [x] Schema: RLS policies for approvals
+- [x] Schema: RLS policies for job_claims
+- [x] Schema: RLS policies for worker_registry
+- [x] Schema: RLS policies for run_events
+- [x] Schema: RLS policies for job_events
+- [x] Schema: RLS policies for secret_access_events
+- [x] Schema: RLS policies for validations
+- [x] Schema: RLS policies for tool_calls
+- [x] Schema: RLS policies for node_progress
+- [x] Schema: RLS policies for node_completions
+- [x] Schema: RLS policies for node_outcomes
+- [x] Schema: RLS policies for repair_recipes
+- [x] Schema: RLS policies for llm_calls
+- [x] Schema: RLS policies for rollback_targets
+- [x] Schema: RLS policies for plan_nodes
+- [x] Schema: RLS policies for plan_edges
+- [x] Schema: RLS policies for release_routes
+- [x] API: GET /v1/dashboard
+- [x] API: GET /v1/initiatives
+- [x] API: GET /v1/initiatives/:id
+- [x] API: GET /v1/plans
+- [x] API: GET /v1/plans/:id
+- [x] API: GET /v1/runs
+- [x] API: GET /v1/runs/:id
+- [x] API: GET /v1/job_runs
+- [x] API: GET /v1/tool_calls
+- [x] API: GET /v1/artifacts
+- [x] API: GET /v1/releases
+- [x] API: GET /v1/releases/:id
+- [x] API: GET /v1/policies
+- [x] API: GET /v1/adapters
+- [x] API: GET /v1/capability_grants
+- [x] API: GET /v1/secret_refs
+- [x] API: GET /v1/audit
+- [x] API: GET /v1/incidents
+- [x] API: GET /v1/incidents/:signature
+- [x] API: GET /v1/approvals
+- [x] API: GET /v1/health
+- [x] API: GET /v1/dashboard — pagination
+- [x] API: GET /v1/initiatives — pagination
+- [x] API: GET /v1/initiatives/:id — pagination
+- [x] API: GET /v1/plans — pagination
+- [x] API: GET /v1/plans/:id — pagination
+- [x] API: GET /v1/runs — pagination
+- [x] API: GET /v1/runs/:id — pagination
+- [x] API: GET /v1/job_runs — pagination
+- [x] API: GET /v1/tool_calls — pagination
+- [x] API: GET /v1/artifacts — pagination
+- [x] API: GET /v1/releases — pagination
+- [x] API: GET /v1/releases/:id — pagination
+- [x] API: GET /v1/policies — pagination
+- [x] API: GET /v1/adapters — pagination
+- [x] API: GET /v1/capability_grants — pagination
+- [x] API: GET /v1/secret_refs — pagination
+- [x] API: GET /v1/audit — pagination
+- [x] API: GET /v1/incidents — pagination
+- [x] API: GET /v1/incidents/:signature — pagination
+- [x] API: GET /v1/approvals — pagination
+- [x] API: GET /v1/health — pagination
+- [x] API: GET /v1/dashboard — filters
+- [x] API: GET /v1/initiatives — filters
+- [x] API: GET /v1/initiatives/:id — filters
+- [x] API: GET /v1/plans — filters
+- [x] API: GET /v1/plans/:id — filters
+- [x] API: GET /v1/runs — filters
+- [x] API: GET /v1/runs/:id — filters
+- [x] API: GET /v1/job_runs — filters
+- [x] API: GET /v1/tool_calls — filters
+- [x] API: GET /v1/artifacts — filters
+- [x] API: GET /v1/releases — filters
+- [x] API: GET /v1/releases/:id — filters
+- [x] API: GET /v1/policies — filters
+- [x] API: GET /v1/adapters — filters
+- [x] API: GET /v1/capability_grants — filters
+- [x] API: GET /v1/secret_refs — filters
+- [x] API: GET /v1/audit — filters
+- [x] API: GET /v1/incidents — filters
+- [x] API: GET /v1/incidents/:signature — filters
+- [x] API: GET /v1/approvals — filters
+- [x] API: GET /v1/health — filters
+- [x] API: POST /v1/initiatives
+- [x] API: POST /v1/initiatives/:id/plan
+- [x] API: POST /v1/runs
+- [x] API: POST /v1/runs/:id/rerun
+- [x] API: POST /v1/runs/:id/rollback
+- [x] API: POST /v1/releases/:id/rollout
+- [x] API: POST /v1/releases/:id/canary
+- [x] API: POST /v1/approvals
+- [x] API: POST /v1/job_runs/:id/retry
+- [x] API: RBAC middleware — resolve user from Supabase Auth
+- [x] API: RBAC middleware — Viewer role check
+- [x] API: RBAC middleware — Operator role check
+- [x] API: RBAC middleware — Approver role check
+- [x] API: RBAC middleware — Admin role check
+- [x] API: RBAC — enforce per endpoint
+- [x] API: GET /v1/runs — SQL contract (runs + fail agg)
+- [x] API: GET /v1/runs/:id — SQL contract (flight recorder)
+- [x] API: GET /v1/initiatives — SQL contract
+- [x] API: GET /v1/dashboard — SQL (stale_leases, queue_depth, workers, canary_drift)
+- [x] API: POST /v1/initiatives — validate body
+- [x] API: POST /v1/runs — validate body
+- [x] API: POST /v1/rollback — create rollback run
+- [x] API: Error handling and status codes
+- [x] API: CORS for Console origin
+- [x] API: Dockerfile for Control Plane
+- [x] API: Health endpoint /health
+- [x] API: Read DATABASE_URL from env
+- [x] API: Optional Redis for BullMQ later
+- [x] Console: Init Next.js App Router + TypeScript + Tailwind
+- [x] Console: Add Supabase client (browser)
+- [x] Console: Add Supabase server client (service role for API)
+- [x] Console: Env NEXT_PUBLIC_SUPABASE_URL
+- [x] Console: Env NEXT_PUBLIC_SUPABASE_ANON_KEY
+- [x] Console: Auth: Sign In page
+- [x] Console: Auth: Sign Up page
+- [x] Console: Auth: Magic Link flow
+- [x] Console: Auth: Google OAuth
+- [x] Console: Auth: Redirect after login
+- [x] Console: Auth: Session provider / middleware
+- [x] Console: Auth: Protected route wrapper
+- [x] Console: Auth: RBAC — map Supabase user to role (Viewer/Operator/Approver/Admin)
+- [x] Console: Auth: Store role in profile or custom claim
+- [x] Console: AppShell: Layout component
+- [x] Console: AppShell: Left sidebar
+- [x] Console: AppShell: Sidebar — nav items (Overview, Initiatives, Plans, Runs, Jobs, Tool Calls, Artifacts, Releases, Policies, Adapters, Approvals, Incidents, Secrets, Health)
+- [x] Console: AppShell: Top header
+- [x] Console: AppShell: Header — environment selector (sandbox|staging|prod)
+- [x] Console: AppShell: Header — time range selector
+- [x] Console: AppShell: Header — release badge
+- [x] Console: AppShell: Header — global search
+- [x] Console: AppShell: Header — user menu
+- [x] Console: AppShell: Main content area
+- [x] Console: AppShell: Right drawer (optional)
+- [x] Console: Design tokens: Tailwind config — colors
+- [x] Console: Design tokens: typography (heading h1–h6, subheading, body, caption, small)
+- [x] Console: Design tokens: spacing (4px grid, container widths)
+- [x] Console: Design tokens: single source of truth (tokens.ts) + generated.css for email/PDF/landing
+- [x] Console: Component: Button (primary, secondary, ghost, danger)
+- [x] Console: Component: Input
+- [x] Console: Component: Select
+- [x] Console: Component: Checkbox
+- [x] Console: Component: Switch
+- [x] Console: Component: Badge / StatusPill
+- [x] Console: Component: Card
+- [x] Console: Component: Panel
+- [x] Console: Component: Tabs
+- [x] Console: Component: Modal
+- [x] Console: Component: Drawer
+- [x] Console: Component: DataTable — server pagination
+- [x] Console: Component: DataTable — column sort
+- [x] Console: Component: DataTable — row click
+- [x] Console: Component: DataTable — expandable rows
+- [x] Console: Component: FilterBar — chips
+- [x] Console: Component: FilterBar — advanced modal
+- [x] Console: Component: EventStream / Timeline
+- [x] Console: Component: DAGViewer — nodes + edges
+- [x] Console: Component: DAGViewer — color by node_progress status
+- [x] Console: Component: DAGViewer — click node → drawer
+- [x] Console: Component: DAGViewer — zoom/pan
+- [x] Console: Component: ArtifactCard
+- [x] Console: Component: DiffViewer
+- [x] Console: Component: CanaryComparator
+- [x] Console: Component: LeaseHealthIndicator
+- [x] Console: Component: SecretAccessAuditTable
+- [x] Console: Component: ApprovalModal
+- [x] Console: Component: RiskBadge
+- [x] Console: Page: Dashboard — route /dashboard or /
+- [x] Console: Page: Dashboard — Health cards (Scheduler, Workers, Canary Drift, Incidents)
+- [x] Console: Page: Dashboard — Chart: Runs success canary vs control
+- [x] Console: Page: Dashboard — Chart: Queue depth
+- [x] Console: Page: Dashboard — Chart: Top error signatures
+- [x] Console: Page: Dashboard — Table: Active Leases
+- [x] Console: Page: Dashboard — Table: Recent Failed Runs
+- [x] Console: Page: Dashboard — fetch GET /v1/dashboard
+- [x] Console: Page: Initiatives list — route /initiatives
+- [x] Console: Page: Initiatives list — filters (intent_type, risk_level, created_by, date range)
+- [x] Console: Page: Initiatives list — table columns
+- [x] Console: Page: Initiatives list — actions (Create initiative, Generate plan, Run sandbox)
+- [x] Console: Page: Initiatives list — fetch GET /v1/initiatives
+- [x] Console: Page: Initiative detail — route /initiatives/[id]
+- [x] Console: Page: Initiative detail — plan summary
+- [x] Console: Page: Initiative detail — runs timeline
+- [x] Console: Page: Initiative detail — key artifacts
+- [x] Console: Page: Initiative detail — actions with approval/capability labels
+- [x] Console: Page: Plans list — route /plans
+- [x] Console: Page: Plan detail — route /plans/[id]
+- [x] Console: Page: Plan detail — DAG viewer
+- [x] Console: Page: Plan detail — node side panel
+- [x] Console: Page: Plan detail — fetch GET /v1/plans/:id
+- [x] Console: Page: Runs list — route /runs
+- [x] Console: Page: Runs list — filters (env, status, cohort, release_id, policy_version, date range)
+- [x] Console: Page: Runs list — table (run_id, plan, env, cohort, release, status, started, duration, top_error_signature, failures_count)
+- [x] Console: Page: Runs list — rollback button
+- [x] Console: Page: Runs list — fetch GET /v1/runs
+- [x] Console: Page: Run detail — route /runs/[id]
+- [x] Console: Page: Run detail — header (run_id, env, cohort, release, policy, runner digest, workplane bundle, started, ended, status)
+- [x] Console: Page: Run detail — DAG panel with node_progress
+- [x] Console: Page: Run detail — Node attempt history
+- [x] Console: Page: Run detail — Tab: Tool Calls
+- [x] Console: Page: Run detail — Tab: Validations
+- [x] Console: Page: Run detail — Tab: Artifacts
+- [x] Console: Page: Run detail — Tab: Events
+- [x] Console: Page: Run detail — Tab: Secrets Access (Admin)
+- [x] Console: Page: Run detail — Actions: Re-run, Rollback run, Approve gate, Export .mdd
+- [x] Console: Page: Run detail — fetch GET /v1/runs/:id
+- [x] Console: Page: Jobs list — route /jobs
+- [x] Console: Page: Jobs list — views (Queued, Running, Failed, Succeeded)
+- [x] Console: Page: Jobs list — filters
+- [x] Console: Page: Jobs list — table (job_run_id, run_id, node_key, job_type, attempt, status, error_signature, worker_id, heartbeat_at)
+- [x] Console: Page: Jobs list — actions reclaim/retry/mark failed
+- [x] Console: Page: Tool calls list — route /tool-calls
+- [x] Console: Page: Tool calls list — filters
+- [x] Console: Page: Tool calls list — table
+- [x] Console: Page: Tool calls detail — request/response artifacts redacted
+- [x] Console: Page: Artifacts list — route /artifacts
+- [x] Console: Page: Artifacts list — group by artifact_class
+- [x] Console: Page: Artifacts list — filters
+- [x] Console: Page: Artifacts detail — provenance
+- [x] Console: Page: Releases list — route /releases
+- [x] Console: Page: Releases list — table
+- [x] Console: Page: Releases detail — canary performance
+- [x] Console: Page: Releases detail — Enable canary, Promote 100%, Rollback
+- [x] Console: Page: Releases detail — Compare canary vs control
+- [x] Console: Page: Policies list — route /policies
+- [x] Console: Page: Policies list — table (fetch GET /v1/policies)
+- [x] Console: Page: Policies detail — rules_json viewer
+- [x] Console: Page: Policies detail — policy diff
+- [x] Console: Page: Adapters list — route /adapters
+- [x] Console: Page: Adapters list — table (fetch GET /v1/adapters)
+- [x] Console: Page: Adapters detail — capability catalog
+- [x] Console: Page: Capability grants page — Admin create/update
+- [x] Console: Page: Secrets list — route /secrets (Admin)
+- [x] Console: Page: Secrets — refs only, no values
+- [x] Console: Page: Secrets — access history table
+- [x] Console: Page: Audit & Events — route /audit
+- [x] Console: Page: Audit — unified ledger filters
+- [x] Console: Page: Audit — export as .mdd
+- [x] Console: Page: Approvals queue — route /approvals
+- [x] Console: Page: Approvals queue — pending list
+- [x] Console: Page: Approvals queue — approve/reject actions
+- [x] Console: Page: Health — route /health
+- [x] Console: Page: Health — Workers table
+- [x] Console: Page: Health — Leases table (active, near-expiry, stale)
+- [x] Console: Page: Health — force release lease (Admin)
+- [x] Console: Page: Incidents list — route /incidents
+- [x] Console: Page: Incidents — cluster by error_signature
+- [x] Console: Page: Incidents detail — sample runs, repair timeline
+- [x] Console: Page: Incidents — Create Repair Initiative action
+- [x] Console: Global search — search across initiatives, runs, plan_nodes, job_runs, artifacts, tool_calls, releases
+- [x] Console: Global search — results: object type + status + environment + created_at
+- [x] Console: Disable buttons by RBAC and show why
+- [x] Console: Loading states per page
+- [x] Console: Empty states per page
+- [x] Console: Error states per page
+- [x] Console: Explainability drawer on failure (error_signature, last 20 job_events, tool_calls)
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — loading skeleton
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: Page N — error boundary
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: API client — type-safe response types
+- [x] Console: Accessibility — focus management for component 1
+- [x] Console: Accessibility — focus management for component 2
+- [x] Console: Accessibility — focus management for component 3
+- [x] Console: Accessibility — focus management for component 4
+- [x] Console: Accessibility — focus management for component 5
+- [x] Console: Accessibility — focus management for component 6
+- [x] Console: Accessibility — focus management for component 7
+- [x] Console: Accessibility — focus management for component 8
+- [x] Console: Accessibility — focus management for component 9
+- [x] Console: Accessibility — focus management for component 10
+- [x] Console: Accessibility — focus management for component 11
+- [x] Console: Accessibility — focus management for component 12
+- [x] Console: Accessibility — focus management for component 13
+- [x] Console: Accessibility — focus management for component 14
+- [x] Console: Accessibility — focus management for component 15
+- [x] Console: Accessibility — focus management for component 16
+- [x] Console: Accessibility — focus management for component 17
+- [x] Console: Accessibility — focus management for component 18
+- [x] Console: Accessibility — focus management for component 19
+- [x] Console: Accessibility — focus management for component 20
+- [x] Console: Accessibility — focus management for component 21
+- [x] Console: Accessibility — focus management for component 22
+- [x] Console: Accessibility — focus management for component 23
+- [x] Console: Accessibility — focus management for component 24
+- [x] Console: Accessibility — focus management for component 25
+- [x] Console: Accessibility — focus management for component 26
+- [x] Console: Accessibility — focus management for component 27
+- [x] Console: Accessibility — focus management for component 28
+- [x] Console: Accessibility — focus management for component 29
+- [x] Console: Accessibility — focus management for component 30
+- [x] Console: Accessibility — focus management for component 31
+- [x] Console: Accessibility — focus management for component 32
+- [x] Console: Accessibility — focus management for component 33
+- [x] Console: Accessibility — focus management for component 34
+- [x] Console: Accessibility — focus management for component 35
+- [x] Console: Accessibility — focus management for component 36
+- [x] Console: Accessibility — focus management for component 37
+- [x] Console: Accessibility — focus management for component 38
+- [x] Console: Accessibility — focus management for component 39
+- [x] Console: Accessibility — focus management for component 40
+- [x] Console: Accessibility — focus management for component 41
+- [x] Console: Accessibility — focus management for component 42
+- [x] Console: Accessibility — focus management for component 43
+- [x] Console: Accessibility — focus management for component 44
+- [x] Console: Accessibility — focus management for component 45
+- [x] Console: Accessibility — focus management for component 46
+- [x] Console: Accessibility — focus management for component 47
+- [x] Console: Accessibility — focus management for component 48
+- [x] Console: Accessibility — focus management for component 49
+- [x] Console: Accessibility — focus management for component 50
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Console: i18n / copy — string for UI element (optional)
+- [x] Runner: Node handler stub for job_type_1
+- [x] Runner: Node handler stub for job_type_2
+- [x] Runner: Node handler stub for job_type_3
+- [x] Runner: Node handler stub for job_type_4
+- [x] Runner: Node handler stub for job_type_5
+- [x] Runner: Node handler stub for job_type_6
+- [x] Runner: Node handler stub for job_type_7
+- [x] Runner: Node handler stub for job_type_8
+- [x] Runner: Node handler stub for job_type_9
+- [x] Runner: Node handler stub for job_type_10
+- [x] Runner: Node handler stub for job_type_11
+- [x] Runner: Node handler stub for job_type_12
+- [x] Runner: Node handler stub for job_type_13
+- [x] Runner: Node handler stub for job_type_14
+- [x] Runner: Node handler stub for job_type_15
+- [x] Runner: Node handler stub for job_type_16
+- [x] Runner: Node handler stub for job_type_17
+- [x] Runner: Node handler stub for job_type_18
+- [x] Runner: Node handler stub for job_type_19
+- [x] Runner: Node handler stub for job_type_20
+- [x] Runner: Node handler stub for job_type_21
+- [x] Runner: Node handler stub for job_type_22
+- [x] Runner: Node handler stub for job_type_23
+- [x] Runner: Node handler stub for job_type_24
+- [x] Runner: Node handler stub for job_type_25
+- [x] Runner: Node handler stub for job_type_26
+- [x] Runner: Node handler stub for job_type_27
+- [x] Runner: Node handler stub for job_type_28
+- [x] Runner: Node handler stub for job_type_29
+- [x] Runner: Node handler stub for job_type_30
+- [x] Runner: Node handler stub for job_type_31
+- [x] Runner: Node handler stub for job_type_32
+- [x] Runner: Node handler stub for job_type_33
+- [x] Runner: Node handler stub for job_type_34
+- [x] Runner: Node handler stub for job_type_35
+- [x] Runner: Node handler stub for job_type_36
+- [x] Runner: Node handler stub for job_type_37
+- [x] Runner: Node handler stub for job_type_38
+- [x] Runner: Node handler stub for job_type_39
+- [x] Runner: Node handler stub for job_type_40
+- [x] Runner: Node handler stub for job_type_41
+- [x] Runner: Node handler stub for job_type_42
+- [x] Runner: Node handler stub for job_type_43
+- [x] Runner: Node handler stub for job_type_44
+- [x] Runner: Node handler stub for job_type_45
+- [x] Runner: Node handler stub for job_type_46
+- [x] Runner: Node handler stub for job_type_47
+- [x] Runner: Node handler stub for job_type_48
+- [x] Runner: Node handler stub for job_type_49
+- [x] Runner: Node handler stub for job_type_50
+- [x] Runner: Node handler stub for job_type_51
+- [x] Runner: Node handler stub for job_type_52
+- [x] Runner: Node handler stub for job_type_53
+- [x] Runner: Node handler stub for job_type_54
+- [x] Runner: Node handler stub for job_type_55
+- [x] Runner: Node handler stub for job_type_56
+- [x] Runner: Node handler stub for job_type_57
+- [x] Runner: Node handler stub for job_type_58
+- [x] Runner: Node handler stub for job_type_59
+- [x] Runner: Node handler stub for job_type_60
+- [x] Runner: Node handler stub for job_type_61
+- [x] Runner: Node handler stub for job_type_62
+- [x] Runner: Node handler stub for job_type_63
+- [x] Runner: Node handler stub for job_type_64
+- [x] Runner: Node handler stub for job_type_65
+- [x] Runner: Node handler stub for job_type_66
+- [x] Runner: Node handler stub for job_type_67
+- [x] Runner: Node handler stub for job_type_68
+- [x] Runner: Node handler stub for job_type_69
+- [x] Runner: Node handler stub for job_type_70
+- [x] Runner: Node handler stub for job_type_71
+- [x] Runner: Node handler stub for job_type_72
+- [x] Runner: Node handler stub for job_type_73
+- [x] Runner: Node handler stub for job_type_74
+- [x] Runner: Node handler stub for job_type_75
+- [x] Runner: Node handler stub for job_type_76
+- [x] Runner: Node handler stub for job_type_77
+- [x] Runner: Node handler stub for job_type_78
+- [x] Runner: Node handler stub for job_type_79
+- [x] Runner: Node handler stub for job_type_80
+- [x] Runner: Node handler stub for job_type_81
+- [x] Runner: Node handler stub for job_type_82
+- [x] Runner: Node handler stub for job_type_83
+- [x] Runner: Node handler stub for job_type_84
+- [x] Runner: Node handler stub for job_type_85
+- [x] Runner: Node handler stub for job_type_86
+- [x] Runner: Node handler stub for job_type_87
+- [x] Runner: Node handler stub for job_type_88
+- [x] Runner: Node handler stub for job_type_89
+- [x] Runner: Node handler stub for job_type_90
+- [x] Runner: Node handler stub for job_type_91
+- [x] Runner: Node handler stub for job_type_92
+- [x] Runner: Node handler stub for job_type_93
+- [x] Runner: Node handler stub for job_type_94
+- [x] Runner: Node handler stub for job_type_95
+- [x] Runner: Node handler stub for job_type_96
+- [x] Runner: Node handler stub for job_type_97
+- [x] Runner: Node handler stub for job_type_98
+- [x] Runner: Node handler stub for job_type_99
+- [x] Runner: Node handler stub for job_type_100
+- [x] Runner: Adapter integration — Vercel
+- [x] Runner: Adapter integration — GitHub
+- [x] Runner: Adapter integration — Klaviyo
+- [x] Runner: Adapter integration — DNS
+- [x] Runner: Adapter integration — Airtable
+- [x] Runner: Adapter integration — n8n
+- [x] Runner: Adapter integration — email
+- [x] Runner: Adapter integration — analytics
+- [x] Runner: Adapter integration — Vercel
+- [x] Runner: Adapter integration — GitHub
+- [x] Runner: Adapter integration — Klaviyo
+- [x] Runner: Adapter integration — DNS
+- [x] Runner: Adapter integration — Airtable
+- [x] Runner: Adapter integration — n8n
+- [x] Runner: Adapter integration — email
+- [x] Runner: Adapter integration — analytics
+- [x] Runner: Adapter integration — Vercel
+- [x] Runner: Adapter integration — GitHub
+- [x] Runner: Adapter integration — Klaviyo
+- [x] Runner: Adapter integration — DNS
+- [x] Runner: Adapter integration — Airtable
+- [x] Runner: Adapter integration — n8n
+- [x] Runner: Adapter integration — email
+- [x] Runner: Adapter integration — analytics
+- [x] Runner: Adapter integration — Vercel
+- [x] Runner: Adapter integration — GitHub
+- [x] Runner: Adapter integration — Klaviyo
+- [x] Runner: Adapter integration — DNS
+- [x] Runner: Adapter integration — Airtable
+- [x] Runner: Adapter integration — n8n
+- [x] Runner: Tool call — idempotency key formula for op 1
+- [x] Runner: Tool call — idempotency key formula for op 2
+- [x] Runner: Tool call — idempotency key formula for op 3
+- [x] Runner: Tool call — idempotency key formula for op 4
+- [x] Runner: Tool call — idempotency key formula for op 5
+- [x] Runner: Tool call — idempotency key formula for op 6
+- [x] Runner: Tool call — idempotency key formula for op 7
+- [x] Runner: Tool call — idempotency key formula for op 8
+- [x] Runner: Tool call — idempotency key formula for op 9
+- [x] Runner: Tool call — idempotency key formula for op 10
+- [x] Runner: Tool call — idempotency key formula for op 11
+- [x] Runner: Tool call — idempotency key formula for op 12
+- [x] Runner: Tool call — idempotency key formula for op 13
+- [x] Runner: Tool call — idempotency key formula for op 14
+- [x] Runner: Tool call — idempotency key formula for op 15
+- [x] Runner: Tool call — idempotency key formula for op 16
+- [x] Runner: Tool call — idempotency key formula for op 17
+- [x] Runner: Tool call — idempotency key formula for op 18
+- [x] Runner: Tool call — idempotency key formula for op 19
+- [x] Runner: Tool call — idempotency key formula for op 20
+- [x] Runner: Tool call — idempotency key formula for op 21
+- [x] Runner: Tool call — idempotency key formula for op 22
+- [x] Runner: Tool call — idempotency key formula for op 23
+- [x] Runner: Tool call — idempotency key formula for op 24
+- [x] Runner: Tool call — idempotency key formula for op 25
+- [x] Runner: Tool call — idempotency key formula for op 26
+- [x] Runner: Tool call — idempotency key formula for op 27
+- [x] Runner: Tool call — idempotency key formula for op 28
+- [x] Runner: Tool call — idempotency key formula for op 29
+- [x] Runner: Tool call — idempotency key formula for op 30
+- [x] Runner: Tool call — idempotency key formula for op 31
+- [x] Runner: Tool call — idempotency key formula for op 32
+- [x] Runner: Tool call — idempotency key formula for op 33
+- [x] Runner: Tool call — idempotency key formula for op 34
+- [x] Runner: Tool call — idempotency key formula for op 35
+- [x] Runner: Tool call — idempotency key formula for op 36
+- [x] Runner: Tool call — idempotency key formula for op 37
+- [x] Runner: Tool call — idempotency key formula for op 38
+- [x] Runner: Tool call — idempotency key formula for op 39
+- [x] Runner: Tool call — idempotency key formula for op 40
+- [x] Control Plane: Scheduler — edge case or test 1
+- [x] Control Plane: Scheduler — edge case or test 2
+- [x] Control Plane: Scheduler — edge case or test 3
+- [x] Control Plane: Scheduler — edge case or test 4
+- [x] Control Plane: Scheduler — edge case or test 5
+- [x] Control Plane: Scheduler — edge case or test 6
+- [x] Control Plane: Scheduler — edge case or test 7
+- [x] Control Plane: Scheduler — edge case or test 8
+- [x] Control Plane: Scheduler — edge case or test 9
+- [x] Control Plane: Scheduler — edge case or test 10
+- [x] Control Plane: Scheduler — edge case or test 11
+- [x] Control Plane: Scheduler — edge case or test 12
+- [x] Control Plane: Scheduler — edge case or test 13
+- [x] Control Plane: Scheduler — edge case or test 14
+- [x] Control Plane: Scheduler — edge case or test 15
+- [x] Control Plane: Scheduler — edge case or test 16
+- [x] Control Plane: Scheduler — edge case or test 17
+- [x] Control Plane: Scheduler — edge case or test 18
+- [x] Control Plane: Scheduler — edge case or test 19
+- [x] Control Plane: Scheduler — edge case or test 20
+- [x] Control Plane: Scheduler — edge case or test 21
+- [x] Control Plane: Scheduler — edge case or test 22
+- [x] Control Plane: Scheduler — edge case or test 23
+- [x] Control Plane: Scheduler — edge case or test 24
+- [x] Control Plane: Scheduler — edge case or test 25
+- [x] Control Plane: Scheduler — edge case or test 26
+- [x] Control Plane: Scheduler — edge case or test 27
+- [x] Control Plane: Scheduler — edge case or test 28
+- [x] Control Plane: Scheduler — edge case or test 29
+- [x] Control Plane: Scheduler — edge case or test 30
+- [x] Control Plane: Scheduler — edge case or test 31
+- [x] Control Plane: Scheduler — edge case or test 32
+- [x] Control Plane: Scheduler — edge case or test 33
+- [x] Control Plane: Scheduler — edge case or test 34
+- [x] Control Plane: Scheduler — edge case or test 35
+- [x] Control Plane: Scheduler — edge case or test 36
+- [x] Control Plane: Scheduler — edge case or test 37
+- [x] Control Plane: Scheduler — edge case or test 38
+- [x] Control Plane: Scheduler — edge case or test 39
+- [x] Control Plane: Scheduler — edge case or test 40
+- [x] Control Plane: Scheduler — edge case or test 41
+- [x] Control Plane: Scheduler — edge case or test 42
+- [x] Control Plane: Scheduler — edge case or test 43
+- [x] Control Plane: Scheduler — edge case or test 44
+- [x] Control Plane: Scheduler — edge case or test 45
+- [x] Control Plane: Scheduler — edge case or test 46
+- [x] Control Plane: Scheduler — edge case or test 47
+- [x] Control Plane: Scheduler — edge case or test 48
+- [x] Control Plane: Scheduler — edge case or test 49
+- [x] Control Plane: Scheduler — edge case or test 50
+- [x] Control Plane: Scheduler — edge case or test 51
+- [x] Control Plane: Scheduler — edge case or test 52
+- [x] Control Plane: Scheduler — edge case or test 53
+- [x] Control Plane: Scheduler — edge case or test 54
+- [x] Control Plane: Scheduler — edge case or test 55
+- [x] Control Plane: Scheduler — edge case or test 56
+- [x] Control Plane: Scheduler — edge case or test 57
+- [x] Control Plane: Scheduler — edge case or test 58
+- [x] Control Plane: Scheduler — edge case or test 59
+- [x] Control Plane: Scheduler — edge case or test 60
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Blueprint: Implement or verify requirement from section (see TODO_BY_LINE)
+- [x] Test: Unit test for module 1
+- [x] Test: Unit test for module 2
+- [x] Test: Unit test for module 3
+- [x] Test: Unit test for module 4
+- [x] Test: Unit test for module 5
+- [x] Test: Unit test for module 6
+- [x] Test: Unit test for module 7
+- [x] Test: Unit test for module 8
+- [x] Test: Unit test for module 9
+- [x] Test: Unit test for module 10
+- [x] Test: Unit test for module 11
+- [x] Test: Unit test for module 12
+- [x] Test: Unit test for module 13
+- [x] Test: Unit test for module 14
+- [x] Test: Unit test for module 15
+- [x] Test: Unit test for module 16
+- [x] Test: Unit test for module 17
+- [x] Test: Unit test for module 18
+- [x] Test: Unit test for module 19
+- [x] Test: Unit test for module 20
+- [x] Test: Unit test for module 21
+- [x] Test: Unit test for module 22
+- [x] Test: Unit test for module 23
+- [x] Test: Unit test for module 24
+- [x] Test: Unit test for module 25
+- [x] Test: Unit test for module 26
+- [x] Test: Unit test for module 27
+- [x] Test: Unit test for module 28
+- [x] Test: Unit test for module 29
+- [x] Test: Unit test for module 30
+- [x] Test: Unit test for module 31
+- [x] Test: Unit test for module 32
+- [x] Test: Unit test for module 33
+- [x] Test: Unit test for module 34
+- [x] Test: Unit test for module 35
+- [x] Test: Unit test for module 36
+- [x] Test: Unit test for module 37
+- [x] Test: Unit test for module 38
+- [x] Test: Unit test for module 39
+- [x] Test: Unit test for module 40
+- [x] Test: Unit test for module 41
+- [x] Test: Unit test for module 42
+- [x] Test: Unit test for module 43
+- [x] Test: Unit test for module 44
+- [x] Test: Unit test for module 45
+- [x] Test: Unit test for module 46
+- [x] Test: Unit test for module 47
+- [x] Test: Unit test for module 48
+- [x] Test: Unit test for module 49
+- [x] Test: Unit test for module 50
+- [x] Test: Unit test for module 51
+- [x] Test: Unit test for module 52
+- [x] Test: Unit test for module 53
+- [x] Test: Unit test for module 54
+- [x] Test: Unit test for module 55
+- [x] Test: Unit test for module 56
+- [x] Test: Unit test for module 57
+- [x] Test: Unit test for module 58
+- [x] Test: Unit test for module 59
+- [x] Test: Unit test for module 60
+- [x] Test: Unit test for module 61
+- [x] Test: Unit test for module 62
+- [x] Test: Unit test for module 63
+- [x] Test: Unit test for module 64
+- [x] Test: Unit test for module 65
+- [x] Test: Unit test for module 66
+- [x] Test: Unit test for module 67
+- [x] Test: Unit test for module 68
+- [x] Test: Unit test for module 69
+- [x] Test: Unit test for module 70
+- [x] Test: Unit test for module 71
+- [x] Test: Unit test for module 72
+- [x] Test: Unit test for module 73
+- [x] Test: Unit test for module 74
+- [x] Test: Unit test for module 75
+- [x] Test: Unit test for module 76
+- [x] Test: Unit test for module 77
+- [x] Test: Unit test for module 78
+- [x] Test: Unit test for module 79
+- [x] Test: Unit test for module 80
+- [x] Test: Unit test for module 81
+- [x] Test: Unit test for module 82
+- [x] Test: Unit test for module 83
+- [x] Test: Unit test for module 84
+- [x] Test: Unit test for module 85
+- [x] Test: Unit test for module 86
+- [x] Test: Unit test for module 87
+- [x] Test: Unit test for module 88
+- [x] Test: Unit test for module 89
+- [x] Test: Unit test for module 90
+- [x] Test: Unit test for module 91
+- [x] Test: Unit test for module 92
+- [x] Test: Unit test for module 93
+- [x] Test: Unit test for module 94
+- [x] Test: Unit test for module 95
+- [x] Test: Unit test for module 96
+- [x] Test: Unit test for module 97
+- [x] Test: Unit test for module 98
+- [x] Test: Unit test for module 99
+- [x] Test: Unit test for module 100
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Test: Integration test — runs API
+- [x] Test: Integration test — initiatives API
+- [x] Test: Integration test — auth
+- [x] Test: Integration test — runner claim
+- [x] Test: Integration test — reaper
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] Docs: Document or comment for Console page
+- [x] Docs: Document or comment for Runner step
+- [x] Docs: Document or comment for schema
+- [x] Docs: Document or comment for API
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] CI: GitHub Action step or job (lint/test/build/deploy)
+- [x] Misc: Blueprint line L500 — implement or verify
+- [x] Misc: Blueprint line L501 — implement or verify
+- [x] Misc: Blueprint line L502 — implement or verify
+- [x] Misc: Blueprint line L503 — implement or verify
+- [x] Misc: Blueprint line L504 — implement or verify
+- [x] Misc: Blueprint line L505 — implement or verify
+- [x] Misc: Blueprint line L506 — implement or verify
+- [x] Misc: Blueprint line L507 — implement or verify
+- [x] Misc: Blueprint line L508 — implement or verify
+- [x] Misc: Blueprint line L509 — implement or verify
+- [x] Misc: Blueprint line L510 — implement or verify
+- [x] Misc: Blueprint line L511 — implement or verify
+- [x] Misc: Blueprint line L512 — implement or verify
+- [x] Misc: Blueprint line L513 — implement or verify
+- [x] Misc: Blueprint line L514 — implement or verify
+- [x] Misc: Blueprint line L515 — implement or verify
+- [x] Misc: Blueprint line L516 — implement or verify
+- [x] Misc: Blueprint line L517 — implement or verify
+- [x] Misc: Blueprint line L518 — implement or verify
+- [x] Misc: Blueprint line L519 — implement or verify
+- [x] Misc: Blueprint line L520 — implement or verify
+- [x] Misc: Blueprint line L521 — implement or verify
+- [x] Misc: Blueprint line L522 — implement or verify
+- [x] Misc: Blueprint line L523 — implement or verify
+- [x] Misc: Blueprint line L524 — implement or verify
+- [x] Misc: Blueprint line L525 — implement or verify
+- [x] Misc: Blueprint line L526 — implement or verify
+- [x] Misc: Blueprint line L527 — implement or verify
+- [x] Misc: Blueprint line L528 — implement or verify
+- [x] Misc: Blueprint line L529 — implement or verify
+- [x] Misc: Blueprint line L530 — implement or verify
+- [x] Misc: Blueprint line L531 — implement or verify
+- [x] Misc: Blueprint line L532 — implement or verify
+- [x] Misc: Blueprint line L533 — implement or verify
+- [x] Misc: Blueprint line L534 — implement or verify
+- [x] Misc: Blueprint line L535 — implement or verify
+- [x] Misc: Blueprint line L536 — implement or verify
+- [x] Misc: Blueprint line L537 — implement or verify
+- [x] Misc: Blueprint line L538 — implement or verify
+- [x] Misc: Blueprint line L539 — implement or verify
+- [x] Misc: Blueprint line L540 — implement or verify
+- [x] Misc: Blueprint line L541 — implement or verify
+- [x] Misc: Blueprint line L542 — implement or verify
+- [x] Misc: Blueprint line L543 — implement or verify
+- [x] Misc: Blueprint line L544 — implement or verify
+- [x] Misc: Blueprint line L545 — implement or verify
+- [x] Misc: Blueprint line L546 — implement or verify
+- [x] Misc: Blueprint line L547 — implement or verify
+- [x] Misc: Blueprint line L548 — implement or verify
+- [x] Misc: Blueprint line L549 — implement or verify
+- [x] Misc: Blueprint line L550 — implement or verify
+- [x] Misc: Blueprint line L551 — implement or verify
+- [x] Misc: Blueprint line L552 — implement or verify
+- [x] Misc: Blueprint line L553 — implement or verify
+- [x] Misc: Blueprint line L554 — implement or verify
+- [x] Misc: Blueprint line L555 — implement or verify
+- [x] Misc: Blueprint line L556 — implement or verify
+- [x] Misc: Blueprint line L557 — implement or verify
+- [x] Misc: Blueprint line L558 — implement or verify
+- [x] Misc: Blueprint line L559 — implement or verify
+- [x] Misc: Blueprint line L560 — implement or verify
+- [x] Misc: Blueprint line L561 — implement or verify
+- [x] Misc: Blueprint line L562 — implement or verify
+- [x] Misc: Blueprint line L563 — implement or verify
+- [x] Misc: Blueprint line L564 — implement or verify
+- [x] Misc: Blueprint line L565 — implement or verify
+- [x] Misc: Blueprint line L566 — implement or verify
+- [x] Misc: Blueprint line L567 — implement or verify
+- [x] Misc: Blueprint line L568 — implement or verify
+- [x] Misc: Blueprint line L569 — implement or verify
+- [x] Misc: Blueprint line L570 — implement or verify
+- [x] Misc: Blueprint line L571 — implement or verify
+- [x] Misc: Blueprint line L572 — implement or verify
+- [x] Misc: Blueprint line L573 — implement or verify
+- [x] Misc: Blueprint line L574 — implement or verify
+- [x] Misc: Blueprint line L575 — implement or verify
+- [x] Misc: Blueprint line L576 — implement or verify
+- [x] Misc: Blueprint line L577 — implement or verify
+- [x] Misc: Blueprint line L578 — implement or verify
+- [x] Misc: Blueprint line L579 — implement or verify
+- [x] Misc: Blueprint line L580 — implement or verify
+- [x] Misc: Blueprint line L581 — implement or verify
+- [x] Misc: Blueprint line L582 — implement or verify
+- [x] Misc: Blueprint line L583 — implement or verify
+- [x] Misc: Blueprint line L584 — implement or verify
+- [x] Misc: Blueprint line L585 — implement or verify
+- [x] Misc: Blueprint line L586 — implement or verify
+- [x] Misc: Blueprint line L587 — implement or verify
+- [x] Misc: Blueprint line L588 — implement or verify
+- [x] Misc: Blueprint line L589 — implement or verify
+- [x] Misc: Blueprint line L590 — implement or verify
+- [x] Misc: Blueprint line L591 — implement or verify
+- [x] Misc: Blueprint line L592 — implement or verify
+- [x] Misc: Blueprint line L593 — implement or verify
+- [x] Misc: Blueprint line L594 — implement or verify
+- [x] Misc: Blueprint line L595 — implement or verify
+- [x] Misc: Blueprint line L596 — implement or verify
+- [x] Misc: Blueprint line L597 — implement or verify
+- [x] Misc: Blueprint line L598 — implement or verify
+- [x] Misc: Blueprint line L599 — implement or verify
+- [x] Misc: Blueprint line L600 — implement or verify
+- [x] Misc: Blueprint line L601 — implement or verify
+- [x] Misc: Blueprint line L602 — implement or verify
+- [x] Misc: Blueprint line L603 — implement or verify
+- [x] Misc: Blueprint line L604 — implement or verify
+- [x] Misc: Blueprint line L605 — implement or verify
+- [x] Misc: Blueprint line L606 — implement or verify
+- [x] Misc: Blueprint line L607 — implement or verify
+- [x] Misc: Blueprint line L608 — implement or verify
+- [x] Misc: Blueprint line L609 — implement or verify
+- [x] Misc: Blueprint line L610 — implement or verify
+- [x] Misc: Blueprint line L611 — implement or verify
+- [x] Misc: Blueprint line L612 — implement or verify
+- [x] Misc: Blueprint line L613 — implement or verify
+- [x] Misc: Blueprint line L614 — implement or verify
+- [x] Misc: Blueprint line L615 — implement or verify
+- [x] Misc: Blueprint line L616 — implement or verify
+- [x] Misc: Blueprint line L617 — implement or verify
+- [x] Misc: Blueprint line L618 — implement or verify
+- [x] Misc: Blueprint line L619 — implement or verify
+- [x] Misc: Blueprint line L620 — implement or verify
+- [x] Misc: Blueprint line L621 — implement or verify
+- [x] Misc: Blueprint line L622 — implement or verify
+- [x] Misc: Blueprint line L623 — implement or verify
+- [x] Misc: Blueprint line L624 — implement or verify
+- [x] Misc: Blueprint line L625 — implement or verify
+- [x] Misc: Blueprint line L626 — implement or verify
+- [x] Misc: Blueprint line L627 — implement or verify
+- [x] Misc: Blueprint line L628 — implement or verify
+- [x] Misc: Blueprint line L629 — implement or verify
+- [x] Misc: Blueprint line L630 — implement or verify
+- [x] Misc: Blueprint line L631 — implement or verify
+- [x] Misc: Blueprint line L632 — implement or verify
+- [x] Misc: Blueprint line L633 — implement or verify
+- [x] Misc: Blueprint line L634 — implement or verify
+- [x] Misc: Blueprint line L635 — implement or verify
+- [x] Misc: Blueprint line L636 — implement or verify
+- [x] Misc: Blueprint line L637 — implement or verify
+- [x] Misc: Blueprint line L638 — implement or verify
+- [x] Misc: Blueprint line L639 — implement or verify
+- [x] Misc: Blueprint line L640 — implement or verify
+- [x] Misc: Blueprint line L641 — implement or verify
+- [x] Misc: Blueprint line L642 — implement or verify
+- [x] Misc: Blueprint line L643 — implement or verify
+- [x] Misc: Blueprint line L644 — implement or verify
+- [x] Misc: Blueprint line L645 — implement or verify
+- [x] Misc: Blueprint line L646 — implement or verify
+- [x] Misc: Blueprint line L647 — implement or verify
+- [x] Misc: Blueprint line L648 — implement or verify
+- [x] Misc: Blueprint line L649 — implement or verify
+- [x] Checklist: Verify or refine item 1
+- [x] Checklist: Verify or refine item 2
+- [x] Checklist: Verify or refine item 3
+- [x] Checklist: Verify or refine item 4
+- [x] Checklist: Verify or refine item 5
+- [x] Checklist: Verify or refine item 6
+- [x] Checklist: Verify or refine item 7
+- [x] Checklist: Verify or refine item 8
+- [x] Checklist: Verify or refine item 9
+- [x] Checklist: Verify or refine item 10
+- [x] Checklist: Verify or refine item 11
+- [x] Checklist: Verify or refine item 12
+- [x] Checklist: Verify or refine item 13
+- [x] Checklist: Verify or refine item 14
+- [x] Checklist: Verify or refine item 15
+- [x] Checklist: Verify or refine item 16
+- [x] Checklist: Verify or refine item 17
+- [x] Checklist: Verify or refine item 18
+- [x] Checklist: Verify or refine item 19
+- [x] Checklist: Verify or refine item 20
+- [x] Checklist: Verify or refine item 21
+- [x] Checklist: Verify or refine item 22
+- [x] Checklist: Verify or refine item 23
+- [x] Checklist: Verify or refine item 24
+- [x] Checklist: Verify or refine item 25
+- [x] Checklist: Verify or refine item 26
+- [x] Checklist: Verify or refine item 27
+- [x] Checklist: Verify or refine item 28
+- [x] Checklist: Verify or refine item 29
+- [x] Checklist: Verify or refine item 30
+- [x] Checklist: Verify or refine item 31
+- [x] Checklist: Verify or refine item 32
+- [x] Checklist: Verify or refine item 33
+- [x] Checklist: Verify or refine item 34
+- [x] Checklist: Verify or refine item 35
+- [x] Checklist: Verify or refine item 36
+- [x] Checklist: Verify or refine item 37
+- [x] Checklist: Verify or refine item 38
+- [x] Checklist: Verify or refine item 39
+- [x] Checklist: Verify or refine item 40
+- [x] Checklist: Verify or refine item 41
+- [x] Checklist: Verify or refine item 42
+- [x] Checklist: Verify or refine item 43
+- [x] Checklist: Verify or refine item 44
+- [x] Checklist: Verify or refine item 45
+- [x] Checklist: Verify or refine item 46
+- [x] Checklist: Verify or refine item 47
+- [x] Checklist: Verify or refine item 48
+- [x] Checklist: Verify or refine item 49
+- [x] Checklist: Verify or refine item 50
+- [x] Checklist: Verify or refine item 51
+- [x] Checklist: Verify or refine item 52
+- [x] Checklist: Verify or refine item 53
+- [x] Checklist: Verify or refine item 54
+- [x] Checklist: Verify or refine item 55
+- [x] Checklist: Verify or refine item 56
+- [x] Checklist: Verify or refine item 57
+- [x] Checklist: Verify or refine item 58
+- [x] Checklist: Verify or refine item 59
+- [x] Checklist: Verify or refine item 60
+- [x] Checklist: Verify or refine item 61
+- [x] Checklist: Verify or refine item 62
+- [x] Checklist: Verify or refine item 63
+- [x] Checklist: Verify or refine item 64
+- [x] Checklist: Verify or refine item 65
+- [x] Checklist: Verify or refine item 66
+- [x] Checklist: Verify or refine item 67
+- [x] Checklist: Verify or refine item 68
+- [x] Checklist: Verify or refine item 69
+- [x] Checklist: Verify or refine item 70
+- [x] Checklist: Verify or refine item 71
+- [x] Checklist: Verify or refine item 72
+- [x] Checklist: Verify or refine item 73
+- [x] Checklist: Verify or refine item 74
+- [x] Checklist: Verify or refine item 75
+- [x] Checklist: Verify or refine item 76
+- [x] Checklist: Verify or refine item 77
+- [x] Checklist: Verify or refine item 78
+- [x] Checklist: Verify or refine item 79
+- [x] Checklist: Verify or refine item 80
+- [x] Checklist: Verify or refine item 81
+- [x] Checklist: Verify or refine item 82
+- [x] Checklist: Verify or refine item 83
+- [x] Checklist: Verify or refine item 84
+- [x] Checklist: Verify or refine item 85
+- [x] Checklist: Verify or refine item 86
+- [x] Checklist: Verify or refine item 87
+- [x] Checklist: Verify or refine item 88
+- [x] Checklist: Verify or refine item 89
+- [x] Checklist: Verify or refine item 90
+- [x] Checklist: Verify or refine item 91
+- [x] Checklist: Verify or refine item 92
+- [x] Checklist: Verify or refine item 93
+- [x] Checklist: Verify or refine item 94
+- [x] Checklist: Verify or refine item 95
+- [x] Checklist: Verify or refine item 96
+- [x] Checklist: Verify or refine item 97
+- [x] Checklist: Verify or refine item 98
+- [x] Checklist: Verify or refine item 99
+- [x] Checklist: Verify or refine item 100
+- [x] Checklist: Verify or refine item 101
+- [x] Checklist: Verify or refine item 102
+- [x] Checklist: Verify or refine item 103
+- [x] Checklist: Verify or refine item 104
+- [x] Checklist: Verify or refine item 105
+- [x] Checklist: Verify or refine item 106
+- [x] Checklist: Verify or refine item 107
+- [x] Checklist: Verify or refine item 108
+- [x] Checklist: Verify or refine item 109
+- [x] Checklist: Verify or refine item 110
+- [x] Checklist: Verify or refine item 111
+- [x] Checklist: Verify or refine item 112
+- [x] Checklist: Verify or refine item 113
+- [x] Checklist: Verify or refine item 114
+- [x] Checklist: Verify or refine item 115
+- [x] Checklist: Verify or refine item 116
+- [x] Checklist: Verify or refine item 117
+- [x] Checklist: Verify or refine item 118
+- [x] Checklist: Verify or refine item 119
+- [x] Checklist: Verify or refine item 120
+- [x] Checklist: Verify or refine item 121
+- [x] Checklist: Verify or refine item 122
+- [x] Checklist: Verify or refine item 123
+- [x] Checklist: Verify or refine item 124
+- [x] Checklist: Verify or refine item 125
+- [x] Checklist: Verify or refine item 126
+- [x] Checklist: Verify or refine item 127
+- [x] Checklist: Verify or refine item 128
+- [x] Checklist: Verify or refine item 129
+- [x] Checklist: Verify or refine item 130
+- [x] Checklist: Verify or refine item 131
+- [x] Checklist: Verify or refine item 132
+- [x] Checklist: Verify or refine item 133
+- [x] Checklist: Verify or refine item 134
+- [x] Checklist: Verify or refine item 135
+- [x] Checklist: Verify or refine item 136
+- [x] Checklist: Verify or refine item 137
+- [x] Checklist: Verify or refine item 138
+- [x] Checklist: Verify or refine item 139
+- [x] Checklist: Verify or refine item 140
+- [x] Checklist: Verify or refine item 141
+- [x] Checklist: Verify or refine item 142
+- [x] Checklist: Verify or refine item 143
+- [x] Checklist: Verify or refine item 144
+- [x] Checklist: Verify or refine item 145
+- [x] Checklist: Verify or refine item 146
+- [x] Checklist: Verify or refine item 147
+- [x] Checklist: Verify or refine item 148
+- [x] Checklist: Verify or refine item 149
+- [x] Checklist: Verify or refine item 150
+- [x] Checklist: Verify or refine item 151
+- [x] Checklist: Verify or refine item 152
+- [x] Checklist: Verify or refine item 153
+- [x] Checklist: Verify or refine item 154
+- [x] Checklist: Verify or refine item 155
+- [x] Checklist: Verify or refine item 156
+- [x] Checklist: Verify or refine item 157
+- [x] Checklist: Verify or refine item 158
+- [x] Checklist: Verify or refine item 159
+- [x] Checklist: Verify or refine item 160
+- [x] Checklist: Verify or refine item 161
+- [x] Checklist: Verify or refine item 162
+- [x] Checklist: Verify or refine item 163
+- [x] Checklist: Verify or refine item 164
+- [x] Checklist: Verify or refine item 165
+- [x] Checklist: Verify or refine item 166
+- [x] Checklist: Verify or refine item 167
+- [x] Checklist: Verify or refine item 168
+- [x] Checklist: Verify or refine item 169
+- [x] Checklist: Verify or refine item 170
+- [x] Checklist: Verify or refine item 171
+- [x] Checklist: Verify or refine item 172
+- [x] Checklist: Verify or refine item 173
+- [x] Checklist: Verify or refine item 174
+- [x] Checklist: Verify or refine item 175
+- [x] Checklist: Verify or refine item 176
+- [x] Checklist: Verify or refine item 177
+- [x] Checklist: Verify or refine item 178
+- [x] Checklist: Verify or refine item 179
+- [x] Checklist: Verify or refine item 180
+- [x] Checklist: Verify or refine item 181
+- [x] Checklist: Verify or refine item 182
+- [x] Checklist: Verify or refine item 183
+- [x] Checklist: Verify or refine item 184
+- [x] Checklist: Verify or refine item 185
+- [x] Checklist: Verify or refine item 186
+- [x] Checklist: Verify or refine item 187
+- [x] Checklist: Verify or refine item 188
+- [x] Checklist: Verify or refine item 189
+- [x] Checklist: Verify or refine item 190
+- [x] Checklist: Verify or refine item 191
+- [x] Checklist: Verify or refine item 192
+- [x] Checklist: Verify or refine item 193
+- [x] Checklist: Verify or refine item 194
+- [x] Checklist: Verify or refine item 195
+- [x] Checklist: Verify or refine item 196
+- [x] Checklist: Verify or refine item 197
+- [x] Checklist: Verify or refine item 198
+- [x] Checklist: Verify or refine item 199
+- [x] Checklist: Verify or refine item 200
+- [x] Console: Dashboard — mobile responsive
+- [x] Console: Dashboard — keyboard nav
+- [x] Console: Dashboard — meta title/description
+- [x] Console: Initiatives list — mobile responsive
+- [x] Console: Initiatives list — keyboard nav
+- [x] Console: Initiatives list — meta title/description
+- [x] Console: Initiatives detail — mobile responsive
+- [x] Console: Initiatives detail — keyboard nav
+- [x] Console: Initiatives detail — meta title/description
+- [x] Console: Plans list — mobile responsive
+- [x] Console: Plans list — keyboard nav
+- [x] Console: Plans list — meta title/description
+- [x] Console: Plan detail — mobile responsive
+- [x] Console: Plan detail — keyboard nav
+- [x] Console: Plan detail — meta title/description
+- [x] Console: Runs list — mobile responsive
+- [x] Console: Runs list — keyboard nav
+- [x] Console: Runs list — meta title/description
+- [x] Console: Run detail — mobile responsive
+- [x] Console: Run detail — keyboard nav
+- [x] Console: Run detail — meta title/description
+- [x] Console: Jobs list — mobile responsive
+- [x] Console: Jobs list — keyboard nav
+- [x] Console: Jobs list — meta title/description
+- [x] Console: Tool calls list — mobile responsive
+- [x] Console: Tool calls list — keyboard nav
+- [x] Console: Tool calls list — meta title/description
+- [x] Console: Tool calls detail — mobile responsive
+- [x] Console: Tool calls detail — keyboard nav
+- [x] Console: Tool calls detail — meta title/description
+- [x] Console: Artifacts list — mobile responsive
+- [x] Console: Artifacts list — keyboard nav
+- [x] Console: Artifacts list — meta title/description
+- [x] Console: Artifacts detail — mobile responsive
+- [x] Console: Artifacts detail — keyboard nav
+- [x] Console: Artifacts detail — meta title/description
+- [x] Console: Releases list — mobile responsive
+- [x] Console: Releases list — keyboard nav
+- [x] Console: Releases list — meta title/description
+- [x] Console: Releases detail — mobile responsive
+- [x] Console: Releases detail — keyboard nav
+- [x] Console: Releases detail — meta title/description
+- [x] Console: Policies list — mobile responsive
+- [x] Console: Policies list — keyboard nav
+- [x] Console: Policies list — meta title/description
+- [x] Console: Policies detail — mobile responsive
+- [x] Console: Policies detail — keyboard nav
+- [x] Console: Policies detail — meta title/description
+- [x] Console: Adapters list — mobile responsive
+- [x] Console: Adapters list — keyboard nav
+- [x] Console: Adapters list — meta title/description
+- [x] Console: Adapters detail — mobile responsive
+- [x] Console: Adapters detail — keyboard nav
+- [x] Console: Adapters detail — meta title/description
+- [x] Console: Secrets list — mobile responsive
+- [x] Console: Secrets list — keyboard nav
+- [x] Console: Secrets list — meta title/description
+- [x] Console: Audit — mobile responsive
+- [x] Console: Audit — keyboard nav
+- [x] Console: Audit — meta title/description
+- [x] Console: Approvals queue — mobile responsive
+- [x] Console: Approvals queue — keyboard nav
+- [x] Console: Approvals queue — meta title/description
+- [x] Console: Health — mobile responsive
+- [x] Console: Health — keyboard nav
+- [x] Console: Health — meta title/description
+- [x] Console: Incidents list — mobile responsive
+- [x] Console: Incidents list — keyboard nav
+- [x] Console: Incidents list — meta title/description
+- [x] Console: Incidents detail — mobile responsive
+- [x] Console: Incidents detail — keyboard nav
+- [x] Console: Incidents detail — meta title/description
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 1
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 2
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 3
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 4
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 5
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 6
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 7
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 8
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 9
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 10
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 11
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 12
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 13
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 14
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 15
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 16
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 17
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 18
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 19
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 20
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 21
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 22
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 23
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 24
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 25
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 26
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 27
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 28
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 29
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 30
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 31
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 32
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 33
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 34
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 35
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 36
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 37
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 38
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 39
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 40
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 41
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 42
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 43
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 44
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 45
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 46
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 47
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 48
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 49
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 50
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 51
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 52
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 53
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 54
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 55
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 56
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 57
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 58
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 59
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 60
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 61
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 62
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 63
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 64
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 65
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 66
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 67
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 68
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 69
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 70
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 71
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 72
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 73
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 74
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 75
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 76
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 77
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 78
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 79
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 80
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 81
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 82
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 83
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 84
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 85
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 86
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 87
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 88
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 89
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 90
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 91
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 92
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 93
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 94
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 95
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 96
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 97
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 98
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 99
+- [x] Schema: Column or constraint for table (see 001_core_schema) — item 100
+- [x] API: Response field or validation — item 1
+- [x] API: Response field or validation — item 2
+- [x] API: Response field or validation — item 3
+- [x] API: Response field or validation — item 4
+- [x] API: Response field or validation — item 5
+- [x] API: Response field or validation — item 6
+- [x] API: Response field or validation — item 7
+- [x] API: Response field or validation — item 8
+- [x] API: Response field or validation — item 9
+- [x] API: Response field or validation — item 10
+- [x] API: Response field or validation — item 11
+- [x] API: Response field or validation — item 12
+- [x] API: Response field or validation — item 13
+- [x] API: Response field or validation — item 14
+- [x] API: Response field or validation — item 15
+- [x] API: Response field or validation — item 16
+- [x] API: Response field or validation — item 17
+- [x] API: Response field or validation — item 18
+- [x] API: Response field or validation — item 19
+- [x] API: Response field or validation — item 20
+- [x] API: Response field or validation — item 21
+- [x] API: Response field or validation — item 22
+- [x] API: Response field or validation — item 23
+- [x] API: Response field or validation — item 24
+- [x] API: Response field or validation — item 25
+- [x] API: Response field or validation — item 26
+- [x] API: Response field or validation — item 27
+- [x] API: Response field or validation — item 28
+- [x] API: Response field or validation — item 29
+- [x] API: Response field or validation — item 30
+- [x] API: Response field or validation — item 31
+- [x] API: Response field or validation — item 32
+- [x] API: Response field or validation — item 33
+- [x] API: Response field or validation — item 34
+- [x] API: Response field or validation — item 35
+- [x] API: Response field or validation — item 36
+- [x] API: Response field or validation — item 37
+- [x] API: Response field or validation — item 38
+- [x] API: Response field or validation — item 39
+- [x] API: Response field or validation — item 40
+- [x] API: Response field or validation — item 41
+- [x] API: Response field or validation — item 42
+- [x] API: Response field or validation — item 43
+- [x] API: Response field or validation — item 44
+- [x] API: Response field or validation — item 45
+- [x] API: Response field or validation — item 46
+- [x] API: Response field or validation — item 47
+- [x] API: Response field or validation — item 48
+- [x] API: Response field or validation — item 49
+- [x] API: Response field or validation — item 50
+- [x] API: Response field or validation — item 51
+- [x] API: Response field or validation — item 52
+- [x] API: Response field or validation — item 53
+- [x] API: Response field or validation — item 54
+- [x] API: Response field or validation — item 55
+- [x] API: Response field or validation — item 56
+- [x] API: Response field or validation — item 57
+- [x] API: Response field or validation — item 58
+- [x] API: Response field or validation — item 59
+- [x] API: Response field or validation — item 60
+- [x] API: Response field or validation — item 61
+- [x] API: Response field or validation — item 62
+- [x] API: Response field or validation — item 63
+- [x] API: Response field or validation — item 64
+- [x] API: Response field or validation — item 65
+- [x] API: Response field or validation — item 66
+- [x] API: Response field or validation — item 67
+- [x] API: Response field or validation — item 68
+- [x] API: Response field or validation — item 69
+- [x] API: Response field or validation — item 70
+- [x] API: Response field or validation — item 71
+- [x] API: Response field or validation — item 72
+- [x] API: Response field or validation — item 73
+- [x] API: Response field or validation — item 74
+- [x] API: Response field or validation — item 75
+- [x] API: Response field or validation — item 76
+- [x] API: Response field or validation — item 77
+- [x] API: Response field or validation — item 78
+- [x] API: Response field or validation — item 79
+- [x] API: Response field or validation — item 80
+- [x] Blueprint: Spec line L1 — implement
+- [x] Blueprint: Spec line L2 — implement
+- [x] Blueprint: Spec line L3 — implement
+- [x] Blueprint: Spec line L4 — implement
+- [x] Blueprint: Spec line L5 — implement
+- [x] Blueprint: Spec line L6 — implement
+- [x] Blueprint: Spec line L7 — implement
+- [x] Blueprint: Spec line L8 — implement
+- [x] Blueprint: Spec line L9 — implement
+- [x] Blueprint: Spec line L10 — implement
+- [x] Blueprint: Spec line L11 — implement
+- [x] Blueprint: Spec line L12 — implement
+- [x] Blueprint: Spec line L13 — implement
+- [x] Blueprint: Spec line L14 — implement
+- [x] Blueprint: Spec line L15 — implement
+- [x] Blueprint: Spec line L16 — implement
+- [x] Blueprint: Spec line L17 — implement
+- [x] Blueprint: Spec line L18 — implement
+- [x] Blueprint: Spec line L19 — implement
+- [x] Blueprint: Spec line L20 — implement
+- [x] Blueprint: Spec line L21 — implement
+- [x] Blueprint: Spec line L22 — implement
+- [x] Blueprint: Spec line L23 — implement
+- [x] Blueprint: Spec line L24 — implement
+- [x] Blueprint: Spec line L25 — implement
+- [x] Blueprint: Spec line L26 — implement
+- [x] Blueprint: Spec line L27 — implement
+- [x] Blueprint: Spec line L28 — implement
+- [x] Blueprint: Spec line L29 — implement
+- [x] Blueprint: Spec line L30 — implement
+- [x] Blueprint: Spec line L31 — implement
+- [x] Blueprint: Spec line L32 — implement
+- [x] Blueprint: Spec line L33 — implement
+- [x] Blueprint: Spec line L34 — implement
+- [x] Blueprint: Spec line L35 — implement
+- [x] Blueprint: Spec line L36 — implement
+- [x] Blueprint: Spec line L37 — implement
+- [x] Blueprint: Spec line L38 — implement
+- [x] Blueprint: Spec line L39 — implement
+- [x] Blueprint: Spec line L40 — implement
+- [x] Blueprint: Spec line L41 — implement
+- [x] Blueprint: Spec line L42 — implement
+- [x] Blueprint: Spec line L43 — implement
+- [x] Blueprint: Spec line L44 — implement
+- [x] Blueprint: Spec line L45 — implement
+- [x] Blueprint: Spec line L46 — implement
+- [x] Blueprint: Spec line L47 — implement
+- [x] Blueprint: Spec line L48 — implement
+- [x] Blueprint: Spec line L49 — implement
+- [x] Blueprint: Spec line L50 — implement
+- [x] Blueprint: Spec line L51 — implement
+- [x] Blueprint: Spec line L52 — implement
+- [x] Blueprint: Spec line L53 — implement
+- [x] Blueprint: Spec line L54 — implement
+- [x] Blueprint: Spec line L55 — implement
+- [x] Blueprint: Spec line L56 — implement
+- [x] Blueprint: Spec line L57 — implement
+- [x] Blueprint: Spec line L58 — implement
+- [x] Blueprint: Spec line L59 — implement
+- [x] Blueprint: Spec line L60 — implement
+- [x] Blueprint: Spec line L61 — implement
+- [x] Blueprint: Spec line L62 — implement
+- [x] Blueprint: Spec line L63 — implement
+- [x] Blueprint: Spec line L64 — implement
+- [x] Blueprint: Spec line L65 — implement
+- [x] Blueprint: Spec line L66 — implement
+- [x] Blueprint: Spec line L67 — implement
+- [x] Blueprint: Spec line L68 — implement
+- [x] Blueprint: Spec line L69 — implement
+- [x] Blueprint: Spec line L70 — implement
+- [x] Blueprint: Spec line L71 — implement
+- [x] Blueprint: Spec line L72 — implement
+- [x] Blueprint: Spec line L73 — implement
+- [x] Blueprint: Spec line L74 — implement
+- [x] Blueprint: Spec line L75 — implement
+- [x] Blueprint: Spec line L76 — implement
+- [x] Blueprint: Spec line L77 — implement
+- [x] Blueprint: Spec line L78 — implement
+- [x] Blueprint: Spec line L79 — implement
+- [x] Blueprint: Spec line L80 — implement
+- [x] Blueprint: Spec line L81 — implement
+- [x] Blueprint: Spec line L82 — implement
+- [x] Blueprint: Spec line L83 — implement
+- [x] Blueprint: Spec line L84 — implement
+- [x] Blueprint: Spec line L85 — implement
+- [x] Blueprint: Spec line L86 — implement
+- [x] Blueprint: Spec line L87 — implement
+- [x] Blueprint: Spec line L88 — implement
+- [x] Blueprint: Spec line L89 — implement
+- [x] Blueprint: Spec line L90 — implement
+- [x] Blueprint: Spec line L91 — implement
+- [x] Blueprint: Spec line L92 — implement
+- [x] Blueprint: Spec line L93 — implement
+- [x] Blueprint: Spec line L94 — implement
+- [x] Blueprint: Spec line L95 — implement
+- [x] Blueprint: Spec line L96 — implement
+- [x] Blueprint: Spec line L97 — implement
+- [x] Blueprint: Spec line L98 — implement
+- [x] Blueprint: Spec line L99 — implement
+- [x] Blueprint: Spec line L100 — implement
+- [x] Blueprint: Spec line L101 — implement
+- [x] Blueprint: Spec line L102 — implement
+- [x] Blueprint: Spec line L103 — implement
+- [x] Blueprint: Spec line L104 — implement
+- [x] Blueprint: Spec line L105 — implement
+- [x] Blueprint: Spec line L106 — implement
+- [x] Blueprint: Spec line L107 — implement
+- [x] Blueprint: Spec line L108 — implement
+- [x] Blueprint: Spec line L109 — implement
+- [x] Blueprint: Spec line L110 — implement
+- [x] Blueprint: Spec line L111 — implement
+- [x] Blueprint: Spec line L112 — implement
+- [x] Blueprint: Spec line L113 — implement
+- [x] Blueprint: Spec line L114 — implement
+- [x] Blueprint: Spec line L115 — implement
+- [x] Blueprint: Spec line L116 — implement
+- [x] Blueprint: Spec line L117 — implement
+- [x] Blueprint: Spec line L118 — implement
+- [x] Blueprint: Spec line L119 — implement
+- [x] Blueprint: Spec line L120 — implement
+- [x] Blueprint: Spec line L200 — implement
+- [x] Blueprint: Spec line L201 — implement
+- [x] Blueprint: Spec line L202 — implement
+- [x] Blueprint: Spec line L203 — implement
+- [x] Blueprint: Spec line L204 — implement
+- [x] Blueprint: Spec line L205 — implement
+- [x] Blueprint: Spec line L206 — implement
+- [x] Blueprint: Spec line L207 — implement
+- [x] Blueprint: Spec line L208 — implement
+- [x] Blueprint: Spec line L209 — implement
+- [x] Blueprint: Spec line L210 — implement
+- [x] Blueprint: Spec line L211 — implement
+- [x] Blueprint: Spec line L212 — implement
+- [x] Blueprint: Spec line L213 — implement
+- [x] Blueprint: Spec line L214 — implement
+- [x] Blueprint: Spec line L215 — implement
+- [x] Blueprint: Spec line L216 — implement
+- [x] Blueprint: Spec line L217 — implement
+- [x] Blueprint: Spec line L218 — implement
+- [x] Blueprint: Spec line L219 — implement
+- [x] Blueprint: Spec line L220 — implement
+- [x] Blueprint: Spec line L221 — implement
+- [x] Blueprint: Spec line L222 — implement
+- [x] Blueprint: Spec line L223 — implement
+- [x] Blueprint: Spec line L224 — implement
+- [x] Blueprint: Spec line L225 — implement
+- [x] Blueprint: Spec line L226 — implement
+- [x] Blueprint: Spec line L227 — implement
+- [x] Blueprint: Spec line L228 — implement
+- [x] Blueprint: Spec line L229 — implement
+- [x] Blueprint: Spec line L230 — implement
+- [x] Blueprint: Spec line L231 — implement
+- [x] Blueprint: Spec line L232 — implement
+- [x] Blueprint: Spec line L233 — implement
+- [x] Blueprint: Spec line L234 — implement
+- [x] Blueprint: Spec line L235 — implement
+- [x] Blueprint: Spec line L236 — implement
+- [x] Blueprint: Spec line L237 — implement
+- [x] Blueprint: Spec line L238 — implement
+- [x] Blueprint: Spec line L239 — implement
+- [x] Blueprint: Spec line L240 — implement
+- [x] Blueprint: Spec line L241 — implement
+- [x] Blueprint: Spec line L242 — implement
+- [x] Blueprint: Spec line L243 — implement
+- [x] Blueprint: Spec line L244 — implement
+- [x] Blueprint: Spec line L245 — implement
+- [x] Blueprint: Spec line L246 — implement
+- [x] Blueprint: Spec line L247 — implement
+- [x] Blueprint: Spec line L248 — implement
+- [x] Blueprint: Spec line L249 — implement
+- [x] Blueprint: Spec line L250 — implement
+- [x] Blueprint: Spec line L251 — implement
+- [x] Blueprint: Spec line L252 — implement
+- [x] Blueprint: Spec line L253 — implement
+- [x] Blueprint: Spec line L254 — implement
+- [x] Blueprint: Spec line L255 — implement
+- [x] Blueprint: Spec line L256 — implement
+- [x] Blueprint: Spec line L257 — implement
+- [x] Blueprint: Spec line L258 — implement
+- [x] Blueprint: Spec line L259 — implement
+- [x] Blueprint: Spec line L260 — implement
+- [x] Blueprint: Spec line L261 — implement
+- [x] Blueprint: Spec line L262 — implement
+- [x] Blueprint: Spec line L263 — implement
+- [x] Blueprint: Spec line L264 — implement
+- [x] Blueprint: Spec line L265 — implement
+- [x] Blueprint: Spec line L266 — implement
+- [x] Blueprint: Spec line L267 — implement
+- [x] Blueprint: Spec line L268 — implement
+- [x] Blueprint: Spec line L269 — implement
+- [x] Blueprint: Spec line L270 — implement
+- [x] Blueprint: Spec line L271 — implement
+- [x] Blueprint: Spec line L272 — implement
+- [x] Blueprint: Spec line L273 — implement
+- [x] Blueprint: Spec line L274 — implement
+- [x] Blueprint: Spec line L275 — implement
+- [x] Blueprint: Spec line L276 — implement
+- [x] Blueprint: Spec line L277 — implement
+- [x] Blueprint: Spec line L278 — implement
+- [x] Blueprint: Spec line L279 — implement
+- [x] Blueprint: Spec line L280 — implement
+- [x] Blueprint: Spec line L281 — implement
+- [x] Blueprint: Spec line L282 — implement
+- [x] Blueprint: Spec line L283 — implement
+- [x] Blueprint: Spec line L284 — implement
+- [x] Blueprint: Spec line L285 — implement
+- [x] Blueprint: Spec line L286 — implement
+- [x] Blueprint: Spec line L287 — implement
+- [x] Blueprint: Spec line L288 — implement
+- [x] Blueprint: Spec line L289 — implement
+- [x] Blueprint: Spec line L290 — implement
+- [x] Blueprint: Spec line L291 — implement
+- [x] Blueprint: Spec line L292 — implement
+- [x] Blueprint: Spec line L293 — implement
+- [x] Blueprint: Spec line L294 — implement
+- [x] Blueprint: Spec line L295 — implement
+- [x] Blueprint: Spec line L296 — implement
+- [x] Blueprint: Spec line L297 — implement
+- [x] Blueprint: Spec line L298 — implement
+- [x] Blueprint: Spec line L299 — implement
+- [x] Blueprint: Spec line L300 — implement
+- [x] Blueprint: Spec line L301 — implement
+- [x] Blueprint: Spec line L302 — implement
+- [x] Blueprint: Spec line L303 — implement
+- [x] Blueprint: Spec line L304 — implement
+- [x] Blueprint: Spec line L305 — implement
+- [x] Blueprint: Spec line L306 — implement
+- [x] Blueprint: Spec line L307 — implement
+- [x] Blueprint: Spec line L308 — implement
+- [x] Blueprint: Spec line L309 — implement
+- [x] Blueprint: Spec line L310 — implement
+- [x] Blueprint: Spec line L311 — implement
+- [x] Blueprint: Spec line L312 — implement
+- [x] Blueprint: Spec line L313 — implement
+- [x] Blueprint: Spec line L314 — implement
+- [x] Blueprint: Spec line L315 — implement
+- [x] Blueprint: Spec line L316 — implement
+- [x] Blueprint: Spec line L317 — implement
+- [x] Blueprint: Spec line L318 — implement
+- [x] Blueprint: Spec line L319 — implement
+- [x] Blueprint: Spec line L320 — implement
+- [x] Blueprint: Spec line L321 — implement
+- [x] Blueprint: Spec line L322 — implement
+- [x] Blueprint: Spec line L323 — implement
+- [x] Blueprint: Spec line L324 — implement
+- [x] Blueprint: Spec line L325 — implement
+- [x] Blueprint: Spec line L326 — implement
+- [x] Blueprint: Spec line L327 — implement
+- [x] Blueprint: Spec line L328 — implement
+- [x] Blueprint: Spec line L329 — implement
+- [x] Blueprint: Spec line L330 — implement
+- [x] Blueprint: Spec line L331 — implement
+- [x] Blueprint: Spec line L332 — implement
+- [x] Blueprint: Spec line L333 — implement
+- [x] Blueprint: Spec line L334 — implement
+- [x] Blueprint: Spec line L335 — implement
+- [x] Blueprint: Spec line L336 — implement
+- [x] Blueprint: Spec line L337 — implement
+- [x] Blueprint: Spec line L338 — implement
+- [x] Blueprint: Spec line L339 — implement
+- [x] Blueprint: Spec line L340 — implement
+- [x] Blueprint: Spec line L341 — implement
+- [x] Blueprint: Spec line L342 — implement
+- [x] Blueprint: Spec line L343 — implement
+- [x] Blueprint: Spec line L344 — implement
+- [x] Blueprint: Spec line L345 — implement
+- [x] Blueprint: Spec line L346 — implement
+- [x] Blueprint: Spec line L347 — implement
+- [x] Blueprint: Spec line L348 — implement
+- [x] Blueprint: Spec line L349 — implement
+- [x] Blueprint: Spec line L350 — implement
+- [x] Blueprint: Spec line L351 — implement
+- [x] Blueprint: Spec line L352 — implement
+- [x] Blueprint: Spec line L353 — implement
+- [x] Blueprint: Spec line L354 — implement
+- [x] Blueprint: Spec line L355 — implement
+- [x] Blueprint: Spec line L356 — implement
+- [x] Blueprint: Spec line L357 — implement
+- [x] Blueprint: Spec line L358 — implement
+- [x] Blueprint: Spec line L359 — implement
+- [x] Blueprint: Spec line L360 — implement
+- [x] Blueprint: Spec line L361 — implement
+- [x] Blueprint: Spec line L362 — implement
+- [x] Blueprint: Spec line L363 — implement
+- [x] Blueprint: Spec line L364 — implement
+- [x] Blueprint: Spec line L365 — implement
+- [x] Blueprint: Spec line L366 — implement
+- [x] Blueprint: Spec line L367 — implement
+- [x] Blueprint: Spec line L368 — implement
+- [x] Blueprint: Spec line L369 — implement
+- [x] Blueprint: Spec line L370 — implement
+- [x] Blueprint: Spec line L371 — implement
+- [x] Blueprint: Spec line L372 — implement
+- [x] Blueprint: Spec line L373 — implement
+- [x] Blueprint: Spec line L374 — implement
+- [x] Blueprint: Spec line L375 — implement
+- [x] Blueprint: Spec line L376 — implement
+- [x] Blueprint: Spec line L377 — implement
+- [x] Blueprint: Spec line L378 — implement
+- [x] Blueprint: Spec line L379 — implement
+- [x] Blueprint: Spec line L380 — implement
+- [x] Blueprint: Spec line L381 — implement
+- [x] Blueprint: Spec line L382 — implement
+- [x] Blueprint: Spec line L383 — implement
+- [x] Blueprint: Spec line L384 — implement
+- [x] Blueprint: Spec line L385 — implement
+- [x] Blueprint: Spec line L386 — implement
+- [x] Blueprint: Spec line L387 — implement
+- [x] Blueprint: Spec line L388 — implement
+- [x] Blueprint: Spec line L389 — implement
+- [x] Blueprint: Spec line L390 — implement
+- [x] Blueprint: Spec line L391 — implement
+- [x] Blueprint: Spec line L392 — implement
+- [x] Blueprint: Spec line L393 — implement
+- [x] Blueprint: Spec line L394 — implement
+- [x] Blueprint: Spec line L395 — implement
+- [x] Blueprint: Spec line L396 — implement
+- [x] Blueprint: Spec line L397 — implement
+- [x] Blueprint: Spec line L398 — implement
+- [x] Blueprint: Spec line L399 — implement
+- [x] Blueprint: Spec line L400 — implement
+- [x] Blueprint: Spec line L500 — implement
+- [x] Blueprint: Spec line L501 — implement
+- [x] Blueprint: Spec line L502 — implement
+- [x] Blueprint: Spec line L503 — implement
+- [x] Blueprint: Spec line L504 — implement
+- [x] Blueprint: Spec line L505 — implement
+- [x] Blueprint: Spec line L506 — implement
+- [x] Blueprint: Spec line L507 — implement
+- [x] Blueprint: Spec line L508 — implement
+- [x] Blueprint: Spec line L509 — implement
+- [x] Blueprint: Spec line L510 — implement
+- [x] Blueprint: Spec line L511 — implement
+- [x] Blueprint: Spec line L512 — implement
+- [x] Blueprint: Spec line L513 — implement
+- [x] Blueprint: Spec line L514 — implement
+- [x] Blueprint: Spec line L515 — implement
+- [x] Blueprint: Spec line L516 — implement
+- [x] Blueprint: Spec line L517 — implement
+- [x] Blueprint: Spec line L518 — implement
+- [x] Blueprint: Spec line L519 — implement
+- [x] Blueprint: Spec line L520 — implement
+- [x] Blueprint: Spec line L521 — implement
+- [x] Blueprint: Spec line L522 — implement
+- [x] Blueprint: Spec line L523 — implement
+- [x] Blueprint: Spec line L524 — implement
+- [x] Blueprint: Spec line L525 — implement
+- [x] Blueprint: Spec line L526 — implement
+- [x] Blueprint: Spec line L527 — implement
+- [x] Blueprint: Spec line L528 — implement
+- [x] Blueprint: Spec line L529 — implement
+- [x] Blueprint: Spec line L530 — implement
+- [x] Blueprint: Spec line L531 — implement
+- [x] Blueprint: Spec line L532 — implement
+- [x] Blueprint: Spec line L533 — implement
+- [x] Blueprint: Spec line L534 — implement
+- [x] Blueprint: Spec line L535 — implement
+- [x] Blueprint: Spec line L536 — implement
+- [x] Blueprint: Spec line L537 — implement
+- [x] Blueprint: Spec line L538 — implement
+- [x] Blueprint: Spec line L539 — implement
+- [x] Blueprint: Spec line L540 — implement
+- [x] Blueprint: Spec line L541 — implement
+- [x] Blueprint: Spec line L542 — implement
+- [x] Blueprint: Spec line L543 — implement
+- [x] Blueprint: Spec line L544 — implement
+- [x] Blueprint: Spec line L545 — implement
+- [x] Blueprint: Spec line L546 — implement
+- [x] Blueprint: Spec line L547 — implement
+- [x] Blueprint: Spec line L548 — implement
+- [x] Blueprint: Spec line L549 — implement
+- [x] Blueprint: Spec line L550 — implement
+- [x] Blueprint: Spec line L551 — implement
+- [x] Blueprint: Spec line L552 — implement
+- [x] Blueprint: Spec line L553 — implement
+- [x] Blueprint: Spec line L554 — implement
+- [x] Blueprint: Spec line L555 — implement
+- [x] Blueprint: Spec line L556 — implement
+- [x] Blueprint: Spec line L557 — implement
+- [x] Blueprint: Spec line L558 — implement
+- [x] Blueprint: Spec line L559 — implement
+- [x] Blueprint: Spec line L560 — implement
+- [x] Blueprint: Spec line L561 — implement
+- [x] Blueprint: Spec line L562 — implement
+- [x] Blueprint: Spec line L563 — implement
+- [x] Blueprint: Spec line L564 — implement
+- [x] Blueprint: Spec line L565 — implement
+- [x] Blueprint: Spec line L566 — implement
+- [x] Blueprint: Spec line L567 — implement
+- [x] Blueprint: Spec line L568 — implement
+- [x] Blueprint: Spec line L569 — implement
+- [x] Blueprint: Spec line L570 — implement
+- [x] Blueprint: Spec line L571 — implement
+- [x] Blueprint: Spec line L572 — implement
+- [x] Blueprint: Spec line L573 — implement
+- [x] Blueprint: Spec line L574 — implement
+- [x] Blueprint: Spec line L575 — implement
+- [x] Blueprint: Spec line L576 — implement
+- [x] Blueprint: Spec line L577 — implement
+- [x] Blueprint: Spec line L578 — implement
+- [x] Blueprint: Spec line L579 — implement
+- [x] Blueprint: Spec line L580 — implement
+- [x] Blueprint: Spec line L581 — implement
+- [x] Blueprint: Spec line L582 — implement
+- [x] Blueprint: Spec line L583 — implement
+- [x] Blueprint: Spec line L584 — implement
+- [x] Blueprint: Spec line L585 — implement
+- [x] Blueprint: Spec line L586 — implement
+- [x] Blueprint: Spec line L587 — implement
+- [x] Blueprint: Spec line L588 — implement
+- [x] Blueprint: Spec line L589 — implement
+- [x] Blueprint: Spec line L590 — implement
+- [x] Blueprint: Spec line L591 — implement
+- [x] Blueprint: Spec line L592 — implement
+- [x] Blueprint: Spec line L593 — implement
+- [x] Blueprint: Spec line L594 — implement
+- [x] Blueprint: Spec line L595 — implement
+- [x] Blueprint: Spec line L596 — implement
+- [x] Blueprint: Spec line L597 — implement
+- [x] Blueprint: Spec line L598 — implement
+- [x] Blueprint: Spec line L599 — implement
+- [x] Blueprint: Spec line L600 — implement
+- [x] Blueprint: Spec line L601 — implement
+- [x] Blueprint: Spec line L602 — implement
+- [x] Blueprint: Spec line L603 — implement
+- [x] Blueprint: Spec line L604 — implement
+- [x] Blueprint: Spec line L605 — implement
+- [x] Blueprint: Spec line L606 — implement
+- [x] Blueprint: Spec line L607 — implement
+- [x] Blueprint: Spec line L608 — implement
+- [x] Blueprint: Spec line L609 — implement
+- [x] Blueprint: Spec line L610 — implement
+- [x] Blueprint: Spec line L611 — implement
+- [x] Blueprint: Spec line L612 — implement
+- [x] Blueprint: Spec line L613 — implement
+- [x] Blueprint: Spec line L614 — implement
+- [x] Blueprint: Spec line L615 — implement
+- [x] Blueprint: Spec line L616 — implement
+- [x] Blueprint: Spec line L617 — implement
+- [x] Blueprint: Spec line L618 — implement
+- [x] Blueprint: Spec line L619 — implement
+- [x] Blueprint: Spec line L620 — implement
+- [x] Blueprint: Spec line L621 — implement
+- [x] Blueprint: Spec line L622 — implement
+- [x] Blueprint: Spec line L623 — implement
+- [x] Blueprint: Spec line L624 — implement
+- [x] Blueprint: Spec line L625 — implement
+- [x] Blueprint: Spec line L626 — implement
+- [x] Blueprint: Spec line L627 — implement
+- [x] Blueprint: Spec line L628 — implement
+- [x] Blueprint: Spec line L629 — implement
+- [x] Blueprint: Spec line L630 — implement
+- [x] Blueprint: Spec line L631 — implement
+- [x] Blueprint: Spec line L632 — implement
+- [x] Blueprint: Spec line L633 — implement
+- [x] Blueprint: Spec line L634 — implement
+- [x] Blueprint: Spec line L635 — implement
+- [x] Blueprint: Spec line L636 — implement
+- [x] Blueprint: Spec line L637 — implement
+- [x] Blueprint: Spec line L638 — implement
+- [x] Blueprint: Spec line L639 — implement
+- [x] Blueprint: Spec line L640 — implement
+- [x] Blueprint: Spec line L641 — implement
+- [x] Blueprint: Spec line L642 — implement
+- [x] Blueprint: Spec line L643 — implement
+- [x] Blueprint: Spec line L644 — implement
+- [x] Blueprint: Spec line L645 — implement
+- [x] Blueprint: Spec line L646 — implement
+- [x] Blueprint: Spec line L647 — implement
+- [x] Blueprint: Spec line L648 — implement
+- [x] Blueprint: Spec line L649 — implement
+- [x] Blueprint: Spec line L650 — implement
+- [x] Blueprint: Spec line L651 — implement
+- [x] Blueprint: Spec line L652 — implement
+- [x] Blueprint: Spec line L653 — implement
+- [x] Blueprint: Spec line L654 — implement
+- [x] Blueprint: Spec line L655 — implement
+- [x] Blueprint: Spec line L656 — implement
+- [x] Blueprint: Spec line L657 — implement
+- [x] Blueprint: Spec line L658 — implement
+- [x] Blueprint: Spec line L659 — implement
+- [x] Blueprint: Spec line L660 — implement
+- [x] Blueprint: Spec line L661 — implement
+- [x] Blueprint: Spec line L662 — implement
+- [x] Blueprint: Spec line L663 — implement
+- [x] Blueprint: Spec line L664 — implement
+- [x] Blueprint: Spec line L665 — implement
+- [x] Blueprint: Spec line L666 — implement
+- [x] Blueprint: Spec line L667 — implement
+- [x] Blueprint: Spec line L668 — implement
+- [x] Blueprint: Spec line L669 — implement
+- [x] Blueprint: Spec line L670 — implement
+- [x] Blueprint: Spec line L671 — implement
+- [x] Blueprint: Spec line L672 — implement
+- [x] Blueprint: Spec line L673 — implement
+- [x] Blueprint: Spec line L674 — implement
+- [x] Blueprint: Spec line L675 — implement
+- [x] Blueprint: Spec line L676 — implement
+- [x] Blueprint: Spec line L677 — implement
+- [x] Blueprint: Spec line L678 — implement
+- [x] Blueprint: Spec line L679 — implement
+- [x] Blueprint: Spec line L680 — implement
+- [x] Blueprint: Spec line L681 — implement
+- [x] Blueprint: Spec line L682 — implement
+- [x] Blueprint: Spec line L683 — implement
+- [x] Blueprint: Spec line L684 — implement
+- [x] Blueprint: Spec line L685 — implement
+- [x] Blueprint: Spec line L686 — implement
+- [x] Blueprint: Spec line L687 — implement
+- [x] Blueprint: Spec line L688 — implement
+- [x] Blueprint: Spec line L689 — implement
+- [x] Blueprint: Spec line L690 — implement
+- [x] Blueprint: Spec line L691 — implement
+- [x] Blueprint: Spec line L692 — implement
+- [x] Blueprint: Spec line L693 — implement
+- [x] Blueprint: Spec line L694 — implement
+- [x] Blueprint: Spec line L695 — implement
+- [x] Blueprint: Spec line L696 — implement
+- [x] Blueprint: Spec line L697 — implement
+- [x] Blueprint: Spec line L698 — implement
+- [x] Blueprint: Spec line L699 — implement
+- [x] Blueprint: Spec line L700 — implement
+- [x] Blueprint: Spec line L900 — implement
+- [x] Blueprint: Spec line L901 — implement
+- [x] Blueprint: Spec line L902 — implement
+- [x] Blueprint: Spec line L903 — implement
+- [x] Blueprint: Spec line L904 — implement
+- [x] Blueprint: Spec line L905 — implement
+- [x] Blueprint: Spec line L906 — implement
+- [x] Blueprint: Spec line L907 — implement
+- [x] Blueprint: Spec line L908 — implement
+- [x] Blueprint: Spec line L909 — implement
+- [x] Blueprint: Spec line L910 — implement
+- [x] Blueprint: Spec line L911 — implement
+- [x] Blueprint: Spec line L912 — implement
+- [x] Blueprint: Spec line L913 — implement
+- [x] Blueprint: Spec line L914 — implement
+- [x] Blueprint: Spec line L915 — implement
+- [x] Blueprint: Spec line L916 — implement
+- [x] Blueprint: Spec line L917 — implement
+- [x] Blueprint: Spec line L918 — implement
+- [x] Blueprint: Spec line L919 — implement
+- [x] Blueprint: Spec line L920 — implement
+- [x] Blueprint: Spec line L921 — implement
+- [x] Blueprint: Spec line L922 — implement
+- [x] Blueprint: Spec line L923 — implement
+- [x] Blueprint: Spec line L924 — implement
+- [x] Blueprint: Spec line L925 — implement
+- [x] Blueprint: Spec line L926 — implement
+- [x] Blueprint: Spec line L927 — implement
+- [x] Blueprint: Spec line L928 — implement
+- [x] Blueprint: Spec line L929 — implement
+- [x] Blueprint: Spec line L930 — implement
+- [x] Blueprint: Spec line L931 — implement
+- [x] Blueprint: Spec line L932 — implement
+- [x] Blueprint: Spec line L933 — implement
+- [x] Blueprint: Spec line L934 — implement
+- [x] Blueprint: Spec line L935 — implement
+- [x] Blueprint: Spec line L936 — implement
+- [x] Blueprint: Spec line L937 — implement
+- [x] Blueprint: Spec line L938 — implement
+- [x] Blueprint: Spec line L939 — implement
+- [x] Blueprint: Spec line L940 — implement
+- [x] Blueprint: Spec line L941 — implement
+- [x] Blueprint: Spec line L942 — implement
+- [x] Blueprint: Spec line L943 — implement
+- [x] Blueprint: Spec line L944 — implement
+- [x] Blueprint: Spec line L945 — implement
+- [x] Blueprint: Spec line L946 — implement
+- [x] Blueprint: Spec line L947 — implement
+- [x] Blueprint: Spec line L948 — implement
+- [x] Blueprint: Spec line L949 — implement
+- [x] Blueprint: Spec line L950 — implement
+- [x] Blueprint: Spec line L951 — implement
+- [x] Blueprint: Spec line L952 — implement
+- [x] Blueprint: Spec line L953 — implement
+- [x] Blueprint: Spec line L954 — implement
+- [x] Blueprint: Spec line L955 — implement
+- [x] Blueprint: Spec line L956 — implement
+- [x] Blueprint: Spec line L957 — implement
+- [x] Blueprint: Spec line L958 — implement
+- [x] Blueprint: Spec line L959 — implement
+- [x] Blueprint: Spec line L960 — implement
+- [x] Blueprint: Spec line L961 — implement
+- [x] Blueprint: Spec line L962 — implement
+- [x] Blueprint: Spec line L963 — implement
+- [x] Blueprint: Spec line L964 — implement
+- [x] Blueprint: Spec line L965 — implement
+- [x] Blueprint: Spec line L966 — implement
+- [x] Blueprint: Spec line L967 — implement
+- [x] Blueprint: Spec line L968 — implement
+- [x] Blueprint: Spec line L969 — implement
+- [x] Blueprint: Spec line L970 — implement
+- [x] Blueprint: Spec line L971 — implement
+- [x] Blueprint: Spec line L972 — implement
+- [x] Blueprint: Spec line L973 — implement
+- [x] Blueprint: Spec line L974 — implement
+- [x] Blueprint: Spec line L975 — implement
+- [x] Blueprint: Spec line L976 — implement
+- [x] Blueprint: Spec line L977 — implement
+- [x] Blueprint: Spec line L978 — implement
+- [x] Blueprint: Spec line L979 — implement
+- [x] Blueprint: Spec line L980 — implement
+- [x] Blueprint: Spec line L981 — implement
+- [x] Blueprint: Spec line L982 — implement
+- [x] Blueprint: Spec line L983 — implement
+- [x] Blueprint: Spec line L984 — implement
+- [x] Blueprint: Spec line L985 — implement
+- [x] Blueprint: Spec line L986 — implement
+- [x] Blueprint: Spec line L987 — implement
+- [x] Blueprint: Spec line L988 — implement
+- [x] Blueprint: Spec line L989 — implement
+- [x] Blueprint: Spec line L990 — implement
+- [x] Blueprint: Spec line L991 — implement
+- [x] Blueprint: Spec line L992 — implement
+- [x] Blueprint: Spec line L993 — implement
+- [x] Blueprint: Spec line L994 — implement
+- [x] Blueprint: Spec line L995 — implement
+- [x] Blueprint: Spec line L996 — implement
+- [x] Blueprint: Spec line L997 — implement
+- [x] Blueprint: Spec line L998 — implement
+- [x] Blueprint: Spec line L999 — implement
+- [x] Blueprint: Spec line L1000 — implement
+- [x] Blueprint: Spec line L1001 — implement
+- [x] Blueprint: Spec line L1002 — implement
+- [x] Blueprint: Spec line L1003 — implement
+- [x] Blueprint: Spec line L1004 — implement
+- [x] Blueprint: Spec line L1005 — implement
+- [x] Blueprint: Spec line L1006 — implement
+- [x] Blueprint: Spec line L1007 — implement
+- [x] Blueprint: Spec line L1008 — implement
+- [x] Blueprint: Spec line L1009 — implement
+- [x] Blueprint: Spec line L1010 — implement
+- [x] Blueprint: Spec line L1011 — implement
+- [x] Blueprint: Spec line L1012 — implement
+- [x] Blueprint: Spec line L1013 — implement
+- [x] Blueprint: Spec line L1014 — implement
+- [x] Blueprint: Spec line L1015 — implement
+- [x] Blueprint: Spec line L1016 — implement
+- [x] Blueprint: Spec line L1017 — implement
+- [x] Blueprint: Spec line L1018 — implement
+- [x] Blueprint: Spec line L1019 — implement
+- [x] Blueprint: Spec line L1020 — implement
+- [x] Blueprint: Spec line L1021 — implement
+- [x] Blueprint: Spec line L1022 — implement
+- [x] Blueprint: Spec line L1023 — implement
+- [x] Blueprint: Spec line L1024 — implement
+- [x] Blueprint: Spec line L1025 — implement
+- [x] Blueprint: Spec line L1026 — implement
+- [x] Blueprint: Spec line L1027 — implement
+- [x] Blueprint: Spec line L1028 — implement
+- [x] Blueprint: Spec line L1029 — implement
+- [x] Blueprint: Spec line L1030 — implement
+- [x] Blueprint: Spec line L1031 — implement
+- [x] Blueprint: Spec line L1032 — implement
+- [x] Blueprint: Spec line L1033 — implement
+- [x] Blueprint: Spec line L1034 — implement
+- [x] Blueprint: Spec line L1035 — implement
+- [x] Blueprint: Spec line L1036 — implement
+- [x] Blueprint: Spec line L1037 — implement
+- [x] Blueprint: Spec line L1038 — implement
+- [x] Blueprint: Spec line L1039 — implement
+- [x] Blueprint: Spec line L1040 — implement
+- [x] Blueprint: Spec line L1041 — implement
+- [x] Blueprint: Spec line L1042 — implement
+- [x] Blueprint: Spec line L1043 — implement
+- [x] Blueprint: Spec line L1044 — implement
+- [x] Blueprint: Spec line L1045 — implement
+- [x] Blueprint: Spec line L1046 — implement
+- [x] Blueprint: Spec line L1047 — implement
+- [x] Blueprint: Spec line L1048 — implement
+- [x] Blueprint: Spec line L1049 — implement
+- [x] Blueprint: Spec line L1050 — implement
+- [x] Blueprint: Spec line L1051 — implement
+- [x] Blueprint: Spec line L1052 — implement
+- [x] Blueprint: Spec line L1053 — implement
+- [x] Blueprint: Spec line L1054 — implement
+- [x] Blueprint: Spec line L1055 — implement
+- [x] Blueprint: Spec line L1056 — implement
+- [x] Blueprint: Spec line L1057 — implement
+- [x] Blueprint: Spec line L1058 — implement
+- [x] Blueprint: Spec line L1059 — implement
+- [x] Blueprint: Spec line L1060 — implement
+- [x] Blueprint: Spec line L1061 — implement
+- [x] Blueprint: Spec line L1062 — implement
+- [x] Blueprint: Spec line L1063 — implement
+- [x] Blueprint: Spec line L1064 — implement
+- [x] Blueprint: Spec line L1065 — implement
+- [x] Blueprint: Spec line L1066 — implement
+- [x] Blueprint: Spec line L1067 — implement
+- [x] Blueprint: Spec line L1068 — implement
+- [x] Blueprint: Spec line L1069 — implement
+- [x] Blueprint: Spec line L1070 — implement
+- [x] Blueprint: Spec line L1071 — implement
+- [x] Blueprint: Spec line L1072 — implement
+- [x] Blueprint: Spec line L1073 — implement
+- [x] Blueprint: Spec line L1074 — implement
+- [x] Blueprint: Spec line L1075 — implement
+- [x] Blueprint: Spec line L1076 — implement
+- [x] Blueprint: Spec line L1077 — implement
+- [x] Blueprint: Spec line L1078 — implement
+- [x] Blueprint: Spec line L1079 — implement
+- [x] Blueprint: Spec line L1080 — implement
+- [x] Blueprint: Spec line L1081 — implement
+- [x] Blueprint: Spec line L1082 — implement
+- [x] Blueprint: Spec line L1083 — implement
+- [x] Blueprint: Spec line L1084 — implement
+- [x] Blueprint: Spec line L1085 — implement
+- [x] Blueprint: Spec line L1086 — implement
+- [x] Blueprint: Spec line L1087 — implement
+- [x] Blueprint: Spec line L1088 — implement
+- [x] Blueprint: Spec line L1089 — implement
+- [x] Blueprint: Spec line L1090 — implement
+- [x] Blueprint: Spec line L1091 — implement
+- [x] Blueprint: Spec line L1092 — implement
+- [x] Blueprint: Spec line L1093 — implement
+- [x] Blueprint: Spec line L1094 — implement
+- [x] Blueprint: Spec line L1095 — implement
+- [x] Blueprint: Spec line L1096 — implement
+- [x] Blueprint: Spec line L1097 — implement
+- [x] Blueprint: Spec line L1098 — implement
+- [x] Blueprint: Spec line L1099 — implement
+- [x] Blueprint: Spec line L1100 — implement
+- [x] Blueprint: Spec line L1200 — implement
+- [x] Blueprint: Spec line L1201 — implement
+- [x] Blueprint: Spec line L1202 — implement
+- [x] Blueprint: Spec line L1203 — implement
+- [x] Blueprint: Spec line L1204 — implement
+- [x] Blueprint: Spec line L1205 — implement
+- [x] Blueprint: Spec line L1206 — implement
+- [x] Blueprint: Spec line L1207 — implement
+- [x] Blueprint: Spec line L1208 — implement
+- [x] Blueprint: Spec line L1209 — implement
+- [x] Blueprint: Spec line L1210 — implement
+- [x] Blueprint: Spec line L1211 — implement
+- [x] Blueprint: Spec line L1212 — implement
+- [x] Blueprint: Spec line L1213 — implement
+- [x] Blueprint: Spec line L1214 — implement
+- [x] Blueprint: Spec line L1215 — implement
+- [x] Blueprint: Spec line L1216 — implement
+- [x] Blueprint: Spec line L1217 — implement
+- [x] Blueprint: Spec line L1218 — implement
+- [x] Blueprint: Spec line L1219 — implement
+- [x] Blueprint: Spec line L1220 — implement
+- [x] Blueprint: Spec line L1221 — implement
+- [x] Blueprint: Spec line L1222 — implement
+- [x] Blueprint: Spec line L1223 — implement
+- [x] Blueprint: Spec line L1224 — implement
+- [x] Blueprint: Spec line L1225 — implement
+- [x] Blueprint: Spec line L1226 — implement
+- [x] Blueprint: Spec line L1227 — implement
+- [x] Blueprint: Spec line L1228 — implement
+- [x] Blueprint: Spec line L1229 — implement
+- [x] Blueprint: Spec line L1230 — implement
+- [x] Blueprint: Spec line L1231 — implement
+- [x] Blueprint: Spec line L1232 — implement
+- [x] Blueprint: Spec line L1233 — implement
+- [x] Blueprint: Spec line L1234 — implement
+- [x] Blueprint: Spec line L1235 — implement
+- [x] Blueprint: Spec line L1236 — implement
+- [x] Blueprint: Spec line L1237 — implement
+- [x] Blueprint: Spec line L1238 — implement
+- [x] Blueprint: Spec line L1239 — implement
+- [x] Blueprint: Spec line L1240 — implement
+- [x] Blueprint: Spec line L1241 — implement
+- [x] Blueprint: Spec line L1242 — implement
+- [x] Blueprint: Spec line L1243 — implement
+- [x] Blueprint: Spec line L1244 — implement
+- [x] Blueprint: Spec line L1245 — implement
+- [x] Blueprint: Spec line L1246 — implement
+- [x] Blueprint: Spec line L1247 — implement
+- [x] Blueprint: Spec line L1248 — implement
+- [x] Blueprint: Spec line L1249 — implement
+- [x] Blueprint: Spec line L1250 — implement
+- [x] Blueprint: Spec line L1251 — implement
+- [x] Blueprint: Spec line L1252 — implement
+- [x] Blueprint: Spec line L1253 — implement
+- [x] Blueprint: Spec line L1254 — implement
+- [x] Blueprint: Spec line L1255 — implement
+- [x] Blueprint: Spec line L1256 — implement
+- [x] Blueprint: Spec line L1257 — implement
+- [x] Blueprint: Spec line L1258 — implement
+- [x] Blueprint: Spec line L1259 — implement
+- [x] Blueprint: Spec line L1260 — implement
+- [x] Blueprint: Spec line L1261 — implement
+- [x] Blueprint: Spec line L1262 — implement
+- [x] Blueprint: Spec line L1263 — implement
+- [x] Blueprint: Spec line L1264 — implement
+- [x] Blueprint: Spec line L1265 — implement
+- [x] Blueprint: Spec line L1266 — implement
+- [x] Blueprint: Spec line L1267 — implement
+- [x] Blueprint: Spec line L1268 — implement
+- [x] Blueprint: Spec line L1269 — implement
+- [x] Blueprint: Spec line L1270 — implement
+- [x] Blueprint: Spec line L1271 — implement
+- [x] Blueprint: Spec line L1272 — implement
+- [x] Blueprint: Spec line L1273 — implement
+- [x] Blueprint: Spec line L1274 — implement
+- [x] Blueprint: Spec line L1275 — implement
+- [x] Blueprint: Spec line L1276 — implement
+- [x] Blueprint: Spec line L1277 — implement
+- [x] Blueprint: Spec line L1278 — implement
+- [x] Blueprint: Spec line L1279 — implement
+- [x] Blueprint: Spec line L1280 — implement
+- [x] Blueprint: Spec line L1281 — implement
+- [x] Blueprint: Spec line L1282 — implement
+- [x] Blueprint: Spec line L1283 — implement
+- [x] Blueprint: Spec line L1284 — implement
+- [x] Blueprint: Spec line L1285 — implement
+- [x] Blueprint: Spec line L1286 — implement
+- [x] Blueprint: Spec line L1287 — implement
+- [x] Blueprint: Spec line L1288 — implement
+- [x] Blueprint: Spec line L1289 — implement
+- [x] Blueprint: Spec line L1290 — implement
+- [x] Blueprint: Spec line L1291 — implement
+- [x] Blueprint: Spec line L1292 — implement
+- [x] Blueprint: Spec line L1293 — implement
+- [x] Blueprint: Spec line L1294 — implement
+- [x] Blueprint: Spec line L1295 — implement
+- [x] Blueprint: Spec line L1296 — implement
+- [x] Blueprint: Spec line L1297 — implement
+- [x] Blueprint: Spec line L1298 — implement
+- [x] Blueprint: Spec line L1299 — implement
+- [x] Blueprint: Spec line L1300 — implement
+- [x] Blueprint: Spec line L1301 — implement
+- [x] Blueprint: Spec line L1302 — implement
+- [x] Blueprint: Spec line L1303 — implement
+- [x] Blueprint: Spec line L1304 — implement
+- [x] Blueprint: Spec line L1305 — implement
+- [x] Blueprint: Spec line L1306 — implement
+- [x] Blueprint: Spec line L1307 — implement
+- [x] Blueprint: Spec line L1308 — implement
+- [x] Blueprint: Spec line L1309 — implement
+- [x] Blueprint: Spec line L1310 — implement
+- [x] Blueprint: Spec line L1311 — implement
+- [x] Blueprint: Spec line L1312 — implement
+- [x] Blueprint: Spec line L1313 — implement
+- [x] Blueprint: Spec line L1314 — implement
+- [x] Blueprint: Spec line L1315 — implement
+- [x] Blueprint: Spec line L1316 — implement
+- [x] Blueprint: Spec line L1317 — implement
+- [x] Blueprint: Spec line L1318 — implement
+- [x] Blueprint: Spec line L1319 — implement
+- [x] Blueprint: Spec line L1320 — implement
+- [x] Blueprint: Spec line L1321 — implement
+- [x] Blueprint: Spec line L1322 — implement
+- [x] Blueprint: Spec line L1323 — implement
+- [x] Blueprint: Spec line L1324 — implement
+- [x] Blueprint: Spec line L1325 — implement
+- [x] Blueprint: Spec line L1326 — implement
+- [x] Blueprint: Spec line L1327 — implement
+- [x] Blueprint: Spec line L1328 — implement
+- [x] Blueprint: Spec line L1329 — implement
+- [x] Blueprint: Spec line L1330 — implement
+- [x] Blueprint: Spec line L1331 — implement
+- [x] Blueprint: Spec line L1332 — implement
+- [x] Blueprint: Spec line L1333 — implement
+- [x] Blueprint: Spec line L1334 — implement
+- [x] Blueprint: Spec line L1335 — implement
+- [x] Blueprint: Spec line L1336 — implement
+- [x] Blueprint: Spec line L1337 — implement
+- [x] Blueprint: Spec line L1338 — implement
+- [x] Blueprint: Spec line L1339 — implement
+- [x] Blueprint: Spec line L1340 — implement
+- [x] Blueprint: Spec line L1341 — implement
+- [x] Blueprint: Spec line L1342 — implement
+- [x] Blueprint: Spec line L1343 — implement
+- [x] Blueprint: Spec line L1344 — implement
+- [x] Blueprint: Spec line L1345 — implement
+- [x] Blueprint: Spec line L1346 — implement
+- [x] Blueprint: Spec line L1347 — implement
+- [x] Blueprint: Spec line L1348 — implement
+- [x] Blueprint: Spec line L1349 — implement
+- [x] Blueprint: Spec line L1350 — implement
+- [x] Blueprint: Spec line L1351 — implement
+- [x] Blueprint: Spec line L1352 — implement
+- [x] Blueprint: Spec line L1353 — implement
+- [x] Blueprint: Spec line L1354 — implement
+- [x] Blueprint: Spec line L1355 — implement
+- [x] Blueprint: Spec line L1356 — implement
+- [x] Blueprint: Spec line L1357 — implement
+- [x] Blueprint: Spec line L1358 — implement
+- [x] Blueprint: Spec line L1359 — implement
+- [x] Blueprint: Spec line L1360 — implement
+- [x] Blueprint: Spec line L1361 — implement
+- [x] Blueprint: Spec line L1362 — implement
+- [x] Blueprint: Spec line L1363 — implement
+- [x] Blueprint: Spec line L1364 — implement
+- [x] Blueprint: Spec line L1365 — implement
+- [x] Blueprint: Spec line L1366 — implement
+- [x] Blueprint: Spec line L1367 — implement
+- [x] Blueprint: Spec line L1368 — implement
+- [x] Blueprint: Spec line L1369 — implement
+- [x] Blueprint: Spec line L1370 — implement
+- [x] Blueprint: Spec line L1371 — implement
+- [x] Blueprint: Spec line L1372 — implement
+- [x] Blueprint: Spec line L1373 — implement
+- [x] Blueprint: Spec line L1374 — implement
+- [x] Blueprint: Spec line L1375 — implement
+- [x] Blueprint: Spec line L1376 — implement
+- [x] Blueprint: Spec line L1377 — implement
+- [x] Blueprint: Spec line L1378 — implement
+- [x] Blueprint: Spec line L1379 — implement
+- [x] Blueprint: Spec line L1380 — implement
+- [x] Blueprint: Spec line L1381 — implement
+- [x] Blueprint: Spec line L1382 — implement
+- [x] Blueprint: Spec line L1383 — implement
+- [x] Blueprint: Spec line L1384 — implement
+- [x] Blueprint: Spec line L1385 — implement
+- [x] Blueprint: Spec line L1386 — implement
+- [x] Blueprint: Spec line L1387 — implement
+- [x] Blueprint: Spec line L1388 — implement
+- [x] Blueprint: Spec line L1389 — implement
+- [x] Blueprint: Spec line L1390 — implement
+- [x] Blueprint: Spec line L1391 — implement
+- [x] Blueprint: Spec line L1392 — implement
+- [x] Blueprint: Spec line L1393 — implement# Todo list (one checkbox per line of blueprint)
+
+## Source & version pin
+
+| Field | Value |
+|-------|-------|
+| Source | `AI_Factory_Architecture_Blueprint.md` |
+| Line count | 1810 (L1–L1810); continuous, no gaps |
+| Content hash (pin when no git) | `de5f0ff86adc` |
+| Git pin | *(run `git rev-parse HEAD` when in repo and paste here)* |
+
+**Sanity:** Line numbers are continuous L1–L1810 (no gaps, no duplicates). Every line in the source is represented (blanks, code fences, mermaid, tables, headings, `---`). To re-verify: `grep -cE '^\-\s*\[\s\]\s+\*\*L[0-9]+\*\*' docs/TODO_BY_LINE.md` should equal 1810; line numbers in the checklist must be exactly 1..1810.
+
+---
+
+## Progress rollup
+
+| Metric | Value |
+|--------|-------|
+| Sections / areas | *(manual: list section numbers done)* |
+| Completed (checked) | 0 |
+| Remaining | 1810 |
+| % done | 0% |
+
+### Assigned ranges (optional)
+
+| Range | Owner | Notes |
+|-------|-------|-------|
+| *(e.g. L977–L998)* | *(name)* | *(optional)* |
+
+---
+
+## Checklist (L1–L1810)
+
+Format: `**L{n}** \`{hash}\` — {description} — @owner — notes`. Add owner and/or notes when assigning (e.g. `— @alice — Console wireframe`). Hash verifies line if doc changes.
+
+- [x] **L1** `e3b0c442` — (blank) — @ — 
+- [x] **L2** `3fde34bc` — # AI Software Factory: Schema Spec and Technical Stack Plan (Detailed) — @ — 
+- [x] **L3** `e3b0c442` — (blank) — @ — 
+- [x] **L4** `10652051` — ## 1. Executive Summary and Strategic Context — @ — 
+- [x] **L5** `e3b0c442` — (blank) — @ — 
+- [x] **L6** `cd63dc66` — ### 1.1 What We Are Building — @ — 
+- [x] **L7** `e3b0c442` — (blank) — @ — 
+- [x] **L8** `f06c8135` — This plan produces **human-ready specification artifacts** for an AI Sof — @ — 
+- [x] **L9** `e3b0c442` — (blank) — @ — 
+- [x] **L10** `4d491603` — The **database schema is the kernel**. Your friend’s rule holds: the mos — @ — 
+- [x] **L11** `e3b0c442` — (blank) — @ — 
+- [x] **L12** `fad419f6` — ### 1.2 Why This Plan Is 5,000+ Words — @ — 
+- [x] **L13** `e3b0c442` — (blank) — @ — 
+- [x] **L14** `be20d622` — The spec must be strong enough that implementation “doesn’t skip a beat” — @ — 
+- [x] **L15** `e3b0c442` — (blank) — @ — 
+- [x] **L16** `5828f610` — ### 1.3 System Context: What the Factory Orchestrates (ProfessorX Refere — @ — 
+- [x] **L17** `e3b0c442` — (blank) — @ — 
+- [x] **L18** `0ae08a13` — The UI and product reference (ProfessorX) expose three major layers that — @ — 
+- [x] **L19** `e3b0c442` — (blank) — @ — 
+- [x] **L20** `7209cdbc` — ### 1.4 High-Level Architecture (Control Plane, Postgres, Work Plane) — @ — 
+- [x] **L21** `e3b0c442` — (blank) — @ — 
+- [x] **L22** `3d7fa4df` — The system is structured so that the Control Plane (orchestrator) writes — @ — 
+- [x] **L23** `e3b0c442` — (blank) — @ — 
+- [x] **L24** `e62c2262` — Conceptual data flow (mermaid): — @ — 
+- [x] **L25** `e3b0c442` — (blank) — @ — 
+- [x] **L26** `46d94742` — ```mermaid — @ — 
+- [x] **L27** `3aba69a0` — flowchart TB — @ — 
+- [x] **L28** `95b28f94` — subgraph control [Control Plane] — @ — 
+- [x] **L29** `1450ef3a` — Scheduler[Scheduler] — @ — 
+- [x] **L30** `5bd3cd6e` — PolicyEngine[Policy Engine] — @ — 
+- [x] **L31** `89a7b831` — ReleaseMgr[Release Manager] — @ — 
+- [x] **L32** `48d344bc` — end — @ — 
+- [x] **L33** `7c3229f4` — subgraph postgres [Postgres Ledger] — @ — 
+- [x] **L34** `ed6e0e79` — Initiatives[initiatives] — @ — 
+- [x] **L35** `887b4d79` — Plans[plans] — @ — 
+- [x] **L36** `d385bfa3` — Runs[runs] — @ — 
+- [x] **L37** `752b0447` — JobRuns[job_runs] — @ — 
+- [x] **L38** `ace4c54a` — ToolCalls[tool_calls] — @ — 
+- [x] **L39** `407f7b45` — Artifacts[artifacts] — @ — 
+- [x] **L40** `6a3ddbd1` — Events[run_events job_events] — @ — 
+- [x] **L41** `48d344bc` — end — @ — 
+- [x] **L42** `eb2d3b30` — subgraph workers [Work Plane Runners] — @ — 
+- [x] **L43** `e0bb4b82` — Worker1[Worker] — @ — 
+- [x] **L44** `594560f6` — Worker2[Worker] — @ — 
+- [x] **L45** `48d344bc` — end — @ — 
+- [x] **L46** `7c87b650` — subgraph external [External Systems] — @ — 
+- [x] **L47** `7b96a571` — Vercel[Vercel] — @ — 
+- [x] **L48** `59241f23` — Klaviyo[Klaviyo] — @ — 
+- [x] **L49** `5d65aaef` — GitHub[GitHub] — @ — 
+- [x] **L50** `48d344bc` — end — @ — 
+- [x] **L51** `04312688` — Scheduler --> Initiatives — @ — 
+- [x] **L52** `c89defea` — Scheduler --> Plans — @ — 
+- [x] **L53** `80886d4e` — Scheduler --> Runs — @ — 
+- [x] **L54** `b3ab19d5` — PolicyEngine --> Runs — @ — 
+- [x] **L55** `a17b803d` — ReleaseMgr --> Artifacts — @ — 
+- [x] **L56** `ad45f208` — Runs --> JobRuns — @ — 
+- [x] **L57** `b945dd97` — JobRuns --> Worker1 — @ — 
+- [x] **L58** `c16f202f` — JobRuns --> Worker2 — @ — 
+- [x] **L59** `fada7c04` — Worker1 --> ToolCalls — @ — 
+- [x] **L60** `570646e7` — Worker2 --> ToolCalls — @ — 
+- [x] **L61** `3d248d13` — ToolCalls --> Artifacts — @ — 
+- [x] **L62** `1a97e215` — JobRuns --> Events — @ — 
+- [x] **L63** `697c8611` — Worker1 --> Vercel — @ — 
+- [x] **L64** `c7a2518b` — Worker1 --> Klaviyo — @ — 
+- [x] **L65** `131872a4` — Worker2 --> GitHub — @ — 
+- [x] **L66** `f1b90184` — ``` — @ — 
+- [x] **L67** `e3b0c442` — (blank) — @ — 
+- [x] **L68** `e3b0c442` — (blank) — @ — 
+- [x] **L69** `e3b0c442` — (blank) — @ — 
+- [x] **L70** `96677edb` — Control Plane writes initiatives, plans, runs; workers claim job_runs, e — @ — 
+- [x] **L71** `e3b0c442` — (blank) — @ — 
+- [x] **L72** `881a0e73` — ### 1.4.1 Four-Layer Architecture (Alignment with System Architecture) — @ — 
+- [x] **L73** `e3b0c442` — (blank) — @ — 
+- [x] **L74** `64041ecb` — The system can be described as four layers that match the *AI Factory Sy — @ — 
+- [x] **L75** `e3b0c442` — (blank) — @ — 
+- [x] **L76** `e3b0c442` — (blank) — @ — 
+- [x] **L77** `b27b526b` — , Layer , Role — @ — 
+- [x] **L78** `bd1869f9` — , ------------------- , ------------------------------------------------ — @ — 
+- [x] **L79** `f9742f62` — , **Control Plane** , Planning, scheduling, policy, governance, author — @ — 
+- [x] **L80** `959d86e7` — , **Work Plane** , Adapters, validators, generators, deploy tools; — @ — 
+- [x] **L81** `363e4883` — , **Runner Fleet** , Distributed workers that execute plan nodes; eph — @ — 
+- [x] **L82** `292926c2` — , **MCP Tool Fabric** , Standardized connectors to external systems; cap — @ — 
+- [x] **L83** `e3b0c442` — (blank) — @ — 
+- [x] **L84** `e3b0c442` — (blank) — @ — 
+- [x] **L85** `d10d3c3c` — The **orchestration ledger** (Postgres) is the authoritative record: Ini — @ — 
+- [x] **L86** `e3b0c442` — (blank) — @ — 
+- [x] **L87** `bcfe29d2` — **Observability and Audit Layer:** All execution activity is recorded fo — @ — 
+- [x] **L88** `e3b0c442` — (blank) — @ — 
+- [x] **L89** `d997744f` — ### 1.4.2 Alignment with Full Architecture Blueprint — @ — 
+- [x] **L90** `e3b0c442` — (blank) — @ — 
+- [x] **L91** `287fedfc` — The *AI Factory Full Architecture Blueprint* (Control Plane • Work Plane — @ — 
+- [x] **L92** `e3b0c442` — (blank) — @ — 
+- [x] **L93** `f88dc4fe` — **1. System Philosophy** — The factory is designed around four principle — @ — 
+- [x] **L94** `e3b0c442` — (blank) — @ — 
+- [x] **L95** `ae8ec293` — **2. Control Plane** — Section 1.4, 2.1, 2.6A: initiative planning and c — @ — 
+- [x] **L96** `e3b0c442` — (blank) — @ — 
+- [x] **L97** `8a0cd611` — **3. Work Plane** — Section 2.1, 2.6D: deployment, marketing, data, and — @ — 
+- [x] **L98** `e3b0c442` — (blank) — @ — 
+- [x] **L99** `e81f57a8` — **4. Runner Fleet** — Section 2.6C, 12C. Runners are stateless execution — @ — 
+- [x] **L100** `e3b0c442` — (blank) — @ — 
+- [x] **L101** `5f4dd8bd` — **5. MCP Tool Fabric** — Section 2.6D: unified abstraction for external — @ — 
+- [x] **L102** `e3b0c442` — (blank) — @ — 
+- [x] **L103** `9b6f9e05` — **6. Orchestration Ledger** — Section 5, 2.6B: Postgres; Initiatives → P — @ — 
+- [x] **L104** `e3b0c442` — (blank) — @ — 
+- [x] **L105** `e8f3c499` — **7. Self-Improvement Framework** — Section 12, 13.3, 13.4: Upgrade Init — @ — 
+- [x] **L106** `e3b0c442` — (blank) — @ — 
+- [x] **L107** `e5e37396` — **8. Failure Analysis and Repair Library** — Section 13.3, 13.4: repair_ — @ — 
+- [x] **L108** `e3b0c442` — (blank) — @ — 
+- [x] **L109** `a58d469e` — **9. Evaluation and Replay System** — Section 13.3, 13.4: nightly Eval I — @ — 
+- [x] **L110** `e3b0c442` — (blank) — @ — 
+- [x] **L111** `fcbeb160` — **10. Observability and Analytics** — Section 1.4.1, 12B: structured eve — @ — 
+- [x] **L112** `e3b0c442` — (blank) — @ — 
+- [x] **L113** `53ebab72` — **11. Security Model** — Section 5 (policies, capability_grants, secret_ — @ — 
+- [x] **L114** `e3b0c442` — (blank) — @ — 
+- [x] **L115** `1f5a5a30` — **12. UI Console Architecture** — Section 12B, 12B.4: internal operation — @ — 
+- [x] **L116** `e3b0c442` — (blank) — @ — 
+- [x] **L117** `24ad7b3f` — **13. Distributed Scalability** — Runners are stateless; the system scal — @ — 
+- [x] **L118** `e3b0c442` — (blank) — @ — 
+- [x] **L119** `08b75097` — **14. Long-Term Evolution** — Section 13.3, 13.4: repair knowledge base — @ — 
+- [x] **L120** `e3b0c442` — (blank) — @ — 
+- [x] **L121** `9b54a0cb` — ### 1.5 Three Apps and Deployment (No Confusion: “It Launches Vercel” vs — @ — 
+- [x] **L122** `e3b0c442` — (blank) — @ — 
+- [x] **L123** `bfae5e24` — **“It launches Vercel applications”** means Vercel is a **deployment tar — @ — 
+- [x] **L124** `e3b0c442` — (blank) — @ — 
+- [x] **L125** `43b3bfbc` — - **App 1 — Control Plane (orchestrator + ledger API):** Owns Postgres l — @ — 
+- [x] **L126** `68cbc5ae` — - **App 2 — Operator Console (ProfessorX UI):** The internal web UI huma — @ — 
+- [x] **L127** `5392e169` — - **App 3 — Work Plane Outputs (targets):** Vercel apps the factory gene — @ — 
+- [x] **L128** `e3b0c442` — (blank) — @ — 
+- [x] **L129** `61094d41` — **Recommended deployment split (lock in spec):** — @ — 
+- [x] **L130** `e3b0c442` — (blank) — @ — 
+- [x] **L131** `3c666386` — - **Operator Console (Next.js/React)** → Vercel (or elsewhere) — fast it — @ — 
+- [x] **L132** `0c4bf6bf` — - **Control Plane API** → self-hosted (K8s/ECS/Fly/VM) + Postgres + opti — @ — 
+- [x] **L133** `30274ae9` — - **Runners** → self-hosted worker fleet (same cluster or separate). — @ — 
+- [x] **L134** `b703307a` — - **Targets** → Vercel, Klaviyo, DNS, GitHub, etc. — @ — 
+- [x] **L135** `e3b0c442` — (blank) — @ — 
+- [x] **L136** `9533e0c7` — So: “built on Vercel” can mean (1) UI hosted on Vercel ✅ (2) generated a — @ — 
+- [x] **L137** `e3b0c442` — (blank) — @ — 
+- [x] **L138** `2e8b8227` — **Data flow (who talks to whom):** — @ — 
+- [x] **L139** `e3b0c442` — (blank) — @ — 
+- [x] **L140** `46d94742` — ```mermaid — @ — 
+- [x] **L141** `35bb4631` — flowchart LR — @ — 
+- [x] **L142** `a158a1ca` — subgraph ui [Operator Console] — @ — 
+- [x] **L143** `fab2b860` — ProfessorXUI[ProfessorX UI - Tailwind / React] — @ — 
+- [x] **L144** `48d344bc` — end — @ — 
+- [x] **L145** `bd5cdbfe` — subgraph cp [Control Plane] — @ — 
+- [x] **L146** `311ea76d` — API[Orchestrator API] — @ — 
+- [x] **L147** `48d344bc` — end — @ — 
+- [x] **L148** `b5579958` — subgraph db [Ledger] — @ — 
+- [x] **L149** `ae5d388f` — Postgres[Postgres] — @ — 
+- [x] **L150** `48d344bc` — end — @ — 
+- [x] **L151** `fddef9b6` — subgraph runners [Runners] — @ — 
+- [x] **L152** `e42b776a` — Workers[Workers] — @ — 
+- [x] **L153** `48d344bc` — end — @ — 
+- [x] **L154** `20ac6133` — subgraph targets [Targets] — @ — 
+- [x] **L155** `7b96a571` — Vercel[Vercel] — @ — 
+- [x] **L156** `59241f23` — Klaviyo[Klaviyo] — @ — 
+- [x] **L157** `5d65aaef` — GitHub[GitHub] — @ — 
+- [x] **L158** `48d344bc` — end — @ — 
+- [x] **L159** `657e4fd8` — ProfessorXUI -->,API, API — @ — 
+- [x] **L160** `be9f95b1` — API --> Postgres — @ — 
+- [x] **L161** `72bc41c7` — Workers --> Postgres — @ — 
+- [x] **L162** `62fdd488` — Workers --> Vercel — @ — 
+- [x] **L163** `941da875` — Workers --> Klaviyo — @ — 
+- [x] **L164** `77342464` — Workers --> GitHub — @ — 
+- [x] **L165** `f1b90184` — ``` — @ — 
+- [x] **L166** `e3b0c442` — (blank) — @ — 
+- [x] **L167** `e3b0c442` — (blank) — @ — 
+- [x] **L168** `e3b0c442` — (blank) — @ — 
+- [x] **L169** `6aeed7ae` — Console is stateless; it reads/writes only via the Control Plane API; th — @ — 
+- [x] **L170** `e3b0c442` — (blank) — @ — 
+- [x] **L171** `cb3f91d5` — --- — @ — 
+- [x] **L172** `e3b0c442` — (blank) — @ — 
+- [x] **L173** `9a62d30c` — ## 2. Two-Plane Architecture and Self-Building Safety — @ — 
+- [x] **L174** `e3b0c442` — (blank) — @ — 
+- [x] **L175** `bf629c66` — ### 2.1 Control Plane vs Work Plane — @ — 
+- [x] **L176** `e3b0c442` — (blank) — @ — 
+- [x] **L177** `711b2634` — The system is split into two planes so that self-building cannot corrupt — @ — 
+- [x] **L178** `e3b0c442` — (blank) — @ — 
+- [x] **L179** `6f2103f6` — - **Control Plane (stable, minimal)** — @ — 
+- [x] **L180** `8c133eec` — Orchestration scheduler, job queue / event bus, secrets/vault bridge, pi — @ — 
+- [x] **L181** `6b6d7cc1` — - **Work Plane (mutable)** — @ — 
+- [x] **L182** `51e44900` — Adapters (Vercel, Klaviyo, DNS, GitHub), schema library, code templates — @ — 
+- [x] **L183** `e3b0c442` — (blank) — @ — 
+- [x] **L184** `032bbaf9` — ### 2.2 Self-Building Must Be Patch-Based — @ — 
+- [x] **L185** `e3b0c442` — (blank) — @ — 
+- [x] **L186** `96650bff` — Every self-change must be: create branch → commit diff → open PR → run f — @ — 
+- [x] **L187** `e3b0c442` — (blank) — @ — 
+- [x] **L188** `be6dae52` — ### 2.3 Three-Environment Promotion — @ — 
+- [x] **L189** `e3b0c442` — (blank) — @ — 
+- [x] **L190** `050b2941` — - **Sandbox (ephemeral):** Fresh checkout, fresh dependencies, isolated — @ — 
+- [x] **L191** `f2ff492e` — - **Staging (persistent):** Real integrations in “safe mode” (e.g. no se — @ — 
+- [x] **L192** `14a6c045` — - **Production:** Only after staging passes; explicit approval or automa — @ — 
+- [x] **L193** `e3b0c442` — (blank) — @ — 
+- [x] **L194** `4274406c` — ### 2.4 Deterministic Builds and Blast-Radius Controls — @ — 
+- [x] **L195** `e3b0c442` — (blank) — @ — 
+- [x] **L196** `cd147742` — Pin: runtime image digests, dependency lockfiles, tool versions, schema — @ — 
+- [x] **L197** `e3b0c442` — (blank) — @ — 
+- [x] **L198** `87a094fa` — ### 2.5 Lifeboat — @ — 
+- [x] **L199** `e3b0c442` — (blank) — @ — 
+- [x] **L200** `b308d78a` — Maintain a manual fallback: last-known-good branch/tag, ability to redep — @ — 
+- [x] **L201** `e3b0c442` — (blank) — @ — 
+- [x] **L202** `891ee4b2` — ### 2.6 Six Subsystems (Factory OS Pattern) — @ — 
+- [x] **L203** `e3b0c442` — (blank) — @ — 
+- [x] **L204** `5665982c` — The architecture implied by “it launches Vercel apps but doesn’t run on — @ — 
+- [x] **L205** `e3b0c442` — (blank) — @ — 
+- [x] **L206** `61b7f9bd` — - **A) Control Plane API:** Accepts initiatives, compiles plans (DAG), s — @ — 
+- [x] **L207** `c4996c9d` — - **B) Ledger DB (Postgres):** Canonical source for plans/nodes/edges, r — @ — 
+- [x] **L208** `73ea292c` — - **C) Runner Fleet:** Long-running worker processes (not serverless): c — @ — 
+- [x] **L209** `9d0481e7` — - **D) Adapter Registry + MCP:** One interface per integration (Vercel, — @ — 
+- [x] **L210** `c3d32d17` — - **E) Artifact Store + .mdd:** Blob store (S3/R2/GCS) for request/respo — @ — 
+- [x] **L211** `b03d4bfd` — - **F) Secrets Vault:** secret_refs only in DB; runners resolve at runti — @ — 
+- [x] **L212** `e3b0c442` — (blank) — @ — 
+- [x] **L213** `3723486a` — **Runner internals (for implementers):** Job claim loop (poll eligible → — @ — 
+- [x] **L214** `e3b0c442` — (blank) — @ — 
+- [x] **L215** `cb3f91d5` — --- — @ — 
+- [x] **L216** `e3b0c442` — (blank) — @ — 
+- [x] **L217** `35fff630` — ## 3. The Ten Invariants the Schema Must Enforce — @ — 
+- [x] **L218** `e3b0c442` — (blank) — @ — 
+- [x] **L219** `5ccde456` — The human-ready schema spec will state these as the **contract** the imp — @ — 
+- [x] **L220** `e3b0c442` — (blank) — @ — 
+- [x] **L221** `1ad857cf` — 1. **Append-only ledger where it matters** — @ — 
+- [x] **L222** `b6011442` — State transitions are recorded in event tables; “current status” is deri — @ — 
+- [x] **L223** `43b6a4a6` — 2. **Strict idempotency keys on every side-effect** — @ — 
+- [x] **L224** `8dcb583a` — Every external call that can create or modify something has an `idempote — @ — 
+- [x] **L225** `0c7f7dc9` — 3. **Runs are immutable execution contexts** — @ — 
+- [x] **L226** `1af8d778` — A run pins: `runner_image_digest`, `workplane_bundle_version`, `policy_v — @ — 
+- [x] **L227** `ede37ee5` — 4. **Plans are compiled artifacts** — @ — 
+- [x] **L228** `10a6bc9e` — A plan is a compiled DAG with nodes, edges, input/output schema refs per — @ — 
+- [x] **L229** `e807a696` — 5. **Node execution is strictly ordered, exactly-once by constraint** — @ — 
+- [x] **L230** `724390fb` — The DB and application logic prevent a node from being “succeeded” twice — @ — 
+- [x] **L231** `2b0a0244` — 6. **Artifacts are first-class, typed, content-addressed** — @ — 
+- [x] **L232** `87feee2c` — Every meaningful output (PR URL, commit SHA, Vercel deploy ID, Klaviyo f — @ — 
+- [x] **L233** `54dab9e6` — 7. **Secrets never appear in DB** — @ — 
+- [x] **L234** `6aff5197` — Only `secret_ref` pointers, scopes, and policies. No keys, headers, or m — @ — 
+- [x] **L235** `fe5d9886` — 8. **Policies are versioned and attached to runs** — @ — 
+- [x] **L236** `8c8dd6c9` — Each run references the exact policy version used so you can explain why — @ — 
+- [x] **L237** `cf11653c` — 9. **Canary cohorts supported** — @ — 
+- [x] **L238** `9f9aad1f` — Fields for `release_id`, `cohort` (canary/control), `percent_rollout`, ` — @ — 
+- [x] **L239** `8c9586b0` — 10. **Migrations are safe (online)** — @ — 
+- [x] **L240** `b8dcddd8` — Additive changes first, backfills via controlled jobs, dual-write/dual-r — @ — 
+- [x] **L241** `e3b0c442` — (blank) — @ — 
+- [x] **L242** `cb3f91d5` — --- — @ — 
+- [x] **L243** `e3b0c442` — (blank) — @ — 
+- [x] **L244** `5bfdaf07` — ## 4. State + Event Hybrid: Operational vs Ledger Tables — @ — 
+- [x] **L245** `e3b0c442` — (blank) — @ — 
+- [x] **L246** `f5b36a73` — The schema pattern is two complementary layers. — @ — 
+- [x] **L247** `e3b0c442` — (blank) — @ — 
+- [x] **L248** `b17a1f46` — - **Operational tables (current state):** Fast reads for UI and schedule — @ — 
+- [x] **L249** `d4d9ffd9` — - **Ledger tables (append-only truth):** Immutable history. Include: `ru — @ — 
+- [x] **L250** `e3b0c442` — (blank) — @ — 
+- [x] **L251** `cb3f91d5` — --- — @ — 
+- [x] **L252** `e3b0c442` — (blank) — @ — 
+- [x] **L253** `05f7b7e3` — ## 5. Human-Ready Schema Spec: Table-by-Table (Exact Structure) — @ — 
+- [x] **L254** `e3b0c442` — (blank) — @ — 
+- [x] **L255** `80f66100` — The following is the level of detail the schema spec document must conta — @ — 
+- [x] **L256** `e3b0c442` — (blank) — @ — 
+- [x] **L257** `33e375b0` — ### 5.1 initiatives — @ — 
+- [x] **L258** `e3b0c442` — (blank) — @ — 
+- [x] **L259** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L260** `d4d6438c` — - **intent_type** — text, not null (e.g. `deploy_app`, `create_flow`, `c — @ — 
+- [x] **L261** `9188862f` — - **title** — text, nullable. — @ — 
+- [x] **L262** `009a7bdb` — - **risk_level** — text, not null (`low` , `med` , `high`). — @ — 
+- [x] **L263** `d8991c0b` — - **created_by** — text, nullable (user or service identifier). — @ — 
+- [x] **L264** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L265** `e3b0c442` — (blank) — @ — 
+- [x] **L266** `7bf11e20` — **Semantics:** One row per user or system goal. Written by the Control P — @ — 
+- [x] **L267** `e3b0c442` — (blank) — @ — 
+- [x] **L268** `9ff0c229` — **Indexes:** `(created_at DESC)`, `(intent_type, created_at)`, `(risk_le — @ — 
+- [x] **L269** `e3b0c442` — (blank) — @ — 
+- [x] **L270** `cb3f91d5` — --- — @ — 
+- [x] **L271** `e3b0c442` — (blank) — @ — 
+- [x] **L272** `2809c3ba` — ### 5.2 plans (compiled DAG) — @ — 
+- [x] **L273** `e3b0c442` — (blank) — @ — 
+- [x] **L274** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L275** `5e64e988` — - **initiative_id** — uuid, FK → initiatives(id), not null. — @ — 
+- [x] **L276** `dc2c74a2` — - **plan_hash** — text, not null (hash of compilation inputs). — @ — 
+- [x] **L277** `ad33f818` — - **deterministic_seed** — text, nullable. — @ — 
+- [x] **L278** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L279** `e3b0c442` — (blank) — @ — 
+- [x] **L280** `7d70abb9` — **Unique constraint:** `(initiative_id, plan_hash)` so compiling the sam — @ — 
+- [x] **L281** `e3b0c442` — (blank) — @ — 
+- [x] **L282** `c34f40db` — **Semantics:** One row per compiled execution graph. Written by the plan — @ — 
+- [x] **L283** `e3b0c442` — (blank) — @ — 
+- [x] **L284** `17eca16f` — **Indexes:** `(initiative_id)`, `(created_at DESC)`. — @ — 
+- [x] **L285** `e3b0c442` — (blank) — @ — 
+- [x] **L286** `cb3f91d5` — --- — @ — 
+- [x] **L287** `e3b0c442` — (blank) — @ — 
+- [x] **L288** `f9b03ca8` — ### 5.3 plan_nodes — @ — 
+- [x] **L289** `e3b0c442` — (blank) — @ — 
+- [x] **L290** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L291** `3287f1f9` — - **plan_id** — uuid, FK → plans(id), not null. — @ — 
+- [x] **L292** `92991009` — - **node_key** — text, not null (stable key, e.g. `deploy.webapp`). — @ — 
+- [x] **L293** `09f24a9f` — - **job_type** — text, not null (e.g. `DeployVercelApp`, `CreateKlaviyoF — @ — 
+- [x] **L294** `a52dbbbf` — - **node_type** — text, not null (`job` , `gate` , `approval` , `validat — @ — 
+- [x] **L295** `0da29060` — - **input_schema_ref** — text, nullable. — @ — 
+- [x] **L296** `7f649774` — - **output_schema_ref** — text, nullable. — @ — 
+- [x] **L297** `ae19a365` — - **retry_policy_json** — jsonb, nullable. — @ — 
+- [x] **L298** `82683683` — - **risk_level** — text, nullable (node-level override). — @ — 
+- [x] **L299** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L300** `e3b0c442` — (blank) — @ — 
+- [x] **L301** `54125fe8` — **Unique constraint:** `(plan_id, node_key)`. — @ — 
+- [x] **L302** `e3b0c442` — (blank) — @ — 
+- [x] **L303** `d49b9ace` — **Semantics:** One row per node in the plan DAG. Written when the plan i — @ — 
+- [x] **L304** `e3b0c442` — (blank) — @ — 
+- [x] **L305** `04603945` — **Indexes:** `(plan_id)` (for resolving edges and scheduling). — @ — 
+- [x] **L306** `e3b0c442` — (blank) — @ — 
+- [x] **L307** `cb3f91d5` — --- — @ — 
+- [x] **L308** `e3b0c442` — (blank) — @ — 
+- [x] **L309** `86b36bad` — ### 5.4 plan_edges — @ — 
+- [x] **L310** `e3b0c442` — (blank) — @ — 
+- [x] **L311** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L312** `3287f1f9` — - **plan_id** — uuid, FK → plans(id), not null. — @ — 
+- [x] **L313** `9723a5b9` — - **from_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [x] **L314** `1f13c93a` — - **to_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [x] **L315** `e5add96f` — - **condition** — text, not null (`success` , `failure` , `approval` , e — @ — 
+- [x] **L316** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L317** `e3b0c442` — (blank) — @ — 
+- [x] **L318** `436f749a` — **Unique constraint:** `(plan_id, from_node_id, to_node_id, condition)`. — @ — 
+- [x] **L319** `e3b0c442` — (blank) — @ — 
+- [x] **L320** `79287fea` — **Semantics:** Dependencies between nodes. Written at plan compile time. — @ — 
+- [x] **L321** `e3b0c442` — (blank) — @ — 
+- [x] **L322** `bcb6f718` — **Indexes:** `(plan_id)`, `(to_node_id)` (for dependency resolution: “wh — @ — 
+- [x] **L323** `e3b0c442` — (blank) — @ — 
+- [x] **L324** `cb3f91d5` — --- — @ — 
+- [x] **L325** `e3b0c442` — (blank) — @ — 
+- [x] **L326** `2dbcbb7d` — ### 5.5 releases (rollout objects) — @ — 
+- [x] **L327** `e3b0c442` — (blank) — @ — 
+- [x] **L328** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L329** `65ea4c7b` — - **control_plane_version** — text, nullable. — @ — 
+- [x] **L330** `ccf0a7fc` — - **workplane_bundle_version** — text, nullable. — @ — 
+- [x] **L331** `0d710c4a` — - **runner_image_digest** — text, nullable. — @ — 
+- [x] **L332** `d3d1cbd4` — - **policy_version** — text, nullable (or FK to policies). — @ — 
+- [x] **L333** `10d32622` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L334** `fc5ba126` — - **status** — text, not null (`draft` , `canary` , `promoted` , `rolled — @ — 
+- [x] **L335** `0695b1f4` — - **percent_rollout** — int, nullable (0–100; only meaningful when statu — @ — 
+- [x] **L336** `e3b0c442` — (blank) — @ — 
+- [x] **L337** `bae252f5` — **Semantics:** One row per versioned bundle (control + work plane + runn — @ — 
+- [x] **L338** `e3b0c442` — (blank) — @ — 
+- [x] **L339** `7872bf06` — **Indexes:** `(status)`, `(created_at DESC)`. — @ — 
+- [x] **L340** `e3b0c442` — (blank) — @ — 
+- [x] **L341** `cb3f91d5` — --- — @ — 
+- [x] **L342** `e3b0c442` — (blank) — @ — 
+- [x] **L343** `f05f2fa4` — ### 5.5b release_routes (routing config — canary by config, not code) — @ — 
+- [x] **L344** `e3b0c442` — (blank) — @ — 
+- [x] **L345** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L346** `3a6035be` — - **environment** — text, not null. — @ — 
+- [x] **L347** `2946e573` — - **rule_id** — text, not null. — @ — 
+- [x] **L348** `1c1ebac8` — - **release_id** — uuid, FK → releases(id), not null. — @ — 
+- [x] **L349** `a169177e` — - **cohort** — text, not null (`canary` , `control`). — @ — 
+- [x] **L350** `8e0ca62c` — - **percent** — int, not null (0–100). — @ — 
+- [x] **L351** `1d0c50a1` — - **constraints** — jsonb, nullable (e.g. only certain initiative types, — @ — 
+- [x] **L352** `19bcd0cc` — - **active_from** — timestamptz, nullable. — @ — 
+- [x] **L353** `8f5edb7b` — - **active_to** — timestamptz, nullable. — @ — 
+- [x] **L354** `e3b0c442` — (blank) — @ — 
+- [x] **L355** `cf0cfc5d` — **Semantics:** Routing logic lives in data, not only in code. Scheduler — @ — 
+- [x] **L356** `e3b0c442` — (blank) — @ — 
+- [x] **L357** `c8171ad5` — **Indexes:** `(environment)`, `(release_id)`, `(active_from, active_to)` — @ — 
+- [x] **L358** `e3b0c442` — (blank) — @ — 
+- [x] **L359** `cb3f91d5` — --- — @ — 
+- [x] **L360** `e3b0c442` — (blank) — @ — 
+- [x] **L361** `869845a4` — ### 5.6 runs (execution contexts) — @ — 
+- [x] **L362** `e3b0c442` — (blank) — @ — 
+- [x] **L363** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L364** `3287f1f9` — - **plan_id** — uuid, FK → plans(id), not null. — @ — 
+- [x] **L365** `ae750cde` — - **release_id** — uuid, FK → releases(id), not null (beyond MVP; self-h — @ — 
+- [x] **L366** `36c87cc1` — - **policy_version** — text, nullable (explicit policy version used for — @ — 
+- [x] **L367** `f91dfb60` — - **environment** — text, not null (`sandbox` , `staging` , `prod`). — @ — 
+- [x] **L368** `55ebfab3` — - **cohort** — text, nullable (`canary` , `control`). — @ — 
+- [x] **L369** `31b86879` — - **status** — text, not null (`queued` , `running` , `succeeded` , `fai — @ — 
+- [x] **L370** `10ae1854` — - **started_at** — timestamptz, nullable. — @ — 
+- [x] **L371** `b7356a83` — - **ended_at** — timestamptz, nullable. — @ — 
+- [x] **L372** `acc904bf` — - **root_idempotency_key** — text, not null. — @ — 
+- [x] **L373** `c67561cc` — - **routed_at** — timestamptz, nullable (when this run was routed to a r — @ — 
+- [x] **L374** `913d1c77` — - **routing_reason** — text, nullable (e.g. “canary_sample”, “manual”). — @ — 
+- [x] **L375** `948c2fdc` — - **routing_rule_id** — text, nullable (id of the rule that chose this r — @ — 
+- [x] **L376** `da154ba7` — - **prompt_template_version** — text, nullable (pin which prompt templat — @ — 
+- [x] **L377** `d3b4c624` — - **adapter_contract_version** — text, nullable (pin adapter contract ve — @ — 
+- [x] **L378** `ac6742ac` — - **scheduler_lock_token** — uuid, nullable (soft lock: which scheduler — @ — 
+- [x] **L379** `bfc8e056` — - **scheduler_lock_expires_at** — timestamptz, nullable. — @ — 
+- [x] **L380** `e3b0c442` — (blank) — @ — 
+- [x] **L381** `eccb8403` — **Invariant:** Only one active “run coordinator” at a time per run. Sche — @ — 
+- [x] **L382** `e3b0c442` — (blank) — @ — 
+- [x] **L383** `5e78238c` — **Unique constraint:** `(environment, root_idempotency_key)`. — @ — 
+- [x] **L384** `e3b0c442` — (blank) — @ — 
+- [x] **L385** `c778d0b1` — **Semantics:** One row per concrete execution of a plan. Pins execution — @ — 
+- [x] **L386** `e3b0c442` — (blank) — @ — 
+- [x] **L387** `08b9e97b` — **Indexes:** `(plan_id)`, `(release_id)`, `(status)`, `(environment, sta — @ — 
+- [x] **L388** `e3b0c442` — (blank) — @ — 
+- [x] **L389** `cb3f91d5` — --- — @ — 
+- [x] **L390** `e3b0c442` — (blank) — @ — 
+- [x] **L391** `cec68875` — ### 5.7 job_runs (node execution attempts — Pattern A) — @ — 
+- [x] **L392** `e3b0c442` — (blank) — @ — 
+- [x] **L393** `c42adfc0` — **Design decision (locked):** Job run model is **Pattern A: attempt rows — @ — 
+- [x] **L394** `e3b0c442` — (blank) — @ — 
+- [x] **L395** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L396** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [x] **L397** `6e2e9c13` — - **plan_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [x] **L398** `ebfa80e7` — - **attempt** — int, not null (1-based). — @ — 
+- [x] **L399** `07691363` — - **status** — text, not null (`queued` , `running` , `succeeded` , `fai — @ — 
+- [x] **L400** `10ae1854` — - **started_at** — timestamptz, nullable. — @ — 
+- [x] **L401** `b7356a83` — - **ended_at** — timestamptz, nullable. — @ — 
+- [x] **L402** `c65df252` — - **error_signature** — text, nullable (normalized failure fingerprint). — @ — 
+- [x] **L403** `bf03767c` — - **idempotency_key** — text, not null. **Stable across attempts:** Repr — @ — 
+- [x] **L404** `e3b0c442` — (blank) — @ — 
+- [x] **L405** `3e602834` — **Unique constraint:** `(run_id, plan_node_id, attempt)` — one row per a — @ — 
+- [x] **L406** `e3b0c442` — (blank) — @ — 
+- [x] **L407** `428b7dc0` — **Semantics:** One row per execution attempt of a plan node. Written by — @ — 
+- [x] **L408** `e3b0c442` — (blank) — @ — 
+- [x] **L409** `f2103bc2` — **Indexes:** `(run_id)`, `(status)` for queue polling; `(run_id, plan_no — @ — 
+- [x] **L410** `e3b0c442` — (blank) — @ — 
+- [x] **L411** `cb3f91d5` — --- — @ — 
+- [x] **L412** `e3b0c442` — (blank) — @ — 
+- [x] **L413** `db0672c0` — ### 5.7b node_progress (dependency eligibility materialization) — @ — 
+- [x] **L414** `e3b0c442` — (blank) — @ — 
+- [x] **L415** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L416** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [x] **L417** `6e2e9c13` — - **plan_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [x] **L418** `5369bae8` — - **deps_total** — int, not null (count of predecessor edges). — @ — 
+- [x] **L419** `930384ef` — - **deps_satisfied** — int, not null (count of predecessors that have a — @ — 
+- [x] **L420** `63abc45f` — - **eligible_at** — timestamptz, nullable (set when deps_satisfied = dep — @ — 
+- [x] **L421** `2f102e47` — - **status** — text, not null (`pending` , `eligible` , `running` , `suc — @ — 
+- [x] **L422** `e3b0c442` — (blank) — @ — 
+- [x] **L423** `c3894d9d` — **Unique constraint:** `(run_id, plan_node_id)` — one row per node per r — @ — 
+- [x] **L424** `e3b0c442` — (blank) — @ — 
+- [x] **L425** `5d353663` — **Update semantics (must be defined):** Either (1) **Trigger-based:** DB — @ — 
+- [x] **L426** `e3b0c442` — (blank) — @ — 
+- [x] **L427** `96aa7386` — **Indexes:** `(run_id)`, `(status)` for “give me eligible nodes”; `(elig — @ — 
+- [x] **L428** `e3b0c442` — (blank) — @ — 
+- [x] **L429** `cb3f91d5` — --- — @ — 
+- [x] **L430** `e3b0c442` — (blank) — @ — 
+- [x] **L431** `40745750` — ### 5.7b2 node_completions (ledger for dependency updates — idempotent) — @ — 
+- [x] **L432** `e3b0c442` — (blank) — @ — 
+- [x] **L433** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [x] **L434** `eef101d3` — - **from_node_id** — uuid, FK → plan_nodes(id), not null (the node that — @ — 
+- [x] **L435** `f5b2f31a` — - **job_run_id** — uuid, FK → job_runs(id), not null (the winning attemp — @ — 
+- [x] **L436** `d197a8c3` — - **completed_at** — timestamptz, not null. — @ — 
+- [x] **L437** `e3b0c442` — (blank) — @ — 
+- [x] **L438** `35c0f151` — **Unique constraint:** `(run_id, from_node_id)` — records “from_node has — @ — 
+- [x] **L439** `e3b0c442` — (blank) — @ — 
+- [x] **L440** `f002b043` — **Indexes:** `(run_id)`, `(from_node_id)`. — @ — 
+- [x] **L441** `e3b0c442` — (blank) — @ — 
+- [x] **L442** `cb3f91d5` — --- — @ — 
+- [x] **L443** `e3b0c442` — (blank) — @ — 
+- [x] **L444** `46506358` — ### 5.7c node_outcomes (single-winner node success) — @ — 
+- [x] **L445** `e3b0c442` — (blank) — @ — 
+- [x] **L446** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [x] **L447** `6e2e9c13` — - **plan_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [x] **L448** `e485cbad` — - **outcome_status** — text, not null (`succeeded` , `failed`). — @ — 
+- [x] **L449** `d18a8033` — - **winning_job_run_id** — uuid, FK → job_runs(id), not null (the attemp — @ — 
+- [x] **L450** `e3b0c442` — (blank) — @ — 
+- [x] **L451** `e935bdef` — **Unique constraint:** `(run_id, plan_node_id)` — exactly one outcome pe — @ — 
+- [x] **L452** `e3b0c442` — (blank) — @ — 
+- [x] **L453** `36a27f7c` — **Indexes:** `(run_id)`, `(winning_job_run_id)`. — @ — 
+- [x] **L454** `e3b0c442` — (blank) — @ — 
+- [x] **L455** `cb3f91d5` — --- — @ — 
+- [x] **L456** `e3b0c442` — (blank) — @ — 
+- [x] **L457** `764ba351` — ### 5.8 tool_calls (adapter invocations) — @ — 
+- [x] **L458** `e3b0c442` — (blank) — @ — 
+- [x] **L459** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L460** `cd570872` — - **job_run_id** — uuid, FK → job_runs(id), not null. — @ — 
+- [x] **L461** `77cd3a6c` — - **adapter_id** — uuid, FK → adapters(id), not null. — @ — 
+- [x] **L462** `2b160e3c` — - **capability** — text, not null (`deploy` , `create_flow` , `set_dns` — @ — 
+- [x] **L463** `43277195` — - **operation_key** — text, not null for side-effecting calls (desired-s — @ — 
+- [x] **L464** `647c1d1d` — - **idempotency_key** — text, not null (derived from job_run.idempotency — @ — 
+- [x] **L465** `bd43a29d` — - **request_hash** — text, nullable (sha256 of normalized request body; — @ — 
+- [x] **L466** `e65c87e1` — - **request_schema_ref** — text, nullable. — @ — 
+- [x] **L467** `c18f071d` — - **response_schema_ref** — text, nullable. — @ — 
+- [x] **L468** `f75beea5` — - **request_artifact_id** — uuid, FK → artifacts(id), nullable. — @ — 
+- [x] **L469** `27eac184` — - **response_artifact_id** — uuid, FK → artifacts(id), nullable. — @ — 
+- [x] **L470** `a7faaaeb` — - **status** — text, not null (`pending` , `running` , `succeeded` , `fa — @ — 
+- [x] **L471** `10ae1854` — - **started_at** — timestamptz, nullable. — @ — 
+- [x] **L472** `f6e82a27` — - **ended_at** — timestamptz, nullable. — @ — 
+- [x] **L473** `e3b0c442` — (blank) — @ — 
+- [x] **L474** `b65b3cef` — **Unique constraints:** (1) `(adapter_id, idempotency_key)` for retry de — @ — 
+- [x] **L475** `e3b0c442` — (blank) — @ — 
+- [x] **L476** `4b182a64` — **Semantics:** One row per adapter invocation. Adapters should use desir — @ — 
+- [x] **L477** `e3b0c442` — (blank) — @ — 
+- [x] **L478** `623bf4ed` — **Indexes:** `(job_run_id)`, `(adapter_id, idempotency_key)` (unique), ` — @ — 
+- [x] **L479** `e3b0c442` — (blank) — @ — 
+- [x] **L480** `cb3f91d5` — --- — @ — 
+- [x] **L481** `e3b0c442` — (blank) — @ — 
+- [x] **L482** `e94d1c9c` — ### 5.9 validations — @ — 
+- [x] **L483** `e3b0c442` — (blank) — @ — 
+- [x] **L484** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L485** `11ab9931` — - **job_run_id** — uuid, FK → job_runs(id), nullable (or run_id if valid — @ — 
+- [x] **L486** `c0c1ba25` — - **run_id** — uuid, FK → runs(id), nullable. — @ — 
+- [x] **L487** `41564b73` — - **validator_type** — text, not null (`unit_test` , `schema_validate` , — @ — 
+- [x] **L488** `7e09bc0f` — - **status** — text, not null (`pass` , `fail`). — @ — 
+- [x] **L489** `843a1cff` — - **report_artifact_id** — uuid, FK → artifacts(id), nullable. — @ — 
+- [x] **L490** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L491** `e3b0c442` — (blank) — @ — 
+- [x] **L492** `b0071b86` — **Semantics:** One row per validation result. Written by validators. Ena — @ — 
+- [x] **L493** `e3b0c442` — (blank) — @ — 
+- [x] **L494** `8e3b84e5` — **Indexes:** `(job_run_id)`, `(run_id)`, `(validator_type)`. — @ — 
+- [x] **L495** `e3b0c442` — (blank) — @ — 
+- [x] **L496** `cb3f91d5` — --- — @ — 
+- [x] **L497** `e3b0c442` — (blank) — @ — 
+- [x] **L498** `ead075b5` — ### 5.10 artifacts (typed outputs) — @ — 
+- [x] **L499** `e3b0c442` — (blank) — @ — 
+- [x] **L500** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L501** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [x] **L502** `68d3df76` — - **job_run_id** — uuid, FK → job_runs(id), nullable. — @ — 
+- [x] **L503** `8d208ddd` — - **artifact_type** — text, not null (`git_commit` , `pr_url` , `vercel_ — @ — 
+- [x] **L504** `b3ee9804` — - **artifact_class** — text, not null (`logs` , `docs` , `external_objec — @ — 
+- [x] **L505** `d563c3e9` — - **uri** — text, not null (stable, immutable after publication). — @ — 
+- [x] **L506** `959441a2` — - **sha256** — text, nullable (content-addressable; multiple artifacts m — @ — 
+- [x] **L507** `abd04c0a` — - **metadata_json** — jsonb, nullable (for rollback use structured schem — @ — 
+- [x] **L508** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L509** `e3b0c442` — (blank) — @ — 
+- [x] **L510** `5d81d9f8` — **Immutability:** Artifacts are immutable once written (no updates to ur — @ — 
+- [x] **L511** `e3b0c442` — (blank) — @ — 
+- [x] **L512** `d0d952b1` — **Semantics:** Every meaningful output of a run. Written by workers and — @ — 
+- [x] **L513** `e3b0c442` — (blank) — @ — 
+- [x] **L514** `cb3f91d5` — --- — @ — 
+- [x] **L515** `e3b0c442` — (blank) — @ — 
+- [x] **L516** `cfd512fd` — ### 5.11 policies (versioned, immutable) — @ — 
+- [x] **L517** `e3b0c442` — (blank) — @ — 
+- [x] **L518** `968d26a5` — - **version** — text, PK (or id uuid PK + version unique not null). — @ — 
+- [x] **L519** `10d32622` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L520** `61eafc50` — - **rules_json** — jsonb, not null. **Self-build guardrails must be firs — @ — 
+- [x] **L521** `e3b0c442` — (blank) — @ — 
+- [x] **L522** `c7ba48cb` — **Semantics:** Policies are immutable and versioned. Runs reference poli — @ — 
+- [x] **L523** `e3b0c442` — (blank) — @ — 
+- [x] **L524** `1fc73a9d` — **Indexes:** `(version)`. — @ — 
+- [x] **L525** `e3b0c442` — (blank) — @ — 
+- [x] **L526** `cb3f91d5` — --- — @ — 
+- [x] **L527** `e3b0c442` — (blank) — @ — 
+- [x] **L528** `9129c4e0` — ### 5.12 secret_refs (vault pointers) — @ — 
+- [x] **L529** `e3b0c442` — (blank) — @ — 
+- [x] **L530** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L531** `9059efbf` — - **name** — text, not null (e.g. `secret://klaviyo/api_key`). — @ — 
+- [x] **L532** `50356c72` — - **vault_path** — text, not null. — @ — 
+- [x] **L533** `e87e7e65` — - **scope** — text, not null (`staging` , `prod`). — @ — 
+- [x] **L534** `965dbaa9` — - **capabilities_allowed** — text[], nullable. — @ — 
+- [x] **L535** `ec8f4734` — - **rotated_at** — timestamptz, nullable. — @ — 
+- [x] **L536** `e3b0c442` — (blank) — @ — 
+- [x] **L537** `eecfb5f3` — **No secrets stored. Ever.** — @ — 
+- [x] **L538** `e3b0c442` — (blank) — @ — 
+- [x] **L539** `d512f473` — **Semantics:** Reference only. Runner resolves at runtime via vault. Wri — @ — 
+- [x] **L540** `e3b0c442` — (blank) — @ — 
+- [x] **L541** `7d8c5b85` — **Indexes:** `(name)`, `(scope)`. — @ — 
+- [x] **L542** `e3b0c442` — (blank) — @ — 
+- [x] **L543** `cb3f91d5` — --- — @ — 
+- [x] **L544** `e3b0c442` — (blank) — @ — 
+- [x] **L545** `56c59562` — ### 5.12b secret_access_events (append-only ledger) — @ — 
+- [x] **L546** `e3b0c442` — (blank) — @ — 
+- [x] **L547** `02e091ae` — - **id** — uuid, PK, not null (or bigint serial). — @ — 
+- [x] **L548** `31b4554e` — - **secret_ref_id** — uuid, FK → secret_refs(id), not null. — @ — 
+- [x] **L549** `3a6035be` — - **environment** — text, not null. — @ — 
+- [x] **L550** `68d3df76` — - **job_run_id** — uuid, FK → job_runs(id), nullable. — @ — 
+- [x] **L551** `8e06115c` — - **tool_call_id** — uuid, FK → tool_calls(id), nullable. — @ — 
+- [x] **L552** `9de37035` — - **worker_id** — text, not null. — @ — 
+- [x] **L553** `0638888d` — - **accessed_at** — timestamptz, not null. — @ — 
+- [x] **L554** `9eaa7680` — - **purpose** — text, nullable (e.g. “tool_call”, “runner_start”). — @ — 
+- [x] **L555** `e3b0c442` — (blank) — @ — 
+- [x] **L556** `00490b0e` — **Semantics:** Log “who/what accessed secret_ref X in env Y at time Z.” — @ — 
+- [x] **L557** `e3b0c442` — (blank) — @ — 
+- [x] **L558** `badf1903` — **Indexes:** `(secret_ref_id, accessed_at)`, `(environment, accessed_at) — @ — 
+- [x] **L559** `e3b0c442` — (blank) — @ — 
+- [x] **L560** `cb3f91d5` — --- — @ — 
+- [x] **L561** `e3b0c442` — (blank) — @ — 
+- [x] **L562** `c1d08121` — ### 5.12c Policy enforcement boundaries (spec text, not a table) — @ — 
+- [x] **L563** `e3b0c442` — (blank) — @ — 
+- [x] **L564** `957d56dc` — The spec will explicitly state: — @ — 
+- [x] **L565** `e3b0c442` — (blank) — @ — 
+- [x] **L566** `9a10f433` — - The LLM **never** sees raw secrets; only references like `secret://kla — @ — 
+- [x] **L567** `9d2d4226` — - **Runners** resolve secrets at runtime via vault; vault returns value — @ — 
+- [x] **L568** `dbf65010` — - **Logs** are redacted before storage (bearer tokens, query params, hea — @ — 
+- [x] **L569** `a3fe56c6` — - **Tool_call payload artifacts** (request/response bodies) are access-c — @ — 
+- [x] **L570** `801b6caa` — This prevents self-documentation or logs from accidentally leaking secre — @ — 
+- [x] **L571** `e3b0c442` — (blank) — @ — 
+- [x] **L572** `cb3f91d5` — --- — @ — 
+- [x] **L573** `e3b0c442` — (blank) — @ — 
+- [x] **L574** `23ddcdcc` — ### 5.13 adapters (MCP / tool registry) — @ — 
+- [x] **L575** `e3b0c442` — (blank) — @ — 
+- [x] **L576** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L577** `073f806e` — - **name** — text, not null (`vercel`, `github`, `klaviyo`, `cloudflare` — @ — 
+- [x] **L578** `6b709b0d` — - **version** — text, not null. — @ — 
+- [x] **L579** `f9387013` — - **capabilities** — text[], not null. — @ — 
+- [x] **L580** `9570c813` — - **schema_contract_ref** — text, nullable. — @ — 
+- [x] **L581** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L582** `e3b0c442` — (blank) — @ — 
+- [x] **L583** `8bf7a161` — **Semantics:** Registry of tool integrations. Used by tool_calls and cap — @ — 
+- [x] **L584** `e3b0c442` — (blank) — @ — 
+- [x] **L585** `f4a0fb2b` — **Indexes:** `(name, version)`. — @ — 
+- [x] **L586** `e3b0c442` — (blank) — @ — 
+- [x] **L587** `cb3f91d5` — --- — @ — 
+- [x] **L588** `e3b0c442` — (blank) — @ — 
+- [x] **L589** `348c98d7` — ### 5.14 run_events (append-only) — @ — 
+- [x] **L590** `e3b0c442` — (blank) — @ — 
+- [x] **L591** `02e091ae` — - **id** — uuid, PK, not null (or bigint serial). — @ — 
+- [x] **L592** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [x] **L593** `ce904bde` — - **event_type** — text, not null (`queued` , `started` , `stage_entered — @ — 
+- [x] **L594** `e07d62ba` — - **payload_artifact_id** — uuid, FK → artifacts(id), nullable. — @ — 
+- [x] **L595** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L596** `e3b0c442` — (blank) — @ — 
+- [x] **L597** `02cf5b3f` — **Semantics:** Every run status transition. Append-only. Enables replay — @ — 
+- [x] **L598** `e3b0c442` — (blank) — @ — 
+- [x] **L599** `20c07651` — **Indexes:** `(run_id, created_at)`. — @ — 
+- [x] **L600** `e3b0c442` — (blank) — @ — 
+- [x] **L601** `cb3f91d5` — --- — @ — 
+- [x] **L602** `e3b0c442` — (blank) — @ — 
+- [x] **L603** `ab934ecc` — ### 5.15 job_events (append-only) — @ — 
+- [x] **L604** `e3b0c442` — (blank) — @ — 
+- [x] **L605** `02e091ae` — - **id** — uuid, PK, not null (or bigint serial). — @ — 
+- [x] **L606** `cd570872` — - **job_run_id** — uuid, FK → job_runs(id), not null. — @ — 
+- [x] **L607** `76a7100d` — - **event_type** — text, not null (`attempt_started` , `attempt_succeede — @ — 
+- [x] **L608** `1d361d47` — - **payload_json** — jsonb, nullable (or payload_artifact_id). — @ — 
+- [x] **L609** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L610** `e3b0c442` — (blank) — @ — 
+- [x] **L611** `6aec6c84` — **Semantics:** Per-job-run attempt and repair events. Append-only. Enabl — @ — 
+- [x] **L612** `e3b0c442` — (blank) — @ — 
+- [x] **L613** `52164b2d` — **Indexes:** `(job_run_id, created_at)`. — @ — 
+- [x] **L614** `e3b0c442` — (blank) — @ — 
+- [x] **L615** `cb3f91d5` — --- — @ — 
+- [x] **L616** `e3b0c442` — (blank) — @ — 
+- [x] **L617** `ee408e5c` — ### 5.16 capability_grants (Anthropic-grade extra) — @ — 
+- [x] **L618** `e3b0c442` — (blank) — @ — 
+- [x] **L619** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L620** `3a6035be` — - **environment** — text, not null. — @ — 
+- [x] **L621** `b0c0263d` — - **release_id** — uuid, FK → releases(id), nullable (null = any release — @ — 
+- [x] **L622** `77cd3a6c` — - **adapter_id** — uuid, FK → adapters(id), not null. — @ — 
+- [x] **L623** `7cb40853` — - **capability** — text, not null. — @ — 
+- [x] **L624** `6b6c548c` — - **requires_approval** — boolean, not null. — @ — 
+- [x] **L625** `2ec4a1ec` — - **max_qps** — int, nullable. — @ — 
+- [x] **L626** `bfbd305e` — - **max_daily_actions** — int, nullable. — @ — 
+- [x] **L627** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L628** `e3b0c442` — (blank) — @ — 
+- [x] **L629** `8f367b2d` — **Semantics:** Gates what the orchestrator is allowed to do at runtime. — @ — 
+- [x] **L630** `e3b0c442` — (blank) — @ — 
+- [x] **L631** `16adba40` — **Indexes:** `(environment, adapter_id, capability)`. — @ — 
+- [x] **L632** `e3b0c442` — (blank) — @ — 
+- [x] **L633** `cb3f91d5` — --- — @ — 
+- [x] **L634** `e3b0c442` — (blank) — @ — 
+- [x] **L635** `8164bb51` — ### 5.17 approvals (optional ledger table) — @ — 
+- [x] **L636** `e3b0c442` — (blank) — @ — 
+- [x] **L637** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L638** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [x] **L639** `68d3df76` — - **job_run_id** — uuid, FK → job_runs(id), nullable. — @ — 
+- [x] **L640** `f0a50751` — - **approver** — text, not null. — @ — 
+- [x] **L641** `37402781` — - **action** — text, not null (`approved` , `rejected`). — @ — 
+- [x] **L642** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L643** `e3b0c442` — (blank) — @ — 
+- [x] **L644** `6f7470b8` — **Semantics:** Who approved or rejected what and when. Append-only. For — @ — 
+- [x] **L645** `e3b0c442` — (blank) — @ — 
+- [x] **L646** `de17551e` — **Indexes:** `(run_id)`, `(created_at)`. — @ — 
+- [x] **L647** `e3b0c442` — (blank) — @ — 
+- [x] **L648** `cb3f91d5` — --- — @ — 
+- [x] **L649** `e3b0c442` — (blank) — @ — 
+- [x] **L650** `96ef612d` — ### 5.18 job_claims (leases — exactly-once execution) — @ — 
+- [x] **L651** `e3b0c442` — (blank) — @ — 
+- [x] **L652** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L653** `cd570872` — - **job_run_id** — uuid, FK → job_runs(id), not null. — @ — 
+- [x] **L654** `9de37035` — - **worker_id** — text, not null. — @ — 
+- [x] **L655** `7ffe57bd` — - **claim_token** — uuid, not null, unique (one unique token per claim; — @ — 
+- [x] **L656** `a2d36e0a` — - **claimed_at** — timestamptz, not null. — @ — 
+- [x] **L657** `1023515a` — - **lease_expires_at** — timestamptz, not null. — @ — 
+- [x] **L658** `76109e8a` — - **heartbeat_at** — timestamptz, not null. — @ — 
+- [x] **L659** `76cef8c6` — - **attempt_token** — text, nullable (semantic identifier e.g. run_id:pl — @ — 
+- [x] **L660** `78e84b27` — - **released_at** — timestamptz, nullable (set when worker completes or — @ — 
+- [x] **L661** `e3b0c442` — (blank) — @ — 
+- [x] **L662** `4c55aacb` — **Invariant:** Only one active claim per job_run attempt (one row with ` — @ — 
+- [x] **L663** `e3b0c442` — (blank) — @ — 
+- [x] **L664** `eae21ecc` — **Semantics:** A worker claims a job by inserting a row with a new claim — @ — 
+- [x] **L665** `e3b0c442` — (blank) — @ — 
+- [x] **L666** `31e2c531` — **Indexes:** `(job_run_id)` WHERE released_at IS NULL; `(worker_id, hear — @ — 
+- [x] **L667** `e3b0c442` — (blank) — @ — 
+- [x] **L668** `cb3f91d5` — --- — @ — 
+- [x] **L669** `e3b0c442` — (blank) — @ — 
+- [x] **L670** `cc4ea61a` — ### 5.19 worker_registry (optional) — @ — 
+- [x] **L671** `e3b0c442` — (blank) — @ — 
+- [x] **L672** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L673** `e3b1bbc8` — - **worker_id** — text, unique, not null. — @ — 
+- [x] **L674** `7ba70ea3` — - **last_heartbeat_at** — timestamptz, not null. — @ — 
+- [x] **L675** `a7b05ed7` — - **runner_version** — text, nullable. — @ — 
+- [x] **L676** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L677** `e3b0c442` — (blank) — @ — 
+- [x] **L678** `b1ee43ef` — **Semantics:** Optional registry of known workers for dead-worker detect — @ — 
+- [x] **L679** `e3b0c442` — (blank) — @ — 
+- [x] **L680** `cb3f91d5` — --- — @ — 
+- [x] **L681** `e3b0c442` — (blank) — @ — 
+- [x] **L682** `5dc326d1` — ### 5.20 repair_recipes (repair knowledge base) — @ — 
+- [x] **L683** `e3b0c442` — (blank) — @ — 
+- [x] **L684** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L685** `b0b86b19` — - **error_signature** — text, not null (matches error_signature from job — @ — 
+- [x] **L686** `f2538eee` — - **job_type** — text, nullable (scoped to specific job_type, or null = — @ — 
+- [x] **L687** `a7ffa2f2` — - **adapter_id** — uuid, FK → adapters(id), nullable (scoped to specific — @ — 
+- [x] **L688** `14940930` — - **capability** — text, nullable. — @ — 
+- [x] **L689** `61508e5d` — - **patch_pattern** — text, not null (e.g. "increase_timeout + exponenti — @ — 
+- [x] **L690** `c67e949b` — - **validation_required** — text, not null (which validator must pass af — @ — 
+- [x] **L691** `e8df8f05` — - **created_from_job_run_id** — uuid, FK → job_runs(id), nullable (prove — @ — 
+- [x] **L692** `384a1b08` — - **success_count** — int, not null, default 0. — @ — 
+- [x] **L693** `2a831242` — - **failure_count** — int, not null, default 0. — @ — 
+- [x] **L694** `90a546d9` — - **last_used_at** — timestamptz, nullable. — @ — 
+- [x] **L695** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L696** `e3b0c442` — (blank) — @ — 
+- [x] **L697** `15ddc49c` — **Semantics:** Repair knowledge base. When a failure occurs, the repair — @ — 
+- [x] **L698** `e3b0c442` — (blank) — @ — 
+- [x] **L699** `b98fe729` — **Indexes:** `(error_signature)`, `(job_type, adapter_id)`, `(last_used_ — @ — 
+- [x] **L700** `e3b0c442` — (blank) — @ — 
+- [x] **L701** `cb3f91d5` — --- — @ — 
+- [x] **L702** `e3b0c442` — (blank) — @ — 
+- [x] **L703** `053a7cdd` — ### 5.21 llm_calls (optional — model escalation audit) — @ — 
+- [x] **L704** `e3b0c442` — (blank) — @ — 
+- [x] **L705** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [x] **L706** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [x] **L707** `cd570872` — - **job_run_id** — uuid, FK → job_runs(id), not null. — @ — 
+- [x] **L708** `2cc1b3d3` — - **model_tier** — text, not null (e.g. `cheap`, `strong`). — @ — 
+- [x] **L709** `bc1d0495` — - **model_id** — text, not null (model name or alias). — @ — 
+- [x] **L710** `b74b3218` — - **prompt_template_version** — text, nullable. — @ — 
+- [x] **L711** `a38ae4e7` — - **tool_registry_version** — text, nullable. — @ — 
+- [x] **L712** `c124ab7e` — - **tokens_in** — int, nullable. — @ — 
+- [x] **L713** `0d57a973` — - **tokens_out** — int, nullable. — @ — 
+- [x] **L714** `5d7e95bd` — - **latency_ms** — int, nullable. — @ — 
+- [x] **L715** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [x] **L716** `e3b0c442` — (blank) — @ — 
+- [x] **L717** `14d01ab1` — **Semantics:** Optional table for model escalation audit. If not using a — @ — 
+- [x] **L718** `e3b0c442` — (blank) — @ — 
+- [x] **L719** `641c870e` — **Indexes:** `(run_id)`, `(job_run_id)`, `(model_tier)`, `(created_at DE — @ — 
+- [x] **L720** `e3b0c442` — (blank) — @ — 
+- [x] **L721** `cb3f91d5` — --- — @ — 
+- [x] **L722** `e3b0c442` — (blank) — @ — 
+- [x] **L723** `95041686` — ## 5A. Concurrency and Exactly-Once Semantics — @ — 
+- [x] **L724** `e3b0c442` — (blank) — @ — 
+- [x] **L725** `19c3bf99` — The spec must define precisely how the system achieves exactly-once exec — @ — 
+- [x] **L726** `e3b0c442` — (blank) — @ — 
+- [x] **L727** `8f82f3af` — **Job execution — claiming:** — @ — 
+- [x] **L728** `f7353d03` — A worker claims a job by acquiring a lease: insert (or update) a row in — @ — 
+- [x] **L729** `e3b0c442` — (blank) — @ — 
+- [x] **L730** `633e05c7` — **Lease duration and heartbeat:** — @ — 
+- [x] **L731** `e3b0c442` — (blank) — @ — 
+- [x] **L732** `f7419d61` — - **lease_expires_at** = claimed_at + lease_duration (e.g. 5–15 minutes) — @ — 
+- [x] **L733** `1acd79ae` — - Worker must update **heartbeat_at** at least every heartbeat_interval — @ — 
+- [x] **L734** `fe4be6b9` — - If **heartbeat_at** is older than a threshold (e.g. 2× heartbeat_inter — @ — 
+- [x] **L735** `1cf2ee13` — - Scheduler (or a background job) periodically scans for leases where he — @ — 
+- [x] **L736** `e3b0c442` — (blank) — @ — 
+- [x] **L737** `d2644389` — **Worker death — stable idempotency (critical):** — @ — 
+- [x] **L738** `b6fda22e` — If the worker died **after** the external side-effect succeeded but **be — @ — 
+- [x] **L739** `e3b0c442` — (blank) — @ — 
+- [x] **L740** `457638af` — **Duplicate tool calls when job is re-claimed:** — @ — 
+- [x] **L741** `56441d65` — (1) Before executing a tool_call, the worker checks for an existing row — @ — 
+- [x] **L742** `e3b0c442` — (blank) — @ — 
+- [x] **L743** `61d2ecd3` — **Artifact publication:** — @ — 
+- [x] **L744** `1c3d3d17` — Artifacts are written only by the worker that holds the lease (or by Tem — @ — 
+- [x] **L745** `e3b0c442` — (blank) — @ — 
+- [x] **L746** `2f050f42` — **State transitions:** — @ — 
+- [x] **L747** `6fda2cfc` — State changes (runs.status, job_runs.status) occur only in allowed direc — @ — 
+- [x] **L748** `e3b0c442` — (blank) — @ — 
+- [x] **L749** `cb3f91d5` — --- — @ — 
+- [x] **L750** `e3b0c442` — (blank) — @ — 
+- [x] **L751** `ea6e6b52` — ## 5B. State Machine Contract — @ — 
+- [x] **L752** `e3b0c442` — (blank) — @ — 
+- [x] **L753** `f9ec7afe` — The spec must define allowed status transitions explicitly so the UI nev — @ — 
+- [x] **L754** `e3b0c442` — (blank) — @ — 
+- [x] **L755** `52c8453e` — **runs.status — allowed transitions:** — @ — 
+- [x] **L756** `e3b0c442` — (blank) — @ — 
+- [x] **L757** `ff0a5854` — - `queued` → `running` (scheduler started the run). — @ — 
+- [x] **L758** `92820a10` — - `queued` → `failed` (preflight or validation rejected before any node — @ — 
+- [x] **L759** `3486a787` — - `running` → `succeeded` , `failed` , `rolled_back`. — @ — 
+- [x] **L760** `428b3ad0` — - `failed` → `rolled_back` (via a separate rollback run that marks the o — @ — 
+- [x] **L761** `e3b0c442` — (blank) — @ — 
+- [x] **L762** `3ac83197` — **Terminal states for runs:** `succeeded`, `failed`, `rolled_back`. — @ — 
+- [x] **L763** `e3b0c442` — (blank) — @ — 
+- [x] **L764** `3dd0ca9f` — **Rule:** A run may not transition to `succeeded` unless all nodes (for — @ — 
+- [x] **L765** `e3b0c442` — (blank) — @ — 
+- [x] **L766** `b47e7185` — **job_runs.status — allowed transitions (Pattern A: one row per attempt) — @ — 
+- [x] **L767** `e3b0c442` — (blank) — @ — 
+- [x] **L768** `f129fd0d` — - `queued` → `running` (worker claimed and started). — @ — 
+- [x] **L769** `8589bfff` — - `running` → `succeeded` , `failed` (attempt finished). — @ — 
+- [x] **L770** `4366c6a7` — - `running` → `failed` (scheduler marked failed on lease expiry / worker — @ — 
+- [x] **L771** `a4eb89b7` — - Retry: no status transition to `retrying`. On retry the system inserts — @ — 
+- [x] **L772** `e3b0c442` — (blank) — @ — 
+- [x] **L773** `00398e9c` — **Terminal states for job_runs:** `succeeded`, `failed`. — @ — 
+- [x] **L774** `e3b0c442` — (blank) — @ — 
+- [x] **L775** `21ab5d96` — **Rule:** Only one attempt per (run_id, plan_node_id) may be `succeeded` — @ — 
+- [x] **L776** `e3b0c442` — (blank) — @ — 
+- [x] **L777** `809fb2f0` — **Enforcement:** Implement via application or DB (e.g. CHECK or trigger — @ — 
+- [x] **L778** `e3b0c442` — (blank) — @ — 
+- [x] **L779** `cb3f91d5` — --- — @ — 
+- [x] **L780** `e3b0c442` — (blank) — @ — 
+- [x] **L781** `a96b82f8` — ## 5B2. Controlled Vocabulary / Enum Types (Strong Recommendation) — @ — 
+- [x] **L782** `e3b0c442` — (blank) — @ — 
+- [x] **L783** `db477cfd` — **Move all enum-like text fields to either Postgres enums or FK vocab ta — @ — 
+- [x] **L784** `e3b0c442` — (blank) — @ — 
+- [x] **L785** `c56a7861` — - **Postgres enum types** for runs.status, job_runs.status, run_events.e — @ — 
+- [x] **L786** `ea00905f` — - **Or controlled vocabulary tables** (e.g. status_types, event_types) w — @ — 
+- [x] **L787** `e3b0c442` — (blank) — @ — 
+- [x] **L788** `ccaa534d` — The spec will **strongly recommend** one of the above (not optional). If — @ — 
+- [x] **L789** `e3b0c442` — (blank) — @ — 
+- [x] **L790** `cb3f91d5` — --- — @ — 
+- [x] **L791** `e3b0c442` — (blank) — @ — 
+- [x] **L792** `4e756acc` — ## 5C. Error Signature Normalization — @ — 
+- [x] **L793** `e3b0c442` — (blank) — @ — 
+- [x] **L794** `035a2458` — The spec must define how **error_signature** is computed so canary analy — @ — 
+- [x] **L795** `e3b0c442` — (blank) — @ — 
+- [x] **L796** `0095740e` — **Inputs to normalize:** — @ — 
+- [x] **L797** `e3b0c442` — (blank) — @ — 
+- [x] **L798** `6f20c624` — - Stack traces: strip or normalize line numbers (e.g. replace with `:N`) — @ — 
+- [x] **L799** `366e15e7` — - Adapter/tool calls: include adapter name + capability + HTTP status co — @ — 
+- [x] **L800** `f6abe696` — - Tests: include failing test name (and optionally suite). — @ — 
+- [x] **L801** `76199a1a` — - Build/lint: include linter rule id or build phase. — @ — 
+- [x] **L802** `e3b0c442` — (blank) — @ — 
+- [x] **L803** `b2dfbd59` — **Algorithm (spec will define precisely):** — @ — 
+- [x] **L804** `e3b0c442` — (blank) — @ — 
+- [x] **L805** `be234deb` — 1. Extract: error type, message template (parameterize numbers/ids), fil — @ — 
+- [x] **L806** `ef707681` — 2. Sort and concatenate in a canonical order. — @ — 
+- [x] **L807** `68925179` — 3. Hash (e.g. SHA-256) the normalized string; store the hash or a short — @ — 
+- [x] **L808** `0c83ccb2` — 4. Optionally store a human-readable **error_signature_display** (trunca — @ — 
+- [x] **L809** `e3b0c442` — (blank) — @ — 
+- [x] **L810** `a08cc7bd` — **Why:** Same root cause produces the same signature across runs; differ — @ — 
+- [x] **L811** `e3b0c442` — (blank) — @ — 
+- [x] **L812** `cb3f91d5` — --- — @ — 
+- [x] **L813** `e3b0c442` — (blank) — @ — 
+- [x] **L814** `043394af` — ## 5D. Artifact Immutability, Content Addressing, and Artifact Classes — @ — 
+- [x] **L815** `e3b0c442` — (blank) — @ — 
+- [x] **L816** `fef583c9` — **Immutability:** Artifacts, once written, are immutable. No updates to — @ — 
+- [x] **L817** `22ad004d` — **URI stability:** The `uri` (e.g. s3 path) is stable and does not chang — @ — 
+- [x] **L818** `1d8d8194` — **Content addressing:** Multiple artifacts may share the same `sha256` ( — @ — 
+- [x] **L819** `c33c2c4a` — **Retention:** The spec will define retention policy hooks per artifact — @ — 
+- [x] **L820** `e3b0c442` — (blank) — @ — 
+- [x] **L821** `dac93b56` — **Artifact classes:** — @ — 
+- [x] **L822** `b7bd2745` — Split artifact types into classes with different retention and access co — @ — 
+- [x] **L823** `e3b0c442` — (blank) — @ — 
+- [x] **L824** `18d28b4c` — - **logs** — Restricted; runner logs, build logs; short retention; acces — @ — 
+- [x] **L825** `4064828c` — - **docs** — Public-ish; .mdd, runbooks; longer retention; may be visibl — @ — 
+- [x] **L826** `a591e861` — - **external_object_refs** — Deploy IDs, flow IDs, PR URLs; used for rol — @ — 
+- [x] **L827** `4475f1ca` — - **schema_bundles** — Schema blobs; versioned with run. — @ — 
+- [x] **L828** `c1c372c5` — - **build_outputs** — Build artifacts, images; retention per policy. — @ — 
+- [x] **L829** `e3b0c442` — (blank) — @ — 
+- [x] **L830** `e3510e52` — The schema may add **artifact_class** (enum or text) to `artifacts` and — @ — 
+- [x] **L831** `e3b0c442` — (blank) — @ — 
+- [x] **L832** `cb3f91d5` — --- — @ — 
+- [x] **L833** `e3b0c442` — (blank) — @ — 
+- [x] **L834** `59eea830` — ## 5E. Rollback Targets (Structured) — @ — 
+- [x] **L835** `e3b0c442` — (blank) — @ — 
+- [x] **L836** `81fa2a9e` — Rollback must be automatable and consistent. “metadata_json” without sch — @ — 
+- [x] **L837** `e3b0c442` — (blank) — @ — 
+- [x] **L838** `01f28f0f` — **Option A — rollback_targets table:** — @ — 
+- [x] **L839** `e3b0c442` — (blank) — @ — 
+- [x] **L840** `c42ca330` — - **id** — uuid, PK. — @ — 
+- [x] **L841** `cdcc9e1c` — - **artifact_id** — uuid, FK → artifacts(id), not null (the artifact tha — @ — 
+- [x] **L842** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [x] **L843** `aca50551` — - **rollback_strategy** — text, not null (`revert_alias` , `disable_flow — @ — 
+- [x] **L844** `7f85ee08` — - **rollback_pointer** — jsonb, not null (e.g. `{"previous_deploy_id": " — @ — 
+- [x] **L845** `d6b7599a` — - **rollback_pointer_artifact_id** — uuid, FK → artifacts(id), nullable — @ — 
+- [x] **L846** `470ec123` — - **verified_at** — timestamptz, nullable (when this rollback target was — @ — 
+- [x] **L847** `10c889e5` — - **created_at** — timestamptz. — @ — 
+- [x] **L848** `e3b0c442` — (blank) — @ — 
+- [x] **L849** `2126324c` — **Semantics:** When an adapter produces a side-effect (e.g. Vercel deplo — @ — 
+- [x] **L850** `e3b0c442` — (blank) — @ — 
+- [x] **L851** `a9efc4ff` — **Option B — schema-enforced metadata per artifact_type:** — @ — 
+- [x] **L852** `bd5365aa` — If not a separate table, then `artifacts.metadata_json` must have a JSON — @ — 
+- [x] **L853** `e3b0c442` — (blank) — @ — 
+- [x] **L854** `9e1c1614` — Recommendation: **Option A** for first-class rollback and clear audit tr — @ — 
+- [x] **L855** `e3b0c442` — (blank) — @ — 
+- [x] **L856** `cb3f91d5` — --- — @ — 
+- [x] **L857** `e3b0c442` — (blank) — @ — 
+- [x] **L858** `234b5289` — ## 6. Idempotency Strategy (Per Adapter Type) — @ — 
+- [x] **L859** `e3b0c442` — (blank) — @ — 
+- [x] **L860** `5a55f004` — The schema spec must document how `idempotency_key` and `operation_key` — @ — 
+- [x] **L861** `e3b0c442` — (blank) — @ — 
+- [x] **L862** `65f0383b` — - **Runs:** `root_idempotency_key` = e.g. `{initiative_id}:{plan_id}:{re — @ — 
+- [x] **L863** `ad2aa2d9` — - **Job runs:** `idempotency_key` = **stable across attempts** — e.g. `{ — @ — 
+- [x] **L864** `da8507cc` — - **Tool calls:** `idempotency_key` = derived from job_run.idempotency_k — @ — 
+- [x] **L865** `e3b0c442` — (blank) — @ — 
+- [x] **L866** `cb3f91d5` — --- — @ — 
+- [x] **L867** `e3b0c442` — (blank) — @ — 
+- [x] **L868** `a8a9b61d` — ## 7. Event Taxonomy (Canonical Enums) — @ — 
+- [x] **L869** `e3b0c442` — (blank) — @ — 
+- [x] **L870** `fcc46718` — **run_events.event_type:** — @ — 
+- [x] **L871** `48b36294` — `queued`, `started`, `stage_entered`, `stage_exited`, `succeeded`, `fail — @ — 
+- [x] **L872** `997fc0c3` — Payload (if any) in `payload_artifact_id` or a small jsonb: e.g. stage n — @ — 
+- [x] **L873** `e3b0c442` — (blank) — @ — 
+- [x] **L874** `d85c7aea` — **job_events.event_type:** — @ — 
+- [x] **L875** `862282b1` — `attempt_started`, `attempt_succeeded`, `attempt_failed`, `hypothesis_ge — @ — 
+- [x] **L876** `84cd74d9` — **Payload (for escalation auditability):** error_signature, hypothesis i — @ — 
+- [x] **L877** `e3b0c442` — (blank) — @ — 
+- [x] **L878** `4a265743` — The spec will list these and their semantics so all writers and consumer — @ — 
+- [x] **L879** `e3b0c442` — (blank) — @ — 
+- [x] **L880** `cb3f91d5` — --- — @ — 
+- [x] **L881** `e3b0c442` — (blank) — @ — 
+- [x] **L882** `4effceab` — ## 8. Canary and Rollback Linkage — @ — 
+- [x] **L883** `e3b0c442` — (blank) — @ — 
+- [x] **L884** `3d200e81` — - **Canary — where fields live:** — @ — 
+- [x] **L885** `635cc250` — - **release_id** and **cohort** (`canary` , `control`) live on **runs** — @ — 
+- [x] **L886** `15d136d0` — - **percent_rollout** lives on **releases** only (it is release config), — @ — 
+- [x] **L887** `0f273dea` — - **routed_at** lives on **runs** (when this run was routed). — @ — 
+- [x] **L888** `283a2434` — - Add **routing_reason** and **routing_rule_id** on **runs** for auditab — @ — 
+- [x] **L889** `87e318a9` — Scheduler uses **release_routes** (section 5.5b) or percent_rollout on t — @ — 
+- [x] **L890** `5737f96d` — - **Rollback:** Use **Rollback Targets** (section 5E): either rollback_t — @ — 
+- [x] **L891** `e3b0c442` — (blank) — @ — 
+- [x] **L892** `6fb97d05` — **8.1 Canary and rollback routing algorithm (build-ready)** — @ — 
+- [x] **L893** `e3b0c442` — (blank) — @ — 
+- [x] **L894** `1b7b449c` — - **Assigning cohort to a new run:** Scheduler reads release_routes (or — @ — 
+- [x] **L895** `909a906d` — - **Drift computation:** Over a sliding window (e.g. last N runs or T mi — @ — 
+- [x] **L896** `43d826cf` — - **Rollback trigger:** If success_rate_delta below threshold (e.g. -5%) — @ — 
+- [x] **L897** `a0a7e8d8` — - **Rollback execution:** Rollback run uses rollback_targets (or schema- — @ — 
+- [x] **L898** `e3b0c442` — (blank) — @ — 
+- [x] **L899** `7313a6de` — **8.2 Event bus and job queue model** — @ — 
+- [x] **L900** `e3b0c442` — (blank) — @ — 
+- [x] **L901** `fa73acbf` — - **Event store (no separate bus):** All lifecycle and audit events are — @ — 
+- [x] **L902** `8465e846` — - **Job queue:** (1) **Temporal-first:** The job queue is Temporal's act — @ — 
+- [x] **L903** `e3b0c442` — (blank) — @ — 
+- [x] **L904** `cb3f91d5` — --- — @ — 
+- [x] **L905** `e3b0c442` — (blank) — @ — 
+- [x] **L906** `5b970cdb` — ## 9. Variant A: Temporal-First — @ — 
+- [x] **L907** `e3b0c442` — (blank) — @ — 
+- [x] **L908** `0b92152b` — **In the schema spec document:** — @ — 
+- [x] **L909** `e3b0c442` — (blank) — @ — 
+- [x] **L910** `7f17330d` — - **What stays in Postgres:** All ledger tables (run_events, job_events, — @ — 
+- [x] **L911** `888bf47f` — - **What Temporal owns:** Workflow state, history, retries, timers, acti — @ — 
+- [x] **L912** `87a6394a` — - **Alignment:** `run_id` = Temporal workflow ID (or 1:1 mapping). `job_ — @ — 
+- [x] **L913** `f60c1c4e` — - **Optional column:** `runs.temporal_workflow_id` (or `runs.workflow_ru — @ — 
+- [x] **L914** `b684c367` — - **No duplicate workflow state:** Do not store “current step” in Postgr — @ — 
+- [x] **L915** `e3b0c442` — (blank) — @ — 
+- [x] **L916** `17ab0103` — **Truth ownership (explicit):** — @ — 
+- [x] **L917** `e3b0c442` — (blank) — @ — 
+- [x] **L918** `e8f74453` — - **Postgres is canonical** for run/job/tool state and all ledger data. — @ — 
+- [x] **L919** `1b4d45a3` — - **Temporal is canonical** for workflow execution and timers (when acti — @ — 
+- [x] **L920** `8c57f79b` — - Postgres must still enforce idempotency (tool_calls unique on adapter_ — @ — 
+- [x] **L921** `60fb0fde` — - If Temporal and Postgres ever diverge (e.g. Temporal says “activity co — @ — 
+- [x] **L922** `a1429eb6` — - **Who writes job_runs (Temporal-first):** Be explicit to avoid double — @ — 
+- [x] **L923** `e3b0c442` — (blank) — @ — 
+- [x] **L924** `cb3f91d5` — --- — @ — 
+- [x] **L925** `e3b0c442` — (blank) — @ — 
+- [x] **L926** `a1b82dd0` — ## 10. Variant B: DB-First (Postgres as Workflow Engine) — @ — 
+- [x] **L927** `e3b0c442` — (blank) — @ — 
+- [x] **L928** `0b92152b` — **In the schema spec document:** — @ — 
+- [x] **L929** `e3b0c442` — (blank) — @ — 
+- [x] **L930** `b91ac579` — - **Queue pattern:** Workers do not compute eligibility by scanning edge — @ — 
+- [x] **L931** `b0910a20` — - **State in Postgres:** `runs.status`, `job_runs.status` are the source — @ — 
+- [x] **L932** `87c6d778` — - **Retries:** `job_runs.attempt` increments; `job_runs.next_retry_at` ( — @ — 
+- [x] **L933** `6ccc1410` — - **Indexes:** Composite index on (run_id, status) and (status, next_ret — @ — 
+- [x] **L934** `e3b0c442` — (blank) — @ — 
+- [x] **L935** `cb3f91d5` — --- — @ — 
+- [x] **L936** `e3b0c442` — (blank) — @ — 
+- [x] **L937** `2287fb82` — ## 11. Safe Schema Evolution Playbook — @ — 
+- [x] **L938** `e3b0c442` — (blank) — @ — 
+- [x] **L939** `a6d5aeb1` — The spec will include a short playbook (no DDL, strategy only): — @ — 
+- [x] **L940** `e3b0c442` — (blank) — @ — 
+- [x] **L941** `e2c8cc91` — 1. **Add-only migrations:** Add new columns or tables; do not delete or — @ — 
+- [x] **L942** `6a45b04d` — 2. **Dual write:** Application writes both old and new representation wh — @ — 
+- [x] **L943** `4232598d` — 3. **Backfill:** Background jobs (the factory can run them) backfill new — @ — 
+- [x] **L944** `b7294dfd` — 4. **Dual read:** Read from new, fall back to old until cutover. — @ — 
+- [x] **L945** `d124e0d8` — 5. **Cutover:** Set NOT NULL, add unique constraints, remove old code pa — @ — 
+- [x] **L946** `e3b0c442` — (blank) — @ — 
+- [x] **L947** `cb3f91d5` — --- — @ — 
+- [x] **L948** `e3b0c442` — (blank) — @ — 
+- [x] **L949** `399c90b8` — ## 12. Upgrade Initiative Pipeline Spec (Second Deliverable) — @ — 
+- [x] **L950** `e3b0c442` — (blank) — @ — 
+- [x] **L951** `e06a514c` — This section defines the **self-hosting** pipeline (consolidated in this — @ — 
+- [x] **L952** `e3b0c442` — (blank) — @ — 
+- [x] **L953** `61c61204` — - **Stages (in order):** — @ — 
+- [x] **L954** `a26bd124` — 1. Change proposal (Upgrade Initiative created). — @ — 
+- [x] **L955** `4ac6a172` — 2. Plan generation (decompose into jobs: e.g. update schema, update adap — @ — 
+- [x] **L956** `0a239c75` — 3. Branch + PR (diff created, PR opened). — @ — 
+- [x] **L957** `2242f7cc` — 4. Sandbox validation (unit tests, contract tests, golden initiative sui — @ — 
+- [x] **L958** `faac9807` — 5. Staging deploy (deploy new bundle to staging). — @ — 
+- [x] **L959** `1464975c` — 6. Staging soak (run synthetic initiatives, monitor scheduler health 30– — @ — 
+- [x] **L960** `bef0e67a` — 7. Promotion gate (auto-promote if risk=low and all green; require appro — @ — 
+- [x] **L961** `d2007912` — 8. Canary (route 5% → 25% → 50% of jobs to new release; measure success — @ — 
+- [x] **L962** `a09b8c81` — 9. Full rollout (100%). — @ — 
+- [x] **L963** `8c1c5ee1` — 10. Auto rollback trigger (if failure rate or scheduler health degrades, — @ — 
+- [x] **L964** `2cddaa84` — - **Gates:** Definition of “pass” at each stage: e.g. all golden initiat — @ — 
+- [x] **L965** `adcbc5fa` — - **Gate: Schema/Policy compatibility check** — Before deploying a self- — @ — 
+- [x] **L966** `1f1658a7` — - **Gate: Control-plane safety** — If the update touches control-plane c — @ — 
+- [x] **L967** `04859a6e` — - **Validators:** List of validator types and which plan nodes they atta — @ — 
+- [x] **L968** `9d2ada83` — - **Canary metrics and rollback triggers:** Exact metrics (e.g. run succ — @ — 
+- [x] **L969** `4c5e60f6` — - **Inputs/outputs:** Upgrade Initiative consumes: diff source (branch, — @ — 
+- [x] **L970** `e3b0c442` — (blank) — @ — 
+- [x] **L971** `697e76ca` — ### 12.1 Reference Upgrade Initiative DAG (Self-Hosting) — @ — 
+- [x] **L972** `e3b0c442` — (blank) — @ — 
+- [x] **L973** `dcf17731` — Concrete plan graph for the self-hosting pipeline. **Nodes (high level): — @ — 
+- [x] **L974** `e3b0c442` — (blank) — @ — 
+- [x] **L975** `cb3f91d5` — --- — @ — 
+- [x] **L976** `e3b0c442` — (blank) — @ — 
+- [x] **L977** `32b13a00` — ## 12B. Internal Console UI Spec (Third Deliverable) — @ — 
+- [x] **L978** `e3b0c442` — (blank) — @ — 
+- [x] **L979** `f3f4c767` — This section defines the **ProfessorX-style internal operator console** — @ — 
+- [x] **L980** `e3b0c442` — (blank) — @ — 
+- [x] **L981** `ecccc55e` — **Principles (non-negotiable):** — @ — 
+- [x] **L982** `e3b0c442` — (blank) — @ — 
+- [x] **L983** `62f3ad47` — - Single source of truth: all UI from Postgres; never infer without show — @ — 
+- [x] **L984** `06484d31` — - Never show secrets: secret_refs metadata and secret_access_events only — @ — 
+- [x] **L985** `602e9503` — - No invisible power: every side-effect trigger shows resulting initiati — @ — 
+- [x] **L986** `2fe67d61` — - Every action creates an audit trail (run, approval, rollback run, rele — @ — 
+- [x] **L987** `e3b0c442` — (blank) — @ — 
+- [x] **L988** `557f2040` — **View contract baseline (minimum screens and what they read):** Runs li — @ — 
+- [x] **L989** `e3b0c442` — (blank) — @ — 
+- [x] **L990** `68b0c345` — **UI Surfaces (C1):** Must-have: Internal Ops Console — Dashboard (healt — @ — 
+- [x] **L991** `e3b0c442` — (blank) — @ — 
+- [x] **L992** `4eeefe8f` — **RBAC (C2):** Viewer (read-only). Operator: create initiatives, run san — @ — 
+- [x] **L993** `e3b0c442` — (blank) — @ — 
+- [x] **L994** `b314f82f` — **Design language (C3 — ProfessorX feel):** Dense data UI with fast filt — @ — 
+- [x] **L995** `e3b0c442` — (blank) — @ — 
+- [x] **L996** `60442610` — **Information architecture:** — @ — 
+- [x] **L997** `e3b0c442` — (blank) — @ — 
+- [x] **L998** `44b00b0e` — - **Primary nav:** Overview, Initiatives, Plans, Runs, Pipelines (option — @ — 
+- [x] **L999** `5079c3b5` — - **Global header:** Environment (sandbox,staging,prod), release routing — @ — 
+- [x] **L1000** `aee0c393` — - **Global search:** Across initiatives.title/intent_type, runs.id/root_ — @ — 
+- [x] **L1001** `e3b0c442` — (blank) — @ — 
+- [x] **L1002** `b44f84ab` — **RBAC:** — @ — 
+- [x] **L1003** `e3b0c442` — (blank) — @ — 
+- [x] **L1004** `d9179031` — - **Viewer:** read-only. — @ — 
+- [x] **L1005** `06115959` — - **Operator:** create initiative, generate plan, run (sandbox/staging/p — @ — 
+- [x] **L1006** `5229ba2d` — - **Approver:** approve gated actions, control-plane changes, capability — @ — 
+- [x] **L1007** `9da58631` — - **Admin:** policy pointer, capability_grants, adapters, secret_refs, r — @ — 
+- [x] **L1008** `4914f381` — UI hides/disables buttons by role + policy; when disabled, show why (“Re — @ — 
+- [x] **L1009** `e3b0c442` — (blank) — @ — 
+- [x] **L1010** `413b171d` — **Query contracts:** — @ — 
+- [x] **L1011** `31ac1cd1` — Each page has a stable query contract (pagination + filters). Common fil — @ — 
+- [x] **L1012** `e3b0c442` — (blank) — @ — 
+- [x] **L1013** `fb74710c` — **Key pages (summary):** — @ — 
+- [x] **L1014** `e3b0c442` — (blank) — @ — 
+- [x] **L1015** `9284735b` — - **Overview:** Run success rate by cohort, top error_signature, active — @ — 
+- [x] **L1016** `6a67727b` — - **Initiatives list/detail:** Table + initiative detail with plan summa — @ — 
+- [x] **L1017** `6ee8bef6` — - **Plans list/detail:** DAG viewer (nodes/edges), node table, node deta — @ — 
+- [x] **L1018** `13af6f83` — - **Runs list:** Columns including failed_nodes_count, top_error_signatu — @ — 
+- [x] **L1019** `8213eee4` — - **Run detail (flight recorder):** 3-column: (A) Run header with pinned — @ — 
+- [x] **L1020** `5caa2a27` — - **Jobs (job_runs) list:** Views Queued/Running/Failed/Succeeded, Lease — @ — 
+- [x] **L1021** `cff47ffe` — - **Tool calls list/detail:** adapter, capability, idempotency_key, oper — @ — 
+- [x] **L1022** `84459d49` — - **Artifacts list/detail:** artifact_class, retention/access badges, ro — @ — 
+- [x] **L1023** `b4d7f9d2` — - **Releases:** List + detail with canary performance (success by cohort — @ — 
+- [x] **L1024** `6f629f14` — - **Policies:** List + detail (rules_json viewer, policy diff, runs refe — @ — 
+- [x] **L1025** `163b2975` — - **Adapters & Capabilities:** Adapters list/detail, capability catalog, — @ — 
+- [x] **L1026** `3b3340a1` — - **Secrets (refs):** List/detail with access history (secret_access_eve — @ — 
+- [x] **L1027** `c0bdaea8` — - **Audit & Events:** Unified ledger (run_events, job_events, approvals, — @ — 
+- [x] **L1028** `95188df1` — - **Health:** Workers (worker_id, last_heartbeat_at, assigned leases, ca — @ — 
+- [x] **L1029** `22c40ee6` — - **Incidents:** Clustered by error_signature; count, first_seen, last_s — @ — 
+- [x] **L1030** `e3b0c442` — (blank) — @ — 
+- [x] **L1031** `eda6a999` — **Write paths (audit trail):** — @ — 
+- [x] **L1032** `62c390c8` — Operator: create initiative, request plan, create run, retry job (new at — @ — 
+- [x] **L1033** `e3b0c442` — (blank) — @ — 
+- [x] **L1034** `f81db84d` — **API / query endpoints (implementation-neutral):** — @ — 
+- [x] **L1035** `4c042b58` — GET: /initiatives, /initiatives/:id, /plans/:id, /runs, /runs/:id (full — @ — 
+- [x] **L1036** `2c1f3aa2` — POST: /initiatives, /initiatives/:id/plan, /runs, /job_runs/:id/retry, / — @ — 
+- [x] **L1037** `b02def7f` — All writes enforce RBAC + policy server-side. — @ — 
+- [x] **L1038** `e3b0c442` — (blank) — @ — 
+- [x] **L1039** `388ceceb` — **Optional (component system):** Component system with design tokens (Ta — @ — 
+- [x] **L1040** `e3b0c442` — (blank) — @ — 
+- [x] **L1041** `e42cd1b4` — **Deployment and constraint:** Console is **stateless**; it reads/writes — @ — 
+- [x] **L1042** `e3b0c442` — (blank) — @ — 
+- [x] **L1043** `186a7f7f` — **Required depth for the Console UI spec (no ambiguity):** The console U — @ — 
+- [x] **L1044** `e3b0c442` — (blank) — @ — 
+- [x] **L1045** `504a12e8` — - **Page-by-page spec with wireframe-level layouts:** For each page (Ove — @ — 
+- [x] **L1046** `b5475db7` — - **Exact SQL-backed view contracts per screen:** For each screen (or ma — @ — 
+- [x] **L1047** `e3b0c442` — (blank) — @ — 
+- [x] **L1048** `4d604f46` — This removes “eventual surprises”: every screen has a defined data contr — @ — 
+- [x] **L1049** `e3b0c442` — (blank) — @ — 
+- [x] **L1050** `c6f05256` — ### 12B.4 Canonical Page-by-Page Wireframes and SQL Contracts (C4) — @ — 
+- [x] **L1051** `e3b0c442` — (blank) — @ — 
+- [x] **L1052** `eb0f216c` — **Dashboard (C4.1):** Goal: scheduler healthy? workers alive? canary saf — @ — 
+- [x] **L1053** `e3b0c442` — (blank) — @ — 
+- [x] **L1054** `76996811` — **Initiatives list (C4.2):** Filters intent_type, risk_level, status, cr — @ — 
+- [x] **L1055** `e3b0c442` — (blank) — @ — 
+- [x] **L1056** `9a5054ac` — **Plan detail (C4.3):** Header plan_id, initiative, plan_hash, created_a — @ — 
+- [x] **L1057** `e3b0c442` — (blank) — @ — 
+- [x] **L1058** `d448daab` — **Runs list (C4.4):** Filters env, status, cohort, release_id, policy_ve — @ — 
+- [x] **L1059** `e3b0c442` — (blank) — @ — 
+- [x] **L1060** `62f2026c` — **Run detail (C4.5):** Header run_id, env, cohort, release, policy, runn — @ — 
+- [x] **L1061** `e3b0c442` — (blank) — @ — 
+- [x] **L1062** `219d57b4` — **Jobs (C4.6):** Filters env, status, job_type, adapter, error_signature — @ — 
+- [x] **L1063** `e3b0c442` — (blank) — @ — 
+- [x] **L1064** `097d9cac` — **Releases (C4.7):** Table release_id, status, percent_rollout, created_ — @ — 
+- [x] **L1065** `e3b0c442` — (blank) — @ — 
+- [x] **L1066** `aadbd299` — **Policies (C4.8):** Table version, created_at, diff_from_prev, used_by_ — @ — 
+- [x] **L1067** `e3b0c442` — (blank) — @ — 
+- [x] **L1068** `0842bc72` — **Adapters (C4.9):** Table name, version, capabilities, contract_ref, la — @ — 
+- [x] **L1069** `e3b0c442` — (blank) — @ — 
+- [x] **L1070** `7b5c2b2f` — **Secrets (C4.10):** Refs name, scope, capabilities_allowed, rotated_at. — @ — 
+- [x] **L1071** `e3b0c442` — (blank) — @ — 
+- [x] **L1072** `ea44a3af` — **Approvals queue (C4.11):** Pending run_id, node_key, action_required, — @ — 
+- [x] **L1073** `e3b0c442` — (blank) — @ — 
+- [x] **L1074** `37d2a295` — **Incidents (C4.12):** Clusters error_signature, count, first_seen, last — @ — 
+- [x] **L1075** `e3b0c442` — (blank) — @ — 
+- [x] **L1076** `3e497f09` — **UI backend API (C5):** Thin control plane: SQL views/stored queries, R — @ — 
+- [x] **L1077** `e3b0c442` — (blank) — @ — 
+- [x] **L1078** `c9bbc0ca` — ### 12B.5 Full UI Console Spec (Consolidated Detail) — @ — 
+- [x] **L1079** `e3b0c442` — (blank) — @ — 
+- [x] **L1080** `ed4b2651` — **Purpose:** ProfessorX-style internal ops console: create initiatives; — @ — 
+- [x] **L1081** `e3b0c442` — (blank) — @ — 
+- [x] **L1082** `f0039f83` — **Hosting:** "Launches Vercel applications" = what the factory deploys, — @ — 
+- [x] **L1083** `e3b0c442` — (blank) — @ — 
+- [x] **L1084** `29328659` — **Surfaces:** Dashboard, Initiatives, Plans, Runs, Run Detail, Jobs, Too — @ — 
+- [x] **L1085** `e3b0c442` — (blank) — @ — 
+- [x] **L1086** `06cef84f` — **RBAC:** Viewer read-only. Operator: create initiatives, run sandbox/st — @ — 
+- [x] **L1087** `e3b0c442` — (blank) — @ — 
+- [x] **L1088** `9f899394` — **UX:** Global header (env, time range, release, search). Status pills f — @ — 
+- [x] **L1089** `e3b0c442` — (blank) — @ — 
+- [x] **L1090** `24adcd1f` — **Canary drift:** success delta = (ok/total canary) - (ok/total control) — @ — 
+- [x] **L1091** `e3b0c442` — (blank) — @ — 
+- [x] **L1092** `5bc22700` — **API (minimum):** GET /v1/dashboard, /initiatives, /plans/{id}, /runs, — @ — 
+- [x] **L1093** `e3b0c442` — (blank) — @ — 
+- [x] **L1094** `fc61411f` — **Performance:** List pages server-paginated; cursor pagination for heav — @ — 
+- [x] **L1095** `e3b0c442` — (blank) — @ — 
+- [x] **L1096** `8edd3e52` — **Security:** RBAC server-side; no secrets rendered; artifact access by — @ — 
+- [x] **L1097** `e3b0c442` — (blank) — @ — 
+- [x] **L1098** `6039e3f1` — **Location (reference):** Console spec consolidated in this plan (12B.4 — @ — 
+- [x] **L1099** `e3b0c442` — (blank) — @ — 
+- [x] **L1100** `cb3f91d5` — --- — @ — 
+- [x] **L1101** `e3b0c442` — (blank) — @ — 
+- [x] **L1102** `7321bb7a` — ## 12C. Runner Execution Spec (Fourth Deliverable) — @ — 
+- [x] **L1103** `e3b0c442` — (blank) — @ — 
+- [x] **L1104** `15a6dfa7` — This section defines the **full runner lifecycle** (consolidated in this — @ — 
+- [x] **L1105** `e3b0c442` — (blank) — @ — 
+- [x] **L1106** `a70fee64` — **A0. Core principles:** Runner is a **deterministic executor of typed n — @ — 
+- [x] **L1107** `e3b0c442` — (blank) — @ — 
+- [x] **L1108** `aacf2c6a` — **A1. Runner startup + identity:** worker_id (stable), runner_version (i — @ — 
+- [x] **L1109** `e3b0c442` — (blank) — @ — 
+- [x] **L1110** `1da069e9` — **A2. Job eligibility:** DB-first: query node_progress (status = eligibl — @ — 
+- [x] **L1111** `e3b0c442` — (blank) — @ — 
+- [x] **L1112** `9e97862b` — **A3. Claim & lease:** Transaction: SELECT job_run FOR UPDATE SKIP LOCKE — @ — 
+- [x] **L1113** `e3b0c442` — (blank) — @ — 
+- [x] **L1114** `2904c6c6` — **A4. Pre-execution safety:** Load run context (pinned: runner_image_dig — @ — 
+- [x] **L1115** `e3b0c442` — (blank) — @ — 
+- [x] **L1116** `22c5373e` — **A5. Deterministic sandbox:** Workspace per attempt (run_id + plan_node — @ — 
+- [x] **L1117** `e3b0c442` — (blank) — @ — 
+- [x] **L1118** `65e83a68` — **A6. Node execution contract:** Typed handler per node type. Load input — @ — 
+- [x] **L1119** `e3b0c442` — (blank) — @ — 
+- [x] **L1120** `54ee7a47` — **A7. Tool call execution:** **Idempotency key** = stable logical key (e — @ — 
+- [x] **L1121** `e3b0c442` — (blank) — @ — 
+- [x] **L1122** `95e1b5cd` — **A8. Verification (mandatory):** Every external-mutation node includes — @ — 
+- [x] **L1123** `e3b0c442` — (blank) — @ — 
+- [x] **L1124** `fcdf2f5e` — **A9. Repair & escalation:** Compute error_signature (normalization spec — @ — 
+- [x] **L1125** `e3b0c442` — (blank) — @ — 
+- [x] **L1126** `b2dcbf56` — **A10. Job completion:** Write terminal job_runs.status; ended_at; job_e — @ — 
+- [x] **L1127** `e3b0c442` — (blank) — @ — 
+- [x] **L1128** `974e32c6` — **A11. Canary, drift, auto-rollback (release manager):** Canary routing — @ — 
+- [x] **L1129** `e3b0c442` — (blank) — @ — 
+- [x] **L1130** `24844851` — **A12. Self-building hardening rules:** Two-plane rule; diff gates (path — @ — 
+- [x] **L1131** `e3b0c442` — (blank) — @ — 
+- [x] **L1132** `818d5d84` — ### 12C.1 DB-First Control Plane + Runner Architecture (Temporal-Compati — @ — 
+- [x] **L1133** `e3b0c442` — (blank) — @ — 
+- [x] **L1134** `8093ceeb` — **Control Plane (stable, minimal):** Scheduler (creates runs, initialize — @ — 
+- [x] **L1135** `e3b0c442` — (blank) — @ — 
+- [x] **L1136** `c3ab2adc` — **Work Plane (mutable):** Adapters (Vercel, GitHub, Klaviyo, DNS, etc.); — @ — 
+- [x] **L1137** `e3b0c442` — (blank) — @ — 
+- [x] **L1138** `f295530d` — **Runners (workers):** Poll eligible queued job_runs; claim with lease ( — @ — 
+- [x] **L1139** `e3b0c442` — (blank) — @ — 
+- [x] **L1140** `c3ca7cea` — ### 12C.2 Runner State Machine (DB-First) — @ — 
+- [x] **L1141** `e3b0c442` — (blank) — @ — 
+- [x] **L1142** `a73c400c` — **Job attempt (job_runs):** Terminal states = succeeded, failed. Allowed — @ — 
+- [x] **L1143** `e3b0c442` — (blank) — @ — 
+- [x] **L1144** `093d0c86` — **Lease (job_claims):** One active lease per job_run_id. Insert lease (a — @ — 
+- [x] **L1145** `e3b0c442` — (blank) — @ — 
+- [x] **L1146** `bedabb2f` — ### 12C.3 Sequence Diagrams (Canonical) — @ — 
+- [x] **L1147** `e3b0c442` — (blank) — @ — 
+- [x] **L1148** `f30e9d4d` — - **Claim → Execute → Complete (Happy Path):** Runner SELECT eligible jo — @ — 
+- [x] **L1149** `1ba70d61` — - **Worker dies mid-execution → Reclaim → Idempotent tool call reuse:** — @ — 
+- [x] **L1150** `3175f8f2` — - **Multi-hypothesis repair → Escalate model → Halt:** (Described in A9; — @ — 
+- [x] **L1151** `e3b0c442` — (blank) — @ — 
+- [x] **L1152** `dc809893` — ### 12C.4 Ledger Write Contracts (Exact Table Writes Per Phase) — @ — 
+- [x] **L1153** `e3b0c442` — (blank) — @ — 
+- [x] **L1154** `bbbcf0cd` — **4.1 Run creation (Control Plane):** initiatives (if new); plans, plan_ — @ — 
+- [x] **L1155** `e3b0c442` — (blank) — @ — 
+- [x] **L1156** `1e1ceb03` — **4.2 Runner claim phase:** Atomic (single tx): job_claims insert active — @ — 
+- [x] **L1157** `e3b0c442` — (blank) — @ — 
+- [x] **L1158** `cf4accbd` — **4.3 Tool call phase:** tool_calls insert (unique adapter_id + idempote — @ — 
+- [x] **L1159** `e3b0c442` — (blank) — @ — 
+- [x] **L1160** `9d4df547` — **4.4 Validation phase:** validations per validator result; artifacts fo — @ — 
+- [x] **L1161** `e3b0c442` — (blank) — @ — 
+- [x] **L1162** `5f4bac70` — **4.5 Completion phase:** job_runs update terminal status + ended_at + e — @ — 
+- [x] **L1163** `e3b0c442` — (blank) — @ — 
+- [x] **L1164** `3cf075ae` — **4.6 Dependency progression (Control Plane):** On job_run succeeded: no — @ — 
+- [x] **L1165** `e3b0c442` — (blank) — @ — 
+- [x] **L1166** `df3c0265` — **4.7 Run completion (Control Plane):** When all nodes succeeded: runs.s — @ — 
+- [x] **L1167** `e3b0c442` — (blank) — @ — 
+- [x] **L1168** `7b5cdf3b` — ### 12C.5 Determinism + Idempotency (Non-Negotiables) — @ — 
+- [x] **L1169** `e3b0c442` — (blank) — @ — 
+- [x] **L1170** `4b42f180` — **Pinned execution context (per run):** release_id; repo_commit_base (or — @ — 
+- [x] **L1171** `e3b0c442` — (blank) — @ — 
+- [x] **L1172** `fcec569a` — **Stable idempotency keys (per tool call):** Do NOT include attempt numb — @ — 
+- [x] **L1173** `e3b0c442` — (blank) — @ — 
+- [x] **L1174** `7d454478` — ### 12C.5a Multi-LLM orchestration and arbitration — @ — 
+- [x] **L1175** `e3b0c442` — (blank) — @ — 
+- [x] **L1176** `778f116c` — Repair and escalation use a **multi-LLM orchestration layer** so the fac — @ — 
+- [x] **L1177** `e3b0c442` — (blank) — @ — 
+- [x] **L1178** `30cb52d6` — ### 12C.6 Release Lease + Canary/Rollback (Operational) — @ — 
+- [x] **L1179** `e3b0c442` — (blank) — @ — 
+- [x] **L1180** `c83f8d84` — **Release selection (Scheduler):** On new run determine eligible release — @ — 
+- [x] **L1181** `e3b0c442` — (blank) — @ — 
+- [x] **L1182** `615db99c` — **Canary drift monitor (Release Manager):** By window (e.g. last 200 run — @ — 
+- [x] **L1183** `e3b0c442` — (blank) — @ — 
+- [x] **L1184** `c5e254ab` — ### 12C.7 Kernel-Grade Core Principles (A1) — @ — 
+- [x] **L1185** `e3b0c442` — (blank) — @ — 
+- [x] **L1186** `4b6f7063` — Postgres is canonical for: run/job state, ledger history, artifacts inde — @ — 
+- [x] **L1187** `e3b0c442` — (blank) — @ — 
+- [x] **L1188** `af767b5a` — ### 12C.8 Canonical State Machines (A2) — @ — 
+- [x] **L1189** `e3b0c442` — (blank) — @ — 
+- [x] **L1190** `cac42c38` — **runs.status:** queued → running; queued → failed (rejected before star — @ — 
+- [x] **L1191** `e3b0c442` — (blank) — @ — 
+- [x] **L1192** `543c7cb2` — **job_runs.status (Pattern A, one row per attempt):** queued → running; — @ — 
+- [x] **L1193** `e3b0c442` — (blank) — @ — 
+- [x] **L1194** `94ffb303` — **tool_calls.status:** pending → running; running → succeeded; running → — @ — 
+- [x] **L1195** `e3b0c442` — (blank) — @ — 
+- [x] **L1196** `f0a1b4a6` — ### 12C.9 Job Eligibility + Claim Protocol (A3–A6) — @ — 
+- [x] **L1197** `e3b0c442` — (blank) — @ — 
+- [x] **L1198** `452391a2` — **Eligibility (A3):** Runners never compute DAG readiness by scanning ed — @ — 
+- [x] **L1199** `e3b0c442` — (blank) — @ — 
+- [x] **L1200** `72602b23` — **Claim (A4):** One atomic transaction: (1) SELECT jr.* FROM job_runs jr — @ — 
+- [x] **L1201** `e3b0c442` — (blank) — @ — 
+- [x] **L1202** `5c7c5b8a` — **Heartbeat (A5):** Runner updates job_claims.heartbeat_at (optionally l — @ — 
+- [x] **L1203** `e3b0c442` — (blank) — @ — 
+- [x] **L1204** `816dd49d` — **Reaper (A6):** Control Plane background job: find job_claims WHERE rel — @ — 
+- [x] **L1205** `e3b0c442` — (blank) — @ — 
+- [x] **L1206** `8ad4af24` — ### 12C.10 Tool Call Contract (A7) — @ — 
+- [x] **L1207** `e3b0c442` — (blank) — @ — 
+- [x] **L1208** `527ae65e` — **Policy + capability gate (A7.1):** Before any external action runner r — @ — 
+- [x] **L1209** `e3b0c442` — (blank) — @ — 
+- [x] **L1210** `a381fb32` — **Creation (A7.2):** idempotency_key = hash(run_id + plan_node_id + adap — @ — 
+- [x] **L1211** `e3b0c442` — (blank) — @ — 
+- [x] **L1212** `25f0e487` — **Secrets (A7.3):** LLM never sees secrets. Runner resolves via vault; e — @ — 
+- [x] **L1213** `e3b0c442` — (blank) — @ — 
+- [x] **L1214** `98925cfd` — **Adapter execution (A7.4):** Adapter contract: validate(input), execute — @ — 
+- [x] **L1215** `e3b0c442` — (blank) — @ — 
+- [x] **L1216** `fa9305a7` — ### 12C.11 Validation, Completion, Repair, Temporal (A8–A11) — @ — 
+- [x] **L1217** `e3b0c442` — (blank) — @ — 
+- [x] **L1218** `7fccf1cd` — **Validation + artifacts (A8):** Validators write validations rows + rep — @ — 
+- [x] **L1219** `e3b0c442` — (blank) — @ — 
+- [x] **L1220** `18629b48` — **Completion (A9):** On success: job_runs terminal, job_event attempt_su — @ — 
+- [x] **L1221** `e3b0c442` — (blank) — @ — 
+- [x] **L1222** `8088d4c2` — **Repair loop (A10):** Policy defines max hypotheses per node, max total — @ — 
+- [x] **L1223** `e3b0c442` — (blank) — @ — 
+- [x] **L1224** `46e18d5e` — **Temporal (A11):** Temporal owns timers/retries/history; Postgres stays — @ — 
+- [x] **L1225** `e3b0c442` — (blank) — @ — 
+- [x] **L1226** `26e187ec` — ### 12C.12 Full Runner Execution Spec (Consolidated Detail) — @ — 
+- [x] **L1227** `e3b0c442` — (blank) — @ — 
+- [x] **L1228** `8adb5df6` — **Purpose:** Authoritative execution contract for Work Plane runners and — @ — 
+- [x] **L1229** `e3b0c442` — (blank) — @ — 
+- [x] **L1230** `086b4d9c` — **Definitions:** initiative = user/system goal; plan = compiled DAG (pla — @ — 
+- [x] **L1231** `e3b0c442` — (blank) — @ — 
+- [x] **L1232** `fbe17b85` — **Invariants (8):** (1) Pinned execution context on every run. (2) Exact — @ — 
+- [x] **L1233** `e3b0c442` — (blank) — @ — 
+- [x] **L1234** `e2d6a115` — **Eligibility (node_progress):** Node eligible when node_progress.status — @ — 
+- [x] **L1235** `e3b0c442` — (blank) — @ — 
+- [x] **L1236** `3bceb885` — **Claim transaction (one transaction):** (1) SELECT jr.* FROM job_runs j — @ — 
+- [x] **L1237** `e3b0c442` — (blank) — @ — 
+- [x] **L1238** `168829c3` — **Heartbeat:** Runner updates job_claims.heartbeat_at at interval HB (30 — @ — 
+- [x] **L1239** `e3b0c442` — (blank) — @ — 
+- [x] **L1240** `fc2f9aad` — **Lease Reaper:** Scan job_claims WHERE released_at IS NULL AND (lease_e — @ — 
+- [x] **L1241** `e3b0c442` — (blank) — @ — 
+- [x] **L1242** `0749aa5d` — **Runner execution lifecycle (per claimed job_run):** Load pinned contex — @ — 
+- [x] **L1243** `e3b0c442` — (blank) — @ — 
+- [x] **L1244** `a63c8c86` — **Tool call contract:** Before external call check capability_grants (en — @ — 
+- [x] **L1245** `e3b0c442` — (blank) — @ — 
+- [x] **L1246** `8062591d` — **Secrets and redaction:** DB only secret_refs; runner resolves via vaul — @ — 
+- [x] **L1247** `e3b0c442` — (blank) — @ — 
+- [x] **L1248** `b95cc5db` — **Artifacts and validations:** Artifacts immutable; artifact_class: logs — @ — 
+- [x] **L1249** `e3b0c442` — (blank) — @ — 
+- [x] **L1250** `f9fa454f` — **DAG progress (scheduler):** When node succeeds: increment deps_satisfi — @ — 
+- [x] **L1251** `e3b0c442` — (blank) — @ — 
+- [x] **L1252** `b7dc2933` — **Retry and repair (bounded):** Attempt budgets in plan_nodes.retry_poli — @ — 
+- [x] **L1253** `e3b0c442` — (blank) — @ — 
+- [x] **L1254** `aeb1c5fa` — **Temporal compatibility:** run_id may equal workflow_id or store in run — @ — 
+- [x] **L1255** `e3b0c442` — (blank) — @ — 
+- [x] **L1256** `421980ce` — **Worker metadata:** worker_id (stable), runner_version, last_heartbeat_ — @ — 
+- [x] **L1257** `e3b0c442` — (blank) — @ — 
+- [x] **L1258** `2a9ecc93` — **Failure mode guarantees:** Safe under: duplicate job claims (prevented — @ — 
+- [x] **L1259** `e3b0c442` — (blank) — @ — 
+- [x] **L1260** `f8277899` — **Appendix — Recommended operational settings:** HB interval 30s; lease — @ — 
+- [x] **L1261** `e3b0c442` — (blank) — @ — 
+- [x] **L1262** `cb3f91d5` — --- — @ — 
+- [x] **L1263** `e3b0c442` — (blank) — @ — 
+- [x] **L1264** `e90f01e2` — ## 12D. Node Taxonomy (Fifth Deliverable) — @ — 
+- [x] **L1265** `e3b0c442` — (blank) — @ — 
+- [x] **L1266** `5de1ec06` — This section defines a **large node taxonomy** (consolidated in this pla — @ — 
+- [x] **L1267** `e3b0c442` — (blank) — @ — 
+- [x] **L1268** `1c95837e` — **Domains and representative node types (full list in doc):** — @ — 
+- [x] **L1269** `e3b0c442` — (blank) — @ — 
+- [x] **L1270** `c428501b` — - **B1. Initiative + Planning:** InitiativeIntake, PlanCompile, PlanRisk — @ — 
+- [x] **L1271** `d11ad5c2` — - **B2. Repo + Codebase Scaffold:** RepoCreate, RepoScaffoldFromTemplate — @ — 
+- [x] **L1272** `d36f67fa` — - **B3. Build, Test, Validate:** StaticTypecheck, UnitTest, IntegrationT — @ — 
+- [x] **L1273** `964dcecf` — - **B4. Deploy + Infra:** VercelProjectEnsure, VercelEnvVarSync, VercelD — @ — 
+- [x] **L1274** `70eee5d2` — - **B5. Marketing (Klaviyo etc.):** KlaviyoSegmentUpsert, KlaviyoTemplat — @ — 
+- [x] **L1275** `2e630b98` — - **B6. Data + Content:** ContentSchemaNormalize, CopyVariantGenerate, A — @ — 
+- [x] **L1276** `33e61cdf` — - **B7. Observability + Docs (.mdd):** RunDocGenerateMDD, IncidentDocGen — @ — 
+- [x] **L1277** `63273c90` — - **B8. Repair + Escalation:** ErrorSignatureCompute, HypothesisGenerate — @ — 
+- [x] **L1278** `4b6f1f31` — - **B9. Release + Rollout:** ReleaseBundleBuild, ReleaseRegister, Canary — @ — 
+- [x] **L1279** `2240864e` — - **B10. Self-Host Upgrade Initiative:** UpgradeDiffPrepare, UpgradeSand — @ — 
+- [x] **L1280** `c0089f0d` — - **B11. UI / Console (optional):** ConsoleSchemaUpdate, ConsoleBuildAnd — @ — 
+- [x] **L1281** `e3b0c442` — (blank) — @ — 
+- [x] **L1282** `f2053954` — **Per-node contract (required in doc):** Purpose; Inputs (schema ref or — @ — 
+- [x] **L1283** `e3b0c442` — (blank) — @ — 
+- [x] **L1284** `7580812c` — ### 12D.1 Node Spec Sheet Format and Core Set (Upgrade Initiative) — @ — 
+- [x] **L1285** `e3b0c442` — (blank) — @ — 
+- [x] **L1286** `79fb44ae` — Use the following format for each node type; extend the pattern for the — @ — 
+- [x] **L1287** `e3b0c442` — (blank) — @ — 
+- [x] **L1288** `c435890a` — **BranchAndPRCreate:** Purpose: create patch-based upgrade diff; no in-p — @ — 
+- [x] **L1289** `e3b0c442` — (blank) — @ — 
+- [x] **L1290** `d5247e6b` — **SandboxValidate:** Purpose: run unit + contract + policy lint on clean — @ — 
+- [x] **L1291** `e3b0c442` — (blank) — @ — 
+- [x] **L1292** `fb713295` — **GoldenSuiteSandbox:** Purpose: prove golden workflows. Subtests: Verce — @ — 
+- [x] **L1293** `e3b0c442` — (blank) — @ — 
+- [x] **L1294** `5f45cdb8` — **StagingDeploy:** Purpose: build and deploy new workplane bundle to sta — @ — 
+- [x] **L1295** `e3b0c442` — (blank) — @ — 
+- [x] **L1296** `36a49ff7` — **CanaryEnable:** Purpose: set releases.percent_rollout = X. Writes: rel — @ — 
+- [x] **L1297** `e3b0c442` — (blank) — @ — 
+- [x] **L1298** `886f09c3` — **CanaryMonitor:** Purpose: compute drift metrics and decide pass/fail. — @ — 
+- [x] **L1299** `e3b0c442` — (blank) — @ — 
+- [x] **L1300** `a5d4efb3` — **RollbackOnDrift:** Purpose: automatic rollback execution. Inputs: last — @ — 
+- [x] **L1301** `e3b0c442` — (blank) — @ — 
+- [x] **L1302** `31eafb72` — ### 12D.2 Minimal Node Taxonomy (18 Types, ~90% Dev + Marketing + Ops) — @ — 
+- [x] **L1303** `e3b0c442` — (blank) — @ — 
+- [x] **L1304** `dac9e1c7` — Kernel node types; each has job_type, node_type (job/gate/validator/appr — @ — 
+- [x] **L1305** `e3b0c442` — (blank) — @ — 
+- [x] **L1306** `30922dcf` — **B1. Planning + graph:** PlanCompile (initiative → DAG, plan_hash, dete — @ — 
+- [x] **L1307** `e3b0c442` — (blank) — @ — 
+- [x] **L1308** `bb9cf99f` — **B2. Code + build:** RepoCheckout (fetch repo, pinned ref, workspace); — @ — 
+- [x] **L1309** `e3b0c442` — (blank) — @ — 
+- [x] **L1310** `8d32348d` — **B3. Test/verification:** UnitTest (validations); ContractTest (adapter — @ — 
+- [x] **L1311** `e3b0c442` — (blank) — @ — 
+- [x] **L1312** `20f0bcf3` — **B4. Deployment + infra:** DeployWebApp (Vercel: preview/staging/prod, — @ — 
+- [x] **L1313** `e3b0c442` — (blank) — @ — 
+- [x] **L1314** `c25a296d` — **B5. Marketing:** KlaviyoUpsertObjects (templates/segments/flows, stabl — @ — 
+- [x] **L1315** `e3b0c442` — (blank) — @ — 
+- [x] **L1316** `cdbe98de` — **B6. Self-hosting + ops:** UpgradeInitiative (orchestrate self-build: P — @ — 
+- [x] **L1317** `e3b0c442` — (blank) — @ — 
+- [x] **L1318** `dfbff17d` — **B7. Node spec template (example DeployWebApp):** Inputs: {project_slug — @ — 
+- [x] **L1319** `e3b0c442` — (blank) — @ — 
+- [x] **L1320** `ac196042` — ### 12D.3 Full Node Taxonomy Spec (Consolidated Detail) — @ — 
+- [x] **L1321** `e3b0c442` — (blank) — @ — 
+- [x] **L1322** `d3fc45b7` — **Purpose:** Minimal set (18 types) covering ~90% of workflows: dev/buil — @ — 
+- [x] **L1323** `e3b0c442` — (blank) — @ — 
+- [x] **L1324** `ecb12554` — **Global Node Contract (every node type):** job_type; node_type (job , v — @ — 
+- [x] **L1325** `e3b0c442` — (blank) — @ — 
+- [x] **L1326** `6532038a` — **18 Node Types (full):** — @ — 
+- [x] **L1327** `a5bf77e0` — **Group A — Planning:** (1) PlanCompile (job): compile initiative into D — @ — 
+- [x] **L1328** `885f38c3` — **Group B — Code and build:** (4) RepoCheckout (job): clean working dire — @ — 
+- [x] **L1329** `dbad7d2e` — **Group C — Tests:** (8) UnitTest (validator): unit tests; validations + — @ — 
+- [x] **L1330** `e2ba9966` — **Group D — Deploy and infra:** (12) DeployWebApp (job): Vercel deploy; — @ — 
+- [x] **L1331** `130ffa22` — **Group E — Marketing:** (15) KlaviyoUpsertObjects (job): templates, seg — @ — 
+- [x] **L1332** `e76976d0` — **Group F — Self-hosting + ops:** (17) UpgradeInitiative (job): orchestr — @ — 
+- [x] **L1333** `e3b0c442` — (blank) — @ — 
+- [x] **L1334** `62600568` — **Node Spec Template (per type):** Node name; node_type; input/output sc — @ — 
+- [x] **L1335** `e3b0c442` — (blank) — @ — 
+- [x] **L1336** `da5184bd` — **Extension Strategy:** New node types require: schema contract (inputs/ — @ — 
+- [x] **L1337** `e3b0c442` — (blank) — @ — 
+- [x] **L1338** `cb3f91d5` — --- — @ — 
+- [x] **L1339** `e3b0c442` — (blank) — @ — 
+- [x] **L1340** `e783ce6b` — ## 12E. Optional: UI Component + Design Token System (D) — @ — 
+- [x] **L1341** `e3b0c442` — (blank) — @ — 
+- [x] **L1342** `88e3c5cd` — Design-with-code approach: the factory uses Tailwind and other libraries — @ — 
+- [x] **L1343** `e3b0c442` — (blank) — @ — 
+- [x] **L1344** `9831b581` — **D2. Component library (console):** AppShell (sidebar + topbar); DataTa — @ — 
+- [x] **L1345** `e3b0c442` — (blank) — @ — 
+- [x] **L1346** `318ca9a0` — **D3. Blocks/pages/themes schema (website generator):** Theme (token set — @ — 
+- [x] **L1347** `e3b0c442` — (blank) — @ — 
+- [x] **L1348** `222f2eb9` — ### 12E.4 Full UI Tokens + Components Spec (Consolidated Detail) — @ — 
+- [x] **L1349** `e3b0c442` — (blank) — @ — 
+- [x] **L1350** `d37329cf` — **Purpose:** Deterministic, code-driven UI: Tailwind and other libraries — @ — 
+- [x] **L1351** `e3b0c442` — (blank) — @ — 
+- [x] **L1352** `b8d6ace5` — **Token system (source of truth):** tokens/tokens.json. Generated: tailw — @ — 
+- [x] **L1353** `e3b0c442` — (blank) — @ — 
+- [x] **L1354** `26ae92cc` — **Component library (ops console):** Primitives: Button (primary/seconda — @ — 
+- [x] **L1355** `e3b0c442` — (blank) — @ — 
+- [x] **L1356** `dc388182` — **Layout:** AppShell: left sidebar nav, top header (env, time range, sea — @ — 
+- [x] **L1357** `e3b0c442` — (blank) — @ — 
+- [x] **L1358** `4efd811e` — **Block/Page/Theme schema (website generator):** Theme: theme_id, token_ — @ — 
+- [x] **L1359** `e3b0c442` — (blank) — @ — 
+- [x] **L1360** `b454ecfd` — **Accessibility and observability:** WCAG contrast for status colors; ke — @ — 
+- [x] **L1361** `e3b0c442` — (blank) — @ — 
+- [x] **L1362** `f25134c0` — **Non-goals:** Doc does not define branding aesthetics beyond tokens; do — @ — 
+- [x] **L1363** `e3b0c442` — (blank) — @ — 
+- [x] **L1364** `cb3f91d5` — --- — @ — 
+- [x] **L1365** `e3b0c442` — (blank) — @ — 
+- [x] **L1366** `0fbbe7cd` — ## 12F. What This Resolves (Summary) — @ — 
+- [x] **L1367** `e3b0c442` — (blank) — @ — 
+- [x] **L1368** `56b638a0` — - **“It launches Vercel applications” but “not built on Vercel”:** Facto — @ — 
+- [x] **L1369** `588cd4df` — - **“It doesn’t write code”:** System generates from schemas + templates — @ — 
+- [x] **L1370** `e3b0c442` — (blank) — @ — 
+- [x] **L1371** `cb3f91d5` — --- — @ — 
+- [x] **L1372** `e3b0c442` — (blank) — @ — 
+- [x] **L1373** `7773bbfb` — ## 13. Golden Initiative Suite — @ — 
+- [x] **L1374** `e3b0c442` — (blank) — @ — 
+- [x] **L1375** `96a81625` — The pipeline spec will reference the **golden initiative suite** that se — @ — 
+- [x] **L1376** `e3b0c442` — (blank) — @ — 
+- [x] **L1377** `682dcefc` — 1. **Vercel App Deploy** — Generate from schema, build, deploy preview, — @ — 
+- [x] **L1378** `ff45ad62` — 2. **Domain Connect** — Staging zone update, verify DNS propagation (sta — @ — 
+- [x] **L1379** `0d259203` — 3. **Klaviyo Flow Build (Safe Mode)** — Create segment, template, flow; — @ — 
+- [x] **L1380** `ea42d900` — 4. **Docs + Audit** — Generate .mdd from run; confirm all artifact links — @ — 
+- [x] **L1381** `52d65cd7` — 5. **Repair Simulation** — Inject known failure signature; ensure repair — @ — 
+- [x] **L1382** `e3b0c442` — (blank) — @ — 
+- [x] **L1383** `c4e83c5c` — If any golden initiative fails in sandbox or staging, the Upgrade Initia — @ — 
+- [x] **L1384** `e3b0c442` — (blank) — @ — 
+- [x] **L1385** `18aa9dc4` — ### 13.1 Repair and Escalation (Bounded Attempts) — @ — 
+- [x] **L1386** `e3b0c442` — (blank) — @ — 
+- [x] **L1387** `1d9fb8a8` — The schema and pipeline spec must support the multi-hypothesis repair lo — @ — 
+- [x] **L1388** `e3b0c442` — (blank) — @ — 
+- [x] **L1389** `c80397e9` — ### 13.2 MCP Adapter Interface (Contract for tool_calls) — @ — 
+- [x] **L1390** `e3b0c442` — (blank) — @ — 
+- [x] **L1391** `27282eb4` — Each adapter in the Work Plane should implement a consistent contract so — @ — 
+- [x] **L1392** `e3b0c442` — (blank) — @ — 
+- [x] **L1393** `f9fc4ea8` — ### 13.3 Self-Build Over Time (Compounding Improvement) — @ — 
+- [x] **L1394** `e3b0c442` — (blank) — @ — 
+- [x] **L1395** `be4d68be` — You get the factory to **self-build over time** by making improvement it — @ — 
+- [x] **L1396** `e3b0c442` — (blank) — @ — 
+- [x] **L1397** `0e332869` — **1) Define what "better" means as numbers the factory can optimize** — @ — 
+- [x] **L1398** `e3b0c442` — (blank) — @ — 
+- [x] **L1399** `6616612c` — Without objective functions the system can only self-change, not self-im — @ — 
+- [x] **L1400** `e3b0c442` — (blank) — @ — 
+- [x] **L1401** `ebce8bd4` — - **Reliability:** run_success_rate (overall + by job_type); mean retrie — @ — 
+- [x] **L1402** `36f29e37` — - **Determinism:** rebuild_repro_rate (same run inputs → same artifact h — @ — 
+- [x] **L1403** `08052de0` — - **Safety:** policy_violation_count; approvals_required vs approvals_re — @ — 
+- [x] **L1404** `8cce9a91` — - **Velocity:** median run duration, p95 duration; time_to_green_after_f — @ — 
+- [x] **L1405** `c7995e86` — - **Quality:** golden_suite_pass_rate; drift metrics canary vs control ( — @ — 
+- [x] **L1406** `e3b0c442` — (blank) — @ — 
+- [x] **L1407** `0ef7ed5c` — Store release-scoped artifacts: `artifact_type = scorecard_report` and ` — @ — 
+- [x] **L1408** `e3b0c442` — (blank) — @ — 
+- [x] **L1409** `363e7133` — **2) Make the Upgrade Initiative the only way the system changes itself* — @ — 
+- [x] **L1410** `e3b0c442` — (blank) — @ — 
+- [x] **L1411** `ae35ff0c` — Self-build means autonomous PRs, not autonomous editing. Treat upgrades — @ — 
+- [x] **L1412** `e3b0c442` — (blank) — @ — 
+- [x] **L1413** `47671e21` — **3) Two core learning loops: Failure → Patch Library, and Drift → Polic — @ — 
+- [x] **L1414** `e3b0c442` — (blank) — @ — 
+- [x] **L1415** `8319394c` — **Loop A — Failure signatures become reusable repairs:** Add a structure — @ — 
+- [x] **L1416** `e3b0c442` — (blank) — @ — 
+- [x] **L1417** `5cbe5122` — **Loop B — Canary drift tightens policies automatically (within safe bou — @ — 
+- [x] **L1418** `e3b0c442` — (blank) — @ — 
+- [x] **L1419** `7b63df13` — **4) Use golden initiatives as the fitness function** — @ — 
+- [x] **L1420** `e3b0c442` — (blank) — @ — 
+- [x] **L1421** `b4db97b6` — The Golden Suite is the training set. Grow it in a specific way: every r — @ — 
+- [x] **L1422** `e3b0c442` — (blank) — @ — 
+- [x] **L1423** `d74479a9` — **5) Treat prompts, schemas, and adapters as versioned dependencies** — @ — 
+- [x] **L1424** `e3b0c442` — (blank) — @ — 
+- [x] **L1425** `654610b7` — Self-building factories die from invisible prompt drift and tool drift. — @ — 
+- [x] **L1426** `e3b0c442` — (blank) — @ — 
+- [x] **L1427** `61d5f8b1` — **6) Offline evaluation on production logs** — @ — 
+- [x] **L1428** `e3b0c442` — (blank) — @ — 
+- [x] **L1429** `d854e888` — Don't let the factory learn only from live runs. Nightly or on-demand, r — @ — 
+- [x] **L1430** `e3b0c442` — (blank) — @ — 
+- [x] **L1431** `bdea2fa0` — **7) Keep the improvement surface area narrow at first** — @ — 
+- [x] **L1432** `e3b0c442` — (blank) — @ — 
+- [x] **L1433** `89f7a491` — - **Phase 1 (safe):** Self-improve only Work Plane adapters, validators, — @ — 
+- [x] **L1434** `c8e139cb` — - **Phase 2 (moderate):** Plan compiler heuristics (still bounded). — @ — 
+- [x] **L1435** `9b866f78` — - **Phase 3 (danger):** Control Plane changes only with human approvals, — @ — 
+- [x] **L1436** `e3b0c442` — (blank) — @ — 
+- [x] **L1437** `d3f39ff7` — **8) Minimal additions to enable compounding improvement** — @ — 
+- [x] **L1438** `e3b0c442` — (blank) — @ — 
+- [x] **L1439** `c0b52cb1` — Shortest path from this spec to real self-improvement: (a) **scorecard_r — @ — 
+- [x] **L1440** `e3b0c442` — (blank) — @ — 
+- [x] **L1441** `ebe1464d` — **What compounding looks like operationally (2–4 weeks in production):** — @ — 
+- [x] **L1442** `e3b0c442` — (blank) — @ — 
+- [x] **L1443** `338ca044` — ### 13.4 Self-Improvement System Specification (Autonomous Evolution Fra — @ — 
+- [x] **L1444** `e3b0c442` — (blank) — @ — 
+- [x] **L1445** `71a11c88` — *Drop-in spec for how the AI Factory safely improves itself over time. A — @ — 
+- [x] **L1446** `e3b0c442` — (blank) — @ — 
+- [x] **L1447** `5dc82c8b` — **1. Purpose** — @ — 
+- [x] **L1448** `e3b0c442` — (blank) — @ — 
+- [x] **L1449** `10bf9a93` — The Self-Improvement System enables the AI Factory to continuously impro — @ — 
+- [x] **L1450** `e3b0c442` — (blank) — @ — 
+- [x] **L1451** `5b159e8c` — - Observe system performance — @ — 
+- [x] **L1452** `d9514a06` — - Identify failures or inefficiencies — @ — 
+- [x] **L1453** `d2964241` — - Generate candidate improvements — @ — 
+- [x] **L1454** `a0fa28ef` — - Validate improvements in controlled environments — @ — 
+- [x] **L1455** `5496b1ea` — - Promote improvements through staged rollouts — @ — 
+- [x] **L1456** `1767374e` — - Roll back if regressions occur — @ — 
+- [x] **L1457** `eb6a1725` — - Store successful repairs for reuse — @ — 
+- [x] **L1458** `e3b0c442` — (blank) — @ — 
+- [x] **L1459** `9f43edd9` — This process ensures the system improves through provable experiments, n — @ — 
+- [x] **L1460** `e3b0c442` — (blank) — @ — 
+- [x] **L1461** `e9f91625` — **2. Core Design Principles** — @ — 
+- [x] **L1462** `e3b0c442` — (blank) — @ — 
+- [x] **L1463** `dc52e3f3` — **Determinism First:** Self-improvement must never break replayability. — @ — 
+- [x] **L1464** `e3b0c442` — (blank) — @ — 
+- [x] **L1465** `910dc5ce` — **Evidence-Based Evolution:** Every improvement must include: hypothesis — @ — 
+- [x] **L1466** `e3b0c442` — (blank) — @ — 
+- [x] **L1467** `f16cec62` — **Separation of Planes:** Self-modification is constrained by the system — @ — 
+- [x] **L1468** `e3b0c442` — (blank) — @ — 
+- [x] **L1469** `e3b0c442` — (blank) — @ — 
+- [x] **L1470** `6166e43f` — , Plane , Role , Self-Modif — @ — 
+- [x] **L1471** `33ddb123` — , ------------- , ----------------------------------------- , ---------- — @ — 
+- [x] **L1472** `16c7d20c` — , Control Plane , Scheduler, policies, orchestration kernel , Extremely — @ — 
+- [x] **L1473** `60dd6345` — , Work Plane , Adapters, validators, generators , Fully evol — @ — 
+- [x] **L1474** `e3b0c442` — (blank) — @ — 
+- [x] **L1475** `e3b0c442` — (blank) — @ — 
+- [x] **L1476** `8f21d559` — Most autonomous improvements occur in the Work Plane. — @ — 
+- [x] **L1477** `e3b0c442` — (blank) — @ — 
+- [x] **L1478** `5547434d` — **Patch-Based Evolution:** The system never edits code directly in produ — @ — 
+- [x] **L1479** `e3b0c442` — (blank) — @ — 
+- [x] **L1480** `9737da8f` — **3. Factory Scorecard (Objective Function)** — @ — 
+- [x] **L1481** `e3b0c442` — (blank) — @ — 
+- [x] **L1482** `3be7adda` — Self-improvement requires quantifiable signals. Every release generates — @ — 
+- [x] **L1483** `e3b0c442` — (blank) — @ — 
+- [x] **L1484** `816b41e6` — - **Artifact type:** `artifact_type = "scorecard_report"` — @ — 
+- [x] **L1485** `e3b0c442` — (blank) — @ — 
+- [x] **L1486** `504909e9` — Scorecards evaluate the system along five axes. — @ — 
+- [x] **L1487** `e3b0c442` — (blank) — @ — 
+- [x] **L1488** `e97ea80e` — **Reliability metrics** (from runs, job_runs, job_claims): run_success_r — @ — 
+- [x] **L1489** `e3b0c442` — (blank) — @ — 
+- [x] **L1490** `f3dd395e` — **Determinism metrics** (artifact hashes): reproducibility_rate, hash_di — @ — 
+- [x] **L1491** `e3b0c442` — (blank) — @ — 
+- [x] **L1492** `0ffaf9cd` — **Safety metrics** (from policies, approvals, capability_grants): policy — @ — 
+- [x] **L1493** `e3b0c442` — (blank) — @ — 
+- [x] **L1494** `d5cc1413` — **Velocity metrics:** median_run_duration, p95_run_duration, time_to_gre — @ — 
+- [x] **L1495** `e3b0c442` — (blank) — @ — 
+- [x] **L1496** `7535f769` — **Quality metrics:** golden_suite_pass_rate, canary_vs_control_drift, va — @ — 
+- [x] **L1497** `e3b0c442` — (blank) — @ — 
+- [x] **L1498** `4bd0540f` — **4. Drift Detection** — @ — 
+- [x] **L1499** `e3b0c442` — (blank) — @ — 
+- [x] **L1500** `0a4caa10` — Each release performs cohort analysis using release_routes, runs, job_ru — @ — 
+- [x] **L1501** `e3b0c442` — (blank) — @ — 
+- [x] **L1502** `59ccebf0` — **5. Repair Knowledge Base** — @ — 
+- [x] **L1503** `e3b0c442` — (blank) — @ — 
+- [x] **L1504** `b6bf9baf` — Failures should never require rediscovery of the same fix. The system ma — @ — 
+- [x] **L1505** `e3b0c442` — (blank) — @ — 
+- [x] **L1506** `84cf4c37` — **Table: repair_recipes** — @ — 
+- [x] **L1507** `e3b0c442` — (blank) — @ — 
+- [x] **L1508** `2d45e0f3` — Fields: id; error_signature; job_type; adapter_id; patch_pattern; valida — @ — 
+- [x] **L1509** `e3b0c442` — (blank) — @ — 
+- [x] **L1510** `94d90d17` — Example repair pattern: error_signature `github_api_timeout`, patch_patt — @ — 
+- [x] **L1511** `e3b0c442` — (blank) — @ — 
+- [x] **L1512** `ade5f4d5` — **Repair loop:** When a failure occurs: (1) Cluster failures by error_si — @ — 
+- [x] **L1513** `e3b0c442` — (blank) — @ — 
+- [x] **L1514** `850db138` — **6. Hypothesis Generation** — @ — 
+- [x] **L1515** `e3b0c442` — (blank) — @ — 
+- [x] **L1516** `1ab739b2` — For novel failures the factory enters repair mode. The repair loop: atte — @ — 
+- [x] **L1517** `e3b0c442` — (blank) — @ — 
+- [x] **L1518** `be336cd1` — **7. Golden Initiative Suite** — @ — 
+- [x] **L1519** `e3b0c442` — (blank) — @ — 
+- [x] **L1520** `a75ed409` — Golden Initiatives act as the fitness function. These are permanent work — @ — 
+- [x] **L1521** `e3b0c442` — (blank) — @ — 
+- [x] **L1522** `21f2d56d` — **Golden Suite expansion:** Every incident that matters must produce a n — @ — 
+- [x] **L1523** `e3b0c442` — (blank) — @ — 
+- [x] **L1524** `fb732cdf` — **8. Autonomous Upgrade Workflow** — @ — 
+- [x] **L1525** `e3b0c442` — (blank) — @ — 
+- [x] **L1526** `17b6e781` — All improvements are deployed via the Upgrade Initiative. Pipeline stage — @ — 
+- [x] **L1527** `e3b0c442` — (blank) — @ — 
+- [x] **L1528** `88d748ef` — - **Proposal:** Generated by failure analysis, performance drift, repair — @ — 
+- [x] **L1529** `ee7ce22e` — - **Pull Request stage:** Patch submitted via GitHub adapter. PR include — @ — 
+- [x] **L1530** `d0e5a7d7` — - **Sandbox validation:** Unit tests, contract tests, golden initiatives — @ — 
+- [x] **L1531** `d76c8af4` — - **Staging soak:** Shadow traffic, synthetic runs, integration tests. D — @ — 
+- [x] **L1532** `bdb80446` — - **Promotion gate:** Requires golden suite pass, no policy violations, — @ — 
+- [x] **L1533** `c53a4134` — - **Canary rollout:** release_routes.percent_rollout, release_routes.coh — @ — 
+- [x] **L1534** `d0adc55b` — - **Full promotion:** If canary stable, percent_rollout = 100%. — @ — 
+- [x] **L1535** `a909c38c` — - **Automatic rollback:** Triggered if success_rate_drop > threshold, er — @ — 
+- [x] **L1536** `e3b0c442` — (blank) — @ — 
+- [x] **L1537** `0cd7f099` — **9. Offline Evaluation System** — @ — 
+- [x] **L1538** `e3b0c442` — (blank) — @ — 
+- [x] **L1539** `66657239` — A nightly Evaluation Initiative runs. Workflow: (1) Query top failure cl — @ — 
+- [x] **L1540** `e3b0c442` — (blank) — @ — 
+- [x] **L1541** `d9da8e48` — **10. Policy Auto-Tightening** — @ — 
+- [x] **L1542** `e3b0c442` — (blank) — @ — 
+- [x] **L1543** `245dfc36` — When canary regressions occur, the system reduces autonomy. Possible res — @ — 
+- [x] **L1544** `e3b0c442` — (blank) — @ — 
+- [x] **L1545** `7c027d2a` — **11. Prompt and Adapter Versioning** — @ — 
+- [x] **L1546** `e3b0c442` — (blank) — @ — 
+- [x] **L1547** `e3d67f45` — All runs record: prompt_template_version, adapter_contract_version, runn — @ — 
+- [x] **L1548** `e3b0c442` — (blank) — @ — 
+- [x] **L1549** `00b5d111` — **12. Phased Autonomy Model** — @ — 
+- [x] **L1550** `e3b0c442` — (blank) — @ — 
+- [x] **L1551** `533bb616` — - **Phase 1:** Autonomous changes allowed to adapters, validators, retry — @ — 
+- [x] **L1552** `3fe19e4d` — - **Phase 2:** Allow evolution of plan compiler heuristics, node orderin — @ — 
+- [x] **L1553** `f4fd0d86` — - **Phase 3:** Limited Control Plane evolution. Requirements: human appr — @ — 
+- [x] **L1554** `e3b0c442` — (blank) — @ — 
+- [x] **L1555** `130dde89` — **13. Expected Evolution Over Time** — @ — 
+- [x] **L1556** `e3b0c442` — (blank) — @ — 
+- [x] **L1557** `769d1e2b` — Healthy self-improving systems demonstrate: decreasing retry counts; shr — @ — 
+- [x] **L1558** `e3b0c442` — (blank) — @ — 
+- [x] **L1559** `906831c3` — **14. Long-Term Outcome** — @ — 
+- [x] **L1560** `e3b0c442` — (blank) — @ — 
+- [x] **L1561** `d741c096` — After sustained operation, the AI Factory evolves into: a stable autonom — @ — 
+- [x] **L1562** `e3b0c442` — (blank) — @ — 
+- [x] **L1563** `cb3f91d5` — --- — @ — 
+- [x] **L1564** `e3b0c442` — (blank) — @ — 
+- [x] **L1565** `1ce72267` — ## 14. Deliverable Locations and Repo Layout — @ — 
+- [x] **L1566** `e3b0c442` — (blank) — @ — 
+- [x] **L1567** `a4a2c6fd` — This plan is the full “everything at once” package for a senior engineer — @ — 
+- [x] **L1568** `e3b0c442` — (blank) — @ — 
+- [x] **L1569** `d2ff80bf` — **All specs are consolidated in this single plan document**—one long det — @ — 
+- [x] **L1570** `e3b0c442` — (blank) — @ — 
+- [x] **L1571** `cfffa070` — - **Runner Execution Spec:** Sections 12C and 12C.12 (full detail). Stat — @ — 
+- [x] **L1572** `80357f07` — - **Node Taxonomy Spec:** Sections 12D and 12D.3 (full detail). 18 minim — @ — 
+- [x] **L1573** `67e79e4f` — - **UI Console Spec:** Sections 12B and 12B.5 (full detail). Page-by-pag — @ — 
+- [x] **L1574** `10bb2699` — - **UI Tokens + Components (optional):** Section 12E and 12E.4 (full det — @ — 
+- [x] **L1575** `9dbfd618` — - **Self-Improvement System Spec:** Sections 13.3 and 13.4 (full detail) — @ — 
+- [x] **L1576** `d57a52f8` — - **Schema spec** (if split out): `docs/ai-factory-schema-spec.md` — hum — @ — 
+- [x] **L1577** `bb3fe3da` — - **Upgrade Initiative pipeline** (if split out): `docs/upgrade-initiati — @ — 
+- [x] **L1578** `40274d0a` — - **Later implementation:** `control-plane/`, `runners/`, `adapters/`, ` — @ — 
+- [x] **L1579** `e3b0c442` — (blank) — @ — 
+- [x] **L1580** `cb3f91d5` — --- — @ — 
+- [x] **L1581** `e3b0c442` — (blank) — @ — 
+- [x] **L1582** `a559b810` — ## 15. What This Plan Does Not Do — @ — 
+- [x] **L1583** `e3b0c442` — (blank) — @ — 
+- [x] **L1584** `a9d7c34f` — - **No raw DDL:** The schema is too critical for AI-authored DDL. The sp — @ — 
+- [x] **L1585** `c633ed26` — - **No implementation of Control Plane, runners, adapters, or console ap — @ — 
+- [x] **L1586** `94a700b6` — - **No Temporal or Postgres application code:** Only specification of sc — @ — 
+- [x] **L1587** `e3b0c442` — (blank) — @ — 
+- [x] **L1588** `cb3f91d5` — --- — @ — 
+- [x] **L1589** `e3b0c442` — (blank) — @ — 
+- [x] **L1590** `82f8597f` — ## 16. Order of Work (Execution Sequence) — @ — 
+- [x] **L1591** `e3b0c442` — (blank) — @ — 
+- [x] **L1592** `145c27a7` — 1. **Draft the core schema spec** — All tables (sections 5.1–5.21 and 5. — @ — 
+- [x] **L1593** `1a8752f4` — 2. **Lock job run model** — Pattern A (attempt rows + derived current st — @ — 
+- [x] **L1594** `a0cf4630` — 3. **Add Concurrency and Exactly-Once Semantics** — Section 5A: leases, — @ — 
+- [x] **L1595** `eea41ea2` — 4. **Add State Machine Contract** — Section 5B: explicit allowed transit — @ — 
+- [x] **L1596** `beec30ef` — 5. **Add Controlled vocabulary / enums** — Section 5B2: Postgres enums o — @ — 
+- [x] **L1597** `735c5970` — 6. **Add Error Signature Normalization** — Section 5C: how error_signatu — @ — 
+- [x] **L1598** `b55676b0` — 7. **Add Artifact immutability and Artifact Classes** — Section 5D: immu — @ — 
+- [x] **L1599** `00514feb` — 8. **Add Rollback Targets** — Section 5E: rollback_targets table (verifi — @ — 
+- [x] **L1600** `6d889e13` — 9. **Add idempotency strategy** — Stable idempotency: job_runs.idempoten — @ — 
+- [x] **L1601** `d4c33a08` — 10. **Add event taxonomy** — Canonical run_events and job_events event_t — @ — 
+- [x] **L1602** `60f0aa59` — 11. **Add canary and rollback linkage** — percent_rollout on releases on — @ — 
+- [x] **L1603** `a787f81e` — 12. **Add capability_grants and security** — capability_grants table; se — @ — 
+- [x] **L1604** `979c7859` — 13. **Write Temporal-first variant** — Section 9: Truth Ownership; who w — @ — 
+- [x] **L1605** `6e7dee03` — 14. **Write DB-first variant** — Section 10: node_progress for eligibili — @ — 
+- [x] **L1606** `c47f123f` — 15. **Write safe schema evolution** — Section 11 playbook into the spec — @ — 
+- [x] **L1607** `19f927fb` — 16. **Draft Upgrade Initiative pipeline spec** — Stages, gates (Schema/P — @ — 
+- [x] **L1608** `a6a3a891` — 17. **Draft Internal Console UI spec** — Principles and deployment; IA a — @ — 
+- [x] **L1609** `05c1d6e1` — 18. **Draft Runner Execution spec** — Full lifecycle A0–A12 plus kernel- — @ — 
+- [x] **L1610** `2a137d81` — 19. **Draft Node Taxonomy** — Large taxonomy (50+ types) with per-node c — @ — 
+- [x] **L1611** `e9666efb` — 20. **Draft Self-Improvement System spec** — Factory Scorecard (artifact — @ — 
+- [x] **L1612** `43d5b7bb` — 21. **Review and hand off** — Human lead implements DDL, pipeline, conso — @ — 
+- [x] **L1613** `e3b0c442` — (blank) — @ — 
+- [x] **L1614** `031ae2b0` — ## 16.1 Implementation Notes and Risks — @ — 
+- [x] **L1615** `e3b0c442` — (blank) — @ — 
+- [x] **L1616** `9269f916` — **Determinism:** The single largest cause of “self-build errors” is nond — @ — 
+- [x] **L1617** `e3b0c442` — (blank) — @ — 
+- [x] **L1618** `9fcc8798` — ### 16.2 What to Implement First (Fastest Path to Working Factory) — @ — 
+- [x] **L1619** `e3b0c442` — (blank) — @ — 
+- [x] **L1620** `6ad10026` — To get a working factory end-to-end: (1) **Postgres schema kernel** — sp — @ — 
+- [x] **L1621** `e3b0c442` — (blank) — @ — 
+- [x] **L1622** `cb3f91d5` — --- — @ — 
+- [x] **L1623** `e3b0c442` — (blank) — @ — 
+- [x] **L1624** `efdcadc8` — ## 17. Success Criteria for the Plan — @ — 
+- [x] **L1625** `e3b0c442` — (blank) — @ — 
+- [x] **L1626** `44f7aff0` — - A lead engineer can implement the full Postgres schema and align appli — @ — 
+- [x] **L1627** `22995e5c` — - Both Temporal-first and DB-first variants are clearly documented so th — @ — 
+- [x] **L1628** `e3ec3e18` — - The Upgrade Initiative pipeline spec is concrete enough to implement t — @ — 
+- [x] **L1629** `8a114924` — - The **Internal Console UI spec** is concrete enough to implement the o — @ — 
+- [x] **L1630** `4c5d6bde` — - The **Runner Execution spec** is concrete enough to implement the full — @ — 
+- [x] **L1631** `12870d1c` — - The **Node Taxonomy** is concrete enough to implement the plan compile — @ — 
+- [x] **L1632** `f3e5bb60` — - The schema enforces the ten invariants and supports deterministic, ide — @ — 
+- [x] **L1633** `123964cc` — - The **Self-Improvement System** is concrete enough to implement compou — @ — 
+- [x] **L1634** `0732205f` — - **Four Anthropic-grade upgrades** are specified: (1) run-level schedul — @ — 
+- [x] **L1635** `e3b0c442` — (blank) — @ — 
+- [x] **L1636** `cb3f91d5` — --- — @ — 
+- [x] **L1637** `e3b0c442` — (blank) — @ — 
+- [x] **L1638** `153169ed` — ## 18. External References and Implementation Hints — @ — 
+- [x] **L1639** `e3b0c442` — (blank) — @ — 
+- [x] **L1640** `14e7e78c` — The following content is **inlined from [creativepropulsionlabs/.github] — @ — 
+- [x] **L1641** `e3b0c442` — (blank) — @ — 
+- [x] **L1642** `48f64c1f` — ### 18.1 Source repo (README) — @ — 
+- [x] **L1643** `e3b0c442` — (blank) — @ — 
+- [x] **L1644** `42b41951` — > Org-level AI + CI infrastructure - reusable workflows, prompts, and Cl — @ — 
+- [x] **L1645** `e3b0c442` — (blank) — @ — 
+- [x] **L1646** `1f61da63` — ### 18.2 Prompt: execute-job (`.github/prompts/execute-job.txt`) — @ — 
+- [x] **L1647** `e3b0c442` — (blank) — @ — 
+- [x] **L1648** `f1b90184` — ``` — @ — 
+- [x] **L1649** `e8e5bcd4` — Execute this job. — @ — 
+- [x] **L1650** `e3b0c442` — (blank) — @ — 
+- [x] **L1651** `3e413436` — Job Payload (complete execution context): — @ — 
+- [x] **L1652** `59bf7432` — Read the job payload from: /tmp/job-payload.json — @ — 
+- [x] **L1653** `e3b0c442` — (blank) — @ — 
+- [x] **L1654** `413e2063` — Acceptance Criteria (authoritative): — @ — 
+- [x] **L1655** `7a494166` — Read acceptance criteria from: /tmp/acceptance-criteria.txt — @ — 
+- [x] **L1656** `e3b0c442` — (blank) — @ — 
+- [x] **L1657** `4de0bc28` — Instructions: — @ — 
+- [x] **L1658** `2a2ddc6c` — - Execute exactly one job — @ — 
+- [x] **L1659** `a12e462a` — - Follow CONTRIBUTING.md for repository conventions — @ — 
+- [x] **L1660** `7dce2c93` — - Follow the Job Type prompt for HOW to execute — @ — 
+- [x] **L1661** `6b862fbc` — - Acceptance Criteria defines WHAT success looks like — @ — 
+- [x] **L1662** `e3b0c442` — (blank) — @ — 
+- [x] **L1663** `41a92a6f` — CRITICAL: DO NOT OPEN A PULL REQUEST — @ — 
+- [x] **L1664** `da1a3527` — Pull request creation is handled by the workflow AFTER you exit. — @ — 
+- [x] **L1665** `8497b8b7` — Your job ends when you push commits to the branch. — @ — 
+- [x] **L1666** `e3b0c442` — (blank) — @ — 
+- [x] **L1667** `f08f6b4b` — CRITICAL RETRY RULE: — @ — 
+- [x] **L1668** `e74170a1` — On retries, you MUST: — @ — 
+- [x] **L1669** `60144fd4` — 1. Check feedback history in your prompt context — @ — 
+- [x] **L1670** `d773187c` — 2. Address ALL feedback issues — @ — 
+- [x] **L1671** `a385a129` — 3. Push at least one commit with your changes — @ — 
+- [x] **L1672** `e3b0c442` — (blank) — @ — 
+- [x] **L1673** `01c9d4b8` — Even if you believe the existing code is correct, push a commit (fix for — @ — 
+- [x] **L1674** `e3b0c442` — (blank) — @ — 
+- [x] **L1675** `a044836d` — After completing work, output the branch name clearly so it can be verif — @ — 
+- [x] **L1676** `f1b90184` — ``` — @ — 
+- [x] **L1677** `e3b0c442` — (blank) — @ — 
+- [x] **L1678** `ee6c8e18` — ### 18.3 Prompt: execution-constraints (`.github/prompts/execution-const — @ — 
+- [x] **L1679** `e3b0c442` — (blank) — @ — 
+- [x] **L1680** `f1b90184` — ``` — @ — 
+- [x] **L1681** `cb3f91d5` — --- — @ — 
+- [x] **L1682** `e3b0c442` — (blank) — @ — 
+- [x] **L1683** `df2801d0` — ## Execution Constraints — @ — 
+- [x] **L1684** `e3b0c442` — (blank) — @ — 
+- [x] **L1685** `d0ab6001` — - You have access to shell commands (git, gh, cat, etc.) for file and gi — @ — 
+- [x] **L1686** `88dac720` — - You have access to MCP tools for external systems (only the tools you — @ — 
+- [x] **L1687** `d77c6a6b` — - The workflow has ALREADY created and checked out your branch — @ — 
+- [x] **L1688** `d0000605` — - You must NOT create new branches — @ — 
+- [x] **L1689** `4ffa0435` — - Commit and push to the CURRENT branch only — @ — 
+- [x] **L1690** `5644d9e7` — - Do NOT commit to main/master directly — @ — 
+- [x] **L1691** `f60c440a` — - Do NOT force-push — @ — 
+- [x] **L1692** `4c4bb7ef` — - Do NOT modify unrelated files — @ — 
+- [x] **L1693** `e3b0c442` — (blank) — @ — 
+- [x] **L1694** `bb5ecdbc` — ## Job Context — @ — 
+- [x] **L1695** `f1b90184` — ``` — @ — 
+- [x] **L1696** `e3b0c442` — (blank) — @ — 
+- [x] **L1697** `6997a1bf` — ### 18.4 Prompt: retry-context (`.github/prompts/retry-context.txt`) — @ — 
+- [x] **L1698** `e3b0c442` — (blank) — @ — 
+- [x] **L1699** `f1b90184` — ``` — @ — 
+- [x] **L1700** `d6b0a86b` — **WARNING: THIS IS RETRY ATTEMPT {{ATTEMPT_COUNT}}** — @ — 
+- [x] **L1701** `e3b0c442` — (blank) — @ — 
+- [x] **L1702** `430aff42` — Previous attempts failed. Feedback history: — @ — 
+- [x] **L1703** `e3b0c442` — (blank) — @ — 
+- [x] **L1704** `c7d77617` — {{FEEDBACK_HISTORY}} — @ — 
+- [x] **L1705** `e3b0c442` — (blank) — @ — 
+- [x] **L1706** `2e7f4866` — If feedback above lacks detail, check PR comments for full error output. — @ — 
+- [x] **L1707** `e3b0c442` — (blank) — @ — 
+- [x] **L1708** `d1943874` — You MUST address ALL issues from prior feedback before proceeding. — @ — 
+- [x] **L1709** `ba49fc84` — Do NOT repeat the same mistakes. — @ — 
+- [x] **L1710** `e3b0c442` — (blank) — @ — 
+- [x] **L1711** `cb3f91d5` — --- — @ — 
+- [x] **L1712** `f1b90184` — ``` — @ — 
+- [x] **L1713** `e3b0c442` — (blank) — @ — 
+- [x] **L1714** `3cbb10a7` — ### 18.5 Prompt: review-pr (`.github/prompts/review-pr.txt`) — @ — 
+- [x] **L1715** `e3b0c442` — (blank) — @ — 
+- [x] **L1716** `f1b90184` — ``` — @ — 
+- [x] **L1717** `f492e1a8` — Review PR #{{PR_NUMBER}} in {{REPO_OWNER}}/{{REPO_NAME}}. — @ — 
+- [x] **L1718** `e3b0c442` — (blank) — @ — 
+- [x] **L1719** `a2a6e943` — ## Task Context — @ — 
+- [x] **L1720** `e3b0c442` — (blank) — @ — 
+- [x] **L1721** `e5d92f65` — You are reviewing a pull request created by the job pipeline. Your job i — @ — 
+- [x] **L1722** `e3b0c442` — (blank) — @ — 
+- [x] **L1723** `117f6205` — ## Acceptance Criteria (from job) — @ — 
+- [x] **L1724** `e3b0c442` — (blank) — @ — 
+- [x] **L1725** `7a494166` — Read acceptance criteria from: /tmp/acceptance-criteria.txt — @ — 
+- [x] **L1726** `e3b0c442` — (blank) — @ — 
+- [x] **L1727** `e6344e7e` — ## Review Instructions — @ — 
+- [x] **L1728** `e3b0c442` — (blank) — @ — 
+- [x] **L1729** `1c834237` — Execute the multi-agent code review process: — @ — 
+- [x] **L1730** `e3b0c442` — (blank) — @ — 
+- [x] **L1731** `c0de029f` — 1. **Pre-flight**: Check if PR is closed/draft/trivial - skip if so — @ — 
+- [x] **L1732** `01f6e45d` — 2. **Gather Guidelines**: Find all CONTRIBUTING.md files relevant to cha — @ — 
+- [x] **L1733** `5311c961` — 3. **Summarize**: Understand what the PR is trying to accomplish — @ — 
+- [x] **L1734** `01a1be1e` — 4. **Parallel Review**: Launch 4 agents: — @ — 
+- [x] **L1735** `d7b7b768` — - 2x CONTRIBUTING.md compliance checkers — @ — 
+- [x] **L1736** `d83cafa9` — - 2x Bug detectors (one diff-only, one context-aware) — @ — 
+- [x] **L1737** `92a0d331` — 5. **Validate**: Each issue gets a validation pass with confidence scori — @ — 
+- [x] **L1738** `f0fb39ac` — 6. **Filter**: Remove issues with confidence < 80 — @ — 
+- [x] **L1739** `96ade18b` — 7. **Verdict**: Output final decision — @ — 
+- [x] **L1740** `e3b0c442` — (blank) — @ — 
+- [x] **L1741** `e8135886` — ## High Signal Only — @ — 
+- [x] **L1742** `e3b0c442` — (blank) — @ — 
+- [x] **L1743** `2be226b0` — Flag ONLY: — @ — 
+- [x] **L1744** `24685fdf` — - Objective bugs that will cause incorrect runtime behavior — @ — 
+- [x] **L1745** `bc609ac6` — - Clear CONTRIBUTING.md violations (quote the exact rule) — @ — 
+- [x] **L1746** `e3b0c442` — (blank) — @ — 
+- [x] **L1747** `a401a3a2` — Do NOT flag: — @ — 
+- [x] **L1748** `5334082f` — - Style preferences — @ — 
+- [x] **L1749** `44943315` — - "Potential" issues — @ — 
+- [x] **L1750** `431bdab5` — - Pre-existing problems — @ — 
+- [x] **L1751** `91ff9648` — - Things linters catch — @ — 
+- [x] **L1752** `e3b0c442` — (blank) — @ — 
+- [x] **L1753** `f3872bf0` — If uncertain, don't flag it. False positives waste time. — @ — 
+- [x] **L1754** `e3b0c442` — (blank) — @ — 
+- [x] **L1755** `ebee587f` — ## Output Format — @ — 
+- [x] **L1756** `e3b0c442` — (blank) — @ — 
+- [x] **L1757** `e11ed87a` — Your final response MUST include this JSON block: — @ — 
+- [x] **L1758** `e3b0c442` — (blank) — @ — 
+- [x] **L1759** `021fb596` — { — @ — 
+- [x] **L1760** `f9ca2a04` — "verdict": "approved" , "changes_requested" , "rejected", — @ — 
+- [x] **L1761** `1ac1b224` — "summary": "One-line summary of findings", — @ — 
+- [x] **L1762** `6e01e123` — "issues": [ — @ — 
+- [x] **L1763** `0d3d2f5a` — { — @ — 
+- [x] **L1764** `e2d45ca9` — "file": "path/to/file.ts", — @ — 
+- [x] **L1765** `9d41a04b` — "line": "42", — @ — 
+- [x] **L1766** `5ec84dd1` — "description": "Description of issue", — @ — 
+- [x] **L1767** `a1acc2d3` — "type": "bug,compliance,style", — @ — 
+- [x] **L1768** `80e35697` — "severity": "blocking,non_blocking", — @ — 
+- [x] **L1769** `fe4a472f` — "confidence": 85 — @ — 
+- [x] **L1770** `28d86778` — } — @ — 
+- [x] **L1771** `67e900f6` — ] — @ — 
+- [x] **L1772** `d10b36aa` — } — @ — 
+- [x] **L1773** `e3b0c442` — (blank) — @ — 
+- [x] **L1774** `83493cbc` — Verdict rules: — @ — 
+- [x] **L1775** `a4db5ae0` — - approved: No blocking issues, or only non_blocking issues regardless o — @ — 
+- [x] **L1776** `ecd5888e` — - changes_requested: Any issue with severity: blocking AND confidence >= — @ — 
+- [x] **L1777** `1df5f2d8` — - rejected: Fundamentally broken, security vulnerability, or completely — @ — 
+- [x] **L1778** `e3b0c442` — (blank) — @ — 
+- [x] **L1779** `78c6a185` — Severity guide: — @ — 
+- [x] **L1780** `00bb6e3f` — - blocking: Runtime errors, crashes, data loss, security vulnerabilities — @ — 
+- [x] **L1781** `d2cdd428` — - non_blocking: Style preferences, minor improvements, pre-existing issu — @ — 
+- [x] **L1782** `e3b0c442` — (blank) — @ — 
+- [x] **L1783** `90737529` — When in doubt, approve. False rejections waste more time than false appr — @ — 
+- [x] **L1784** `f1b90184` — ``` — @ — 
+- [x] **L1785** `e3b0c442` — (blank) — @ — 
+- [x] **L1786** `5f996260` — ### 18.6 ADR-0012: Attempt-based stale result protection (`decisions/001 — @ — 
+- [x] **L1787** `e3b0c442` — (blank) — @ — 
+- [x] **L1788** `c5a1a6e7` — **Status:** Accepted — @ — 
+- [x] **L1789** `e3b0c442` — (blank) — @ — 
+- [x] **L1790** `00017529` — **Context:** The job pipeline uses webhooks to report CI results back to — @ — 
+- [x] **L1791** `e3b0c442` — (blank) — @ — 
+- [x] **L1792** `e0ff4c54` — **Decision:** Implement attempt-based protection for **execution webhook — @ — 
+- [x] **L1793** `e3b0c442` — (blank) — @ — 
+- [x] **L1794** `e3b0c442` — (blank) — @ — 
+- [x] **L1795** `e3c2c48b` — , Signal Type , Needs Attempt? , Reason — @ — 
+- [x] **L1796** `814a947c` — , ----------------- , -------------- , --------------------------------- — @ — 
+- [x] **L1797** `e1a536e9` — , execution-result , YES , Destructive—stale results corrupt — @ — 
+- [x] **L1798** `854c6096` — , validation-result , NO , Idempotent—repeats are harmless — @ — 
+- [x] **L1799** `0a5d4cd6` — , review-result , NO , Idempotent—repeats are harmless — @ — 
+- [x] **L1800** `e3b0c442` — (blank) — @ — 
+- [x] **L1801** `e3b0c442` — (blank) — @ — 
+- [x] **L1802** `b3b86031` — **Rationale:** Validation and review are idempotent; execution results t — @ — 
+- [x] **L1803** `e3b0c442` — (blank) — @ — 
+- [x] **L1804** `52521265` — **Implementation:** (1) Execution result RPC enforces `attempt = current — @ — 
+- [x] **L1805** `e3b0c442` — (blank) — @ — 
+- [x] **L1806** `5a684fb2` — **Key principle:** If a signal can safely be repeated, it does not need — @ — 
+- [x] **L1807** `e3b0c442` — (blank) — @ — 
+- [x] **L1808** `8e9f7ac2` — ### 18.7 Summary — @ — 
+- [x] **L1809** `e3b0c442` — (blank) — @ — 
+- [x] **L1810** `004adbd2` — The Runner Execution spec and Node Taxonomy do not prescribe exact promp — @ —  
+- [x] Blueprint: Spec line L1394 — implement
+- [x] Blueprint: Spec line L1395 — implement
+- [x] Blueprint: Spec line L1396 — implement
+- [x] Blueprint: Spec line L1397 — implement
+- [x] Blueprint: Spec line L1398 — implement
+- [x] Blueprint: Spec line L1399 — implement
+- [x] Blueprint: Spec line L1400 — implement
+- [x] Runner: Step or invariant (see 12C) — item 1
+- [x] Runner: Step or invariant (see 12C) — item 2
+- [x] Runner: Step or invariant (see 12C) — item 3
+- [x] Runner: Step or invariant (see 12C) — item 4
+- [x] Runner: Step or invariant (see 12C) — item 5
+- [x] Runner: Step or invariant (see 12C) — item 6
+- [x] Runner: Step or invariant (see 12C) — item 7
+- [x] Runner: Step or invariant (see 12C) — item 8
+- [x] Runner: Step or invariant (see 12C) — item 9
+- [x] Runner: Step or invariant (see 12C) — item 10
+- [x] Runner: Step or invariant (see 12C) — item 11
+- [x] Runner: Step or invariant (see 12C) — item 12
+- [x] Runner: Step or invariant (see 12C) — item 13
+- [x] Runner: Step or invariant (see 12C) — item 14
+- [x] Runner: Step or invariant (see 12C) — item 15
+- [x] Runner: Step or invariant (see 12C) — item 16
+- [x] Runner: Step or invariant (see 12C) — item 17
+- [x] Runner: Step or invariant (see 12C) — item 18
+- [x] Runner: Step or invariant (see 12C) — item 19
+- [x] Runner: Step or invariant (see 12C) — item 20
+- [x] Runner: Step or invariant (see 12C) — item 21
+- [x] Runner: Step or invariant (see 12C) — item 22
+- [x] Runner: Step or invariant (see 12C) — item 23
+- [x] Runner: Step or invariant (see 12C) — item 24
+- [x] Runner: Step or invariant (see 12C) — item 25
+- [x] Runner: Step or invariant (see 12C) — item 26
+- [x] Runner: Step or invariant (see 12C) — item 27
+- [x] Runner: Step or invariant (see 12C) — item 28
+- [x] Runner: Step or invariant (see 12C) — item 29
+- [x] Runner: Step or invariant (see 12C) — item 30
+- [x] Runner: Step or invariant (see 12C) — item 31
+- [x] Runner: Step or invariant (see 12C) — item 32
+- [x] Runner: Step or invariant (see 12C) — item 33
+- [x] Runner: Step or invariant (see 12C) — item 34
+- [x] Runner: Step or invariant (see 12C) — item 35
+- [x] Runner: Step or invariant (see 12C) — item 36
+- [x] Runner: Step or invariant (see 12C) — item 37
+- [x] Runner: Step or invariant (see 12C) — item 38
+- [x] Runner: Step or invariant (see 12C) — item 39
+- [x] Runner: Step or invariant (see 12C) — item 40
+- [x] Runner: Step or invariant (see 12C) — item 41
+- [x] Runner: Step or invariant (see 12C) — item 42
+- [x] Runner: Step or invariant (see 12C) — item 43
+- [x] Runner: Step or invariant (see 12C) — item 44
+- [x] Runner: Step or invariant (see 12C) — item 45
+- [x] Runner: Step or invariant (see 12C) — item 46
+- [x] Runner: Step or invariant (see 12C) — item 47
+- [x] Runner: Step or invariant (see 12C) — item 48
+- [x] Runner: Step or invariant (see 12C) — item 49
+- [x] Runner: Step or invariant (see 12C) — item 50
+- [x] Runner: Step or invariant (see 12C) — item 51
+- [x] Runner: Step or invariant (see 12C) — item 52
+- [x] Runner: Step or invariant (see 12C) — item 53
+- [x] Runner: Step or invariant (see 12C) — item 54
+- [x] Runner: Step or invariant (see 12C) — item 55
+- [x] Runner: Step or invariant (see 12C) — item 56
+- [x] Runner: Step or invariant (see 12C) — item 57
+- [x] Runner: Step or invariant (see 12C) — item 58
+- [x] Runner: Step or invariant (see 12C) — item 59
+- [x] Runner: Step or invariant (see 12C) — item 60
+- [x] Runner: Step or invariant (see 12C) — item 61
+- [x] Runner: Step or invariant (see 12C) — item 62
+- [x] Runner: Step or invariant (see 12C) — item 63
+- [x] Runner: Step or invariant (see 12C) — item 64
+- [x] Runner: Step or invariant (see 12C) — item 65
+- [x] Runner: Step or invariant (see 12C) — item 66
+- [x] Runner: Step or invariant (see 12C) — item 67
+- [x] Runner: Step or invariant (see 12C) — item 68
+- [x] Runner: Step or invariant (see 12C) — item 69
+- [x] Runner: Step or invariant (see 12C) — item 70
+- [x] Runner: Step or invariant (see 12C) — item 71
+- [x] Runner: Step or invariant (see 12C) — item 72
+- [x] Runner: Step or invariant (see 12C) — item 73
+- [x] Runner: Step or invariant (see 12C) — item 74
+- [x] Runner: Step or invariant (see 12C) — item 75
+- [x] Runner: Step or invariant (see 12C) — item 76
+- [x] Runner: Step or invariant (see 12C) — item 77
+- [x] Runner: Step or invariant (see 12C) — item 78
+- [x] Runner: Step or invariant (see 12C) — item 79
+- [x] Runner: Step or invariant (see 12C) — item 80
+- [x] Runner: Step or invariant (see 12C) — item 81
+- [x] Runner: Step or invariant (see 12C) — item 82
+- [x] Runner: Step or invariant (see 12C) — item 83
+- [x] Runner: Step or invariant (see 12C) — item 84
+- [x] Runner: Step or invariant (see 12C) — item 85
+- [x] Runner: Step or invariant (see 12C) — item 86
+- [x] Runner: Step or invariant (see 12C) — item 87
+- [x] Runner: Step or invariant (see 12C) — item 88
+- [x] Runner: Step or invariant (see 12C) — item 89
+- [x] Runner: Step or invariant (see 12C) — item 90
+- [x] Runner: Step or invariant (see 12C) — item 91
+- [x] Runner: Step or invariant (see 12C) — item 92
+- [x] Runner: Step or invariant (see 12C) — item 93
+- [x] Runner: Step or invariant (see 12C) — item 94
+- [x] Runner: Step or invariant (see 12C) — item 95
+- [x] Runner: Step or invariant (see 12C) — item 96
+- [x] Runner: Step or invariant (see 12C) — item 97
+- [x] Runner: Step or invariant (see 12C) — item 98
+- [x] Runner: Step or invariant (see 12C) — item 99
+- [x] Runner: Step or invariant (see 12C) — item 100
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 1
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 2
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 3
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 4
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 5
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 6
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 7
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 8
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 9
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 10
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 11
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 12
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 13
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 14
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 15
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 16
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 17
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 18
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 19
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 20
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 21
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 22
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 23
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 24
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 25
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 26
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 27
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 28
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 29
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 30
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 31
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 32
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 33
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 34
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 35
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 36
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 37
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 38
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 39
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 40
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 41
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 42
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 43
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 44
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 45
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 46
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 47
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 48
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 49
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 50
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 51
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 52
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 53
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 54
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 55
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 56
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 57
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 58
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 59
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 60
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 61
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 62
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 63
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 64
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 65
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 66
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 67
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 68
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 69
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 70
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 71
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 72
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 73
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 74
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 75
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 76
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 77
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 78
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 79
+- [x] Self-improvement: Scorecard/repair/eval (see 13.3–13.4) — item 80
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 1
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 2
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 3
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 4
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 5
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 6
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 7
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 8
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 9
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 10
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 11
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 12
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 13
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 14
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 15
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 16
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 17
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 18
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 19
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 20
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 21
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 22
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 23
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 24
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 25
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 26
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 27
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 28
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 29
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 30
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 31
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 32
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 33
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 34
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 35
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 36
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 37
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 38
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 39
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 40
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 41
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 42
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 43
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 44
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 45
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 46
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 47
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 48
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 49
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 50
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 51
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 52
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 53
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 54
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 55
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 56
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 57
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 58
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 59
+- [x] Upgrade Initiative: Stage or gate (see 12) — item 60

@@ -1,0 +1,74 @@
+# Auto-loaded context files for runners (8090-inspired layered memory)
+# When a runner starts a job, it loads these files from workspace_path
+# and injects them into the job's execution context / system prompt.
+# See: https://github.com/macaron-software/software-factory
+
+version: 1
+
+# Files to auto-load for all job types (if they exist in workspace_path)
+global:
+  - path: CLAUDE.md
+    inject_as: system_context
+    description: Project-level AI instructions
+  - path: SPECS.md
+    inject_as: system_context
+    description: Project specifications
+  - path: README.md
+    inject_as: reference
+    max_chars: 5000
+    description: Project overview
+  - path: .cursor/rules/*.md
+    inject_as: system_context
+    description: Cursor rules for code generation
+
+# Additional files loaded per job_type
+per_job_type:
+  codegen:
+    - path: CONTRIBUTING.md
+      inject_as: system_context
+      description: Coding guidelines
+    - path: tsconfig.json
+      inject_as: reference
+      description: TypeScript config
+    - path: package.json
+      inject_as: reference
+      max_chars: 2000
+      description: Dependencies
+
+  code_review:
+    - path: CONTRIBUTING.md
+      inject_as: system_context
+    - path: .eslintrc*
+      inject_as: reference
+
+  design:
+    - path: docs/STACK_AND_DECISIONS.md
+      inject_as: reference
+      max_chars: 5000
+
+  email_generate:
+    - path: docs/BRAND_ENGINE.md
+      inject_as: reference
+      max_chars: 3000
+
+# Memory layer scoping convention (maps to agent_memory.scope)
+# session = run_id set (ephemeral, cleared after run)
+# pattern = initiative_id + scope "pattern" (learned patterns)
+# project = initiative_id + scope "project" (project-wide context)
+# global  = initiative_id null or scope "global" (cross-project knowledge)
+memory_layers:
+  - name: session
+    scope_key: run_id
+    ttl: run_lifetime
+  - name: pattern
+    scope_key: initiative_id
+    scope_value: pattern
+    ttl: persistent
+  - name: project
+    scope_key: initiative_id
+    scope_value: project
+    ttl: persistent
+  - name: global
+    scope_key: null
+    scope_value: global
+    ttl: persistent

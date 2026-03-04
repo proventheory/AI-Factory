@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-03-04T19:00:47.230Z",
+  "fingerprints": [
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 108,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 109,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 110,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 111,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 112,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 113,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 114,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 115,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 116,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/brand-context.ts",
+      "line": 117,
+      "code": "TS18046",
+      "message_hash": "85d3e5aece0a"
+    },
+    {
+      "file": "runners/src/handlers/quality-gate.ts",
+      "line": 14,
+      "code": "TS2339",
+      "message_hash": "ec2e9ce64e5c"
+    }
+  ]
+}

@@ -1,0 +1,1846 @@
+# Todo list (one checkbox per line of blueprint)
+
+## Source & version pin
+
+| Field | Value |
+|-------|-------|
+| Source | `AI_Factory_Architecture_Blueprint.md` |
+| Line count | 1810 (L1–L1810); continuous, no gaps |
+| Content hash (pin when no git) | `de5f0ff86adc` |
+| Git pin | *(run `git rev-parse HEAD` when in repo and paste here)* |
+
+**Sanity:** Line numbers are continuous L1–L1810 (no gaps, no duplicates). Every line in the source is represented (blanks, code fences, mermaid, tables, headings, `---`). To re-verify: `grep -cE '^\-\s*\[\s\]\s+\*\*L[0-9]+\*\*' docs/TODO_BY_LINE.md` should equal 1810; line numbers in the checklist must be exactly 1..1810.
+
+---
+
+## Progress rollup
+
+| Metric | Value |
+|--------|-------|
+| Sections / areas | *(manual: list section numbers done)* |
+| Completed (checked) | 0 |
+| Remaining | 1810 |
+| % done | 0% |
+
+### Assigned ranges (optional)
+
+| Range | Owner | Notes |
+|-------|-------|-------|
+| *(e.g. L977–L998)* | *(name)* | *(optional)* |
+
+---
+
+## Checklist (L1–L1810)
+
+Format: `**L{n}** \`{hash}\` — {description} — @owner — notes`. Add owner and/or notes when assigning (e.g. `— @alice — Console wireframe`). Hash verifies line if doc changes.
+
+- [ ] **L1** `e3b0c442` — (blank) — @ — 
+- [ ] **L2** `3fde34bc` — # AI Software Factory: Schema Spec and Technical Stack Plan (Detailed) — @ — 
+- [ ] **L3** `e3b0c442` — (blank) — @ — 
+- [ ] **L4** `10652051` — ## 1. Executive Summary and Strategic Context — @ — 
+- [ ] **L5** `e3b0c442` — (blank) — @ — 
+- [ ] **L6** `cd63dc66` — ### 1.1 What We Are Building — @ — 
+- [ ] **L7** `e3b0c442` — (blank) — @ — 
+- [ ] **L8** `f06c8135` — This plan produces **human-ready specification artifacts** for an AI Sof — @ — 
+- [ ] **L9** `e3b0c442` — (blank) — @ — 
+- [ ] **L10** `4d491603` — The **database schema is the kernel**. Your friend’s rule holds: the mos — @ — 
+- [ ] **L11** `e3b0c442` — (blank) — @ — 
+- [ ] **L12** `fad419f6` — ### 1.2 Why This Plan Is 5,000+ Words — @ — 
+- [ ] **L13** `e3b0c442` — (blank) — @ — 
+- [ ] **L14** `be20d622` — The spec must be strong enough that implementation “doesn’t skip a beat” — @ — 
+- [ ] **L15** `e3b0c442` — (blank) — @ — 
+- [ ] **L16** `5828f610` — ### 1.3 System Context: What the Factory Orchestrates (ProfessorX Refere — @ — 
+- [ ] **L17** `e3b0c442` — (blank) — @ — 
+- [ ] **L18** `0ae08a13` — The UI and product reference (ProfessorX) expose three major layers that — @ — 
+- [ ] **L19** `e3b0c442` — (blank) — @ — 
+- [ ] **L20** `7209cdbc` — ### 1.4 High-Level Architecture (Control Plane, Postgres, Work Plane) — @ — 
+- [ ] **L21** `e3b0c442` — (blank) — @ — 
+- [ ] **L22** `3d7fa4df` — The system is structured so that the Control Plane (orchestrator) writes — @ — 
+- [ ] **L23** `e3b0c442` — (blank) — @ — 
+- [ ] **L24** `e62c2262` — Conceptual data flow (mermaid): — @ — 
+- [ ] **L25** `e3b0c442` — (blank) — @ — 
+- [ ] **L26** `46d94742` — ```mermaid — @ — 
+- [ ] **L27** `3aba69a0` — flowchart TB — @ — 
+- [ ] **L28** `95b28f94` — subgraph control [Control Plane] — @ — 
+- [ ] **L29** `1450ef3a` — Scheduler[Scheduler] — @ — 
+- [ ] **L30** `5bd3cd6e` — PolicyEngine[Policy Engine] — @ — 
+- [ ] **L31** `89a7b831` — ReleaseMgr[Release Manager] — @ — 
+- [ ] **L32** `48d344bc` — end — @ — 
+- [ ] **L33** `7c3229f4` — subgraph postgres [Postgres Ledger] — @ — 
+- [ ] **L34** `ed6e0e79` — Initiatives[initiatives] — @ — 
+- [ ] **L35** `887b4d79` — Plans[plans] — @ — 
+- [ ] **L36** `d385bfa3` — Runs[runs] — @ — 
+- [ ] **L37** `752b0447` — JobRuns[job_runs] — @ — 
+- [ ] **L38** `ace4c54a` — ToolCalls[tool_calls] — @ — 
+- [ ] **L39** `407f7b45` — Artifacts[artifacts] — @ — 
+- [ ] **L40** `6a3ddbd1` — Events[run_events job_events] — @ — 
+- [ ] **L41** `48d344bc` — end — @ — 
+- [ ] **L42** `eb2d3b30` — subgraph workers [Work Plane Runners] — @ — 
+- [ ] **L43** `e0bb4b82` — Worker1[Worker] — @ — 
+- [ ] **L44** `594560f6` — Worker2[Worker] — @ — 
+- [ ] **L45** `48d344bc` — end — @ — 
+- [ ] **L46** `7c87b650` — subgraph external [External Systems] — @ — 
+- [ ] **L47** `7b96a571` — Vercel[Vercel] — @ — 
+- [ ] **L48** `59241f23` — Klaviyo[Klaviyo] — @ — 
+- [ ] **L49** `5d65aaef` — GitHub[GitHub] — @ — 
+- [ ] **L50** `48d344bc` — end — @ — 
+- [ ] **L51** `04312688` — Scheduler --> Initiatives — @ — 
+- [ ] **L52** `c89defea` — Scheduler --> Plans — @ — 
+- [ ] **L53** `80886d4e` — Scheduler --> Runs — @ — 
+- [ ] **L54** `b3ab19d5` — PolicyEngine --> Runs — @ — 
+- [ ] **L55** `a17b803d` — ReleaseMgr --> Artifacts — @ — 
+- [ ] **L56** `ad45f208` — Runs --> JobRuns — @ — 
+- [ ] **L57** `b945dd97` — JobRuns --> Worker1 — @ — 
+- [ ] **L58** `c16f202f` — JobRuns --> Worker2 — @ — 
+- [ ] **L59** `fada7c04` — Worker1 --> ToolCalls — @ — 
+- [ ] **L60** `570646e7` — Worker2 --> ToolCalls — @ — 
+- [ ] **L61** `3d248d13` — ToolCalls --> Artifacts — @ — 
+- [ ] **L62** `1a97e215` — JobRuns --> Events — @ — 
+- [ ] **L63** `697c8611` — Worker1 --> Vercel — @ — 
+- [ ] **L64** `c7a2518b` — Worker1 --> Klaviyo — @ — 
+- [ ] **L65** `131872a4` — Worker2 --> GitHub — @ — 
+- [ ] **L66** `f1b90184` — ``` — @ — 
+- [ ] **L67** `e3b0c442` — (blank) — @ — 
+- [ ] **L68** `e3b0c442` — (blank) — @ — 
+- [ ] **L69** `e3b0c442` — (blank) — @ — 
+- [ ] **L70** `96677edb` — Control Plane writes initiatives, plans, runs; workers claim job_runs, e — @ — 
+- [ ] **L71** `e3b0c442` — (blank) — @ — 
+- [ ] **L72** `881a0e73` — ### 1.4.1 Four-Layer Architecture (Alignment with System Architecture) — @ — 
+- [ ] **L73** `e3b0c442` — (blank) — @ — 
+- [ ] **L74** `64041ecb` — The system can be described as four layers that match the *AI Factory Sy — @ — 
+- [ ] **L75** `e3b0c442` — (blank) — @ — 
+- [ ] **L76** `e3b0c442` — (blank) — @ — 
+- [ ] **L77** `b27b526b` — , Layer , Role — @ — 
+- [ ] **L78** `bd1869f9` — , ------------------- , ------------------------------------------------ — @ — 
+- [ ] **L79** `f9742f62` — , **Control Plane** , Planning, scheduling, policy, governance, author — @ — 
+- [ ] **L80** `959d86e7` — , **Work Plane** , Adapters, validators, generators, deploy tools; — @ — 
+- [ ] **L81** `363e4883` — , **Runner Fleet** , Distributed workers that execute plan nodes; eph — @ — 
+- [ ] **L82** `292926c2` — , **MCP Tool Fabric** , Standardized connectors to external systems; cap — @ — 
+- [ ] **L83** `e3b0c442` — (blank) — @ — 
+- [ ] **L84** `e3b0c442` — (blank) — @ — 
+- [ ] **L85** `d10d3c3c` — The **orchestration ledger** (Postgres) is the authoritative record: Ini — @ — 
+- [ ] **L86** `e3b0c442` — (blank) — @ — 
+- [ ] **L87** `bcfe29d2` — **Observability and Audit Layer:** All execution activity is recorded fo — @ — 
+- [ ] **L88** `e3b0c442` — (blank) — @ — 
+- [ ] **L89** `d997744f` — ### 1.4.2 Alignment with Full Architecture Blueprint — @ — 
+- [ ] **L90** `e3b0c442` — (blank) — @ — 
+- [ ] **L91** `287fedfc` — The *AI Factory Full Architecture Blueprint* (Control Plane • Work Plane — @ — 
+- [ ] **L92** `e3b0c442` — (blank) — @ — 
+- [ ] **L93** `f88dc4fe` — **1. System Philosophy** — The factory is designed around four principle — @ — 
+- [ ] **L94** `e3b0c442` — (blank) — @ — 
+- [ ] **L95** `ae8ec293` — **2. Control Plane** — Section 1.4, 2.1, 2.6A: initiative planning and c — @ — 
+- [ ] **L96** `e3b0c442` — (blank) — @ — 
+- [ ] **L97** `8a0cd611` — **3. Work Plane** — Section 2.1, 2.6D: deployment, marketing, data, and — @ — 
+- [ ] **L98** `e3b0c442` — (blank) — @ — 
+- [ ] **L99** `e81f57a8` — **4. Runner Fleet** — Section 2.6C, 12C. Runners are stateless execution — @ — 
+- [ ] **L100** `e3b0c442` — (blank) — @ — 
+- [ ] **L101** `5f4dd8bd` — **5. MCP Tool Fabric** — Section 2.6D: unified abstraction for external — @ — 
+- [ ] **L102** `e3b0c442` — (blank) — @ — 
+- [ ] **L103** `9b6f9e05` — **6. Orchestration Ledger** — Section 5, 2.6B: Postgres; Initiatives → P — @ — 
+- [ ] **L104** `e3b0c442` — (blank) — @ — 
+- [ ] **L105** `e8f3c499` — **7. Self-Improvement Framework** — Section 12, 13.3, 13.4: Upgrade Init — @ — 
+- [ ] **L106** `e3b0c442` — (blank) — @ — 
+- [ ] **L107** `e5e37396` — **8. Failure Analysis and Repair Library** — Section 13.3, 13.4: repair_ — @ — 
+- [ ] **L108** `e3b0c442` — (blank) — @ — 
+- [ ] **L109** `a58d469e` — **9. Evaluation and Replay System** — Section 13.3, 13.4: nightly Eval I — @ — 
+- [ ] **L110** `e3b0c442` — (blank) — @ — 
+- [ ] **L111** `fcbeb160` — **10. Observability and Analytics** — Section 1.4.1, 12B: structured eve — @ — 
+- [ ] **L112** `e3b0c442` — (blank) — @ — 
+- [ ] **L113** `53ebab72` — **11. Security Model** — Section 5 (policies, capability_grants, secret_ — @ — 
+- [ ] **L114** `e3b0c442` — (blank) — @ — 
+- [ ] **L115** `1f5a5a30` — **12. UI Console Architecture** — Section 12B, 12B.4: internal operation — @ — 
+- [ ] **L116** `e3b0c442` — (blank) — @ — 
+- [ ] **L117** `24ad7b3f` — **13. Distributed Scalability** — Runners are stateless; the system scal — @ — 
+- [ ] **L118** `e3b0c442` — (blank) — @ — 
+- [ ] **L119** `08b75097` — **14. Long-Term Evolution** — Section 13.3, 13.4: repair knowledge base — @ — 
+- [ ] **L120** `e3b0c442` — (blank) — @ — 
+- [ ] **L121** `9b54a0cb` — ### 1.5 Three Apps and Deployment (No Confusion: “It Launches Vercel” vs — @ — 
+- [ ] **L122** `e3b0c442` — (blank) — @ — 
+- [ ] **L123** `bfae5e24` — **“It launches Vercel applications”** means Vercel is a **deployment tar — @ — 
+- [ ] **L124** `e3b0c442` — (blank) — @ — 
+- [ ] **L125** `43b3bfbc` — - **App 1 — Control Plane (orchestrator + ledger API):** Owns Postgres l — @ — 
+- [ ] **L126** `68cbc5ae` — - **App 2 — Operator Console (ProfessorX UI):** The internal web UI huma — @ — 
+- [ ] **L127** `5392e169` — - **App 3 — Work Plane Outputs (targets):** Vercel apps the factory gene — @ — 
+- [ ] **L128** `e3b0c442` — (blank) — @ — 
+- [ ] **L129** `61094d41` — **Recommended deployment split (lock in spec):** — @ — 
+- [ ] **L130** `e3b0c442` — (blank) — @ — 
+- [ ] **L131** `3c666386` — - **Operator Console (Next.js/React)** → Vercel (or elsewhere) — fast it — @ — 
+- [ ] **L132** `0c4bf6bf` — - **Control Plane API** → self-hosted (K8s/ECS/Fly/VM) + Postgres + opti — @ — 
+- [ ] **L133** `30274ae9` — - **Runners** → self-hosted worker fleet (same cluster or separate). — @ — 
+- [ ] **L134** `b703307a` — - **Targets** → Vercel, Klaviyo, DNS, GitHub, etc. — @ — 
+- [ ] **L135** `e3b0c442` — (blank) — @ — 
+- [ ] **L136** `9533e0c7` — So: “built on Vercel” can mean (1) UI hosted on Vercel ✅ (2) generated a — @ — 
+- [ ] **L137** `e3b0c442` — (blank) — @ — 
+- [ ] **L138** `2e8b8227` — **Data flow (who talks to whom):** — @ — 
+- [ ] **L139** `e3b0c442` — (blank) — @ — 
+- [ ] **L140** `46d94742` — ```mermaid — @ — 
+- [ ] **L141** `35bb4631` — flowchart LR — @ — 
+- [ ] **L142** `a158a1ca` — subgraph ui [Operator Console] — @ — 
+- [ ] **L143** `fab2b860` — ProfessorXUI[ProfessorX UI - Tailwind / React] — @ — 
+- [ ] **L144** `48d344bc` — end — @ — 
+- [ ] **L145** `bd5cdbfe` — subgraph cp [Control Plane] — @ — 
+- [ ] **L146** `311ea76d` — API[Orchestrator API] — @ — 
+- [ ] **L147** `48d344bc` — end — @ — 
+- [ ] **L148** `b5579958` — subgraph db [Ledger] — @ — 
+- [ ] **L149** `ae5d388f` — Postgres[Postgres] — @ — 
+- [ ] **L150** `48d344bc` — end — @ — 
+- [ ] **L151** `fddef9b6` — subgraph runners [Runners] — @ — 
+- [ ] **L152** `e42b776a` — Workers[Workers] — @ — 
+- [ ] **L153** `48d344bc` — end — @ — 
+- [ ] **L154** `20ac6133` — subgraph targets [Targets] — @ — 
+- [ ] **L155** `7b96a571` — Vercel[Vercel] — @ — 
+- [ ] **L156** `59241f23` — Klaviyo[Klaviyo] — @ — 
+- [ ] **L157** `5d65aaef` — GitHub[GitHub] — @ — 
+- [ ] **L158** `48d344bc` — end — @ — 
+- [ ] **L159** `657e4fd8` — ProfessorXUI -->,API, API — @ — 
+- [ ] **L160** `be9f95b1` — API --> Postgres — @ — 
+- [ ] **L161** `72bc41c7` — Workers --> Postgres — @ — 
+- [ ] **L162** `62fdd488` — Workers --> Vercel — @ — 
+- [ ] **L163** `941da875` — Workers --> Klaviyo — @ — 
+- [ ] **L164** `77342464` — Workers --> GitHub — @ — 
+- [ ] **L165** `f1b90184` — ``` — @ — 
+- [ ] **L166** `e3b0c442` — (blank) — @ — 
+- [ ] **L167** `e3b0c442` — (blank) — @ — 
+- [ ] **L168** `e3b0c442` — (blank) — @ — 
+- [ ] **L169** `6aeed7ae` — Console is stateless; it reads/writes only via the Control Plane API; th — @ — 
+- [ ] **L170** `e3b0c442` — (blank) — @ — 
+- [ ] **L171** `cb3f91d5` — --- — @ — 
+- [ ] **L172** `e3b0c442` — (blank) — @ — 
+- [ ] **L173** `9a62d30c` — ## 2. Two-Plane Architecture and Self-Building Safety — @ — 
+- [ ] **L174** `e3b0c442` — (blank) — @ — 
+- [ ] **L175** `bf629c66` — ### 2.1 Control Plane vs Work Plane — @ — 
+- [ ] **L176** `e3b0c442` — (blank) — @ — 
+- [ ] **L177** `711b2634` — The system is split into two planes so that self-building cannot corrupt — @ — 
+- [ ] **L178** `e3b0c442` — (blank) — @ — 
+- [ ] **L179** `6f2103f6` — - **Control Plane (stable, minimal)** — @ — 
+- [ ] **L180** `8c133eec` — Orchestration scheduler, job queue / event bus, secrets/vault bridge, pi — @ — 
+- [ ] **L181** `6b6d7cc1` — - **Work Plane (mutable)** — @ — 
+- [ ] **L182** `51e44900` — Adapters (Vercel, Klaviyo, DNS, GitHub), schema library, code templates — @ — 
+- [ ] **L183** `e3b0c442` — (blank) — @ — 
+- [ ] **L184** `032bbaf9` — ### 2.2 Self-Building Must Be Patch-Based — @ — 
+- [ ] **L185** `e3b0c442` — (blank) — @ — 
+- [ ] **L186** `96650bff` — Every self-change must be: create branch → commit diff → open PR → run f — @ — 
+- [ ] **L187** `e3b0c442` — (blank) — @ — 
+- [ ] **L188** `be6dae52` — ### 2.3 Three-Environment Promotion — @ — 
+- [ ] **L189** `e3b0c442` — (blank) — @ — 
+- [ ] **L190** `050b2941` — - **Sandbox (ephemeral):** Fresh checkout, fresh dependencies, isolated — @ — 
+- [ ] **L191** `f2ff492e` — - **Staging (persistent):** Real integrations in “safe mode” (e.g. no se — @ — 
+- [ ] **L192** `14a6c045` — - **Production:** Only after staging passes; explicit approval or automa — @ — 
+- [ ] **L193** `e3b0c442` — (blank) — @ — 
+- [ ] **L194** `4274406c` — ### 2.4 Deterministic Builds and Blast-Radius Controls — @ — 
+- [ ] **L195** `e3b0c442` — (blank) — @ — 
+- [ ] **L196** `cd147742` — Pin: runtime image digests, dependency lockfiles, tool versions, schema — @ — 
+- [ ] **L197** `e3b0c442` — (blank) — @ — 
+- [ ] **L198** `87a094fa` — ### 2.5 Lifeboat — @ — 
+- [ ] **L199** `e3b0c442` — (blank) — @ — 
+- [ ] **L200** `b308d78a` — Maintain a manual fallback: last-known-good branch/tag, ability to redep — @ — 
+- [ ] **L201** `e3b0c442` — (blank) — @ — 
+- [ ] **L202** `891ee4b2` — ### 2.6 Six Subsystems (Factory OS Pattern) — @ — 
+- [ ] **L203** `e3b0c442` — (blank) — @ — 
+- [ ] **L204** `5665982c` — The architecture implied by “it launches Vercel apps but doesn’t run on — @ — 
+- [ ] **L205** `e3b0c442` — (blank) — @ — 
+- [ ] **L206** `61b7f9bd` — - **A) Control Plane API:** Accepts initiatives, compiles plans (DAG), s — @ — 
+- [ ] **L207** `c4996c9d` — - **B) Ledger DB (Postgres):** Canonical source for plans/nodes/edges, r — @ — 
+- [ ] **L208** `73ea292c` — - **C) Runner Fleet:** Long-running worker processes (not serverless): c — @ — 
+- [ ] **L209** `9d0481e7` — - **D) Adapter Registry + MCP:** One interface per integration (Vercel, — @ — 
+- [ ] **L210** `c3d32d17` — - **E) Artifact Store + .mdd:** Blob store (S3/R2/GCS) for request/respo — @ — 
+- [ ] **L211** `b03d4bfd` — - **F) Secrets Vault:** secret_refs only in DB; runners resolve at runti — @ — 
+- [ ] **L212** `e3b0c442` — (blank) — @ — 
+- [ ] **L213** `3723486a` — **Runner internals (for implementers):** Job claim loop (poll eligible → — @ — 
+- [ ] **L214** `e3b0c442` — (blank) — @ — 
+- [ ] **L215** `cb3f91d5` — --- — @ — 
+- [ ] **L216** `e3b0c442` — (blank) — @ — 
+- [ ] **L217** `35fff630` — ## 3. The Ten Invariants the Schema Must Enforce — @ — 
+- [ ] **L218** `e3b0c442` — (blank) — @ — 
+- [ ] **L219** `5ccde456` — The human-ready schema spec will state these as the **contract** the imp — @ — 
+- [ ] **L220** `e3b0c442` — (blank) — @ — 
+- [ ] **L221** `1ad857cf` — 1. **Append-only ledger where it matters** — @ — 
+- [ ] **L222** `b6011442` — State transitions are recorded in event tables; “current status” is deri — @ — 
+- [ ] **L223** `43b6a4a6` — 2. **Strict idempotency keys on every side-effect** — @ — 
+- [ ] **L224** `8dcb583a` — Every external call that can create or modify something has an `idempote — @ — 
+- [ ] **L225** `0c7f7dc9` — 3. **Runs are immutable execution contexts** — @ — 
+- [ ] **L226** `1af8d778` — A run pins: `runner_image_digest`, `workplane_bundle_version`, `policy_v — @ — 
+- [ ] **L227** `ede37ee5` — 4. **Plans are compiled artifacts** — @ — 
+- [ ] **L228** `10a6bc9e` — A plan is a compiled DAG with nodes, edges, input/output schema refs per — @ — 
+- [ ] **L229** `e807a696` — 5. **Node execution is strictly ordered, exactly-once by constraint** — @ — 
+- [ ] **L230** `724390fb` — The DB and application logic prevent a node from being “succeeded” twice — @ — 
+- [ ] **L231** `2b0a0244` — 6. **Artifacts are first-class, typed, content-addressed** — @ — 
+- [ ] **L232** `87feee2c` — Every meaningful output (PR URL, commit SHA, Vercel deploy ID, Klaviyo f — @ — 
+- [ ] **L233** `54dab9e6` — 7. **Secrets never appear in DB** — @ — 
+- [ ] **L234** `6aff5197` — Only `secret_ref` pointers, scopes, and policies. No keys, headers, or m — @ — 
+- [ ] **L235** `fe5d9886` — 8. **Policies are versioned and attached to runs** — @ — 
+- [ ] **L236** `8c8dd6c9` — Each run references the exact policy version used so you can explain why — @ — 
+- [ ] **L237** `cf11653c` — 9. **Canary cohorts supported** — @ — 
+- [ ] **L238** `9f9aad1f` — Fields for `release_id`, `cohort` (canary/control), `percent_rollout`, ` — @ — 
+- [ ] **L239** `8c9586b0` — 10. **Migrations are safe (online)** — @ — 
+- [ ] **L240** `b8dcddd8` — Additive changes first, backfills via controlled jobs, dual-write/dual-r — @ — 
+- [ ] **L241** `e3b0c442` — (blank) — @ — 
+- [ ] **L242** `cb3f91d5` — --- — @ — 
+- [ ] **L243** `e3b0c442` — (blank) — @ — 
+- [ ] **L244** `5bfdaf07` — ## 4. State + Event Hybrid: Operational vs Ledger Tables — @ — 
+- [ ] **L245** `e3b0c442` — (blank) — @ — 
+- [ ] **L246** `f5b36a73` — The schema pattern is two complementary layers. — @ — 
+- [ ] **L247** `e3b0c442` — (blank) — @ — 
+- [ ] **L248** `b17a1f46` — - **Operational tables (current state):** Fast reads for UI and schedule — @ — 
+- [ ] **L249** `d4d9ffd9` — - **Ledger tables (append-only truth):** Immutable history. Include: `ru — @ — 
+- [ ] **L250** `e3b0c442` — (blank) — @ — 
+- [ ] **L251** `cb3f91d5` — --- — @ — 
+- [ ] **L252** `e3b0c442` — (blank) — @ — 
+- [ ] **L253** `05f7b7e3` — ## 5. Human-Ready Schema Spec: Table-by-Table (Exact Structure) — @ — 
+- [ ] **L254** `e3b0c442` — (blank) — @ — 
+- [ ] **L255** `80f66100` — The following is the level of detail the schema spec document must conta — @ — 
+- [ ] **L256** `e3b0c442` — (blank) — @ — 
+- [ ] **L257** `33e375b0` — ### 5.1 initiatives — @ — 
+- [ ] **L258** `e3b0c442` — (blank) — @ — 
+- [ ] **L259** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L260** `d4d6438c` — - **intent_type** — text, not null (e.g. `deploy_app`, `create_flow`, `c — @ — 
+- [ ] **L261** `9188862f` — - **title** — text, nullable. — @ — 
+- [ ] **L262** `009a7bdb` — - **risk_level** — text, not null (`low` , `med` , `high`). — @ — 
+- [ ] **L263** `d8991c0b` — - **created_by** — text, nullable (user or service identifier). — @ — 
+- [ ] **L264** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L265** `e3b0c442` — (blank) — @ — 
+- [ ] **L266** `7bf11e20` — **Semantics:** One row per user or system goal. Written by the Control P — @ — 
+- [ ] **L267** `e3b0c442` — (blank) — @ — 
+- [ ] **L268** `9ff0c229` — **Indexes:** `(created_at DESC)`, `(intent_type, created_at)`, `(risk_le — @ — 
+- [ ] **L269** `e3b0c442` — (blank) — @ — 
+- [ ] **L270** `cb3f91d5` — --- — @ — 
+- [ ] **L271** `e3b0c442` — (blank) — @ — 
+- [ ] **L272** `2809c3ba` — ### 5.2 plans (compiled DAG) — @ — 
+- [ ] **L273** `e3b0c442` — (blank) — @ — 
+- [ ] **L274** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L275** `5e64e988` — - **initiative_id** — uuid, FK → initiatives(id), not null. — @ — 
+- [ ] **L276** `dc2c74a2` — - **plan_hash** — text, not null (hash of compilation inputs). — @ — 
+- [ ] **L277** `ad33f818` — - **deterministic_seed** — text, nullable. — @ — 
+- [ ] **L278** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L279** `e3b0c442` — (blank) — @ — 
+- [ ] **L280** `7d70abb9` — **Unique constraint:** `(initiative_id, plan_hash)` so compiling the sam — @ — 
+- [ ] **L281** `e3b0c442` — (blank) — @ — 
+- [ ] **L282** `c34f40db` — **Semantics:** One row per compiled execution graph. Written by the plan — @ — 
+- [ ] **L283** `e3b0c442` — (blank) — @ — 
+- [ ] **L284** `17eca16f` — **Indexes:** `(initiative_id)`, `(created_at DESC)`. — @ — 
+- [ ] **L285** `e3b0c442` — (blank) — @ — 
+- [ ] **L286** `cb3f91d5` — --- — @ — 
+- [ ] **L287** `e3b0c442` — (blank) — @ — 
+- [ ] **L288** `f9b03ca8` — ### 5.3 plan_nodes — @ — 
+- [ ] **L289** `e3b0c442` — (blank) — @ — 
+- [ ] **L290** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L291** `3287f1f9` — - **plan_id** — uuid, FK → plans(id), not null. — @ — 
+- [ ] **L292** `92991009` — - **node_key** — text, not null (stable key, e.g. `deploy.webapp`). — @ — 
+- [ ] **L293** `09f24a9f` — - **job_type** — text, not null (e.g. `DeployVercelApp`, `CreateKlaviyoF — @ — 
+- [ ] **L294** `a52dbbbf` — - **node_type** — text, not null (`job` , `gate` , `approval` , `validat — @ — 
+- [ ] **L295** `0da29060` — - **input_schema_ref** — text, nullable. — @ — 
+- [ ] **L296** `7f649774` — - **output_schema_ref** — text, nullable. — @ — 
+- [ ] **L297** `ae19a365` — - **retry_policy_json** — jsonb, nullable. — @ — 
+- [ ] **L298** `82683683` — - **risk_level** — text, nullable (node-level override). — @ — 
+- [ ] **L299** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L300** `e3b0c442` — (blank) — @ — 
+- [ ] **L301** `54125fe8` — **Unique constraint:** `(plan_id, node_key)`. — @ — 
+- [ ] **L302** `e3b0c442` — (blank) — @ — 
+- [ ] **L303** `d49b9ace` — **Semantics:** One row per node in the plan DAG. Written when the plan i — @ — 
+- [ ] **L304** `e3b0c442` — (blank) — @ — 
+- [ ] **L305** `04603945` — **Indexes:** `(plan_id)` (for resolving edges and scheduling). — @ — 
+- [ ] **L306** `e3b0c442` — (blank) — @ — 
+- [ ] **L307** `cb3f91d5` — --- — @ — 
+- [ ] **L308** `e3b0c442` — (blank) — @ — 
+- [ ] **L309** `86b36bad` — ### 5.4 plan_edges — @ — 
+- [ ] **L310** `e3b0c442` — (blank) — @ — 
+- [ ] **L311** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L312** `3287f1f9` — - **plan_id** — uuid, FK → plans(id), not null. — @ — 
+- [ ] **L313** `9723a5b9` — - **from_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [ ] **L314** `1f13c93a` — - **to_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [ ] **L315** `e5add96f` — - **condition** — text, not null (`success` , `failure` , `approval` , e — @ — 
+- [ ] **L316** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L317** `e3b0c442` — (blank) — @ — 
+- [ ] **L318** `436f749a` — **Unique constraint:** `(plan_id, from_node_id, to_node_id, condition)`. — @ — 
+- [ ] **L319** `e3b0c442` — (blank) — @ — 
+- [ ] **L320** `79287fea` — **Semantics:** Dependencies between nodes. Written at plan compile time. — @ — 
+- [ ] **L321** `e3b0c442` — (blank) — @ — 
+- [ ] **L322** `bcb6f718` — **Indexes:** `(plan_id)`, `(to_node_id)` (for dependency resolution: “wh — @ — 
+- [ ] **L323** `e3b0c442` — (blank) — @ — 
+- [ ] **L324** `cb3f91d5` — --- — @ — 
+- [ ] **L325** `e3b0c442` — (blank) — @ — 
+- [ ] **L326** `2dbcbb7d` — ### 5.5 releases (rollout objects) — @ — 
+- [ ] **L327** `e3b0c442` — (blank) — @ — 
+- [ ] **L328** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L329** `65ea4c7b` — - **control_plane_version** — text, nullable. — @ — 
+- [ ] **L330** `ccf0a7fc` — - **workplane_bundle_version** — text, nullable. — @ — 
+- [ ] **L331** `0d710c4a` — - **runner_image_digest** — text, nullable. — @ — 
+- [ ] **L332** `d3d1cbd4` — - **policy_version** — text, nullable (or FK to policies). — @ — 
+- [ ] **L333** `10d32622` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L334** `fc5ba126` — - **status** — text, not null (`draft` , `canary` , `promoted` , `rolled — @ — 
+- [ ] **L335** `0695b1f4` — - **percent_rollout** — int, nullable (0–100; only meaningful when statu — @ — 
+- [ ] **L336** `e3b0c442` — (blank) — @ — 
+- [ ] **L337** `bae252f5` — **Semantics:** One row per versioned bundle (control + work plane + runn — @ — 
+- [ ] **L338** `e3b0c442` — (blank) — @ — 
+- [ ] **L339** `7872bf06` — **Indexes:** `(status)`, `(created_at DESC)`. — @ — 
+- [ ] **L340** `e3b0c442` — (blank) — @ — 
+- [ ] **L341** `cb3f91d5` — --- — @ — 
+- [ ] **L342** `e3b0c442` — (blank) — @ — 
+- [ ] **L343** `f05f2fa4` — ### 5.5b release_routes (routing config — canary by config, not code) — @ — 
+- [ ] **L344** `e3b0c442` — (blank) — @ — 
+- [ ] **L345** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L346** `3a6035be` — - **environment** — text, not null. — @ — 
+- [ ] **L347** `2946e573` — - **rule_id** — text, not null. — @ — 
+- [ ] **L348** `1c1ebac8` — - **release_id** — uuid, FK → releases(id), not null. — @ — 
+- [ ] **L349** `a169177e` — - **cohort** — text, not null (`canary` , `control`). — @ — 
+- [ ] **L350** `8e0ca62c` — - **percent** — int, not null (0–100). — @ — 
+- [ ] **L351** `1d0c50a1` — - **constraints** — jsonb, nullable (e.g. only certain initiative types, — @ — 
+- [ ] **L352** `19bcd0cc` — - **active_from** — timestamptz, nullable. — @ — 
+- [ ] **L353** `8f5edb7b` — - **active_to** — timestamptz, nullable. — @ — 
+- [ ] **L354** `e3b0c442` — (blank) — @ — 
+- [ ] **L355** `cf0cfc5d` — **Semantics:** Routing logic lives in data, not only in code. Scheduler — @ — 
+- [ ] **L356** `e3b0c442` — (blank) — @ — 
+- [ ] **L357** `c8171ad5` — **Indexes:** `(environment)`, `(release_id)`, `(active_from, active_to)` — @ — 
+- [ ] **L358** `e3b0c442` — (blank) — @ — 
+- [ ] **L359** `cb3f91d5` — --- — @ — 
+- [ ] **L360** `e3b0c442` — (blank) — @ — 
+- [ ] **L361** `869845a4` — ### 5.6 runs (execution contexts) — @ — 
+- [ ] **L362** `e3b0c442` — (blank) — @ — 
+- [ ] **L363** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L364** `3287f1f9` — - **plan_id** — uuid, FK → plans(id), not null. — @ — 
+- [ ] **L365** `ae750cde` — - **release_id** — uuid, FK → releases(id), not null (beyond MVP; self-h — @ — 
+- [ ] **L366** `36c87cc1` — - **policy_version** — text, nullable (explicit policy version used for — @ — 
+- [ ] **L367** `f91dfb60` — - **environment** — text, not null (`sandbox` , `staging` , `prod`). — @ — 
+- [ ] **L368** `55ebfab3` — - **cohort** — text, nullable (`canary` , `control`). — @ — 
+- [ ] **L369** `31b86879` — - **status** — text, not null (`queued` , `running` , `succeeded` , `fai — @ — 
+- [ ] **L370** `10ae1854` — - **started_at** — timestamptz, nullable. — @ — 
+- [ ] **L371** `b7356a83` — - **ended_at** — timestamptz, nullable. — @ — 
+- [ ] **L372** `acc904bf` — - **root_idempotency_key** — text, not null. — @ — 
+- [ ] **L373** `c67561cc` — - **routed_at** — timestamptz, nullable (when this run was routed to a r — @ — 
+- [ ] **L374** `913d1c77` — - **routing_reason** — text, nullable (e.g. “canary_sample”, “manual”). — @ — 
+- [ ] **L375** `948c2fdc` — - **routing_rule_id** — text, nullable (id of the rule that chose this r — @ — 
+- [ ] **L376** `da154ba7` — - **prompt_template_version** — text, nullable (pin which prompt templat — @ — 
+- [ ] **L377** `d3b4c624` — - **adapter_contract_version** — text, nullable (pin adapter contract ve — @ — 
+- [ ] **L378** `ac6742ac` — - **scheduler_lock_token** — uuid, nullable (soft lock: which scheduler — @ — 
+- [ ] **L379** `bfc8e056` — - **scheduler_lock_expires_at** — timestamptz, nullable. — @ — 
+- [ ] **L380** `e3b0c442` — (blank) — @ — 
+- [ ] **L381** `eccb8403` — **Invariant:** Only one active “run coordinator” at a time per run. Sche — @ — 
+- [ ] **L382** `e3b0c442` — (blank) — @ — 
+- [ ] **L383** `5e78238c` — **Unique constraint:** `(environment, root_idempotency_key)`. — @ — 
+- [ ] **L384** `e3b0c442` — (blank) — @ — 
+- [ ] **L385** `c778d0b1` — **Semantics:** One row per concrete execution of a plan. Pins execution — @ — 
+- [ ] **L386** `e3b0c442` — (blank) — @ — 
+- [ ] **L387** `08b9e97b` — **Indexes:** `(plan_id)`, `(release_id)`, `(status)`, `(environment, sta — @ — 
+- [ ] **L388** `e3b0c442` — (blank) — @ — 
+- [ ] **L389** `cb3f91d5` — --- — @ — 
+- [ ] **L390** `e3b0c442` — (blank) — @ — 
+- [ ] **L391** `cec68875` — ### 5.7 job_runs (node execution attempts — Pattern A) — @ — 
+- [ ] **L392** `e3b0c442` — (blank) — @ — 
+- [ ] **L393** `c42adfc0` — **Design decision (locked):** Job run model is **Pattern A: attempt rows — @ — 
+- [ ] **L394** `e3b0c442` — (blank) — @ — 
+- [ ] **L395** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L396** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [ ] **L397** `6e2e9c13` — - **plan_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [ ] **L398** `ebfa80e7` — - **attempt** — int, not null (1-based). — @ — 
+- [ ] **L399** `07691363` — - **status** — text, not null (`queued` , `running` , `succeeded` , `fai — @ — 
+- [ ] **L400** `10ae1854` — - **started_at** — timestamptz, nullable. — @ — 
+- [ ] **L401** `b7356a83` — - **ended_at** — timestamptz, nullable. — @ — 
+- [ ] **L402** `c65df252` — - **error_signature** — text, nullable (normalized failure fingerprint). — @ — 
+- [ ] **L403** `bf03767c` — - **idempotency_key** — text, not null. **Stable across attempts:** Repr — @ — 
+- [ ] **L404** `e3b0c442` — (blank) — @ — 
+- [ ] **L405** `3e602834` — **Unique constraint:** `(run_id, plan_node_id, attempt)` — one row per a — @ — 
+- [ ] **L406** `e3b0c442` — (blank) — @ — 
+- [ ] **L407** `428b7dc0` — **Semantics:** One row per execution attempt of a plan node. Written by — @ — 
+- [ ] **L408** `e3b0c442` — (blank) — @ — 
+- [ ] **L409** `f2103bc2` — **Indexes:** `(run_id)`, `(status)` for queue polling; `(run_id, plan_no — @ — 
+- [ ] **L410** `e3b0c442` — (blank) — @ — 
+- [ ] **L411** `cb3f91d5` — --- — @ — 
+- [ ] **L412** `e3b0c442` — (blank) — @ — 
+- [ ] **L413** `db0672c0` — ### 5.7b node_progress (dependency eligibility materialization) — @ — 
+- [ ] **L414** `e3b0c442` — (blank) — @ — 
+- [ ] **L415** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L416** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [ ] **L417** `6e2e9c13` — - **plan_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [ ] **L418** `5369bae8` — - **deps_total** — int, not null (count of predecessor edges). — @ — 
+- [ ] **L419** `930384ef` — - **deps_satisfied** — int, not null (count of predecessors that have a — @ — 
+- [ ] **L420** `63abc45f` — - **eligible_at** — timestamptz, nullable (set when deps_satisfied = dep — @ — 
+- [ ] **L421** `2f102e47` — - **status** — text, not null (`pending` , `eligible` , `running` , `suc — @ — 
+- [ ] **L422** `e3b0c442` — (blank) — @ — 
+- [ ] **L423** `c3894d9d` — **Unique constraint:** `(run_id, plan_node_id)` — one row per node per r — @ — 
+- [ ] **L424** `e3b0c442` — (blank) — @ — 
+- [ ] **L425** `5d353663` — **Update semantics (must be defined):** Either (1) **Trigger-based:** DB — @ — 
+- [ ] **L426** `e3b0c442` — (blank) — @ — 
+- [ ] **L427** `96aa7386` — **Indexes:** `(run_id)`, `(status)` for “give me eligible nodes”; `(elig — @ — 
+- [ ] **L428** `e3b0c442` — (blank) — @ — 
+- [ ] **L429** `cb3f91d5` — --- — @ — 
+- [ ] **L430** `e3b0c442` — (blank) — @ — 
+- [ ] **L431** `40745750` — ### 5.7b2 node_completions (ledger for dependency updates — idempotent) — @ — 
+- [ ] **L432** `e3b0c442` — (blank) — @ — 
+- [ ] **L433** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [ ] **L434** `eef101d3` — - **from_node_id** — uuid, FK → plan_nodes(id), not null (the node that — @ — 
+- [ ] **L435** `f5b2f31a` — - **job_run_id** — uuid, FK → job_runs(id), not null (the winning attemp — @ — 
+- [ ] **L436** `d197a8c3` — - **completed_at** — timestamptz, not null. — @ — 
+- [ ] **L437** `e3b0c442` — (blank) — @ — 
+- [ ] **L438** `35c0f151` — **Unique constraint:** `(run_id, from_node_id)` — records “from_node has — @ — 
+- [ ] **L439** `e3b0c442` — (blank) — @ — 
+- [ ] **L440** `f002b043` — **Indexes:** `(run_id)`, `(from_node_id)`. — @ — 
+- [ ] **L441** `e3b0c442` — (blank) — @ — 
+- [ ] **L442** `cb3f91d5` — --- — @ — 
+- [ ] **L443** `e3b0c442` — (blank) — @ — 
+- [ ] **L444** `46506358` — ### 5.7c node_outcomes (single-winner node success) — @ — 
+- [ ] **L445** `e3b0c442` — (blank) — @ — 
+- [ ] **L446** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [ ] **L447** `6e2e9c13` — - **plan_node_id** — uuid, FK → plan_nodes(id), not null. — @ — 
+- [ ] **L448** `e485cbad` — - **outcome_status** — text, not null (`succeeded` , `failed`). — @ — 
+- [ ] **L449** `d18a8033` — - **winning_job_run_id** — uuid, FK → job_runs(id), not null (the attemp — @ — 
+- [ ] **L450** `e3b0c442` — (blank) — @ — 
+- [ ] **L451** `e935bdef` — **Unique constraint:** `(run_id, plan_node_id)` — exactly one outcome pe — @ — 
+- [ ] **L452** `e3b0c442` — (blank) — @ — 
+- [ ] **L453** `36a27f7c` — **Indexes:** `(run_id)`, `(winning_job_run_id)`. — @ — 
+- [ ] **L454** `e3b0c442` — (blank) — @ — 
+- [ ] **L455** `cb3f91d5` — --- — @ — 
+- [ ] **L456** `e3b0c442` — (blank) — @ — 
+- [ ] **L457** `764ba351` — ### 5.8 tool_calls (adapter invocations) — @ — 
+- [ ] **L458** `e3b0c442` — (blank) — @ — 
+- [ ] **L459** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L460** `cd570872` — - **job_run_id** — uuid, FK → job_runs(id), not null. — @ — 
+- [ ] **L461** `77cd3a6c` — - **adapter_id** — uuid, FK → adapters(id), not null. — @ — 
+- [ ] **L462** `2b160e3c` — - **capability** — text, not null (`deploy` , `create_flow` , `set_dns` — @ — 
+- [ ] **L463** `43277195` — - **operation_key** — text, not null for side-effecting calls (desired-s — @ — 
+- [ ] **L464** `647c1d1d` — - **idempotency_key** — text, not null (derived from job_run.idempotency — @ — 
+- [ ] **L465** `bd43a29d` — - **request_hash** — text, nullable (sha256 of normalized request body; — @ — 
+- [ ] **L466** `e65c87e1` — - **request_schema_ref** — text, nullable. — @ — 
+- [ ] **L467** `c18f071d` — - **response_schema_ref** — text, nullable. — @ — 
+- [ ] **L468** `f75beea5` — - **request_artifact_id** — uuid, FK → artifacts(id), nullable. — @ — 
+- [ ] **L469** `27eac184` — - **response_artifact_id** — uuid, FK → artifacts(id), nullable. — @ — 
+- [ ] **L470** `a7faaaeb` — - **status** — text, not null (`pending` , `running` , `succeeded` , `fa — @ — 
+- [ ] **L471** `10ae1854` — - **started_at** — timestamptz, nullable. — @ — 
+- [ ] **L472** `f6e82a27` — - **ended_at** — timestamptz, nullable. — @ — 
+- [ ] **L473** `e3b0c442` — (blank) — @ — 
+- [ ] **L474** `b65b3cef` — **Unique constraints:** (1) `(adapter_id, idempotency_key)` for retry de — @ — 
+- [ ] **L475** `e3b0c442` — (blank) — @ — 
+- [ ] **L476** `4b182a64` — **Semantics:** One row per adapter invocation. Adapters should use desir — @ — 
+- [ ] **L477** `e3b0c442` — (blank) — @ — 
+- [ ] **L478** `623bf4ed` — **Indexes:** `(job_run_id)`, `(adapter_id, idempotency_key)` (unique), ` — @ — 
+- [ ] **L479** `e3b0c442` — (blank) — @ — 
+- [ ] **L480** `cb3f91d5` — --- — @ — 
+- [ ] **L481** `e3b0c442` — (blank) — @ — 
+- [ ] **L482** `e94d1c9c` — ### 5.9 validations — @ — 
+- [ ] **L483** `e3b0c442` — (blank) — @ — 
+- [ ] **L484** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L485** `11ab9931` — - **job_run_id** — uuid, FK → job_runs(id), nullable (or run_id if valid — @ — 
+- [ ] **L486** `c0c1ba25` — - **run_id** — uuid, FK → runs(id), nullable. — @ — 
+- [ ] **L487** `41564b73` — - **validator_type** — text, not null (`unit_test` , `schema_validate` , — @ — 
+- [ ] **L488** `7e09bc0f` — - **status** — text, not null (`pass` , `fail`). — @ — 
+- [ ] **L489** `843a1cff` — - **report_artifact_id** — uuid, FK → artifacts(id), nullable. — @ — 
+- [ ] **L490** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L491** `e3b0c442` — (blank) — @ — 
+- [ ] **L492** `b0071b86` — **Semantics:** One row per validation result. Written by validators. Ena — @ — 
+- [ ] **L493** `e3b0c442` — (blank) — @ — 
+- [ ] **L494** `8e3b84e5` — **Indexes:** `(job_run_id)`, `(run_id)`, `(validator_type)`. — @ — 
+- [ ] **L495** `e3b0c442` — (blank) — @ — 
+- [ ] **L496** `cb3f91d5` — --- — @ — 
+- [ ] **L497** `e3b0c442` — (blank) — @ — 
+- [ ] **L498** `ead075b5` — ### 5.10 artifacts (typed outputs) — @ — 
+- [ ] **L499** `e3b0c442` — (blank) — @ — 
+- [ ] **L500** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L501** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [ ] **L502** `68d3df76` — - **job_run_id** — uuid, FK → job_runs(id), nullable. — @ — 
+- [ ] **L503** `8d208ddd` — - **artifact_type** — text, not null (`git_commit` , `pr_url` , `vercel_ — @ — 
+- [ ] **L504** `b3ee9804` — - **artifact_class** — text, not null (`logs` , `docs` , `external_objec — @ — 
+- [ ] **L505** `d563c3e9` — - **uri** — text, not null (stable, immutable after publication). — @ — 
+- [ ] **L506** `959441a2` — - **sha256** — text, nullable (content-addressable; multiple artifacts m — @ — 
+- [ ] **L507** `abd04c0a` — - **metadata_json** — jsonb, nullable (for rollback use structured schem — @ — 
+- [ ] **L508** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L509** `e3b0c442` — (blank) — @ — 
+- [ ] **L510** `5d81d9f8` — **Immutability:** Artifacts are immutable once written (no updates to ur — @ — 
+- [ ] **L511** `e3b0c442` — (blank) — @ — 
+- [ ] **L512** `d0d952b1` — **Semantics:** Every meaningful output of a run. Written by workers and — @ — 
+- [ ] **L513** `e3b0c442` — (blank) — @ — 
+- [ ] **L514** `cb3f91d5` — --- — @ — 
+- [ ] **L515** `e3b0c442` — (blank) — @ — 
+- [ ] **L516** `cfd512fd` — ### 5.11 policies (versioned, immutable) — @ — 
+- [ ] **L517** `e3b0c442` — (blank) — @ — 
+- [ ] **L518** `968d26a5` — - **version** — text, PK (or id uuid PK + version unique not null). — @ — 
+- [ ] **L519** `10d32622` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L520** `61eafc50` — - **rules_json** — jsonb, not null. **Self-build guardrails must be firs — @ — 
+- [ ] **L521** `e3b0c442` — (blank) — @ — 
+- [ ] **L522** `c7ba48cb` — **Semantics:** Policies are immutable and versioned. Runs reference poli — @ — 
+- [ ] **L523** `e3b0c442` — (blank) — @ — 
+- [ ] **L524** `1fc73a9d` — **Indexes:** `(version)`. — @ — 
+- [ ] **L525** `e3b0c442` — (blank) — @ — 
+- [ ] **L526** `cb3f91d5` — --- — @ — 
+- [ ] **L527** `e3b0c442` — (blank) — @ — 
+- [ ] **L528** `9129c4e0` — ### 5.12 secret_refs (vault pointers) — @ — 
+- [ ] **L529** `e3b0c442` — (blank) — @ — 
+- [ ] **L530** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L531** `9059efbf` — - **name** — text, not null (e.g. `secret://klaviyo/api_key`). — @ — 
+- [ ] **L532** `50356c72` — - **vault_path** — text, not null. — @ — 
+- [ ] **L533** `e87e7e65` — - **scope** — text, not null (`staging` , `prod`). — @ — 
+- [ ] **L534** `965dbaa9` — - **capabilities_allowed** — text[], nullable. — @ — 
+- [ ] **L535** `ec8f4734` — - **rotated_at** — timestamptz, nullable. — @ — 
+- [ ] **L536** `e3b0c442` — (blank) — @ — 
+- [ ] **L537** `eecfb5f3` — **No secrets stored. Ever.** — @ — 
+- [ ] **L538** `e3b0c442` — (blank) — @ — 
+- [ ] **L539** `d512f473` — **Semantics:** Reference only. Runner resolves at runtime via vault. Wri — @ — 
+- [ ] **L540** `e3b0c442` — (blank) — @ — 
+- [ ] **L541** `7d8c5b85` — **Indexes:** `(name)`, `(scope)`. — @ — 
+- [ ] **L542** `e3b0c442` — (blank) — @ — 
+- [ ] **L543** `cb3f91d5` — --- — @ — 
+- [ ] **L544** `e3b0c442` — (blank) — @ — 
+- [ ] **L545** `56c59562` — ### 5.12b secret_access_events (append-only ledger) — @ — 
+- [ ] **L546** `e3b0c442` — (blank) — @ — 
+- [ ] **L547** `02e091ae` — - **id** — uuid, PK, not null (or bigint serial). — @ — 
+- [ ] **L548** `31b4554e` — - **secret_ref_id** — uuid, FK → secret_refs(id), not null. — @ — 
+- [ ] **L549** `3a6035be` — - **environment** — text, not null. — @ — 
+- [ ] **L550** `68d3df76` — - **job_run_id** — uuid, FK → job_runs(id), nullable. — @ — 
+- [ ] **L551** `8e06115c` — - **tool_call_id** — uuid, FK → tool_calls(id), nullable. — @ — 
+- [ ] **L552** `9de37035` — - **worker_id** — text, not null. — @ — 
+- [ ] **L553** `0638888d` — - **accessed_at** — timestamptz, not null. — @ — 
+- [ ] **L554** `9eaa7680` — - **purpose** — text, nullable (e.g. “tool_call”, “runner_start”). — @ — 
+- [ ] **L555** `e3b0c442` — (blank) — @ — 
+- [ ] **L556** `00490b0e` — **Semantics:** Log “who/what accessed secret_ref X in env Y at time Z.” — @ — 
+- [ ] **L557** `e3b0c442` — (blank) — @ — 
+- [ ] **L558** `badf1903` — **Indexes:** `(secret_ref_id, accessed_at)`, `(environment, accessed_at) — @ — 
+- [ ] **L559** `e3b0c442` — (blank) — @ — 
+- [ ] **L560** `cb3f91d5` — --- — @ — 
+- [ ] **L561** `e3b0c442` — (blank) — @ — 
+- [ ] **L562** `c1d08121` — ### 5.12c Policy enforcement boundaries (spec text, not a table) — @ — 
+- [ ] **L563** `e3b0c442` — (blank) — @ — 
+- [ ] **L564** `957d56dc` — The spec will explicitly state: — @ — 
+- [ ] **L565** `e3b0c442` — (blank) — @ — 
+- [ ] **L566** `9a10f433` — - The LLM **never** sees raw secrets; only references like `secret://kla — @ — 
+- [ ] **L567** `9d2d4226` — - **Runners** resolve secrets at runtime via vault; vault returns value — @ — 
+- [ ] **L568** `dbf65010` — - **Logs** are redacted before storage (bearer tokens, query params, hea — @ — 
+- [ ] **L569** `a3fe56c6` — - **Tool_call payload artifacts** (request/response bodies) are access-c — @ — 
+- [ ] **L570** `801b6caa` — This prevents self-documentation or logs from accidentally leaking secre — @ — 
+- [ ] **L571** `e3b0c442` — (blank) — @ — 
+- [ ] **L572** `cb3f91d5` — --- — @ — 
+- [ ] **L573** `e3b0c442` — (blank) — @ — 
+- [ ] **L574** `23ddcdcc` — ### 5.13 adapters (MCP / tool registry) — @ — 
+- [ ] **L575** `e3b0c442` — (blank) — @ — 
+- [ ] **L576** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L577** `073f806e` — - **name** — text, not null (`vercel`, `github`, `klaviyo`, `cloudflare` — @ — 
+- [ ] **L578** `6b709b0d` — - **version** — text, not null. — @ — 
+- [ ] **L579** `f9387013` — - **capabilities** — text[], not null. — @ — 
+- [ ] **L580** `9570c813` — - **schema_contract_ref** — text, nullable. — @ — 
+- [ ] **L581** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L582** `e3b0c442` — (blank) — @ — 
+- [ ] **L583** `8bf7a161` — **Semantics:** Registry of tool integrations. Used by tool_calls and cap — @ — 
+- [ ] **L584** `e3b0c442` — (blank) — @ — 
+- [ ] **L585** `f4a0fb2b` — **Indexes:** `(name, version)`. — @ — 
+- [ ] **L586** `e3b0c442` — (blank) — @ — 
+- [ ] **L587** `cb3f91d5` — --- — @ — 
+- [ ] **L588** `e3b0c442` — (blank) — @ — 
+- [ ] **L589** `348c98d7` — ### 5.14 run_events (append-only) — @ — 
+- [ ] **L590** `e3b0c442` — (blank) — @ — 
+- [ ] **L591** `02e091ae` — - **id** — uuid, PK, not null (or bigint serial). — @ — 
+- [ ] **L592** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [ ] **L593** `ce904bde` — - **event_type** — text, not null (`queued` , `started` , `stage_entered — @ — 
+- [ ] **L594** `e07d62ba` — - **payload_artifact_id** — uuid, FK → artifacts(id), nullable. — @ — 
+- [ ] **L595** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L596** `e3b0c442` — (blank) — @ — 
+- [ ] **L597** `02cf5b3f` — **Semantics:** Every run status transition. Append-only. Enables replay — @ — 
+- [ ] **L598** `e3b0c442` — (blank) — @ — 
+- [ ] **L599** `20c07651` — **Indexes:** `(run_id, created_at)`. — @ — 
+- [ ] **L600** `e3b0c442` — (blank) — @ — 
+- [ ] **L601** `cb3f91d5` — --- — @ — 
+- [ ] **L602** `e3b0c442` — (blank) — @ — 
+- [ ] **L603** `ab934ecc` — ### 5.15 job_events (append-only) — @ — 
+- [ ] **L604** `e3b0c442` — (blank) — @ — 
+- [ ] **L605** `02e091ae` — - **id** — uuid, PK, not null (or bigint serial). — @ — 
+- [ ] **L606** `cd570872` — - **job_run_id** — uuid, FK → job_runs(id), not null. — @ — 
+- [ ] **L607** `76a7100d` — - **event_type** — text, not null (`attempt_started` , `attempt_succeede — @ — 
+- [ ] **L608** `1d361d47` — - **payload_json** — jsonb, nullable (or payload_artifact_id). — @ — 
+- [ ] **L609** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L610** `e3b0c442` — (blank) — @ — 
+- [ ] **L611** `6aec6c84` — **Semantics:** Per-job-run attempt and repair events. Append-only. Enabl — @ — 
+- [ ] **L612** `e3b0c442` — (blank) — @ — 
+- [ ] **L613** `52164b2d` — **Indexes:** `(job_run_id, created_at)`. — @ — 
+- [ ] **L614** `e3b0c442` — (blank) — @ — 
+- [ ] **L615** `cb3f91d5` — --- — @ — 
+- [ ] **L616** `e3b0c442` — (blank) — @ — 
+- [ ] **L617** `ee408e5c` — ### 5.16 capability_grants (Anthropic-grade extra) — @ — 
+- [ ] **L618** `e3b0c442` — (blank) — @ — 
+- [ ] **L619** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L620** `3a6035be` — - **environment** — text, not null. — @ — 
+- [ ] **L621** `b0c0263d` — - **release_id** — uuid, FK → releases(id), nullable (null = any release — @ — 
+- [ ] **L622** `77cd3a6c` — - **adapter_id** — uuid, FK → adapters(id), not null. — @ — 
+- [ ] **L623** `7cb40853` — - **capability** — text, not null. — @ — 
+- [ ] **L624** `6b6c548c` — - **requires_approval** — boolean, not null. — @ — 
+- [ ] **L625** `2ec4a1ec` — - **max_qps** — int, nullable. — @ — 
+- [ ] **L626** `bfbd305e` — - **max_daily_actions** — int, nullable. — @ — 
+- [ ] **L627** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L628** `e3b0c442` — (blank) — @ — 
+- [ ] **L629** `8f367b2d` — **Semantics:** Gates what the orchestrator is allowed to do at runtime. — @ — 
+- [ ] **L630** `e3b0c442` — (blank) — @ — 
+- [ ] **L631** `16adba40` — **Indexes:** `(environment, adapter_id, capability)`. — @ — 
+- [ ] **L632** `e3b0c442` — (blank) — @ — 
+- [ ] **L633** `cb3f91d5` — --- — @ — 
+- [ ] **L634** `e3b0c442` — (blank) — @ — 
+- [ ] **L635** `8164bb51` — ### 5.17 approvals (optional ledger table) — @ — 
+- [ ] **L636** `e3b0c442` — (blank) — @ — 
+- [ ] **L637** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L638** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [ ] **L639** `68d3df76` — - **job_run_id** — uuid, FK → job_runs(id), nullable. — @ — 
+- [ ] **L640** `f0a50751` — - **approver** — text, not null. — @ — 
+- [ ] **L641** `37402781` — - **action** — text, not null (`approved` , `rejected`). — @ — 
+- [ ] **L642** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L643** `e3b0c442` — (blank) — @ — 
+- [ ] **L644** `6f7470b8` — **Semantics:** Who approved or rejected what and when. Append-only. For — @ — 
+- [ ] **L645** `e3b0c442` — (blank) — @ — 
+- [ ] **L646** `de17551e` — **Indexes:** `(run_id)`, `(created_at)`. — @ — 
+- [ ] **L647** `e3b0c442` — (blank) — @ — 
+- [ ] **L648** `cb3f91d5` — --- — @ — 
+- [ ] **L649** `e3b0c442` — (blank) — @ — 
+- [ ] **L650** `96ef612d` — ### 5.18 job_claims (leases — exactly-once execution) — @ — 
+- [ ] **L651** `e3b0c442` — (blank) — @ — 
+- [ ] **L652** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L653** `cd570872` — - **job_run_id** — uuid, FK → job_runs(id), not null. — @ — 
+- [ ] **L654** `9de37035` — - **worker_id** — text, not null. — @ — 
+- [ ] **L655** `7ffe57bd` — - **claim_token** — uuid, not null, unique (one unique token per claim; — @ — 
+- [ ] **L656** `a2d36e0a` — - **claimed_at** — timestamptz, not null. — @ — 
+- [ ] **L657** `1023515a` — - **lease_expires_at** — timestamptz, not null. — @ — 
+- [ ] **L658** `76109e8a` — - **heartbeat_at** — timestamptz, not null. — @ — 
+- [ ] **L659** `76cef8c6` — - **attempt_token** — text, nullable (semantic identifier e.g. run_id:pl — @ — 
+- [ ] **L660** `78e84b27` — - **released_at** — timestamptz, nullable (set when worker completes or — @ — 
+- [ ] **L661** `e3b0c442` — (blank) — @ — 
+- [ ] **L662** `4c55aacb` — **Invariant:** Only one active claim per job_run attempt (one row with ` — @ — 
+- [ ] **L663** `e3b0c442` — (blank) — @ — 
+- [ ] **L664** `eae21ecc` — **Semantics:** A worker claims a job by inserting a row with a new claim — @ — 
+- [ ] **L665** `e3b0c442` — (blank) — @ — 
+- [ ] **L666** `31e2c531` — **Indexes:** `(job_run_id)` WHERE released_at IS NULL; `(worker_id, hear — @ — 
+- [ ] **L667** `e3b0c442` — (blank) — @ — 
+- [ ] **L668** `cb3f91d5` — --- — @ — 
+- [ ] **L669** `e3b0c442` — (blank) — @ — 
+- [ ] **L670** `cc4ea61a` — ### 5.19 worker_registry (optional) — @ — 
+- [ ] **L671** `e3b0c442` — (blank) — @ — 
+- [ ] **L672** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L673** `e3b1bbc8` — - **worker_id** — text, unique, not null. — @ — 
+- [ ] **L674** `7ba70ea3` — - **last_heartbeat_at** — timestamptz, not null. — @ — 
+- [ ] **L675** `a7b05ed7` — - **runner_version** — text, nullable. — @ — 
+- [ ] **L676** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L677** `e3b0c442` — (blank) — @ — 
+- [ ] **L678** `b1ee43ef` — **Semantics:** Optional registry of known workers for dead-worker detect — @ — 
+- [ ] **L679** `e3b0c442` — (blank) — @ — 
+- [ ] **L680** `cb3f91d5` — --- — @ — 
+- [ ] **L681** `e3b0c442` — (blank) — @ — 
+- [ ] **L682** `5dc326d1` — ### 5.20 repair_recipes (repair knowledge base) — @ — 
+- [ ] **L683** `e3b0c442` — (blank) — @ — 
+- [ ] **L684** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L685** `b0b86b19` — - **error_signature** — text, not null (matches error_signature from job — @ — 
+- [ ] **L686** `f2538eee` — - **job_type** — text, nullable (scoped to specific job_type, or null = — @ — 
+- [ ] **L687** `a7ffa2f2` — - **adapter_id** — uuid, FK → adapters(id), nullable (scoped to specific — @ — 
+- [ ] **L688** `14940930` — - **capability** — text, nullable. — @ — 
+- [ ] **L689** `61508e5d` — - **patch_pattern** — text, not null (e.g. "increase_timeout + exponenti — @ — 
+- [ ] **L690** `c67e949b` — - **validation_required** — text, not null (which validator must pass af — @ — 
+- [ ] **L691** `e8df8f05` — - **created_from_job_run_id** — uuid, FK → job_runs(id), nullable (prove — @ — 
+- [ ] **L692** `384a1b08` — - **success_count** — int, not null, default 0. — @ — 
+- [ ] **L693** `2a831242` — - **failure_count** — int, not null, default 0. — @ — 
+- [ ] **L694** `90a546d9` — - **last_used_at** — timestamptz, nullable. — @ — 
+- [ ] **L695** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L696** `e3b0c442` — (blank) — @ — 
+- [ ] **L697** `15ddc49c` — **Semantics:** Repair knowledge base. When a failure occurs, the repair — @ — 
+- [ ] **L698** `e3b0c442` — (blank) — @ — 
+- [ ] **L699** `b98fe729` — **Indexes:** `(error_signature)`, `(job_type, adapter_id)`, `(last_used_ — @ — 
+- [ ] **L700** `e3b0c442` — (blank) — @ — 
+- [ ] **L701** `cb3f91d5` — --- — @ — 
+- [ ] **L702** `e3b0c442` — (blank) — @ — 
+- [ ] **L703** `053a7cdd` — ### 5.21 llm_calls (optional — model escalation audit) — @ — 
+- [ ] **L704** `e3b0c442` — (blank) — @ — 
+- [ ] **L705** `76e71cd3` — - **id** — uuid, PK, not null. — @ — 
+- [ ] **L706** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [ ] **L707** `cd570872` — - **job_run_id** — uuid, FK → job_runs(id), not null. — @ — 
+- [ ] **L708** `2cc1b3d3` — - **model_tier** — text, not null (e.g. `cheap`, `strong`). — @ — 
+- [ ] **L709** `bc1d0495` — - **model_id** — text, not null (model name or alias). — @ — 
+- [ ] **L710** `b74b3218` — - **prompt_template_version** — text, nullable. — @ — 
+- [ ] **L711** `a38ae4e7` — - **tool_registry_version** — text, nullable. — @ — 
+- [ ] **L712** `c124ab7e` — - **tokens_in** — int, nullable. — @ — 
+- [ ] **L713** `0d57a973` — - **tokens_out** — int, nullable. — @ — 
+- [ ] **L714** `5d7e95bd` — - **latency_ms** — int, nullable. — @ — 
+- [ ] **L715** `8bd0a203` — - **created_at** — timestamptz, not null. — @ — 
+- [ ] **L716** `e3b0c442` — (blank) — @ — 
+- [ ] **L717** `14d01ab1` — **Semantics:** Optional table for model escalation audit. If not using a — @ — 
+- [ ] **L718** `e3b0c442` — (blank) — @ — 
+- [ ] **L719** `641c870e` — **Indexes:** `(run_id)`, `(job_run_id)`, `(model_tier)`, `(created_at DE — @ — 
+- [ ] **L720** `e3b0c442` — (blank) — @ — 
+- [ ] **L721** `cb3f91d5` — --- — @ — 
+- [ ] **L722** `e3b0c442` — (blank) — @ — 
+- [ ] **L723** `95041686` — ## 5A. Concurrency and Exactly-Once Semantics — @ — 
+- [ ] **L724** `e3b0c442` — (blank) — @ — 
+- [ ] **L725** `19c3bf99` — The spec must define precisely how the system achieves exactly-once exec — @ — 
+- [ ] **L726** `e3b0c442` — (blank) — @ — 
+- [ ] **L727** `8f82f3af` — **Job execution — claiming:** — @ — 
+- [ ] **L728** `f7353d03` — A worker claims a job by acquiring a lease: insert (or update) a row in — @ — 
+- [ ] **L729** `e3b0c442` — (blank) — @ — 
+- [ ] **L730** `633e05c7` — **Lease duration and heartbeat:** — @ — 
+- [ ] **L731** `e3b0c442` — (blank) — @ — 
+- [ ] **L732** `f7419d61` — - **lease_expires_at** = claimed_at + lease_duration (e.g. 5–15 minutes) — @ — 
+- [ ] **L733** `1acd79ae` — - Worker must update **heartbeat_at** at least every heartbeat_interval — @ — 
+- [ ] **L734** `fe4be6b9` — - If **heartbeat_at** is older than a threshold (e.g. 2× heartbeat_inter — @ — 
+- [ ] **L735** `1cf2ee13` — - Scheduler (or a background job) periodically scans for leases where he — @ — 
+- [ ] **L736** `e3b0c442` — (blank) — @ — 
+- [ ] **L737** `d2644389` — **Worker death — stable idempotency (critical):** — @ — 
+- [ ] **L738** `b6fda22e` — If the worker died **after** the external side-effect succeeded but **be — @ — 
+- [ ] **L739** `e3b0c442` — (blank) — @ — 
+- [ ] **L740** `457638af` — **Duplicate tool calls when job is re-claimed:** — @ — 
+- [ ] **L741** `56441d65` — (1) Before executing a tool_call, the worker checks for an existing row — @ — 
+- [ ] **L742** `e3b0c442` — (blank) — @ — 
+- [ ] **L743** `61d2ecd3` — **Artifact publication:** — @ — 
+- [ ] **L744** `1c3d3d17` — Artifacts are written only by the worker that holds the lease (or by Tem — @ — 
+- [ ] **L745** `e3b0c442` — (blank) — @ — 
+- [ ] **L746** `2f050f42` — **State transitions:** — @ — 
+- [ ] **L747** `6fda2cfc` — State changes (runs.status, job_runs.status) occur only in allowed direc — @ — 
+- [ ] **L748** `e3b0c442` — (blank) — @ — 
+- [ ] **L749** `cb3f91d5` — --- — @ — 
+- [ ] **L750** `e3b0c442` — (blank) — @ — 
+- [ ] **L751** `ea6e6b52` — ## 5B. State Machine Contract — @ — 
+- [ ] **L752** `e3b0c442` — (blank) — @ — 
+- [ ] **L753** `f9ec7afe` — The spec must define allowed status transitions explicitly so the UI nev — @ — 
+- [ ] **L754** `e3b0c442` — (blank) — @ — 
+- [ ] **L755** `52c8453e` — **runs.status — allowed transitions:** — @ — 
+- [ ] **L756** `e3b0c442` — (blank) — @ — 
+- [ ] **L757** `ff0a5854` — - `queued` → `running` (scheduler started the run). — @ — 
+- [ ] **L758** `92820a10` — - `queued` → `failed` (preflight or validation rejected before any node — @ — 
+- [ ] **L759** `3486a787` — - `running` → `succeeded` , `failed` , `rolled_back`. — @ — 
+- [ ] **L760** `428b3ad0` — - `failed` → `rolled_back` (via a separate rollback run that marks the o — @ — 
+- [ ] **L761** `e3b0c442` — (blank) — @ — 
+- [ ] **L762** `3ac83197` — **Terminal states for runs:** `succeeded`, `failed`, `rolled_back`. — @ — 
+- [ ] **L763** `e3b0c442` — (blank) — @ — 
+- [ ] **L764** `3dd0ca9f` — **Rule:** A run may not transition to `succeeded` unless all nodes (for — @ — 
+- [ ] **L765** `e3b0c442` — (blank) — @ — 
+- [ ] **L766** `b47e7185` — **job_runs.status — allowed transitions (Pattern A: one row per attempt) — @ — 
+- [ ] **L767** `e3b0c442` — (blank) — @ — 
+- [ ] **L768** `f129fd0d` — - `queued` → `running` (worker claimed and started). — @ — 
+- [ ] **L769** `8589bfff` — - `running` → `succeeded` , `failed` (attempt finished). — @ — 
+- [ ] **L770** `4366c6a7` — - `running` → `failed` (scheduler marked failed on lease expiry / worker — @ — 
+- [ ] **L771** `a4eb89b7` — - Retry: no status transition to `retrying`. On retry the system inserts — @ — 
+- [ ] **L772** `e3b0c442` — (blank) — @ — 
+- [ ] **L773** `00398e9c` — **Terminal states for job_runs:** `succeeded`, `failed`. — @ — 
+- [ ] **L774** `e3b0c442` — (blank) — @ — 
+- [ ] **L775** `21ab5d96` — **Rule:** Only one attempt per (run_id, plan_node_id) may be `succeeded` — @ — 
+- [ ] **L776** `e3b0c442` — (blank) — @ — 
+- [ ] **L777** `809fb2f0` — **Enforcement:** Implement via application or DB (e.g. CHECK or trigger — @ — 
+- [ ] **L778** `e3b0c442` — (blank) — @ — 
+- [ ] **L779** `cb3f91d5` — --- — @ — 
+- [ ] **L780** `e3b0c442` — (blank) — @ — 
+- [ ] **L781** `a96b82f8` — ## 5B2. Controlled Vocabulary / Enum Types (Strong Recommendation) — @ — 
+- [ ] **L782** `e3b0c442` — (blank) — @ — 
+- [ ] **L783** `db477cfd` — **Move all enum-like text fields to either Postgres enums or FK vocab ta — @ — 
+- [ ] **L784** `e3b0c442` — (blank) — @ — 
+- [ ] **L785** `c56a7861` — - **Postgres enum types** for runs.status, job_runs.status, run_events.e — @ — 
+- [ ] **L786** `ea00905f` — - **Or controlled vocabulary tables** (e.g. status_types, event_types) w — @ — 
+- [ ] **L787** `e3b0c442` — (blank) — @ — 
+- [ ] **L788** `ccaa534d` — The spec will **strongly recommend** one of the above (not optional). If — @ — 
+- [ ] **L789** `e3b0c442` — (blank) — @ — 
+- [ ] **L790** `cb3f91d5` — --- — @ — 
+- [ ] **L791** `e3b0c442` — (blank) — @ — 
+- [ ] **L792** `4e756acc` — ## 5C. Error Signature Normalization — @ — 
+- [ ] **L793** `e3b0c442` — (blank) — @ — 
+- [ ] **L794** `035a2458` — The spec must define how **error_signature** is computed so canary analy — @ — 
+- [ ] **L795** `e3b0c442` — (blank) — @ — 
+- [ ] **L796** `0095740e` — **Inputs to normalize:** — @ — 
+- [ ] **L797** `e3b0c442` — (blank) — @ — 
+- [ ] **L798** `6f20c624` — - Stack traces: strip or normalize line numbers (e.g. replace with `:N`) — @ — 
+- [ ] **L799** `366e15e7` — - Adapter/tool calls: include adapter name + capability + HTTP status co — @ — 
+- [ ] **L800** `f6abe696` — - Tests: include failing test name (and optionally suite). — @ — 
+- [ ] **L801** `76199a1a` — - Build/lint: include linter rule id or build phase. — @ — 
+- [ ] **L802** `e3b0c442` — (blank) — @ — 
+- [ ] **L803** `b2dfbd59` — **Algorithm (spec will define precisely):** — @ — 
+- [ ] **L804** `e3b0c442` — (blank) — @ — 
+- [ ] **L805** `be234deb` — 1. Extract: error type, message template (parameterize numbers/ids), fil — @ — 
+- [ ] **L806** `ef707681` — 2. Sort and concatenate in a canonical order. — @ — 
+- [ ] **L807** `68925179` — 3. Hash (e.g. SHA-256) the normalized string; store the hash or a short — @ — 
+- [ ] **L808** `0c83ccb2` — 4. Optionally store a human-readable **error_signature_display** (trunca — @ — 
+- [ ] **L809** `e3b0c442` — (blank) — @ — 
+- [ ] **L810** `a08cc7bd` — **Why:** Same root cause produces the same signature across runs; differ — @ — 
+- [ ] **L811** `e3b0c442` — (blank) — @ — 
+- [ ] **L812** `cb3f91d5` — --- — @ — 
+- [ ] **L813** `e3b0c442` — (blank) — @ — 
+- [ ] **L814** `043394af` — ## 5D. Artifact Immutability, Content Addressing, and Artifact Classes — @ — 
+- [ ] **L815** `e3b0c442` — (blank) — @ — 
+- [ ] **L816** `fef583c9` — **Immutability:** Artifacts, once written, are immutable. No updates to — @ — 
+- [ ] **L817** `22ad004d` — **URI stability:** The `uri` (e.g. s3 path) is stable and does not chang — @ — 
+- [ ] **L818** `1d8d8194` — **Content addressing:** Multiple artifacts may share the same `sha256` ( — @ — 
+- [ ] **L819** `c33c2c4a` — **Retention:** The spec will define retention policy hooks per artifact — @ — 
+- [ ] **L820** `e3b0c442` — (blank) — @ — 
+- [ ] **L821** `dac93b56` — **Artifact classes:** — @ — 
+- [ ] **L822** `b7bd2745` — Split artifact types into classes with different retention and access co — @ — 
+- [ ] **L823** `e3b0c442` — (blank) — @ — 
+- [ ] **L824** `18d28b4c` — - **logs** — Restricted; runner logs, build logs; short retention; acces — @ — 
+- [ ] **L825** `4064828c` — - **docs** — Public-ish; .mdd, runbooks; longer retention; may be visibl — @ — 
+- [ ] **L826** `a591e861` — - **external_object_refs** — Deploy IDs, flow IDs, PR URLs; used for rol — @ — 
+- [ ] **L827** `4475f1ca` — - **schema_bundles** — Schema blobs; versioned with run. — @ — 
+- [ ] **L828** `c1c372c5` — - **build_outputs** — Build artifacts, images; retention per policy. — @ — 
+- [ ] **L829** `e3b0c442` — (blank) — @ — 
+- [ ] **L830** `e3510e52` — The schema may add **artifact_class** (enum or text) to `artifacts` and — @ — 
+- [ ] **L831** `e3b0c442` — (blank) — @ — 
+- [ ] **L832** `cb3f91d5` — --- — @ — 
+- [ ] **L833** `e3b0c442` — (blank) — @ — 
+- [ ] **L834** `59eea830` — ## 5E. Rollback Targets (Structured) — @ — 
+- [ ] **L835** `e3b0c442` — (blank) — @ — 
+- [ ] **L836** `81fa2a9e` — Rollback must be automatable and consistent. “metadata_json” without sch — @ — 
+- [ ] **L837** `e3b0c442` — (blank) — @ — 
+- [ ] **L838** `01f28f0f` — **Option A — rollback_targets table:** — @ — 
+- [ ] **L839** `e3b0c442` — (blank) — @ — 
+- [ ] **L840** `c42ca330` — - **id** — uuid, PK. — @ — 
+- [ ] **L841** `cdcc9e1c` — - **artifact_id** — uuid, FK → artifacts(id), not null (the artifact tha — @ — 
+- [ ] **L842** `05850ddb` — - **run_id** — uuid, FK → runs(id), not null. — @ — 
+- [ ] **L843** `aca50551` — - **rollback_strategy** — text, not null (`revert_alias` , `disable_flow — @ — 
+- [ ] **L844** `7f85ee08` — - **rollback_pointer** — jsonb, not null (e.g. `{"previous_deploy_id": " — @ — 
+- [ ] **L845** `d6b7599a` — - **rollback_pointer_artifact_id** — uuid, FK → artifacts(id), nullable — @ — 
+- [ ] **L846** `470ec123` — - **verified_at** — timestamptz, nullable (when this rollback target was — @ — 
+- [ ] **L847** `10c889e5` — - **created_at** — timestamptz. — @ — 
+- [ ] **L848** `e3b0c442` — (blank) — @ — 
+- [ ] **L849** `2126324c` — **Semantics:** When an adapter produces a side-effect (e.g. Vercel deplo — @ — 
+- [ ] **L850** `e3b0c442` — (blank) — @ — 
+- [ ] **L851** `a9efc4ff` — **Option B — schema-enforced metadata per artifact_type:** — @ — 
+- [ ] **L852** `bd5365aa` — If not a separate table, then `artifacts.metadata_json` must have a JSON — @ — 
+- [ ] **L853** `e3b0c442` — (blank) — @ — 
+- [ ] **L854** `9e1c1614` — Recommendation: **Option A** for first-class rollback and clear audit tr — @ — 
+- [ ] **L855** `e3b0c442` — (blank) — @ — 
+- [ ] **L856** `cb3f91d5` — --- — @ — 
+- [ ] **L857** `e3b0c442` — (blank) — @ — 
+- [ ] **L858** `234b5289` — ## 6. Idempotency Strategy (Per Adapter Type) — @ — 
+- [ ] **L859** `e3b0c442` — (blank) — @ — 
+- [ ] **L860** `5a55f004` — The schema spec must document how `idempotency_key` and `operation_key` — @ — 
+- [ ] **L861** `e3b0c442` — (blank) — @ — 
+- [ ] **L862** `65f0383b` — - **Runs:** `root_idempotency_key` = e.g. `{initiative_id}:{plan_id}:{re — @ — 
+- [ ] **L863** `ad2aa2d9` — - **Job runs:** `idempotency_key` = **stable across attempts** — e.g. `{ — @ — 
+- [ ] **L864** `da8507cc` — - **Tool calls:** `idempotency_key` = derived from job_run.idempotency_k — @ — 
+- [ ] **L865** `e3b0c442` — (blank) — @ — 
+- [ ] **L866** `cb3f91d5` — --- — @ — 
+- [ ] **L867** `e3b0c442` — (blank) — @ — 
+- [ ] **L868** `a8a9b61d` — ## 7. Event Taxonomy (Canonical Enums) — @ — 
+- [ ] **L869** `e3b0c442` — (blank) — @ — 
+- [ ] **L870** `fcc46718` — **run_events.event_type:** — @ — 
+- [ ] **L871** `48b36294` — `queued`, `started`, `stage_entered`, `stage_exited`, `succeeded`, `fail — @ — 
+- [ ] **L872** `997fc0c3` — Payload (if any) in `payload_artifact_id` or a small jsonb: e.g. stage n — @ — 
+- [ ] **L873** `e3b0c442` — (blank) — @ — 
+- [ ] **L874** `d85c7aea` — **job_events.event_type:** — @ — 
+- [ ] **L875** `862282b1` — `attempt_started`, `attempt_succeeded`, `attempt_failed`, `hypothesis_ge — @ — 
+- [ ] **L876** `84cd74d9` — **Payload (for escalation auditability):** error_signature, hypothesis i — @ — 
+- [ ] **L877** `e3b0c442` — (blank) — @ — 
+- [ ] **L878** `4a265743` — The spec will list these and their semantics so all writers and consumer — @ — 
+- [ ] **L879** `e3b0c442` — (blank) — @ — 
+- [ ] **L880** `cb3f91d5` — --- — @ — 
+- [ ] **L881** `e3b0c442` — (blank) — @ — 
+- [ ] **L882** `4effceab` — ## 8. Canary and Rollback Linkage — @ — 
+- [ ] **L883** `e3b0c442` — (blank) — @ — 
+- [ ] **L884** `3d200e81` — - **Canary — where fields live:** — @ — 
+- [ ] **L885** `635cc250` — - **release_id** and **cohort** (`canary` , `control`) live on **runs** — @ — 
+- [ ] **L886** `15d136d0` — - **percent_rollout** lives on **releases** only (it is release config), — @ — 
+- [ ] **L887** `0f273dea` — - **routed_at** lives on **runs** (when this run was routed). — @ — 
+- [ ] **L888** `283a2434` — - Add **routing_reason** and **routing_rule_id** on **runs** for auditab — @ — 
+- [ ] **L889** `87e318a9` — Scheduler uses **release_routes** (section 5.5b) or percent_rollout on t — @ — 
+- [ ] **L890** `5737f96d` — - **Rollback:** Use **Rollback Targets** (section 5E): either rollback_t — @ — 
+- [ ] **L891** `e3b0c442` — (blank) — @ — 
+- [ ] **L892** `6fb97d05` — **8.1 Canary and rollback routing algorithm (build-ready)** — @ — 
+- [ ] **L893** `e3b0c442` — (blank) — @ — 
+- [ ] **L894** `1b7b449c` — - **Assigning cohort to a new run:** Scheduler reads release_routes (or — @ — 
+- [ ] **L895** `909a906d` — - **Drift computation:** Over a sliding window (e.g. last N runs or T mi — @ — 
+- [ ] **L896** `43d826cf` — - **Rollback trigger:** If success_rate_delta below threshold (e.g. -5%) — @ — 
+- [ ] **L897** `a0a7e8d8` — - **Rollback execution:** Rollback run uses rollback_targets (or schema- — @ — 
+- [ ] **L898** `e3b0c442` — (blank) — @ — 
+- [ ] **L899** `7313a6de` — **8.2 Event bus and job queue model** — @ — 
+- [ ] **L900** `e3b0c442` — (blank) — @ — 
+- [ ] **L901** `fa73acbf` — - **Event store (no separate bus):** All lifecycle and audit events are — @ — 
+- [ ] **L902** `8465e846` — - **Job queue:** (1) **Temporal-first:** The job queue is Temporal's act — @ — 
+- [ ] **L903** `e3b0c442` — (blank) — @ — 
+- [ ] **L904** `cb3f91d5` — --- — @ — 
+- [ ] **L905** `e3b0c442` — (blank) — @ — 
+- [ ] **L906** `5b970cdb` — ## 9. Variant A: Temporal-First — @ — 
+- [ ] **L907** `e3b0c442` — (blank) — @ — 
+- [ ] **L908** `0b92152b` — **In the schema spec document:** — @ — 
+- [ ] **L909** `e3b0c442` — (blank) — @ — 
+- [ ] **L910** `7f17330d` — - **What stays in Postgres:** All ledger tables (run_events, job_events, — @ — 
+- [ ] **L911** `888bf47f` — - **What Temporal owns:** Workflow state, history, retries, timers, acti — @ — 
+- [ ] **L912** `87a6394a` — - **Alignment:** `run_id` = Temporal workflow ID (or 1:1 mapping). `job_ — @ — 
+- [ ] **L913** `f60c1c4e` — - **Optional column:** `runs.temporal_workflow_id` (or `runs.workflow_ru — @ — 
+- [ ] **L914** `b684c367` — - **No duplicate workflow state:** Do not store “current step” in Postgr — @ — 
+- [ ] **L915** `e3b0c442` — (blank) — @ — 
+- [ ] **L916** `17ab0103` — **Truth ownership (explicit):** — @ — 
+- [ ] **L917** `e3b0c442` — (blank) — @ — 
+- [ ] **L918** `e8f74453` — - **Postgres is canonical** for run/job/tool state and all ledger data. — @ — 
+- [ ] **L919** `1b4d45a3` — - **Temporal is canonical** for workflow execution and timers (when acti — @ — 
+- [ ] **L920** `8c57f79b` — - Postgres must still enforce idempotency (tool_calls unique on adapter_ — @ — 
+- [ ] **L921** `60fb0fde` — - If Temporal and Postgres ever diverge (e.g. Temporal says “activity co — @ — 
+- [ ] **L922** `a1429eb6` — - **Who writes job_runs (Temporal-first):** Be explicit to avoid double — @ — 
+- [ ] **L923** `e3b0c442` — (blank) — @ — 
+- [ ] **L924** `cb3f91d5` — --- — @ — 
+- [ ] **L925** `e3b0c442` — (blank) — @ — 
+- [ ] **L926** `a1b82dd0` — ## 10. Variant B: DB-First (Postgres as Workflow Engine) — @ — 
+- [ ] **L927** `e3b0c442` — (blank) — @ — 
+- [ ] **L928** `0b92152b` — **In the schema spec document:** — @ — 
+- [ ] **L929** `e3b0c442` — (blank) — @ — 
+- [ ] **L930** `b91ac579` — - **Queue pattern:** Workers do not compute eligibility by scanning edge — @ — 
+- [ ] **L931** `b0910a20` — - **State in Postgres:** `runs.status`, `job_runs.status` are the source — @ — 
+- [ ] **L932** `87c6d778` — - **Retries:** `job_runs.attempt` increments; `job_runs.next_retry_at` ( — @ — 
+- [ ] **L933** `6ccc1410` — - **Indexes:** Composite index on (run_id, status) and (status, next_ret — @ — 
+- [ ] **L934** `e3b0c442` — (blank) — @ — 
+- [ ] **L935** `cb3f91d5` — --- — @ — 
+- [ ] **L936** `e3b0c442` — (blank) — @ — 
+- [ ] **L937** `2287fb82` — ## 11. Safe Schema Evolution Playbook — @ — 
+- [ ] **L938** `e3b0c442` — (blank) — @ — 
+- [ ] **L939** `a6d5aeb1` — The spec will include a short playbook (no DDL, strategy only): — @ — 
+- [ ] **L940** `e3b0c442` — (blank) — @ — 
+- [ ] **L941** `e2c8cc91` — 1. **Add-only migrations:** Add new columns or tables; do not delete or — @ — 
+- [ ] **L942** `6a45b04d` — 2. **Dual write:** Application writes both old and new representation wh — @ — 
+- [ ] **L943** `4232598d` — 3. **Backfill:** Background jobs (the factory can run them) backfill new — @ — 
+- [ ] **L944** `b7294dfd` — 4. **Dual read:** Read from new, fall back to old until cutover. — @ — 
+- [ ] **L945** `d124e0d8` — 5. **Cutover:** Set NOT NULL, add unique constraints, remove old code pa — @ — 
+- [ ] **L946** `e3b0c442` — (blank) — @ — 
+- [ ] **L947** `cb3f91d5` — --- — @ — 
+- [ ] **L948** `e3b0c442` — (blank) — @ — 
+- [ ] **L949** `399c90b8` — ## 12. Upgrade Initiative Pipeline Spec (Second Deliverable) — @ — 
+- [ ] **L950** `e3b0c442` — (blank) — @ — 
+- [ ] **L951** `e06a514c` — This section defines the **self-hosting** pipeline (consolidated in this — @ — 
+- [ ] **L952** `e3b0c442` — (blank) — @ — 
+- [ ] **L953** `61c61204` — - **Stages (in order):** — @ — 
+- [ ] **L954** `a26bd124` — 1. Change proposal (Upgrade Initiative created). — @ — 
+- [ ] **L955** `4ac6a172` — 2. Plan generation (decompose into jobs: e.g. update schema, update adap — @ — 
+- [ ] **L956** `0a239c75` — 3. Branch + PR (diff created, PR opened). — @ — 
+- [ ] **L957** `2242f7cc` — 4. Sandbox validation (unit tests, contract tests, golden initiative sui — @ — 
+- [ ] **L958** `faac9807` — 5. Staging deploy (deploy new bundle to staging). — @ — 
+- [ ] **L959** `1464975c` — 6. Staging soak (run synthetic initiatives, monitor scheduler health 30– — @ — 
+- [ ] **L960** `bef0e67a` — 7. Promotion gate (auto-promote if risk=low and all green; require appro — @ — 
+- [ ] **L961** `d2007912` — 8. Canary (route 5% → 25% → 50% of jobs to new release; measure success — @ — 
+- [ ] **L962** `a09b8c81` — 9. Full rollout (100%). — @ — 
+- [ ] **L963** `8c1c5ee1` — 10. Auto rollback trigger (if failure rate or scheduler health degrades, — @ — 
+- [ ] **L964** `2cddaa84` — - **Gates:** Definition of “pass” at each stage: e.g. all golden initiat — @ — 
+- [ ] **L965** `adcbc5fa` — - **Gate: Schema/Policy compatibility check** — Before deploying a self- — @ — 
+- [ ] **L966** `1f1658a7` — - **Gate: Control-plane safety** — If the update touches control-plane c — @ — 
+- [ ] **L967** `04859a6e` — - **Validators:** List of validator types and which plan nodes they atta — @ — 
+- [ ] **L968** `9d2ada83` — - **Canary metrics and rollback triggers:** Exact metrics (e.g. run succ — @ — 
+- [ ] **L969** `4c5e60f6` — - **Inputs/outputs:** Upgrade Initiative consumes: diff source (branch, — @ — 
+- [ ] **L970** `e3b0c442` — (blank) — @ — 
+- [ ] **L971** `697e76ca` — ### 12.1 Reference Upgrade Initiative DAG (Self-Hosting) — @ — 
+- [ ] **L972** `e3b0c442` — (blank) — @ — 
+- [ ] **L973** `dcf17731` — Concrete plan graph for the self-hosting pipeline. **Nodes (high level): — @ — 
+- [ ] **L974** `e3b0c442` — (blank) — @ — 
+- [ ] **L975** `cb3f91d5` — --- — @ — 
+- [ ] **L976** `e3b0c442` — (blank) — @ — 
+- [ ] **L977** `32b13a00` — ## 12B. Internal Console UI Spec (Third Deliverable) — @ — 
+- [ ] **L978** `e3b0c442` — (blank) — @ — 
+- [ ] **L979** `f3f4c767` — This section defines the **ProfessorX-style internal operator console** — @ — 
+- [ ] **L980** `e3b0c442` — (blank) — @ — 
+- [ ] **L981** `ecccc55e` — **Principles (non-negotiable):** — @ — 
+- [ ] **L982** `e3b0c442` — (blank) — @ — 
+- [ ] **L983** `62f3ad47` — - Single source of truth: all UI from Postgres; never infer without show — @ — 
+- [ ] **L984** `06484d31` — - Never show secrets: secret_refs metadata and secret_access_events only — @ — 
+- [ ] **L985** `602e9503` — - No invisible power: every side-effect trigger shows resulting initiati — @ — 
+- [ ] **L986** `2fe67d61` — - Every action creates an audit trail (run, approval, rollback run, rele — @ — 
+- [ ] **L987** `e3b0c442` — (blank) — @ — 
+- [ ] **L988** `557f2040` — **View contract baseline (minimum screens and what they read):** Runs li — @ — 
+- [ ] **L989** `e3b0c442` — (blank) — @ — 
+- [ ] **L990** `68b0c345` — **UI Surfaces (C1):** Must-have: Internal Ops Console — Dashboard (healt — @ — 
+- [ ] **L991** `e3b0c442` — (blank) — @ — 
+- [ ] **L992** `4eeefe8f` — **RBAC (C2):** Viewer (read-only). Operator: create initiatives, run san — @ — 
+- [ ] **L993** `e3b0c442` — (blank) — @ — 
+- [ ] **L994** `b314f82f` — **Design language (C3 — ProfessorX feel):** Dense data UI with fast filt — @ — 
+- [ ] **L995** `e3b0c442` — (blank) — @ — 
+- [ ] **L996** `60442610` — **Information architecture:** — @ — 
+- [ ] **L997** `e3b0c442` — (blank) — @ — 
+- [ ] **L998** `44b00b0e` — - **Primary nav:** Overview, Initiatives, Plans, Runs, Pipelines (option — @ — 
+- [ ] **L999** `5079c3b5` — - **Global header:** Environment (sandbox,staging,prod), release routing — @ — 
+- [ ] **L1000** `aee0c393` — - **Global search:** Across initiatives.title/intent_type, runs.id/root_ — @ — 
+- [ ] **L1001** `e3b0c442` — (blank) — @ — 
+- [ ] **L1002** `b44f84ab` — **RBAC:** — @ — 
+- [ ] **L1003** `e3b0c442` — (blank) — @ — 
+- [ ] **L1004** `d9179031` — - **Viewer:** read-only. — @ — 
+- [ ] **L1005** `06115959` — - **Operator:** create initiative, generate plan, run (sandbox/staging/p — @ — 
+- [ ] **L1006** `5229ba2d` — - **Approver:** approve gated actions, control-plane changes, capability — @ — 
+- [ ] **L1007** `9da58631` — - **Admin:** policy pointer, capability_grants, adapters, secret_refs, r — @ — 
+- [ ] **L1008** `4914f381` — UI hides/disables buttons by role + policy; when disabled, show why (“Re — @ — 
+- [ ] **L1009** `e3b0c442` — (blank) — @ — 
+- [ ] **L1010** `413b171d` — **Query contracts:** — @ — 
+- [ ] **L1011** `31ac1cd1` — Each page has a stable query contract (pagination + filters). Common fil — @ — 
+- [ ] **L1012** `e3b0c442` — (blank) — @ — 
+- [ ] **L1013** `fb74710c` — **Key pages (summary):** — @ — 
+- [ ] **L1014** `e3b0c442` — (blank) — @ — 
+- [ ] **L1015** `9284735b` — - **Overview:** Run success rate by cohort, top error_signature, active — @ — 
+- [ ] **L1016** `6a67727b` — - **Initiatives list/detail:** Table + initiative detail with plan summa — @ — 
+- [ ] **L1017** `6ee8bef6` — - **Plans list/detail:** DAG viewer (nodes/edges), node table, node deta — @ — 
+- [ ] **L1018** `13af6f83` — - **Runs list:** Columns including failed_nodes_count, top_error_signatu — @ — 
+- [ ] **L1019** `8213eee4` — - **Run detail (flight recorder):** 3-column: (A) Run header with pinned — @ — 
+- [ ] **L1020** `5caa2a27` — - **Jobs (job_runs) list:** Views Queued/Running/Failed/Succeeded, Lease — @ — 
+- [ ] **L1021** `cff47ffe` — - **Tool calls list/detail:** adapter, capability, idempotency_key, oper — @ — 
+- [ ] **L1022** `84459d49` — - **Artifacts list/detail:** artifact_class, retention/access badges, ro — @ — 
+- [ ] **L1023** `b4d7f9d2` — - **Releases:** List + detail with canary performance (success by cohort — @ — 
+- [ ] **L1024** `6f629f14` — - **Policies:** List + detail (rules_json viewer, policy diff, runs refe — @ — 
+- [ ] **L1025** `163b2975` — - **Adapters & Capabilities:** Adapters list/detail, capability catalog, — @ — 
+- [ ] **L1026** `3b3340a1` — - **Secrets (refs):** List/detail with access history (secret_access_eve — @ — 
+- [ ] **L1027** `c0bdaea8` — - **Audit & Events:** Unified ledger (run_events, job_events, approvals, — @ — 
+- [ ] **L1028** `95188df1` — - **Health:** Workers (worker_id, last_heartbeat_at, assigned leases, ca — @ — 
+- [ ] **L1029** `22c40ee6` — - **Incidents:** Clustered by error_signature; count, first_seen, last_s — @ — 
+- [ ] **L1030** `e3b0c442` — (blank) — @ — 
+- [ ] **L1031** `eda6a999` — **Write paths (audit trail):** — @ — 
+- [ ] **L1032** `62c390c8` — Operator: create initiative, request plan, create run, retry job (new at — @ — 
+- [ ] **L1033** `e3b0c442` — (blank) — @ — 
+- [ ] **L1034** `f81db84d` — **API / query endpoints (implementation-neutral):** — @ — 
+- [ ] **L1035** `4c042b58` — GET: /initiatives, /initiatives/:id, /plans/:id, /runs, /runs/:id (full — @ — 
+- [ ] **L1036** `2c1f3aa2` — POST: /initiatives, /initiatives/:id/plan, /runs, /job_runs/:id/retry, / — @ — 
+- [ ] **L1037** `b02def7f` — All writes enforce RBAC + policy server-side. — @ — 
+- [ ] **L1038** `e3b0c442` — (blank) — @ — 
+- [ ] **L1039** `388ceceb` — **Optional (component system):** Component system with design tokens (Ta — @ — 
+- [ ] **L1040** `e3b0c442` — (blank) — @ — 
+- [ ] **L1041** `e42cd1b4` — **Deployment and constraint:** Console is **stateless**; it reads/writes — @ — 
+- [ ] **L1042** `e3b0c442` — (blank) — @ — 
+- [ ] **L1043** `186a7f7f` — **Required depth for the Console UI spec (no ambiguity):** The console U — @ — 
+- [ ] **L1044** `e3b0c442` — (blank) — @ — 
+- [ ] **L1045** `504a12e8` — - **Page-by-page spec with wireframe-level layouts:** For each page (Ove — @ — 
+- [ ] **L1046** `b5475db7` — - **Exact SQL-backed view contracts per screen:** For each screen (or ma — @ — 
+- [ ] **L1047** `e3b0c442` — (blank) — @ — 
+- [ ] **L1048** `4d604f46` — This removes “eventual surprises”: every screen has a defined data contr — @ — 
+- [ ] **L1049** `e3b0c442` — (blank) — @ — 
+- [ ] **L1050** `c6f05256` — ### 12B.4 Canonical Page-by-Page Wireframes and SQL Contracts (C4) — @ — 
+- [ ] **L1051** `e3b0c442` — (blank) — @ — 
+- [ ] **L1052** `eb0f216c` — **Dashboard (C4.1):** Goal: scheduler healthy? workers alive? canary saf — @ — 
+- [ ] **L1053** `e3b0c442` — (blank) — @ — 
+- [ ] **L1054** `76996811` — **Initiatives list (C4.2):** Filters intent_type, risk_level, status, cr — @ — 
+- [ ] **L1055** `e3b0c442` — (blank) — @ — 
+- [ ] **L1056** `9a5054ac` — **Plan detail (C4.3):** Header plan_id, initiative, plan_hash, created_a — @ — 
+- [ ] **L1057** `e3b0c442` — (blank) — @ — 
+- [ ] **L1058** `d448daab` — **Runs list (C4.4):** Filters env, status, cohort, release_id, policy_ve — @ — 
+- [ ] **L1059** `e3b0c442` — (blank) — @ — 
+- [ ] **L1060** `62f2026c` — **Run detail (C4.5):** Header run_id, env, cohort, release, policy, runn — @ — 
+- [ ] **L1061** `e3b0c442` — (blank) — @ — 
+- [ ] **L1062** `219d57b4` — **Jobs (C4.6):** Filters env, status, job_type, adapter, error_signature — @ — 
+- [ ] **L1063** `e3b0c442` — (blank) — @ — 
+- [ ] **L1064** `097d9cac` — **Releases (C4.7):** Table release_id, status, percent_rollout, created_ — @ — 
+- [ ] **L1065** `e3b0c442` — (blank) — @ — 
+- [ ] **L1066** `aadbd299` — **Policies (C4.8):** Table version, created_at, diff_from_prev, used_by_ — @ — 
+- [ ] **L1067** `e3b0c442` — (blank) — @ — 
+- [ ] **L1068** `0842bc72` — **Adapters (C4.9):** Table name, version, capabilities, contract_ref, la — @ — 
+- [ ] **L1069** `e3b0c442` — (blank) — @ — 
+- [ ] **L1070** `7b5c2b2f` — **Secrets (C4.10):** Refs name, scope, capabilities_allowed, rotated_at. — @ — 
+- [ ] **L1071** `e3b0c442` — (blank) — @ — 
+- [ ] **L1072** `ea44a3af` — **Approvals queue (C4.11):** Pending run_id, node_key, action_required, — @ — 
+- [ ] **L1073** `e3b0c442` — (blank) — @ — 
+- [ ] **L1074** `37d2a295` — **Incidents (C4.12):** Clusters error_signature, count, first_seen, last — @ — 
+- [ ] **L1075** `e3b0c442` — (blank) — @ — 
+- [ ] **L1076** `3e497f09` — **UI backend API (C5):** Thin control plane: SQL views/stored queries, R — @ — 
+- [ ] **L1077** `e3b0c442` — (blank) — @ — 
+- [ ] **L1078** `c9bbc0ca` — ### 12B.5 Full UI Console Spec (Consolidated Detail) — @ — 
+- [ ] **L1079** `e3b0c442` — (blank) — @ — 
+- [ ] **L1080** `ed4b2651` — **Purpose:** ProfessorX-style internal ops console: create initiatives; — @ — 
+- [ ] **L1081** `e3b0c442` — (blank) — @ — 
+- [ ] **L1082** `f0039f83` — **Hosting:** "Launches Vercel applications" = what the factory deploys, — @ — 
+- [ ] **L1083** `e3b0c442` — (blank) — @ — 
+- [ ] **L1084** `29328659` — **Surfaces:** Dashboard, Initiatives, Plans, Runs, Run Detail, Jobs, Too — @ — 
+- [ ] **L1085** `e3b0c442` — (blank) — @ — 
+- [ ] **L1086** `06cef84f` — **RBAC:** Viewer read-only. Operator: create initiatives, run sandbox/st — @ — 
+- [ ] **L1087** `e3b0c442` — (blank) — @ — 
+- [ ] **L1088** `9f899394` — **UX:** Global header (env, time range, release, search). Status pills f — @ — 
+- [ ] **L1089** `e3b0c442` — (blank) — @ — 
+- [ ] **L1090** `24adcd1f` — **Canary drift:** success delta = (ok/total canary) - (ok/total control) — @ — 
+- [ ] **L1091** `e3b0c442` — (blank) — @ — 
+- [ ] **L1092** `5bc22700` — **API (minimum):** GET /v1/dashboard, /initiatives, /plans/{id}, /runs, — @ — 
+- [ ] **L1093** `e3b0c442` — (blank) — @ — 
+- [ ] **L1094** `fc61411f` — **Performance:** List pages server-paginated; cursor pagination for heav — @ — 
+- [ ] **L1095** `e3b0c442` — (blank) — @ — 
+- [ ] **L1096** `8edd3e52` — **Security:** RBAC server-side; no secrets rendered; artifact access by — @ — 
+- [ ] **L1097** `e3b0c442` — (blank) — @ — 
+- [ ] **L1098** `6039e3f1` — **Location (reference):** Console spec consolidated in this plan (12B.4 — @ — 
+- [ ] **L1099** `e3b0c442` — (blank) — @ — 
+- [ ] **L1100** `cb3f91d5` — --- — @ — 
+- [ ] **L1101** `e3b0c442` — (blank) — @ — 
+- [ ] **L1102** `7321bb7a` — ## 12C. Runner Execution Spec (Fourth Deliverable) — @ — 
+- [ ] **L1103** `e3b0c442` — (blank) — @ — 
+- [ ] **L1104** `15a6dfa7` — This section defines the **full runner lifecycle** (consolidated in this — @ — 
+- [ ] **L1105** `e3b0c442` — (blank) — @ — 
+- [ ] **L1106** `a70fee64` — **A0. Core principles:** Runner is a **deterministic executor of typed n — @ — 
+- [ ] **L1107** `e3b0c442` — (blank) — @ — 
+- [ ] **L1108** `aacf2c6a` — **A1. Runner startup + identity:** worker_id (stable), runner_version (i — @ — 
+- [ ] **L1109** `e3b0c442` — (blank) — @ — 
+- [ ] **L1110** `1da069e9` — **A2. Job eligibility:** DB-first: query node_progress (status = eligibl — @ — 
+- [ ] **L1111** `e3b0c442` — (blank) — @ — 
+- [ ] **L1112** `9e97862b` — **A3. Claim & lease:** Transaction: SELECT job_run FOR UPDATE SKIP LOCKE — @ — 
+- [ ] **L1113** `e3b0c442` — (blank) — @ — 
+- [ ] **L1114** `2904c6c6` — **A4. Pre-execution safety:** Load run context (pinned: runner_image_dig — @ — 
+- [ ] **L1115** `e3b0c442` — (blank) — @ — 
+- [ ] **L1116** `22c5373e` — **A5. Deterministic sandbox:** Workspace per attempt (run_id + plan_node — @ — 
+- [ ] **L1117** `e3b0c442` — (blank) — @ — 
+- [ ] **L1118** `65e83a68` — **A6. Node execution contract:** Typed handler per node type. Load input — @ — 
+- [ ] **L1119** `e3b0c442` — (blank) — @ — 
+- [ ] **L1120** `54ee7a47` — **A7. Tool call execution:** **Idempotency key** = stable logical key (e — @ — 
+- [ ] **L1121** `e3b0c442` — (blank) — @ — 
+- [ ] **L1122** `95e1b5cd` — **A8. Verification (mandatory):** Every external-mutation node includes — @ — 
+- [ ] **L1123** `e3b0c442` — (blank) — @ — 
+- [ ] **L1124** `fcdf2f5e` — **A9. Repair & escalation:** Compute error_signature (normalization spec — @ — 
+- [ ] **L1125** `e3b0c442` — (blank) — @ — 
+- [ ] **L1126** `b2dcbf56` — **A10. Job completion:** Write terminal job_runs.status; ended_at; job_e — @ — 
+- [ ] **L1127** `e3b0c442` — (blank) — @ — 
+- [ ] **L1128** `974e32c6` — **A11. Canary, drift, auto-rollback (release manager):** Canary routing — @ — 
+- [ ] **L1129** `e3b0c442` — (blank) — @ — 
+- [ ] **L1130** `24844851` — **A12. Self-building hardening rules:** Two-plane rule; diff gates (path — @ — 
+- [ ] **L1131** `e3b0c442` — (blank) — @ — 
+- [ ] **L1132** `818d5d84` — ### 12C.1 DB-First Control Plane + Runner Architecture (Temporal-Compati — @ — 
+- [ ] **L1133** `e3b0c442` — (blank) — @ — 
+- [ ] **L1134** `8093ceeb` — **Control Plane (stable, minimal):** Scheduler (creates runs, initialize — @ — 
+- [ ] **L1135** `e3b0c442` — (blank) — @ — 
+- [ ] **L1136** `c3ab2adc` — **Work Plane (mutable):** Adapters (Vercel, GitHub, Klaviyo, DNS, etc.); — @ — 
+- [ ] **L1137** `e3b0c442` — (blank) — @ — 
+- [ ] **L1138** `f295530d` — **Runners (workers):** Poll eligible queued job_runs; claim with lease ( — @ — 
+- [ ] **L1139** `e3b0c442` — (blank) — @ — 
+- [ ] **L1140** `c3ca7cea` — ### 12C.2 Runner State Machine (DB-First) — @ — 
+- [ ] **L1141** `e3b0c442` — (blank) — @ — 
+- [ ] **L1142** `a73c400c` — **Job attempt (job_runs):** Terminal states = succeeded, failed. Allowed — @ — 
+- [ ] **L1143** `e3b0c442` — (blank) — @ — 
+- [ ] **L1144** `093d0c86` — **Lease (job_claims):** One active lease per job_run_id. Insert lease (a — @ — 
+- [ ] **L1145** `e3b0c442` — (blank) — @ — 
+- [ ] **L1146** `bedabb2f` — ### 12C.3 Sequence Diagrams (Canonical) — @ — 
+- [ ] **L1147** `e3b0c442` — (blank) — @ — 
+- [ ] **L1148** `f30e9d4d` — - **Claim → Execute → Complete (Happy Path):** Runner SELECT eligible jo — @ — 
+- [ ] **L1149** `1ba70d61` — - **Worker dies mid-execution → Reclaim → Idempotent tool call reuse:** — @ — 
+- [ ] **L1150** `3175f8f2` — - **Multi-hypothesis repair → Escalate model → Halt:** (Described in A9; — @ — 
+- [ ] **L1151** `e3b0c442` — (blank) — @ — 
+- [ ] **L1152** `dc809893` — ### 12C.4 Ledger Write Contracts (Exact Table Writes Per Phase) — @ — 
+- [ ] **L1153** `e3b0c442` — (blank) — @ — 
+- [ ] **L1154** `bbbcf0cd` — **4.1 Run creation (Control Plane):** initiatives (if new); plans, plan_ — @ — 
+- [ ] **L1155** `e3b0c442` — (blank) — @ — 
+- [ ] **L1156** `1e1ceb03` — **4.2 Runner claim phase:** Atomic (single tx): job_claims insert active — @ — 
+- [ ] **L1157** `e3b0c442` — (blank) — @ — 
+- [ ] **L1158** `cf4accbd` — **4.3 Tool call phase:** tool_calls insert (unique adapter_id + idempote — @ — 
+- [ ] **L1159** `e3b0c442` — (blank) — @ — 
+- [ ] **L1160** `9d4df547` — **4.4 Validation phase:** validations per validator result; artifacts fo — @ — 
+- [ ] **L1161** `e3b0c442` — (blank) — @ — 
+- [ ] **L1162** `5f4bac70` — **4.5 Completion phase:** job_runs update terminal status + ended_at + e — @ — 
+- [ ] **L1163** `e3b0c442` — (blank) — @ — 
+- [ ] **L1164** `3cf075ae` — **4.6 Dependency progression (Control Plane):** On job_run succeeded: no — @ — 
+- [ ] **L1165** `e3b0c442` — (blank) — @ — 
+- [ ] **L1166** `df3c0265` — **4.7 Run completion (Control Plane):** When all nodes succeeded: runs.s — @ — 
+- [ ] **L1167** `e3b0c442` — (blank) — @ — 
+- [ ] **L1168** `7b5cdf3b` — ### 12C.5 Determinism + Idempotency (Non-Negotiables) — @ — 
+- [ ] **L1169** `e3b0c442` — (blank) — @ — 
+- [ ] **L1170** `4b42f180` — **Pinned execution context (per run):** release_id; repo_commit_base (or — @ — 
+- [ ] **L1171** `e3b0c442` — (blank) — @ — 
+- [ ] **L1172** `fcec569a` — **Stable idempotency keys (per tool call):** Do NOT include attempt numb — @ — 
+- [ ] **L1173** `e3b0c442` — (blank) — @ — 
+- [ ] **L1174** `7d454478` — ### 12C.5a Multi-LLM orchestration and arbitration — @ — 
+- [ ] **L1175** `e3b0c442` — (blank) — @ — 
+- [ ] **L1176** `778f116c` — Repair and escalation use a **multi-LLM orchestration layer** so the fac — @ — 
+- [ ] **L1177** `e3b0c442` — (blank) — @ — 
+- [ ] **L1178** `30cb52d6` — ### 12C.6 Release Lease + Canary/Rollback (Operational) — @ — 
+- [ ] **L1179** `e3b0c442` — (blank) — @ — 
+- [ ] **L1180** `c83f8d84` — **Release selection (Scheduler):** On new run determine eligible release — @ — 
+- [ ] **L1181** `e3b0c442` — (blank) — @ — 
+- [ ] **L1182** `615db99c` — **Canary drift monitor (Release Manager):** By window (e.g. last 200 run — @ — 
+- [ ] **L1183** `e3b0c442` — (blank) — @ — 
+- [ ] **L1184** `c5e254ab` — ### 12C.7 Kernel-Grade Core Principles (A1) — @ — 
+- [ ] **L1185** `e3b0c442` — (blank) — @ — 
+- [ ] **L1186** `4b6f7063` — Postgres is canonical for: run/job state, ledger history, artifacts inde — @ — 
+- [ ] **L1187** `e3b0c442` — (blank) — @ — 
+- [ ] **L1188** `af767b5a` — ### 12C.8 Canonical State Machines (A2) — @ — 
+- [ ] **L1189** `e3b0c442` — (blank) — @ — 
+- [ ] **L1190** `cac42c38` — **runs.status:** queued → running; queued → failed (rejected before star — @ — 
+- [ ] **L1191** `e3b0c442` — (blank) — @ — 
+- [ ] **L1192** `543c7cb2` — **job_runs.status (Pattern A, one row per attempt):** queued → running; — @ — 
+- [ ] **L1193** `e3b0c442` — (blank) — @ — 
+- [ ] **L1194** `94ffb303` — **tool_calls.status:** pending → running; running → succeeded; running → — @ — 
+- [ ] **L1195** `e3b0c442` — (blank) — @ — 
+- [ ] **L1196** `f0a1b4a6` — ### 12C.9 Job Eligibility + Claim Protocol (A3–A6) — @ — 
+- [ ] **L1197** `e3b0c442` — (blank) — @ — 
+- [ ] **L1198** `452391a2` — **Eligibility (A3):** Runners never compute DAG readiness by scanning ed — @ — 
+- [ ] **L1199** `e3b0c442` — (blank) — @ — 
+- [ ] **L1200** `72602b23` — **Claim (A4):** One atomic transaction: (1) SELECT jr.* FROM job_runs jr — @ — 
+- [ ] **L1201** `e3b0c442` — (blank) — @ — 
+- [ ] **L1202** `5c7c5b8a` — **Heartbeat (A5):** Runner updates job_claims.heartbeat_at (optionally l — @ — 
+- [ ] **L1203** `e3b0c442` — (blank) — @ — 
+- [ ] **L1204** `816dd49d` — **Reaper (A6):** Control Plane background job: find job_claims WHERE rel — @ — 
+- [ ] **L1205** `e3b0c442` — (blank) — @ — 
+- [ ] **L1206** `8ad4af24` — ### 12C.10 Tool Call Contract (A7) — @ — 
+- [ ] **L1207** `e3b0c442` — (blank) — @ — 
+- [ ] **L1208** `527ae65e` — **Policy + capability gate (A7.1):** Before any external action runner r — @ — 
+- [ ] **L1209** `e3b0c442` — (blank) — @ — 
+- [ ] **L1210** `a381fb32` — **Creation (A7.2):** idempotency_key = hash(run_id + plan_node_id + adap — @ — 
+- [ ] **L1211** `e3b0c442` — (blank) — @ — 
+- [ ] **L1212** `25f0e487` — **Secrets (A7.3):** LLM never sees secrets. Runner resolves via vault; e — @ — 
+- [ ] **L1213** `e3b0c442` — (blank) — @ — 
+- [ ] **L1214** `98925cfd` — **Adapter execution (A7.4):** Adapter contract: validate(input), execute — @ — 
+- [ ] **L1215** `e3b0c442` — (blank) — @ — 
+- [ ] **L1216** `fa9305a7` — ### 12C.11 Validation, Completion, Repair, Temporal (A8–A11) — @ — 
+- [ ] **L1217** `e3b0c442` — (blank) — @ — 
+- [ ] **L1218** `7fccf1cd` — **Validation + artifacts (A8):** Validators write validations rows + rep — @ — 
+- [ ] **L1219** `e3b0c442` — (blank) — @ — 
+- [ ] **L1220** `18629b48` — **Completion (A9):** On success: job_runs terminal, job_event attempt_su — @ — 
+- [ ] **L1221** `e3b0c442` — (blank) — @ — 
+- [ ] **L1222** `8088d4c2` — **Repair loop (A10):** Policy defines max hypotheses per node, max total — @ — 
+- [ ] **L1223** `e3b0c442` — (blank) — @ — 
+- [ ] **L1224** `46e18d5e` — **Temporal (A11):** Temporal owns timers/retries/history; Postgres stays — @ — 
+- [ ] **L1225** `e3b0c442` — (blank) — @ — 
+- [ ] **L1226** `26e187ec` — ### 12C.12 Full Runner Execution Spec (Consolidated Detail) — @ — 
+- [ ] **L1227** `e3b0c442` — (blank) — @ — 
+- [ ] **L1228** `8adb5df6` — **Purpose:** Authoritative execution contract for Work Plane runners and — @ — 
+- [ ] **L1229** `e3b0c442` — (blank) — @ — 
+- [ ] **L1230** `086b4d9c` — **Definitions:** initiative = user/system goal; plan = compiled DAG (pla — @ — 
+- [ ] **L1231** `e3b0c442` — (blank) — @ — 
+- [ ] **L1232** `fbe17b85` — **Invariants (8):** (1) Pinned execution context on every run. (2) Exact — @ — 
+- [ ] **L1233** `e3b0c442` — (blank) — @ — 
+- [ ] **L1234** `e2d6a115` — **Eligibility (node_progress):** Node eligible when node_progress.status — @ — 
+- [ ] **L1235** `e3b0c442` — (blank) — @ — 
+- [ ] **L1236** `3bceb885` — **Claim transaction (one transaction):** (1) SELECT jr.* FROM job_runs j — @ — 
+- [ ] **L1237** `e3b0c442` — (blank) — @ — 
+- [ ] **L1238** `168829c3` — **Heartbeat:** Runner updates job_claims.heartbeat_at at interval HB (30 — @ — 
+- [ ] **L1239** `e3b0c442` — (blank) — @ — 
+- [ ] **L1240** `fc2f9aad` — **Lease Reaper:** Scan job_claims WHERE released_at IS NULL AND (lease_e — @ — 
+- [ ] **L1241** `e3b0c442` — (blank) — @ — 
+- [ ] **L1242** `0749aa5d` — **Runner execution lifecycle (per claimed job_run):** Load pinned contex — @ — 
+- [ ] **L1243** `e3b0c442` — (blank) — @ — 
+- [ ] **L1244** `a63c8c86` — **Tool call contract:** Before external call check capability_grants (en — @ — 
+- [ ] **L1245** `e3b0c442` — (blank) — @ — 
+- [ ] **L1246** `8062591d` — **Secrets and redaction:** DB only secret_refs; runner resolves via vaul — @ — 
+- [ ] **L1247** `e3b0c442` — (blank) — @ — 
+- [ ] **L1248** `b95cc5db` — **Artifacts and validations:** Artifacts immutable; artifact_class: logs — @ — 
+- [ ] **L1249** `e3b0c442` — (blank) — @ — 
+- [ ] **L1250** `f9fa454f` — **DAG progress (scheduler):** When node succeeds: increment deps_satisfi — @ — 
+- [ ] **L1251** `e3b0c442` — (blank) — @ — 
+- [ ] **L1252** `b7dc2933` — **Retry and repair (bounded):** Attempt budgets in plan_nodes.retry_poli — @ — 
+- [ ] **L1253** `e3b0c442` — (blank) — @ — 
+- [ ] **L1254** `aeb1c5fa` — **Temporal compatibility:** run_id may equal workflow_id or store in run — @ — 
+- [ ] **L1255** `e3b0c442` — (blank) — @ — 
+- [ ] **L1256** `421980ce` — **Worker metadata:** worker_id (stable), runner_version, last_heartbeat_ — @ — 
+- [ ] **L1257** `e3b0c442` — (blank) — @ — 
+- [ ] **L1258** `2a9ecc93` — **Failure mode guarantees:** Safe under: duplicate job claims (prevented — @ — 
+- [ ] **L1259** `e3b0c442` — (blank) — @ — 
+- [ ] **L1260** `f8277899` — **Appendix — Recommended operational settings:** HB interval 30s; lease — @ — 
+- [ ] **L1261** `e3b0c442` — (blank) — @ — 
+- [ ] **L1262** `cb3f91d5` — --- — @ — 
+- [ ] **L1263** `e3b0c442` — (blank) — @ — 
+- [ ] **L1264** `e90f01e2` — ## 12D. Node Taxonomy (Fifth Deliverable) — @ — 
+- [ ] **L1265** `e3b0c442` — (blank) — @ — 
+- [ ] **L1266** `5de1ec06` — This section defines a **large node taxonomy** (consolidated in this pla — @ — 
+- [ ] **L1267** `e3b0c442` — (blank) — @ — 
+- [ ] **L1268** `1c95837e` — **Domains and representative node types (full list in doc):** — @ — 
+- [ ] **L1269** `e3b0c442` — (blank) — @ — 
+- [ ] **L1270** `c428501b` — - **B1. Initiative + Planning:** InitiativeIntake, PlanCompile, PlanRisk — @ — 
+- [ ] **L1271** `d11ad5c2` — - **B2. Repo + Codebase Scaffold:** RepoCreate, RepoScaffoldFromTemplate — @ — 
+- [ ] **L1272** `d36f67fa` — - **B3. Build, Test, Validate:** StaticTypecheck, UnitTest, IntegrationT — @ — 
+- [ ] **L1273** `964dcecf` — - **B4. Deploy + Infra:** VercelProjectEnsure, VercelEnvVarSync, VercelD — @ — 
+- [ ] **L1274** `70eee5d2` — - **B5. Marketing (Klaviyo etc.):** KlaviyoSegmentUpsert, KlaviyoTemplat — @ — 
+- [ ] **L1275** `2e630b98` — - **B6. Data + Content:** ContentSchemaNormalize, CopyVariantGenerate, A — @ — 
+- [ ] **L1276** `33e61cdf` — - **B7. Observability + Docs (.mdd):** RunDocGenerateMDD, IncidentDocGen — @ — 
+- [ ] **L1277** `63273c90` — - **B8. Repair + Escalation:** ErrorSignatureCompute, HypothesisGenerate — @ — 
+- [ ] **L1278** `4b6f1f31` — - **B9. Release + Rollout:** ReleaseBundleBuild, ReleaseRegister, Canary — @ — 
+- [ ] **L1279** `2240864e` — - **B10. Self-Host Upgrade Initiative:** UpgradeDiffPrepare, UpgradeSand — @ — 
+- [ ] **L1280** `c0089f0d` — - **B11. UI / Console (optional):** ConsoleSchemaUpdate, ConsoleBuildAnd — @ — 
+- [ ] **L1281** `e3b0c442` — (blank) — @ — 
+- [ ] **L1282** `f2053954` — **Per-node contract (required in doc):** Purpose; Inputs (schema ref or — @ — 
+- [ ] **L1283** `e3b0c442` — (blank) — @ — 
+- [ ] **L1284** `7580812c` — ### 12D.1 Node Spec Sheet Format and Core Set (Upgrade Initiative) — @ — 
+- [ ] **L1285** `e3b0c442` — (blank) — @ — 
+- [ ] **L1286** `79fb44ae` — Use the following format for each node type; extend the pattern for the — @ — 
+- [ ] **L1287** `e3b0c442` — (blank) — @ — 
+- [ ] **L1288** `c435890a` — **BranchAndPRCreate:** Purpose: create patch-based upgrade diff; no in-p — @ — 
+- [ ] **L1289** `e3b0c442` — (blank) — @ — 
+- [ ] **L1290** `d5247e6b` — **SandboxValidate:** Purpose: run unit + contract + policy lint on clean — @ — 
+- [ ] **L1291** `e3b0c442` — (blank) — @ — 
+- [ ] **L1292** `fb713295` — **GoldenSuiteSandbox:** Purpose: prove golden workflows. Subtests: Verce — @ — 
+- [ ] **L1293** `e3b0c442` — (blank) — @ — 
+- [ ] **L1294** `5f45cdb8` — **StagingDeploy:** Purpose: build and deploy new workplane bundle to sta — @ — 
+- [ ] **L1295** `e3b0c442` — (blank) — @ — 
+- [ ] **L1296** `36a49ff7` — **CanaryEnable:** Purpose: set releases.percent_rollout = X. Writes: rel — @ — 
+- [ ] **L1297** `e3b0c442` — (blank) — @ — 
+- [ ] **L1298** `886f09c3` — **CanaryMonitor:** Purpose: compute drift metrics and decide pass/fail. — @ — 
+- [ ] **L1299** `e3b0c442` — (blank) — @ — 
+- [ ] **L1300** `a5d4efb3` — **RollbackOnDrift:** Purpose: automatic rollback execution. Inputs: last — @ — 
+- [ ] **L1301** `e3b0c442` — (blank) — @ — 
+- [ ] **L1302** `31eafb72` — ### 12D.2 Minimal Node Taxonomy (18 Types, ~90% Dev + Marketing + Ops) — @ — 
+- [ ] **L1303** `e3b0c442` — (blank) — @ — 
+- [ ] **L1304** `dac9e1c7` — Kernel node types; each has job_type, node_type (job/gate/validator/appr — @ — 
+- [ ] **L1305** `e3b0c442` — (blank) — @ — 
+- [ ] **L1306** `30922dcf` — **B1. Planning + graph:** PlanCompile (initiative → DAG, plan_hash, dete — @ — 
+- [ ] **L1307** `e3b0c442` — (blank) — @ — 
+- [ ] **L1308** `bb9cf99f` — **B2. Code + build:** RepoCheckout (fetch repo, pinned ref, workspace); — @ — 
+- [ ] **L1309** `e3b0c442` — (blank) — @ — 
+- [ ] **L1310** `8d32348d` — **B3. Test/verification:** UnitTest (validations); ContractTest (adapter — @ — 
+- [ ] **L1311** `e3b0c442` — (blank) — @ — 
+- [ ] **L1312** `20f0bcf3` — **B4. Deployment + infra:** DeployWebApp (Vercel: preview/staging/prod, — @ — 
+- [ ] **L1313** `e3b0c442` — (blank) — @ — 
+- [ ] **L1314** `c25a296d` — **B5. Marketing:** KlaviyoUpsertObjects (templates/segments/flows, stabl — @ — 
+- [ ] **L1315** `e3b0c442` — (blank) — @ — 
+- [ ] **L1316** `cdbe98de` — **B6. Self-hosting + ops:** UpgradeInitiative (orchestrate self-build: P — @ — 
+- [ ] **L1317** `e3b0c442` — (blank) — @ — 
+- [ ] **L1318** `dfbff17d` — **B7. Node spec template (example DeployWebApp):** Inputs: {project_slug — @ — 
+- [ ] **L1319** `e3b0c442` — (blank) — @ — 
+- [ ] **L1320** `ac196042` — ### 12D.3 Full Node Taxonomy Spec (Consolidated Detail) — @ — 
+- [ ] **L1321** `e3b0c442` — (blank) — @ — 
+- [ ] **L1322** `d3fc45b7` — **Purpose:** Minimal set (18 types) covering ~90% of workflows: dev/buil — @ — 
+- [ ] **L1323** `e3b0c442` — (blank) — @ — 
+- [ ] **L1324** `ecb12554` — **Global Node Contract (every node type):** job_type; node_type (job , v — @ — 
+- [ ] **L1325** `e3b0c442` — (blank) — @ — 
+- [ ] **L1326** `6532038a` — **18 Node Types (full):** — @ — 
+- [ ] **L1327** `a5bf77e0` — **Group A — Planning:** (1) PlanCompile (job): compile initiative into D — @ — 
+- [ ] **L1328** `885f38c3` — **Group B — Code and build:** (4) RepoCheckout (job): clean working dire — @ — 
+- [ ] **L1329** `dbad7d2e` — **Group C — Tests:** (8) UnitTest (validator): unit tests; validations + — @ — 
+- [ ] **L1330** `e2ba9966` — **Group D — Deploy and infra:** (12) DeployWebApp (job): Vercel deploy; — @ — 
+- [ ] **L1331** `130ffa22` — **Group E — Marketing:** (15) KlaviyoUpsertObjects (job): templates, seg — @ — 
+- [ ] **L1332** `e76976d0` — **Group F — Self-hosting + ops:** (17) UpgradeInitiative (job): orchestr — @ — 
+- [ ] **L1333** `e3b0c442` — (blank) — @ — 
+- [ ] **L1334** `62600568` — **Node Spec Template (per type):** Node name; node_type; input/output sc — @ — 
+- [ ] **L1335** `e3b0c442` — (blank) — @ — 
+- [ ] **L1336** `da5184bd` — **Extension Strategy:** New node types require: schema contract (inputs/ — @ — 
+- [ ] **L1337** `e3b0c442` — (blank) — @ — 
+- [ ] **L1338** `cb3f91d5` — --- — @ — 
+- [ ] **L1339** `e3b0c442` — (blank) — @ — 
+- [ ] **L1340** `e783ce6b` — ## 12E. Optional: UI Component + Design Token System (D) — @ — 
+- [ ] **L1341** `e3b0c442` — (blank) — @ — 
+- [ ] **L1342** `88e3c5cd` — Design-with-code approach: the factory uses Tailwind and other libraries — @ — 
+- [ ] **L1343** `e3b0c442` — (blank) — @ — 
+- [ ] **L1344** `9831b581` — **D2. Component library (console):** AppShell (sidebar + topbar); DataTa — @ — 
+- [ ] **L1345** `e3b0c442` — (blank) — @ — 
+- [ ] **L1346** `318ca9a0` — **D3. Blocks/pages/themes schema (website generator):** Theme (token set — @ — 
+- [ ] **L1347** `e3b0c442` — (blank) — @ — 
+- [ ] **L1348** `222f2eb9` — ### 12E.4 Full UI Tokens + Components Spec (Consolidated Detail) — @ — 
+- [ ] **L1349** `e3b0c442` — (blank) — @ — 
+- [ ] **L1350** `d37329cf` — **Purpose:** Deterministic, code-driven UI: Tailwind and other libraries — @ — 
+- [ ] **L1351** `e3b0c442` — (blank) — @ — 
+- [ ] **L1352** `b8d6ace5` — **Token system (source of truth):** tokens/tokens.json. Generated: tailw — @ — 
+- [ ] **L1353** `e3b0c442` — (blank) — @ — 
+- [ ] **L1354** `26ae92cc` — **Component library (ops console):** Primitives: Button (primary/seconda — @ — 
+- [ ] **L1355** `e3b0c442` — (blank) — @ — 
+- [ ] **L1356** `dc388182` — **Layout:** AppShell: left sidebar nav, top header (env, time range, sea — @ — 
+- [ ] **L1357** `e3b0c442` — (blank) — @ — 
+- [ ] **L1358** `4efd811e` — **Block/Page/Theme schema (website generator):** Theme: theme_id, token_ — @ — 
+- [ ] **L1359** `e3b0c442` — (blank) — @ — 
+- [ ] **L1360** `b454ecfd` — **Accessibility and observability:** WCAG contrast for status colors; ke — @ — 
+- [ ] **L1361** `e3b0c442` — (blank) — @ — 
+- [ ] **L1362** `f25134c0` — **Non-goals:** Doc does not define branding aesthetics beyond tokens; do — @ — 
+- [ ] **L1363** `e3b0c442` — (blank) — @ — 
+- [ ] **L1364** `cb3f91d5` — --- — @ — 
+- [ ] **L1365** `e3b0c442` — (blank) — @ — 
+- [ ] **L1366** `0fbbe7cd` — ## 12F. What This Resolves (Summary) — @ — 
+- [ ] **L1367** `e3b0c442` — (blank) — @ — 
+- [ ] **L1368** `56b638a0` — - **“It launches Vercel applications” but “not built on Vercel”:** Facto — @ — 
+- [ ] **L1369** `588cd4df` — - **“It doesn’t write code”:** System generates from schemas + templates — @ — 
+- [ ] **L1370** `e3b0c442` — (blank) — @ — 
+- [ ] **L1371** `cb3f91d5` — --- — @ — 
+- [ ] **L1372** `e3b0c442` — (blank) — @ — 
+- [ ] **L1373** `7773bbfb` — ## 13. Golden Initiative Suite — @ — 
+- [ ] **L1374** `e3b0c442` — (blank) — @ — 
+- [ ] **L1375** `96a81625` — The pipeline spec will reference the **golden initiative suite** that se — @ — 
+- [ ] **L1376** `e3b0c442` — (blank) — @ — 
+- [ ] **L1377** `682dcefc` — 1. **Vercel App Deploy** — Generate from schema, build, deploy preview, — @ — 
+- [ ] **L1378** `ff45ad62` — 2. **Domain Connect** — Staging zone update, verify DNS propagation (sta — @ — 
+- [ ] **L1379** `0d259203` — 3. **Klaviyo Flow Build (Safe Mode)** — Create segment, template, flow; — @ — 
+- [ ] **L1380** `ea42d900` — 4. **Docs + Audit** — Generate .mdd from run; confirm all artifact links — @ — 
+- [ ] **L1381** `52d65cd7` — 5. **Repair Simulation** — Inject known failure signature; ensure repair — @ — 
+- [ ] **L1382** `e3b0c442` — (blank) — @ — 
+- [ ] **L1383** `c4e83c5c` — If any golden initiative fails in sandbox or staging, the Upgrade Initia — @ — 
+- [ ] **L1384** `e3b0c442` — (blank) — @ — 
+- [ ] **L1385** `18aa9dc4` — ### 13.1 Repair and Escalation (Bounded Attempts) — @ — 
+- [ ] **L1386** `e3b0c442` — (blank) — @ — 
+- [ ] **L1387** `1d9fb8a8` — The schema and pipeline spec must support the multi-hypothesis repair lo — @ — 
+- [ ] **L1388** `e3b0c442` — (blank) — @ — 
+- [ ] **L1389** `c80397e9` — ### 13.2 MCP Adapter Interface (Contract for tool_calls) — @ — 
+- [ ] **L1390** `e3b0c442` — (blank) — @ — 
+- [ ] **L1391** `27282eb4` — Each adapter in the Work Plane should implement a consistent contract so — @ — 
+- [ ] **L1392** `e3b0c442` — (blank) — @ — 
+- [ ] **L1393** `f9fc4ea8` — ### 13.3 Self-Build Over Time (Compounding Improvement) — @ — 
+- [ ] **L1394** `e3b0c442` — (blank) — @ — 
+- [ ] **L1395** `be4d68be` — You get the factory to **self-build over time** by making improvement it — @ — 
+- [ ] **L1396** `e3b0c442` — (blank) — @ — 
+- [ ] **L1397** `0e332869` — **1) Define what "better" means as numbers the factory can optimize** — @ — 
+- [ ] **L1398** `e3b0c442` — (blank) — @ — 
+- [ ] **L1399** `6616612c` — Without objective functions the system can only self-change, not self-im — @ — 
+- [ ] **L1400** `e3b0c442` — (blank) — @ — 
+- [ ] **L1401** `ebce8bd4` — - **Reliability:** run_success_rate (overall + by job_type); mean retrie — @ — 
+- [ ] **L1402** `36f29e37` — - **Determinism:** rebuild_repro_rate (same run inputs → same artifact h — @ — 
+- [ ] **L1403** `08052de0` — - **Safety:** policy_violation_count; approvals_required vs approvals_re — @ — 
+- [ ] **L1404** `8cce9a91` — - **Velocity:** median run duration, p95 duration; time_to_green_after_f — @ — 
+- [ ] **L1405** `c7995e86` — - **Quality:** golden_suite_pass_rate; drift metrics canary vs control ( — @ — 
+- [ ] **L1406** `e3b0c442` — (blank) — @ — 
+- [ ] **L1407** `0ef7ed5c` — Store release-scoped artifacts: `artifact_type = scorecard_report` and ` — @ — 
+- [ ] **L1408** `e3b0c442` — (blank) — @ — 
+- [ ] **L1409** `363e7133` — **2) Make the Upgrade Initiative the only way the system changes itself* — @ — 
+- [ ] **L1410** `e3b0c442` — (blank) — @ — 
+- [ ] **L1411** `ae35ff0c` — Self-build means autonomous PRs, not autonomous editing. Treat upgrades — @ — 
+- [ ] **L1412** `e3b0c442` — (blank) — @ — 
+- [ ] **L1413** `47671e21` — **3) Two core learning loops: Failure → Patch Library, and Drift → Polic — @ — 
+- [ ] **L1414** `e3b0c442` — (blank) — @ — 
+- [ ] **L1415** `8319394c` — **Loop A — Failure signatures become reusable repairs:** Add a structure — @ — 
+- [ ] **L1416** `e3b0c442` — (blank) — @ — 
+- [ ] **L1417** `5cbe5122` — **Loop B — Canary drift tightens policies automatically (within safe bou — @ — 
+- [ ] **L1418** `e3b0c442` — (blank) — @ — 
+- [ ] **L1419** `7b63df13` — **4) Use golden initiatives as the fitness function** — @ — 
+- [ ] **L1420** `e3b0c442` — (blank) — @ — 
+- [ ] **L1421** `b4db97b6` — The Golden Suite is the training set. Grow it in a specific way: every r — @ — 
+- [ ] **L1422** `e3b0c442` — (blank) — @ — 
+- [ ] **L1423** `d74479a9` — **5) Treat prompts, schemas, and adapters as versioned dependencies** — @ — 
+- [ ] **L1424** `e3b0c442` — (blank) — @ — 
+- [ ] **L1425** `654610b7` — Self-building factories die from invisible prompt drift and tool drift. — @ — 
+- [ ] **L1426** `e3b0c442` — (blank) — @ — 
+- [ ] **L1427** `61d5f8b1` — **6) Offline evaluation on production logs** — @ — 
+- [ ] **L1428** `e3b0c442` — (blank) — @ — 
+- [ ] **L1429** `d854e888` — Don't let the factory learn only from live runs. Nightly or on-demand, r — @ — 
+- [ ] **L1430** `e3b0c442` — (blank) — @ — 
+- [ ] **L1431** `bdea2fa0` — **7) Keep the improvement surface area narrow at first** — @ — 
+- [ ] **L1432** `e3b0c442` — (blank) — @ — 
+- [ ] **L1433** `89f7a491` — - **Phase 1 (safe):** Self-improve only Work Plane adapters, validators, — @ — 
+- [ ] **L1434** `c8e139cb` — - **Phase 2 (moderate):** Plan compiler heuristics (still bounded). — @ — 
+- [ ] **L1435** `9b866f78` — - **Phase 3 (danger):** Control Plane changes only with human approvals, — @ — 
+- [ ] **L1436** `e3b0c442` — (blank) — @ — 
+- [ ] **L1437** `d3f39ff7` — **8) Minimal additions to enable compounding improvement** — @ — 
+- [ ] **L1438** `e3b0c442` — (blank) — @ — 
+- [ ] **L1439** `c0b52cb1` — Shortest path from this spec to real self-improvement: (a) **scorecard_r — @ — 
+- [ ] **L1440** `e3b0c442` — (blank) — @ — 
+- [ ] **L1441** `ebe1464d` — **What compounding looks like operationally (2–4 weeks in production):** — @ — 
+- [ ] **L1442** `e3b0c442` — (blank) — @ — 
+- [ ] **L1443** `338ca044` — ### 13.4 Self-Improvement System Specification (Autonomous Evolution Fra — @ — 
+- [ ] **L1444** `e3b0c442` — (blank) — @ — 
+- [ ] **L1445** `71a11c88` — *Drop-in spec for how the AI Factory safely improves itself over time. A — @ — 
+- [ ] **L1446** `e3b0c442` — (blank) — @ — 
+- [ ] **L1447** `5dc82c8b` — **1. Purpose** — @ — 
+- [ ] **L1448** `e3b0c442` — (blank) — @ — 
+- [ ] **L1449** `10bf9a93` — The Self-Improvement System enables the AI Factory to continuously impro — @ — 
+- [ ] **L1450** `e3b0c442` — (blank) — @ — 
+- [ ] **L1451** `5b159e8c` — - Observe system performance — @ — 
+- [ ] **L1452** `d9514a06` — - Identify failures or inefficiencies — @ — 
+- [ ] **L1453** `d2964241` — - Generate candidate improvements — @ — 
+- [ ] **L1454** `a0fa28ef` — - Validate improvements in controlled environments — @ — 
+- [ ] **L1455** `5496b1ea` — - Promote improvements through staged rollouts — @ — 
+- [ ] **L1456** `1767374e` — - Roll back if regressions occur — @ — 
+- [ ] **L1457** `eb6a1725` — - Store successful repairs for reuse — @ — 
+- [ ] **L1458** `e3b0c442` — (blank) — @ — 
+- [ ] **L1459** `9f43edd9` — This process ensures the system improves through provable experiments, n — @ — 
+- [ ] **L1460** `e3b0c442` — (blank) — @ — 
+- [ ] **L1461** `e9f91625` — **2. Core Design Principles** — @ — 
+- [ ] **L1462** `e3b0c442` — (blank) — @ — 
+- [ ] **L1463** `dc52e3f3` — **Determinism First:** Self-improvement must never break replayability. — @ — 
+- [ ] **L1464** `e3b0c442` — (blank) — @ — 
+- [ ] **L1465** `910dc5ce` — **Evidence-Based Evolution:** Every improvement must include: hypothesis — @ — 
+- [ ] **L1466** `e3b0c442` — (blank) — @ — 
+- [ ] **L1467** `f16cec62` — **Separation of Planes:** Self-modification is constrained by the system — @ — 
+- [ ] **L1468** `e3b0c442` — (blank) — @ — 
+- [ ] **L1469** `e3b0c442` — (blank) — @ — 
+- [ ] **L1470** `6166e43f` — , Plane , Role , Self-Modif — @ — 
+- [ ] **L1471** `33ddb123` — , ------------- , ----------------------------------------- , ---------- — @ — 
+- [ ] **L1472** `16c7d20c` — , Control Plane , Scheduler, policies, orchestration kernel , Extremely — @ — 
+- [ ] **L1473** `60dd6345` — , Work Plane , Adapters, validators, generators , Fully evol — @ — 
+- [ ] **L1474** `e3b0c442` — (blank) — @ — 
+- [ ] **L1475** `e3b0c442` — (blank) — @ — 
+- [ ] **L1476** `8f21d559` — Most autonomous improvements occur in the Work Plane. — @ — 
+- [ ] **L1477** `e3b0c442` — (blank) — @ — 
+- [ ] **L1478** `5547434d` — **Patch-Based Evolution:** The system never edits code directly in produ — @ — 
+- [ ] **L1479** `e3b0c442` — (blank) — @ — 
+- [ ] **L1480** `9737da8f` — **3. Factory Scorecard (Objective Function)** — @ — 
+- [ ] **L1481** `e3b0c442` — (blank) — @ — 
+- [ ] **L1482** `3be7adda` — Self-improvement requires quantifiable signals. Every release generates — @ — 
+- [ ] **L1483** `e3b0c442` — (blank) — @ — 
+- [ ] **L1484** `816b41e6` — - **Artifact type:** `artifact_type = "scorecard_report"` — @ — 
+- [ ] **L1485** `e3b0c442` — (blank) — @ — 
+- [ ] **L1486** `504909e9` — Scorecards evaluate the system along five axes. — @ — 
+- [ ] **L1487** `e3b0c442` — (blank) — @ — 
+- [ ] **L1488** `e97ea80e` — **Reliability metrics** (from runs, job_runs, job_claims): run_success_r — @ — 
+- [ ] **L1489** `e3b0c442` — (blank) — @ — 
+- [ ] **L1490** `f3dd395e` — **Determinism metrics** (artifact hashes): reproducibility_rate, hash_di — @ — 
+- [ ] **L1491** `e3b0c442` — (blank) — @ — 
+- [ ] **L1492** `0ffaf9cd` — **Safety metrics** (from policies, approvals, capability_grants): policy — @ — 
+- [ ] **L1493** `e3b0c442` — (blank) — @ — 
+- [ ] **L1494** `d5cc1413` — **Velocity metrics:** median_run_duration, p95_run_duration, time_to_gre — @ — 
+- [ ] **L1495** `e3b0c442` — (blank) — @ — 
+- [ ] **L1496** `7535f769` — **Quality metrics:** golden_suite_pass_rate, canary_vs_control_drift, va — @ — 
+- [ ] **L1497** `e3b0c442` — (blank) — @ — 
+- [ ] **L1498** `4bd0540f` — **4. Drift Detection** — @ — 
+- [ ] **L1499** `e3b0c442` — (blank) — @ — 
+- [ ] **L1500** `0a4caa10` — Each release performs cohort analysis using release_routes, runs, job_ru — @ — 
+- [ ] **L1501** `e3b0c442` — (blank) — @ — 
+- [ ] **L1502** `59ccebf0` — **5. Repair Knowledge Base** — @ — 
+- [ ] **L1503** `e3b0c442` — (blank) — @ — 
+- [ ] **L1504** `b6bf9baf` — Failures should never require rediscovery of the same fix. The system ma — @ — 
+- [ ] **L1505** `e3b0c442` — (blank) — @ — 
+- [ ] **L1506** `84cf4c37` — **Table: repair_recipes** — @ — 
+- [ ] **L1507** `e3b0c442` — (blank) — @ — 
+- [ ] **L1508** `2d45e0f3` — Fields: id; error_signature; job_type; adapter_id; patch_pattern; valida — @ — 
+- [ ] **L1509** `e3b0c442` — (blank) — @ — 
+- [ ] **L1510** `94d90d17` — Example repair pattern: error_signature `github_api_timeout`, patch_patt — @ — 
+- [ ] **L1511** `e3b0c442` — (blank) — @ — 
+- [ ] **L1512** `ade5f4d5` — **Repair loop:** When a failure occurs: (1) Cluster failures by error_si — @ — 
+- [ ] **L1513** `e3b0c442` — (blank) — @ — 
+- [ ] **L1514** `850db138` — **6. Hypothesis Generation** — @ — 
+- [ ] **L1515** `e3b0c442` — (blank) — @ — 
+- [ ] **L1516** `1ab739b2` — For novel failures the factory enters repair mode. The repair loop: atte — @ — 
+- [ ] **L1517** `e3b0c442` — (blank) — @ — 
+- [ ] **L1518** `be336cd1` — **7. Golden Initiative Suite** — @ — 
+- [ ] **L1519** `e3b0c442` — (blank) — @ — 
+- [ ] **L1520** `a75ed409` — Golden Initiatives act as the fitness function. These are permanent work — @ — 
+- [ ] **L1521** `e3b0c442` — (blank) — @ — 
+- [ ] **L1522** `21f2d56d` — **Golden Suite expansion:** Every incident that matters must produce a n — @ — 
+- [ ] **L1523** `e3b0c442` — (blank) — @ — 
+- [ ] **L1524** `fb732cdf` — **8. Autonomous Upgrade Workflow** — @ — 
+- [ ] **L1525** `e3b0c442` — (blank) — @ — 
+- [ ] **L1526** `17b6e781` — All improvements are deployed via the Upgrade Initiative. Pipeline stage — @ — 
+- [ ] **L1527** `e3b0c442` — (blank) — @ — 
+- [ ] **L1528** `88d748ef` — - **Proposal:** Generated by failure analysis, performance drift, repair — @ — 
+- [ ] **L1529** `ee7ce22e` — - **Pull Request stage:** Patch submitted via GitHub adapter. PR include — @ — 
+- [ ] **L1530** `d0e5a7d7` — - **Sandbox validation:** Unit tests, contract tests, golden initiatives — @ — 
+- [ ] **L1531** `d76c8af4` — - **Staging soak:** Shadow traffic, synthetic runs, integration tests. D — @ — 
+- [ ] **L1532** `bdb80446` — - **Promotion gate:** Requires golden suite pass, no policy violations, — @ — 
+- [ ] **L1533** `c53a4134` — - **Canary rollout:** release_routes.percent_rollout, release_routes.coh — @ — 
+- [ ] **L1534** `d0adc55b` — - **Full promotion:** If canary stable, percent_rollout = 100%. — @ — 
+- [ ] **L1535** `a909c38c` — - **Automatic rollback:** Triggered if success_rate_drop > threshold, er — @ — 
+- [ ] **L1536** `e3b0c442` — (blank) — @ — 
+- [ ] **L1537** `0cd7f099` — **9. Offline Evaluation System** — @ — 
+- [ ] **L1538** `e3b0c442` — (blank) — @ — 
+- [ ] **L1539** `66657239` — A nightly Evaluation Initiative runs. Workflow: (1) Query top failure cl — @ — 
+- [ ] **L1540** `e3b0c442` — (blank) — @ — 
+- [ ] **L1541** `d9da8e48` — **10. Policy Auto-Tightening** — @ — 
+- [ ] **L1542** `e3b0c442` — (blank) — @ — 
+- [ ] **L1543** `245dfc36` — When canary regressions occur, the system reduces autonomy. Possible res — @ — 
+- [ ] **L1544** `e3b0c442` — (blank) — @ — 
+- [ ] **L1545** `7c027d2a` — **11. Prompt and Adapter Versioning** — @ — 
+- [ ] **L1546** `e3b0c442` — (blank) — @ — 
+- [ ] **L1547** `e3d67f45` — All runs record: prompt_template_version, adapter_contract_version, runn — @ — 
+- [ ] **L1548** `e3b0c442` — (blank) — @ — 
+- [ ] **L1549** `00b5d111` — **12. Phased Autonomy Model** — @ — 
+- [ ] **L1550** `e3b0c442` — (blank) — @ — 
+- [ ] **L1551** `533bb616` — - **Phase 1:** Autonomous changes allowed to adapters, validators, retry — @ — 
+- [ ] **L1552** `3fe19e4d` — - **Phase 2:** Allow evolution of plan compiler heuristics, node orderin — @ — 
+- [ ] **L1553** `f4fd0d86` — - **Phase 3:** Limited Control Plane evolution. Requirements: human appr — @ — 
+- [ ] **L1554** `e3b0c442` — (blank) — @ — 
+- [ ] **L1555** `130dde89` — **13. Expected Evolution Over Time** — @ — 
+- [ ] **L1556** `e3b0c442` — (blank) — @ — 
+- [ ] **L1557** `769d1e2b` — Healthy self-improving systems demonstrate: decreasing retry counts; shr — @ — 
+- [ ] **L1558** `e3b0c442` — (blank) — @ — 
+- [ ] **L1559** `906831c3` — **14. Long-Term Outcome** — @ — 
+- [ ] **L1560** `e3b0c442` — (blank) — @ — 
+- [ ] **L1561** `d741c096` — After sustained operation, the AI Factory evolves into: a stable autonom — @ — 
+- [ ] **L1562** `e3b0c442` — (blank) — @ — 
+- [ ] **L1563** `cb3f91d5` — --- — @ — 
+- [ ] **L1564** `e3b0c442` — (blank) — @ — 
+- [ ] **L1565** `1ce72267` — ## 14. Deliverable Locations and Repo Layout — @ — 
+- [ ] **L1566** `e3b0c442` — (blank) — @ — 
+- [ ] **L1567** `a4a2c6fd` — This plan is the full “everything at once” package for a senior engineer — @ — 
+- [ ] **L1568** `e3b0c442` — (blank) — @ — 
+- [ ] **L1569** `d2ff80bf` — **All specs are consolidated in this single plan document**—one long det — @ — 
+- [ ] **L1570** `e3b0c442` — (blank) — @ — 
+- [ ] **L1571** `cfffa070` — - **Runner Execution Spec:** Sections 12C and 12C.12 (full detail). Stat — @ — 
+- [ ] **L1572** `80357f07` — - **Node Taxonomy Spec:** Sections 12D and 12D.3 (full detail). 18 minim — @ — 
+- [ ] **L1573** `67e79e4f` — - **UI Console Spec:** Sections 12B and 12B.5 (full detail). Page-by-pag — @ — 
+- [ ] **L1574** `10bb2699` — - **UI Tokens + Components (optional):** Section 12E and 12E.4 (full det — @ — 
+- [ ] **L1575** `9dbfd618` — - **Self-Improvement System Spec:** Sections 13.3 and 13.4 (full detail) — @ — 
+- [ ] **L1576** `d57a52f8` — - **Schema spec** (if split out): `docs/ai-factory-schema-spec.md` — hum — @ — 
+- [ ] **L1577** `bb3fe3da` — - **Upgrade Initiative pipeline** (if split out): `docs/upgrade-initiati — @ — 
+- [ ] **L1578** `40274d0a` — - **Later implementation:** `control-plane/`, `runners/`, `adapters/`, ` — @ — 
+- [ ] **L1579** `e3b0c442` — (blank) — @ — 
+- [ ] **L1580** `cb3f91d5` — --- — @ — 
+- [ ] **L1581** `e3b0c442` — (blank) — @ — 
+- [ ] **L1582** `a559b810` — ## 15. What This Plan Does Not Do — @ — 
+- [ ] **L1583** `e3b0c442` — (blank) — @ — 
+- [ ] **L1584** `a9d7c34f` — - **No raw DDL:** The schema is too critical for AI-authored DDL. The sp — @ — 
+- [ ] **L1585** `c633ed26` — - **No implementation of Control Plane, runners, adapters, or console ap — @ — 
+- [ ] **L1586** `94a700b6` — - **No Temporal or Postgres application code:** Only specification of sc — @ — 
+- [ ] **L1587** `e3b0c442` — (blank) — @ — 
+- [ ] **L1588** `cb3f91d5` — --- — @ — 
+- [ ] **L1589** `e3b0c442` — (blank) — @ — 
+- [ ] **L1590** `82f8597f` — ## 16. Order of Work (Execution Sequence) — @ — 
+- [ ] **L1591** `e3b0c442` — (blank) — @ — 
+- [ ] **L1592** `145c27a7` — 1. **Draft the core schema spec** — All tables (sections 5.1–5.21 and 5. — @ — 
+- [ ] **L1593** `1a8752f4` — 2. **Lock job run model** — Pattern A (attempt rows + derived current st — @ — 
+- [ ] **L1594** `a0cf4630` — 3. **Add Concurrency and Exactly-Once Semantics** — Section 5A: leases, — @ — 
+- [ ] **L1595** `eea41ea2` — 4. **Add State Machine Contract** — Section 5B: explicit allowed transit — @ — 
+- [ ] **L1596** `beec30ef` — 5. **Add Controlled vocabulary / enums** — Section 5B2: Postgres enums o — @ — 
+- [ ] **L1597** `735c5970` — 6. **Add Error Signature Normalization** — Section 5C: how error_signatu — @ — 
+- [ ] **L1598** `b55676b0` — 7. **Add Artifact immutability and Artifact Classes** — Section 5D: immu — @ — 
+- [ ] **L1599** `00514feb` — 8. **Add Rollback Targets** — Section 5E: rollback_targets table (verifi — @ — 
+- [ ] **L1600** `6d889e13` — 9. **Add idempotency strategy** — Stable idempotency: job_runs.idempoten — @ — 
+- [ ] **L1601** `d4c33a08` — 10. **Add event taxonomy** — Canonical run_events and job_events event_t — @ — 
+- [ ] **L1602** `60f0aa59` — 11. **Add canary and rollback linkage** — percent_rollout on releases on — @ — 
+- [ ] **L1603** `a787f81e` — 12. **Add capability_grants and security** — capability_grants table; se — @ — 
+- [ ] **L1604** `979c7859` — 13. **Write Temporal-first variant** — Section 9: Truth Ownership; who w — @ — 
+- [ ] **L1605** `6e7dee03` — 14. **Write DB-first variant** — Section 10: node_progress for eligibili — @ — 
+- [ ] **L1606** `c47f123f` — 15. **Write safe schema evolution** — Section 11 playbook into the spec — @ — 
+- [ ] **L1607** `19f927fb` — 16. **Draft Upgrade Initiative pipeline spec** — Stages, gates (Schema/P — @ — 
+- [ ] **L1608** `a6a3a891` — 17. **Draft Internal Console UI spec** — Principles and deployment; IA a — @ — 
+- [ ] **L1609** `05c1d6e1` — 18. **Draft Runner Execution spec** — Full lifecycle A0–A12 plus kernel- — @ — 
+- [ ] **L1610** `2a137d81` — 19. **Draft Node Taxonomy** — Large taxonomy (50+ types) with per-node c — @ — 
+- [ ] **L1611** `e9666efb` — 20. **Draft Self-Improvement System spec** — Factory Scorecard (artifact — @ — 
+- [ ] **L1612** `43d5b7bb` — 21. **Review and hand off** — Human lead implements DDL, pipeline, conso — @ — 
+- [ ] **L1613** `e3b0c442` — (blank) — @ — 
+- [ ] **L1614** `031ae2b0` — ## 16.1 Implementation Notes and Risks — @ — 
+- [ ] **L1615** `e3b0c442` — (blank) — @ — 
+- [ ] **L1616** `9269f916` — **Determinism:** The single largest cause of “self-build errors” is nond — @ — 
+- [ ] **L1617** `e3b0c442` — (blank) — @ — 
+- [ ] **L1618** `9fcc8798` — ### 16.2 What to Implement First (Fastest Path to Working Factory) — @ — 
+- [ ] **L1619** `e3b0c442` — (blank) — @ — 
+- [ ] **L1620** `6ad10026` — To get a working factory end-to-end: (1) **Postgres schema kernel** — sp — @ — 
+- [ ] **L1621** `e3b0c442` — (blank) — @ — 
+- [ ] **L1622** `cb3f91d5` — --- — @ — 
+- [ ] **L1623** `e3b0c442` — (blank) — @ — 
+- [ ] **L1624** `efdcadc8` — ## 17. Success Criteria for the Plan — @ — 
+- [ ] **L1625** `e3b0c442` — (blank) — @ — 
+- [ ] **L1626** `44f7aff0` — - A lead engineer can implement the full Postgres schema and align appli — @ — 
+- [ ] **L1627** `22995e5c` — - Both Temporal-first and DB-first variants are clearly documented so th — @ — 
+- [ ] **L1628** `e3ec3e18` — - The Upgrade Initiative pipeline spec is concrete enough to implement t — @ — 
+- [ ] **L1629** `8a114924` — - The **Internal Console UI spec** is concrete enough to implement the o — @ — 
+- [ ] **L1630** `4c5d6bde` — - The **Runner Execution spec** is concrete enough to implement the full — @ — 
+- [ ] **L1631** `12870d1c` — - The **Node Taxonomy** is concrete enough to implement the plan compile — @ — 
+- [ ] **L1632** `f3e5bb60` — - The schema enforces the ten invariants and supports deterministic, ide — @ — 
+- [ ] **L1633** `123964cc` — - The **Self-Improvement System** is concrete enough to implement compou — @ — 
+- [ ] **L1634** `0732205f` — - **Four Anthropic-grade upgrades** are specified: (1) run-level schedul — @ — 
+- [ ] **L1635** `e3b0c442` — (blank) — @ — 
+- [ ] **L1636** `cb3f91d5` — --- — @ — 
+- [ ] **L1637** `e3b0c442` — (blank) — @ — 
+- [ ] **L1638** `153169ed` — ## 18. External References and Implementation Hints — @ — 
+- [ ] **L1639** `e3b0c442` — (blank) — @ — 
+- [ ] **L1640** `14e7e78c` — The following content is **inlined from [creativepropulsionlabs/.github] — @ — 
+- [ ] **L1641** `e3b0c442` — (blank) — @ — 
+- [ ] **L1642** `48f64c1f` — ### 18.1 Source repo (README) — @ — 
+- [ ] **L1643** `e3b0c442` — (blank) — @ — 
+- [ ] **L1644** `42b41951` — > Org-level AI + CI infrastructure - reusable workflows, prompts, and Cl — @ — 
+- [ ] **L1645** `e3b0c442` — (blank) — @ — 
+- [ ] **L1646** `1f61da63` — ### 18.2 Prompt: execute-job (`.github/prompts/execute-job.txt`) — @ — 
+- [ ] **L1647** `e3b0c442` — (blank) — @ — 
+- [ ] **L1648** `f1b90184` — ``` — @ — 
+- [ ] **L1649** `e8e5bcd4` — Execute this job. — @ — 
+- [ ] **L1650** `e3b0c442` — (blank) — @ — 
+- [ ] **L1651** `3e413436` — Job Payload (complete execution context): — @ — 
+- [ ] **L1652** `59bf7432` — Read the job payload from: /tmp/job-payload.json — @ — 
+- [ ] **L1653** `e3b0c442` — (blank) — @ — 
+- [ ] **L1654** `413e2063` — Acceptance Criteria (authoritative): — @ — 
+- [ ] **L1655** `7a494166` — Read acceptance criteria from: /tmp/acceptance-criteria.txt — @ — 
+- [ ] **L1656** `e3b0c442` — (blank) — @ — 
+- [ ] **L1657** `4de0bc28` — Instructions: — @ — 
+- [ ] **L1658** `2a2ddc6c` — - Execute exactly one job — @ — 
+- [ ] **L1659** `a12e462a` — - Follow CONTRIBUTING.md for repository conventions — @ — 
+- [ ] **L1660** `7dce2c93` — - Follow the Job Type prompt for HOW to execute — @ — 
+- [ ] **L1661** `6b862fbc` — - Acceptance Criteria defines WHAT success looks like — @ — 
+- [ ] **L1662** `e3b0c442` — (blank) — @ — 
+- [ ] **L1663** `41a92a6f` — CRITICAL: DO NOT OPEN A PULL REQUEST — @ — 
+- [ ] **L1664** `da1a3527` — Pull request creation is handled by the workflow AFTER you exit. — @ — 
+- [ ] **L1665** `8497b8b7` — Your job ends when you push commits to the branch. — @ — 
+- [ ] **L1666** `e3b0c442` — (blank) — @ — 
+- [ ] **L1667** `f08f6b4b` — CRITICAL RETRY RULE: — @ — 
+- [ ] **L1668** `e74170a1` — On retries, you MUST: — @ — 
+- [ ] **L1669** `60144fd4` — 1. Check feedback history in your prompt context — @ — 
+- [ ] **L1670** `d773187c` — 2. Address ALL feedback issues — @ — 
+- [ ] **L1671** `a385a129` — 3. Push at least one commit with your changes — @ — 
+- [ ] **L1672** `e3b0c442` — (blank) — @ — 
+- [ ] **L1673** `01c9d4b8` — Even if you believe the existing code is correct, push a commit (fix for — @ — 
+- [ ] **L1674** `e3b0c442` — (blank) — @ — 
+- [ ] **L1675** `a044836d` — After completing work, output the branch name clearly so it can be verif — @ — 
+- [ ] **L1676** `f1b90184` — ``` — @ — 
+- [ ] **L1677** `e3b0c442` — (blank) — @ — 
+- [ ] **L1678** `ee6c8e18` — ### 18.3 Prompt: execution-constraints (`.github/prompts/execution-const — @ — 
+- [ ] **L1679** `e3b0c442` — (blank) — @ — 
+- [ ] **L1680** `f1b90184` — ``` — @ — 
+- [ ] **L1681** `cb3f91d5` — --- — @ — 
+- [ ] **L1682** `e3b0c442` — (blank) — @ — 
+- [ ] **L1683** `df2801d0` — ## Execution Constraints — @ — 
+- [ ] **L1684** `e3b0c442` — (blank) — @ — 
+- [ ] **L1685** `d0ab6001` — - You have access to shell commands (git, gh, cat, etc.) for file and gi — @ — 
+- [ ] **L1686** `88dac720` — - You have access to MCP tools for external systems (only the tools you — @ — 
+- [ ] **L1687** `d77c6a6b` — - The workflow has ALREADY created and checked out your branch — @ — 
+- [ ] **L1688** `d0000605` — - You must NOT create new branches — @ — 
+- [ ] **L1689** `4ffa0435` — - Commit and push to the CURRENT branch only — @ — 
+- [ ] **L1690** `5644d9e7` — - Do NOT commit to main/master directly — @ — 
+- [ ] **L1691** `f60c440a` — - Do NOT force-push — @ — 
+- [ ] **L1692** `4c4bb7ef` — - Do NOT modify unrelated files — @ — 
+- [ ] **L1693** `e3b0c442` — (blank) — @ — 
+- [ ] **L1694** `bb5ecdbc` — ## Job Context — @ — 
+- [ ] **L1695** `f1b90184` — ``` — @ — 
+- [ ] **L1696** `e3b0c442` — (blank) — @ — 
+- [ ] **L1697** `6997a1bf` — ### 18.4 Prompt: retry-context (`.github/prompts/retry-context.txt`) — @ — 
+- [ ] **L1698** `e3b0c442` — (blank) — @ — 
+- [ ] **L1699** `f1b90184` — ``` — @ — 
+- [ ] **L1700** `d6b0a86b` — **WARNING: THIS IS RETRY ATTEMPT {{ATTEMPT_COUNT}}** — @ — 
+- [ ] **L1701** `e3b0c442` — (blank) — @ — 
+- [ ] **L1702** `430aff42` — Previous attempts failed. Feedback history: — @ — 
+- [ ] **L1703** `e3b0c442` — (blank) — @ — 
+- [ ] **L1704** `c7d77617` — {{FEEDBACK_HISTORY}} — @ — 
+- [ ] **L1705** `e3b0c442` — (blank) — @ — 
+- [ ] **L1706** `2e7f4866` — If feedback above lacks detail, check PR comments for full error output. — @ — 
+- [ ] **L1707** `e3b0c442` — (blank) — @ — 
+- [ ] **L1708** `d1943874` — You MUST address ALL issues from prior feedback before proceeding. — @ — 
+- [ ] **L1709** `ba49fc84` — Do NOT repeat the same mistakes. — @ — 
+- [ ] **L1710** `e3b0c442` — (blank) — @ — 
+- [ ] **L1711** `cb3f91d5` — --- — @ — 
+- [ ] **L1712** `f1b90184` — ``` — @ — 
+- [ ] **L1713** `e3b0c442` — (blank) — @ — 
+- [ ] **L1714** `3cbb10a7` — ### 18.5 Prompt: review-pr (`.github/prompts/review-pr.txt`) — @ — 
+- [ ] **L1715** `e3b0c442` — (blank) — @ — 
+- [ ] **L1716** `f1b90184` — ``` — @ — 
+- [ ] **L1717** `f492e1a8` — Review PR #{{PR_NUMBER}} in {{REPO_OWNER}}/{{REPO_NAME}}. — @ — 
+- [ ] **L1718** `e3b0c442` — (blank) — @ — 
+- [ ] **L1719** `a2a6e943` — ## Task Context — @ — 
+- [ ] **L1720** `e3b0c442` — (blank) — @ — 
+- [ ] **L1721** `e5d92f65` — You are reviewing a pull request created by the job pipeline. Your job i — @ — 
+- [ ] **L1722** `e3b0c442` — (blank) — @ — 
+- [ ] **L1723** `117f6205` — ## Acceptance Criteria (from job) — @ — 
+- [ ] **L1724** `e3b0c442` — (blank) — @ — 
+- [ ] **L1725** `7a494166` — Read acceptance criteria from: /tmp/acceptance-criteria.txt — @ — 
+- [ ] **L1726** `e3b0c442` — (blank) — @ — 
+- [ ] **L1727** `e6344e7e` — ## Review Instructions — @ — 
+- [ ] **L1728** `e3b0c442` — (blank) — @ — 
+- [ ] **L1729** `1c834237` — Execute the multi-agent code review process: — @ — 
+- [ ] **L1730** `e3b0c442` — (blank) — @ — 
+- [ ] **L1731** `c0de029f` — 1. **Pre-flight**: Check if PR is closed/draft/trivial - skip if so — @ — 
+- [ ] **L1732** `01f6e45d` — 2. **Gather Guidelines**: Find all CONTRIBUTING.md files relevant to cha — @ — 
+- [ ] **L1733** `5311c961` — 3. **Summarize**: Understand what the PR is trying to accomplish — @ — 
+- [ ] **L1734** `01a1be1e` — 4. **Parallel Review**: Launch 4 agents: — @ — 
+- [ ] **L1735** `d7b7b768` — - 2x CONTRIBUTING.md compliance checkers — @ — 
+- [ ] **L1736** `d83cafa9` — - 2x Bug detectors (one diff-only, one context-aware) — @ — 
+- [ ] **L1737** `92a0d331` — 5. **Validate**: Each issue gets a validation pass with confidence scori — @ — 
+- [ ] **L1738** `f0fb39ac` — 6. **Filter**: Remove issues with confidence < 80 — @ — 
+- [ ] **L1739** `96ade18b` — 7. **Verdict**: Output final decision — @ — 
+- [ ] **L1740** `e3b0c442` — (blank) — @ — 
+- [ ] **L1741** `e8135886` — ## High Signal Only — @ — 
+- [ ] **L1742** `e3b0c442` — (blank) — @ — 
+- [ ] **L1743** `2be226b0` — Flag ONLY: — @ — 
+- [ ] **L1744** `24685fdf` — - Objective bugs that will cause incorrect runtime behavior — @ — 
+- [ ] **L1745** `bc609ac6` — - Clear CONTRIBUTING.md violations (quote the exact rule) — @ — 
+- [ ] **L1746** `e3b0c442` — (blank) — @ — 
+- [ ] **L1747** `a401a3a2` — Do NOT flag: — @ — 
+- [ ] **L1748** `5334082f` — - Style preferences — @ — 
+- [ ] **L1749** `44943315` — - "Potential" issues — @ — 
+- [ ] **L1750** `431bdab5` — - Pre-existing problems — @ — 
+- [ ] **L1751** `91ff9648` — - Things linters catch — @ — 
+- [ ] **L1752** `e3b0c442` — (blank) — @ — 
+- [ ] **L1753** `f3872bf0` — If uncertain, don't flag it. False positives waste time. — @ — 
+- [ ] **L1754** `e3b0c442` — (blank) — @ — 
+- [ ] **L1755** `ebee587f` — ## Output Format — @ — 
+- [ ] **L1756** `e3b0c442` — (blank) — @ — 
+- [ ] **L1757** `e11ed87a` — Your final response MUST include this JSON block: — @ — 
+- [ ] **L1758** `e3b0c442` — (blank) — @ — 
+- [ ] **L1759** `021fb596` — { — @ — 
+- [ ] **L1760** `f9ca2a04` — "verdict": "approved" , "changes_requested" , "rejected", — @ — 
+- [ ] **L1761** `1ac1b224` — "summary": "One-line summary of findings", — @ — 
+- [ ] **L1762** `6e01e123` — "issues": [ — @ — 
+- [ ] **L1763** `0d3d2f5a` — { — @ — 
+- [ ] **L1764** `e2d45ca9` — "file": "path/to/file.ts", — @ — 
+- [ ] **L1765** `9d41a04b` — "line": "42", — @ — 
+- [ ] **L1766** `5ec84dd1` — "description": "Description of issue", — @ — 
+- [ ] **L1767** `a1acc2d3` — "type": "bug,compliance,style", — @ — 
+- [ ] **L1768** `80e35697` — "severity": "blocking,non_blocking", — @ — 
+- [ ] **L1769** `fe4a472f` — "confidence": 85 — @ — 
+- [ ] **L1770** `28d86778` — } — @ — 
+- [ ] **L1771** `67e900f6` — ] — @ — 
+- [ ] **L1772** `d10b36aa` — } — @ — 
+- [ ] **L1773** `e3b0c442` — (blank) — @ — 
+- [ ] **L1774** `83493cbc` — Verdict rules: — @ — 
+- [ ] **L1775** `a4db5ae0` — - approved: No blocking issues, or only non_blocking issues regardless o — @ — 
+- [ ] **L1776** `ecd5888e` — - changes_requested: Any issue with severity: blocking AND confidence >= — @ — 
+- [ ] **L1777** `1df5f2d8` — - rejected: Fundamentally broken, security vulnerability, or completely — @ — 
+- [ ] **L1778** `e3b0c442` — (blank) — @ — 
+- [ ] **L1779** `78c6a185` — Severity guide: — @ — 
+- [ ] **L1780** `00bb6e3f` — - blocking: Runtime errors, crashes, data loss, security vulnerabilities — @ — 
+- [ ] **L1781** `d2cdd428` — - non_blocking: Style preferences, minor improvements, pre-existing issu — @ — 
+- [ ] **L1782** `e3b0c442` — (blank) — @ — 
+- [ ] **L1783** `90737529` — When in doubt, approve. False rejections waste more time than false appr — @ — 
+- [ ] **L1784** `f1b90184` — ``` — @ — 
+- [ ] **L1785** `e3b0c442` — (blank) — @ — 
+- [ ] **L1786** `5f996260` — ### 18.6 ADR-0012: Attempt-based stale result protection (`decisions/001 — @ — 
+- [ ] **L1787** `e3b0c442` — (blank) — @ — 
+- [ ] **L1788** `c5a1a6e7` — **Status:** Accepted — @ — 
+- [ ] **L1789** `e3b0c442` — (blank) — @ — 
+- [ ] **L1790** `00017529` — **Context:** The job pipeline uses webhooks to report CI results back to — @ — 
+- [ ] **L1791** `e3b0c442` — (blank) — @ — 
+- [ ] **L1792** `e0ff4c54` — **Decision:** Implement attempt-based protection for **execution webhook — @ — 
+- [ ] **L1793** `e3b0c442` — (blank) — @ — 
+- [ ] **L1794** `e3b0c442` — (blank) — @ — 
+- [ ] **L1795** `e3c2c48b` — , Signal Type , Needs Attempt? , Reason — @ — 
+- [ ] **L1796** `814a947c` — , ----------------- , -------------- , --------------------------------- — @ — 
+- [ ] **L1797** `e1a536e9` — , execution-result , YES , Destructive—stale results corrupt — @ — 
+- [ ] **L1798** `854c6096` — , validation-result , NO , Idempotent—repeats are harmless — @ — 
+- [ ] **L1799** `0a5d4cd6` — , review-result , NO , Idempotent—repeats are harmless — @ — 
+- [ ] **L1800** `e3b0c442` — (blank) — @ — 
+- [ ] **L1801** `e3b0c442` — (blank) — @ — 
+- [ ] **L1802** `b3b86031` — **Rationale:** Validation and review are idempotent; execution results t — @ — 
+- [ ] **L1803** `e3b0c442` — (blank) — @ — 
+- [ ] **L1804** `52521265` — **Implementation:** (1) Execution result RPC enforces `attempt = current — @ — 
+- [ ] **L1805** `e3b0c442` — (blank) — @ — 
+- [ ] **L1806** `5a684fb2` — **Key principle:** If a signal can safely be repeated, it does not need — @ — 
+- [ ] **L1807** `e3b0c442` — (blank) — @ — 
+- [ ] **L1808** `8e9f7ac2` — ### 18.7 Summary — @ — 
+- [ ] **L1809** `e3b0c442` — (blank) — @ — 
+- [ ] **L1810** `004adbd2` — The Runner Execution spec and Node Taxonomy do not prescribe exact promp — @ — 

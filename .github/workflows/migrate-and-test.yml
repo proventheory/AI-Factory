@@ -1,0 +1,31 @@
+name: Migrate and test
+on:
+  push:
+    branches: [main, prod]
+jobs:
+  migrate-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install console deps
+        run: npm ci
+        working-directory: console
+      - name: Build console
+        run: npm run build
+        working-directory: console
+        env:
+          NEXT_PUBLIC_CONTROL_PLANE_API: https://api.example.com
+      # Optional: supabase db push when SUPABASE_* secrets are configured
+      # - name: Supabase db push
+      #   run: npx supabase db push
+      #   env:
+      #     SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      # Optional: poll /health and console URL when Control Plane and Vercel are deployed
+      # - name: Smoke test
+      #   run: |
+      #     curl -sf "${{ vars.CONTROL_PLANE_URL }}/health" || true
+      #     curl -sf "${{ vars.CONSOLE_URL }}" -o /dev/null || true

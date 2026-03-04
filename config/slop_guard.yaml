@@ -1,0 +1,108 @@
+# Adversarial Slop Guard — L0 deterministic + L1 semantic (8090-inspired)
+# L0 runs cheap regex/AST/policy checks first; L1 calls LLM only when L0 passes.
+# See: https://github.com/macaron-software/software-factory
+
+version: 1
+
+artifact_types: [code, patch, doc_bundle, copy, email_template]
+
+l0:
+  rules:
+    - id: no_todo_placeholder
+      name: No TODO placeholders
+      type: regex
+      pattern: "\\b(TODO|FIXME|HACK|XXX|PLACEHOLDER)\\b"
+      apply_to_artifact_types: [code, patch]
+      fail_if_match: true
+      force_reject: false
+
+    - id: no_not_implemented
+      name: No NotImplementedError / throw new Error not implemented
+      type: regex
+      pattern: "(NotImplementedError|raise NotImplemented|throw new Error\\(['\"]not implemented)"
+      apply_to_artifact_types: [code, patch]
+      fail_if_match: true
+      force_reject: true
+
+    - id: no_tbd
+      name: No TBD in output
+      type: regex
+      pattern: "\\bTBD\\b"
+      apply_to_artifact_types: [code, patch, doc_bundle, copy]
+      fail_if_match: true
+      force_reject: false
+
+    - id: no_lorem_ipsum
+      name: No Lorem Ipsum placeholder text
+      type: regex
+      pattern: "[Ll]orem [Ii]psum"
+      apply_to_artifact_types: [code, doc_bundle, copy, email_template]
+      fail_if_match: true
+      force_reject: true
+
+    - id: no_fake_urls
+      name: No example.com or placeholder URLs
+      type: regex
+      pattern: "https?://(www\\.)?(example\\.com|placeholder\\.com|fake-url\\.com|test\\.test)"
+      apply_to_artifact_types: [code, patch, doc_bundle]
+      fail_if_match: true
+      force_reject: false
+
+    - id: no_empty_functions
+      name: No empty function bodies (pass-only or empty block)
+      type: regex
+      pattern: "(def \\w+\\([^)]*\\):\\s*pass$|function \\w+\\([^)]*\\)\\s*\\{\\s*\\})"
+      apply_to_artifact_types: [code, patch]
+      fail_if_match: true
+      force_reject: true
+
+    - id: no_hardcoded_secrets
+      name: No hardcoded API keys or secrets
+      type: regex
+      pattern: "(sk-[a-zA-Z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{36}|password\\s*=\\s*['\"][^'\"]{8,})"
+      apply_to_artifact_types: [code, patch]
+      fail_if_match: true
+      force_reject: true
+
+    - id: no_console_log_spam
+      name: No excessive console.log
+      type: regex
+      pattern: "console\\.log\\("
+      apply_to_artifact_types: [code, patch]
+      fail_if_match: false
+      force_reject: false
+      max_matches: 5
+
+    - id: no_stack_mismatch
+      name: No wrong framework references
+      type: policy
+      policy_ref: stack_mismatch
+      apply_to_artifact_types: [code, patch]
+      description: "Reject if artifact references frameworks not in our stack (e.g. Vue when we use React)"
+      patterns:
+        - "from 'vue'"
+        - "import Vue"
+        - "from '@angular/"
+        - "import { Component } from '@angular"
+
+    - id: min_content_length
+      name: Minimum content length
+      type: policy
+      policy_ref: min_length
+      apply_to_artifact_types: [code, patch, doc_bundle]
+      min_chars: 50
+      description: "Reject suspiciously short outputs that are likely incomplete"
+
+l1:
+  enabled: true
+  model_tier: fast/chat
+  prompt: |
+    You are a quality auditor. Analyze this artifact for "slop" — placeholder content,
+    hallucinated data, off-spec output, or incomplete work.
+
+    Score from 0 (pure slop) to 10 (production-ready).
+    Respond with JSON: {"score": N, "issues": ["issue1", ...], "verdict": "pass"|"fail"}
+
+    A score below 6 is a fail.
+  threshold: 6
+  max_tokens: 500

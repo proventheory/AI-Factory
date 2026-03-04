@@ -1,0 +1,1 @@
+{"version":3,"file":"ui-scaffold.d.ts","sourceRoot":"","sources":["../../../../runners/src/handlers/ui-scaffold.ts"],"names":[],"mappings":"AAGA,wBAAsB,gBAAgB,CAAC,OAAO,EAAE;IAC9C,MAAM,EAAE,MAAM,CAAC;IACf,UAAU,EAAE,MAAM,CAAC;IACnB,QAAQ,EAAE,MAAM,CAAC;IACjB,aAAa,CAAC,EAAE,MAAM,CAAC;CACxB;;;;;;;GAoBA"}

@@ -1,0 +1,177 @@
+# Promptfoo config for AI Factory — prompt CI and model comparison
+# Run: npx promptfoo@latest eval (from repo root or evals/promptfoo/)
+# See docs/LLM_GATEWAY_AND_OPTIMIZATION.md (Phase 4).
+# Threshold: tests must pass at >= 90% for merge (set PROMPTFOO_THRESHOLD=0.90).
+
+description: AI Factory prompt and model evals
+
+providers:
+  - id: openai:gpt-4o-mini
+    label: "fast (gpt-4o-mini)"
+    config:
+      apiBaseUrl: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+  - id: openai:gpt-4o
+    label: "max (gpt-4o)"
+    config:
+      apiBaseUrl: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+
+prompts:
+  # plan_compile: given initiative spec, produce plan outline
+  - id: plan_compile
+    raw: |
+      You are a software project planner. Given the following initiative, produce a concise plan with numbered steps including design, implementation, testing, and review phases.
+
+      Initiative: {{initiative_text}}
+
+      Respond with a numbered plan (5-10 steps).
+
+  # code_review: given a code diff, produce review verdict
+  - id: code_review
+    raw: |
+      You are an expert code reviewer. Review the following diff and provide:
+      1. A verdict: APPROVE or REQUEST_CHANGES
+      2. A list of issues (if any)
+      3. A brief summary
+
+      Diff:
+      {{diff}}
+
+      Respond with JSON: {"verdict": "...", "issues": [...], "summary": "..."}
+
+  # triage: classify an issue by severity and type
+  - id: triage
+    raw: |
+      You are an issue triage agent. Classify the following issue:
+
+      Title: {{issue_title}}
+      Body: {{issue_body}}
+
+      Respond with JSON: {"severity": "low|medium|high|critical", "type": "bug|feature|docs|chore", "summary": "..."}
+
+  # analyze_repo: produce repo summary from file listing
+  - id: analyze_repo
+    raw: |
+      You are a codebase analyst. Given the following file tree, produce a concise repository summary including: primary language, framework, architecture pattern, and key directories.
+
+      File tree:
+      {{file_tree}}
+
+      Respond with a structured summary.
+
+  # codegen: generate code from spec
+  - id: codegen
+    raw: |
+      You are a software engineer. Implement the following specification:
+
+      Spec: {{spec}}
+
+      Respond with the implementation code only.
+
+tests:
+  # plan_compile tests
+  - description: "plan_compile: software initiative produces numbered plan"
+    vars:
+      initiative_text: "Build a REST API for user management with CRUD operations, authentication, and role-based access control."
+    assert:
+      - type: contains
+        value: "design"
+      - type: contains
+        value: "test"
+      - type: llm-rubric
+        value: "The response contains a numbered plan with at least 5 steps covering design, implementation, and testing."
+    prompts: [plan_compile]
+
+  - description: "plan_compile: migration initiative"
+    vars:
+      initiative_text: "Migrate the database from MySQL to PostgreSQL, including schema changes, data migration, and rollback plan."
+    assert:
+      - type: contains
+        value: "migration"
+      - type: llm-rubric
+        value: "The plan includes steps for schema analysis, data migration, testing, and rollback."
+    prompts: [plan_compile]
+
+  # code_review tests
+  - description: "code_review: simple clean diff gets APPROVE"
+    vars:
+      diff: |
+        diff --git a/src/utils.ts b/src/utils.ts
+        +export function add(a: number, b: number): number {
+        +  return a + b;
+        +}
+    assert:
+      - type: contains
+        value: "APPROVE"
+      - type: is-json
+    prompts: [code_review]
+
+  - description: "code_review: diff with issue gets REQUEST_CHANGES"
+    vars:
+      diff: |
+        diff --git a/src/auth.ts b/src/auth.ts
+        +const password = "hardcoded_secret_123";
+        +export function authenticate(input: string) {
+        +  return input === password;
+        +}
+    assert:
+      - type: contains
+        value: "REQUEST_CHANGES"
+      - type: is-json
+    prompts: [code_review]
+
+  # triage tests
+  - description: "triage: bug report classified correctly"
+    vars:
+      issue_title: "App crashes on login with empty password"
+      issue_body: "When I enter an empty password and click login, the app throws an unhandled exception and crashes."
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "JSON.parse(output).severity === 'high' || JSON.parse(output).severity === 'critical'"
+      - type: javascript
+        value: "JSON.parse(output).type === 'bug'"
+    prompts: [triage]
+
+  - description: "triage: feature request classified correctly"
+    vars:
+      issue_title: "Add dark mode support"
+      issue_body: "It would be nice to have a dark mode option in the settings page for better readability at night."
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "JSON.parse(output).severity === 'low' || JSON.parse(output).severity === 'medium'"
+      - type: javascript
+        value: "JSON.parse(output).type === 'feature'"
+    prompts: [triage]
+
+  # analyze_repo tests
+  - description: "analyze_repo: identifies Next.js project"
+    vars:
+      file_tree: |
+        package.json
+        next.config.js
+        tsconfig.json
+        app/layout.tsx
+        app/page.tsx
+        src/lib/api.ts
+        src/components/ui/Button.tsx
+        tailwind.config.ts
+    assert:
+      - type: contains-any
+        value: ["Next.js", "Next", "React"]
+      - type: contains-any
+        value: ["TypeScript", "typescript", "TS"]
+    prompts: [analyze_repo]
+
+  # codegen tests
+  - description: "codegen: generates a function"
+    vars:
+      spec: "Write a TypeScript function called 'fibonacci' that takes a number n and returns the nth Fibonacci number using iteration."
+    assert:
+      - type: contains
+        value: "fibonacci"
+      - type: contains-any
+        value: ["function", "const", "=>"]
+      - type: llm-rubric
+        value: "The code implements a fibonacci function using iteration (not recursion) and handles the base cases."
+    prompts: [codegen]

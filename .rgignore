@@ -1,0 +1,5 @@
+.git
+dist
+*.map
+*.min.js
+*.min.css

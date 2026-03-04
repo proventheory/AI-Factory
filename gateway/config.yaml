@@ -1,0 +1,57 @@
+# LiteLLM Proxy config for AI Factory
+# Deploy as separate service (e.g. Render); set OPENAI_API_KEY, ANTHROPIC_API_KEY in env.
+# Callers use model = "auto/chat" | "fast/chat" | "max/chat" for routing tier.
+
+model_list:
+  - model_name: auto/chat
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: chat
+  - model_name: auto/chat
+    litellm_params:
+      model: gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: chat
+  - model_name: fast/chat
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: chat
+  - model_name: max/chat
+    litellm_params:
+      model: gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: chat
+  - model_name: max/chat
+    litellm_params:
+      model: claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+    model_info:
+      mode: chat
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 2
+  timeout: 60
+  default_fallbacks: ["auto/chat"]
+
+# Response caching for FAST tier (Phase 3)
+# Only fast/chat is cached; AUTO/MAX skip cache via x-no-cache header from runners.
+# Set REDIS_URL in env to enable. Falls back to in-memory cache if Redis unavailable.
+cache: true
+cache_params:
+  type: redis
+  host: os.environ/REDIS_URL
+  ttl: 3600
+  namespace: ai-factory
+
+litellm_settings:
+  success_callback: ["langfuse"]
+  failure_callback: ["langfuse"]
+  cache_params:
+    supported_call_types: ["completion", "acompletion"]

@@ -1,0 +1,58 @@
+-- RLS policies for AI Factory tables
+-- Allows authenticated users to read; service role (API) bypasses RLS when using direct pool.
+
+ALTER TABLE initiatives ENABLE ROW LEVEL SECURITY;
+ALTER TABLE plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE plan_nodes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE plan_edges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE releases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE release_routes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE policies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE job_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE node_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE node_completions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE node_outcomes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE adapters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE artifacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tool_calls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE validations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE secret_refs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE secret_access_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE run_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE job_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE capability_grants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE approvals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE job_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE worker_registry ENABLE ROW LEVEL SECURITY;
+ALTER TABLE repair_recipes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE llm_calls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rollback_targets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "initiatives_select" ON initiatives FOR SELECT USING (true);
+CREATE POLICY "plans_select" ON plans FOR SELECT USING (true);
+CREATE POLICY "plan_nodes_select" ON plan_nodes FOR SELECT USING (true);
+CREATE POLICY "plan_edges_select" ON plan_edges FOR SELECT USING (true);
+CREATE POLICY "releases_select" ON releases FOR SELECT USING (true);
+CREATE POLICY "release_routes_select" ON release_routes FOR SELECT USING (true);
+CREATE POLICY "policies_select" ON policies FOR SELECT USING (true);
+CREATE POLICY "runs_select" ON runs FOR SELECT USING (true);
+CREATE POLICY "job_runs_select" ON job_runs FOR SELECT USING (true);
+CREATE POLICY "node_progress_select" ON node_progress FOR SELECT USING (true);
+CREATE POLICY "node_completions_select" ON node_completions FOR SELECT USING (true);
+CREATE POLICY "node_outcomes_select" ON node_outcomes FOR SELECT USING (true);
+CREATE POLICY "adapters_select" ON adapters FOR SELECT USING (true);
+CREATE POLICY "artifacts_select" ON artifacts FOR SELECT USING (true);
+CREATE POLICY "tool_calls_select" ON tool_calls FOR SELECT USING (true);
+CREATE POLICY "validations_select" ON validations FOR SELECT USING (true);
+CREATE POLICY "secret_refs_select" ON secret_refs FOR SELECT USING (true);
+CREATE POLICY "secret_access_events_select" ON secret_access_events FOR SELECT USING (true);
+CREATE POLICY "run_events_select" ON run_events FOR SELECT USING (true);
+CREATE POLICY "job_events_select" ON job_events FOR SELECT USING (true);
+CREATE POLICY "capability_grants_select" ON capability_grants FOR SELECT USING (true);
+CREATE POLICY "approvals_select" ON approvals FOR SELECT USING (true);
+CREATE POLICY "job_claims_select" ON job_claims FOR SELECT USING (true);
+CREATE POLICY "worker_registry_select" ON worker_registry FOR SELECT USING (true);
+CREATE POLICY "repair_recipes_select" ON repair_recipes FOR SELECT USING (true);
+CREATE POLICY "llm_calls_select" ON llm_calls FOR SELECT USING (true);
+CREATE POLICY "rollback_targets_select" ON rollback_targets FOR SELECT USING (true);

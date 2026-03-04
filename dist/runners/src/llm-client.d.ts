@@ -1,0 +1,39 @@
+/**
+ * LLM client for executors: all LLM calls go through the gateway (LiteLLM Proxy).
+ * Set LLM_GATEWAY_URL in env. Executors use this instead of calling OpenAI/Anthropic directly.
+ * See docs/LLM_GATEWAY_AND_OPTIMIZATION.md.
+ */
+export type ModelTier = "auto/chat" | "fast/chat" | "max/chat";
+export interface LLMCallContext {
+    run_id: string;
+    job_run_id: string;
+    job_type: string;
+    initiative_id?: string | null;
+}
+export interface LLMChatMessage {
+    role: "system" | "user" | "assistant";
+    content: string;
+}
+export interface LLMChatOptions {
+    model: ModelTier;
+    messages: LLMChatMessage[];
+    max_tokens?: number;
+    temperature?: number;
+    context: LLMCallContext;
+    brandContext?: {
+        id: string;
+        name: string;
+        systemPrompt?: string;
+    };
+}
+export interface LLMChatResult {
+    content: string;
+    model_id: string;
+    tokens_in?: number;
+    tokens_out?: number;
+    latency_ms?: number;
+}
+export declare function isSafeToCache(jobType: string): boolean;
+export declare function chat(options: LLMChatOptions): Promise<LLMChatResult>;
+export declare function isGatewayConfigured(): boolean;
+//# sourceMappingURL=llm-client.d.ts.map

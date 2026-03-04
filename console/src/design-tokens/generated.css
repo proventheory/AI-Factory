@@ -1,0 +1,158 @@
+/**
+ * Generated from design-tokens/tokens.ts — use in emails, landing pages, PDFs.
+ * Import this file or :root block where CSS custom properties are supported.
+ */
+:root {
+  /* Colors - Brand */
+  --brand-color-brand-50: #eff6ff;
+  --brand-color-brand-100: #dbeafe;
+  --brand-color-brand-200: #bfdbfe;
+  --brand-color-brand-300: #93c5fd;
+  --brand-color-brand-400: #60a5fa;
+  --brand-color-brand-500: #3b82f6;
+  --brand-color-brand-600: #2563eb;
+  --brand-color-brand-700: #1d4ed8;
+  --brand-color-brand-800: #1e40af;
+  --brand-color-brand-900: #1e3a8a;
+  /* Surface */
+  --brand-color-surface-base: #ffffff;
+  --brand-color-surface-raised: #f8fafc;
+  --brand-color-surface-sunken: #f1f5f9;
+  /* Text */
+  --brand-color-text-primary: #0f172a;
+  --brand-color-text-secondary: #334155;
+  --brand-color-text-muted: #64748b;
+  --brand-color-text-inverse: #ffffff;
+  /* State */
+  --brand-color-state-success: #059669;
+  --brand-color-state-successMuted: #d1fae5;
+  --brand-color-state-warning: #d97706;
+  --brand-color-state-warningMuted: #fef3c7;
+  --brand-color-state-danger: #dc2626;
+  --brand-color-state-dangerMuted: #fee2e2;
+  --brand-color-state-info: #2563eb;
+  --brand-color-state-infoMuted: #dbeafe;
+  /* Border */
+  --brand-color-border-subtle: #e2e8f0;
+  --brand-color-border-default: #cbd5e1;
+  --brand-color-border-strong: #94a3b8;
+  /* Neutral */
+  --brand-color-neutral-50: #f8fafc;
+  --brand-color-neutral-100: #f1f5f9;
+  --brand-color-neutral-200: #e2e8f0;
+  --brand-color-neutral-300: #cbd5e1;
+  --brand-color-neutral-400: #94a3b8;
+  --brand-color-neutral-500: #64748b;
+  --brand-color-neutral-600: #475569;
+  --brand-color-neutral-700: #334155;
+  --brand-color-neutral-800: #1e293b;
+  --brand-color-neutral-900: #0f172a;
+
+  /* Typography - Font family */
+  --brand-typography-fontFamily-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --brand-typography-fontFamily-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  /* Font sizes */
+  --brand-typography-fontSize-xs: 0.75rem;
+  --brand-typography-fontSize-sm: 0.875rem;
+  --brand-typography-fontSize-base: 1rem;
+  --brand-typography-fontSize-lg: 1.125rem;
+  --brand-typography-fontSize-xl: 1.25rem;
+  --brand-typography-fontSize-2xl: 1.5rem;
+  --brand-typography-fontSize-3xl: 1.875rem;
+  --brand-typography-fontSize-4xl: 2.25rem;
+  --brand-typography-fontSize-5xl: 3rem;
+  /* Headings */
+  --brand-typography-heading-h1-size: 2.25rem;
+  --brand-typography-heading-h1-weight: 700;
+  --brand-typography-heading-h1-line-height: 1.2;
+  --brand-typography-heading-h2-size: 1.875rem;
+  --brand-typography-heading-h2-weight: 700;
+  --brand-typography-heading-h2-line-height: 1.25;
+  --brand-typography-heading-h3-size: 1.5rem;
+  --brand-typography-heading-h3-weight: 600;
+  --brand-typography-heading-h3-line-height: 1.3;
+  --brand-typography-heading-h4-size: 1.25rem;
+  --brand-typography-heading-h4-weight: 600;
+  --brand-typography-heading-h4-line-height: 1.35;
+  --brand-typography-heading-h5-size: 1.125rem;
+  --brand-typography-heading-h5-weight: 600;
+  --brand-typography-heading-h5-line-height: 1.4;
+  --brand-typography-heading-h6-size: 1rem;
+  --brand-typography-heading-h6-weight: 600;
+  --brand-typography-heading-h6-line-height: 1.5;
+  /* Subheading, body, caption, small */
+  --brand-typography-subheading-size: 1.125rem;
+  --brand-typography-subheading-weight: 500;
+  --brand-typography-subheading-line-height: 1.4;
+  --brand-typography-body-default-size: 1rem;
+  --brand-typography-body-default-weight: 400;
+  --brand-typography-body-default-line-height: 1.5;
+  --brand-typography-body-small-size: 0.875rem;
+  --brand-typography-body-small-weight: 400;
+  --brand-typography-body-small-line-height: 1.5;
+  --brand-typography-caption-size: 0.875rem;
+  --brand-typography-caption-weight: 400;
+  --brand-typography-caption-line-height: 1.4;
+  --brand-typography-small-size: 0.75rem;
+  --brand-typography-small-weight: 400;
+  --brand-typography-small-line-height: 1.4;
+  /* Weights & line heights */
+  --brand-typography-fontWeight-normal: 400;
+  --brand-typography-fontWeight-medium: 500;
+  --brand-typography-fontWeight-semibold: 600;
+  --brand-typography-fontWeight-bold: 700;
+  --brand-typography-lineHeight-tight: 1.25;
+  --brand-typography-lineHeight-snug: 1.375;
+  --brand-typography-lineHeight-normal: 1.5;
+  --brand-typography-lineHeight-relaxed: 1.625;
+  --brand-typography-lineHeight-loose: 2;
+
+  /* Spacing (4px grid) */
+  --brand-spacing-0: 0;
+  --brand-spacing-1: 0.25rem;
+  --brand-spacing-2: 0.5rem;
+  --brand-spacing-3: 0.75rem;
+  --brand-spacing-4: 1rem;
+  --brand-spacing-5: 1.25rem;
+  --brand-spacing-6: 1.5rem;
+  --brand-spacing-8: 2rem;
+  --brand-spacing-10: 2.5rem;
+  --brand-spacing-12: 3rem;
+  --brand-spacing-16: 4rem;
+  --brand-spacing-20: 5rem;
+  --brand-spacing-24: 6rem;
+  /* Layout */
+  --brand-layout-container-sm: 640px;
+  --brand-layout-container-md: 768px;
+  --brand-layout-container-lg: 1024px;
+  --brand-layout-container-xl: 1280px;
+  --brand-layout-container-2xl: 1536px;
+
+  /* Radius */
+  --brand-radius-none: 0;
+  --brand-radius-sm: 0.25rem;
+  --brand-radius-default: 0.375rem;
+  --brand-radius-md: 0.5rem;
+  --brand-radius-lg: 0.75rem;
+  --brand-radius-xl: 1rem;
+  --brand-radius-full: 9999px;
+
+  /* Shadow */
+  --brand-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --brand-shadow-default: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --brand-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --brand-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --brand-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Motion */
+  --brand-motion-duration-fast: 150ms;
+  --brand-motion-duration-normal: 250ms;
+  --brand-motion-duration-slow: 350ms;
+  --brand-motion-easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --brand-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Border width */
+  --brand-border-width-thin: 1px;
+  --brand-border-width-default: 1px;
+  --brand-border-width-thick: 2px;
+}

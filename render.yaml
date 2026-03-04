@@ -1,0 +1,17 @@
+# Render Blueprint: AI Factory Control Plane
+# Deploy from Render Dashboard: New > Blueprint > connect repo and select render.yaml
+# Ensure DATABASE_URL (or Supabase connection) is set in Render env.
+
+services:
+  - type: web
+    name: ai-factory-control-plane
+    runtime: docker
+    dockerContext: ./control-plane
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        generateValue: "3001"
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /v1/health
+    # Add DATABASE_URL (or Supabase) in Render Dashboard > Environment

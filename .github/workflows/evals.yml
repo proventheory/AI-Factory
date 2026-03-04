@@ -1,0 +1,55 @@
+name: Evals (Prompt CI)
+on:
+  pull_request:
+    branches: [main, prod]
+    paths:
+      - "evals/**"
+      - "runners/src/llm-client.ts"
+      - "control-plane/src/plan-compiler.ts"
+
+jobs:
+  promptfoo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run Promptfoo evals
+        working-directory: evals/promptfoo
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.LLM_GATEWAY_URL || 'https://api.openai.com/v1' }}
+          PROMPTFOO_THRESHOLD: "0.90"
+        run: npx promptfoo@latest eval --no-progress-bar
+      - name: Upload Promptfoo report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptfoo-eval-report
+          path: evals/promptfoo/output/
+          retention-days: 30
+
+  deepeval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install DeepEval
+        run: pip install deepeval openai
+      - name: Run DeepEval tests
+        working-directory: evals/deepeval
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: deepeval test run test_plan_compile.py test_code_review.py test_triage.py --verbose
+      - name: Upload DeepEval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepeval-report
+          path: evals/deepeval/.deepeval/
+          retention-days: 30

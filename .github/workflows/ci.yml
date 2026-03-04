@@ -1,0 +1,29 @@
+name: CI
+on:
+  pull_request:
+    branches: [main, prod]
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install root deps
+        run: npm ci
+        working-directory: .
+      - name: Type check (control-plane + runners)
+        run: npx tsc --noEmit
+      - name: Install console deps
+        run: npm ci
+        working-directory: console
+      - name: Lint console
+        run: npm run lint
+        working-directory: console
+      - name: Build console
+        run: npm run build
+        working-directory: console
+        env:
+          NEXT_PUBLIC_CONTROL_PLANE_API: https://api.example.com

@@ -1,0 +1,42 @@
+{
+  "name": "ai-factory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Factory: autonomous orchestration system for dev and marketing pipelines",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start:control-plane": "node dist/control-plane/src/index.js",
+    "start:runner": "node dist/runners/src/index.js",
+    "db:migrate": "psql $DATABASE_URL -f schemas/001_core_schema.sql && psql $DATABASE_URL -f schemas/002_state_machines_and_constraints.sql",
+    "lint": "tsc --noEmit",
+    "test": "npx tsx --test runners/tests/*.test.ts scripts/*.test.ts",
+    "test:runners": "npx tsx --test runners/tests/*.test.ts",
+    "test:optimizer": "npx tsx --test scripts/optimizer.test.ts",
+    "optimizer": "npx tsx scripts/optimizer.ts",
+    "doctor": "bash scripts/doctor.sh",
+    "doctor:json": "bash scripts/doctor.sh --json",
+    "baseline": "npx tsx scripts/baseline.ts",
+    "self-heal": "npx tsx scripts/self-heal.ts",
+    "self-heal:dry": "npx tsx scripts/self-heal.ts --dry-run",
+    "self-heal:tsc": "npx tsx scripts/self-heal.ts --step tsc",
+    "self-heal:verbose": "npx tsx scripts/self-heal.ts --verbose",
+    "self-heal:openhands": "npx tsx scripts/self-heal.ts --agent openhands",
+    "self-heal:swe": "npx tsx scripts/self-heal.ts --agent swe-agent"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "pg": "^8.13.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.13.0",
+    "@types/pg": "^8.11.11",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.3"
+  }
+}
