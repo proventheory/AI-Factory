@@ -10,7 +10,7 @@ import { usePlan } from "@/hooks/use-api";
 
 type PlanEdgeRow = { id: string; plan_id: string; from_node_id: string; to_node_id: string; condition?: string };
 
-export default function AdminPlanEdgesPage() {
+function PlanEdgesContent() {
   const searchParams = useSearchParams();
   const planId = searchParams.get("plan_id");
   const { data, isLoading, error } = usePlan(planId);
@@ -45,5 +45,13 @@ export default function AdminPlanEdgesPage() {
         </CardSection>
       </Stack>
     </PageFrame>
+  );
+}
+
+export default function AdminPlanEdgesPage() {
+  return (
+    <Suspense fallback={<LoadingSkeleton className="h-64 w-full rounded-md" />}>
+      <PlanEdgesContent />
+    </Suspense>
   );
 }

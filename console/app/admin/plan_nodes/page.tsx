@@ -10,7 +10,7 @@ import { usePlan } from "@/hooks/use-api";
 
 type PlanNodeRow = { id: string; plan_id: string; node_key: string; job_type: string; node_type: string; agent_role?: string; sequence?: number };
 
-export default function AdminPlanNodesPage() {
+function PlanNodesContent() {
   const searchParams = useSearchParams();
   const planId = searchParams.get("plan_id");
   const { data, isLoading, error } = usePlan(planId);
@@ -47,5 +47,13 @@ export default function AdminPlanNodesPage() {
         </CardSection>
       </Stack>
     </PageFrame>
+  );
+}
+
+export default function AdminPlanNodesPage() {
+  return (
+    <Suspense fallback={<LoadingSkeleton className="h-64 w-full rounded-md" />}>
+      <PlanNodesContent />
+    </Suspense>
   );
 }
