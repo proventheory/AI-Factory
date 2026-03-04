@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and fill in. Do not commit terraform.tfvars if it contains secrets.
+# Use env vars for tokens: VERCEL_API_TOKEN, SUPABASE_ACCESS_TOKEN (see variables.tf).
+
+supabase_organization_id = "your-org-slug"
+
+# Optional: leave empty to use placeholder Control Plane URLs in Vercel until Render is deployed.
+control_plane_url_staging = ""
+control_plane_url_prod    = ""
+
+# Optional: only if using a Vercel team.
+# vercel_team_id = "team_xxxxx"
+
+# Optional: override GitHub repo (default: proventheory/AI-Factory).
+# github_repo = "proventheory/AI-Factory"

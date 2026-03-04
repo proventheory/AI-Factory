@@ -1,0 +1,21 @@
+# Control-plane image: exclude heavy or irrelevant paths
+.git
+.github
+node_modules
+dist
+.next
+*.md
+.env
+.env.*
+!.env.example
+console
+email-marketing-factory
+packages
+evals
+scripts
+*.test.ts
+*.spec.ts
+__tests__
+.cursor
+*.log
+.DS_Store

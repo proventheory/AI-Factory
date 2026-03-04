@@ -24,6 +24,8 @@ export interface JobContext {
   human_feedback: string | null;
   predecessor_artifact_ids: string[];
   predecessor_artifacts: PredecessorArtifact[];
+  /** Optional phase/config for quality gate and other handlers. */
+  config?: { phase?: string };
 }
 
 /**

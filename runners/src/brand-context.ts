@@ -102,19 +102,19 @@ export async function loadBrandContext(initiativeId: string): Promise<BrandConte
 
     const brandRes = await fetch(`${cpUrl}/v1/brand_profiles/${init.brand_profile_id}`);
     if (!brandRes.ok) return null;
-    const profile = await brandRes.json();
+    const profile = (await brandRes.json()) as Record<string, unknown>;
 
     const ctx: BrandContext = {
-      id: profile.id,
-      name: profile.name,
-      slug: profile.slug,
-      identity: profile.identity ?? {},
-      tone: profile.tone ?? {},
-      visual_style: profile.visual_style ?? {},
-      copy_style: profile.copy_style ?? {},
-      design_tokens: profile.design_tokens ?? {},
-      deck_theme: profile.deck_theme ?? {},
-      report_theme: profile.report_theme ?? {},
+      id: profile.id as string,
+      name: profile.name as string,
+      slug: profile.slug as string,
+      identity: (profile.identity as Record<string, unknown>) ?? {},
+      tone: (profile.tone as Record<string, unknown>) ?? {},
+      visual_style: (profile.visual_style as Record<string, unknown>) ?? {},
+      copy_style: (profile.copy_style as Record<string, unknown>) ?? {},
+      design_tokens: (profile.design_tokens as Record<string, unknown>) ?? {},
+      deck_theme: (profile.deck_theme as Record<string, unknown>) ?? {},
+      report_theme: (profile.report_theme as Record<string, unknown>) ?? {},
     };
 
     brandCache.set(init.brand_profile_id, { ctx, ts: Date.now() });
