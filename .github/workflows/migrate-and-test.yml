@@ -19,13 +19,25 @@ jobs:
         working-directory: console
         env:
           NEXT_PUBLIC_CONTROL_PLANE_API: https://api.example.com
-      # Optional: supabase db push when SUPABASE_* secrets are configured
+      # Optional: Supabase db push when SUPABASE_* secrets are configured
       # - name: Supabase db push
       #   run: npx supabase db push
       #   env:
       #     SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      # Optional: poll /health and console URL when Control Plane and Vercel are deployed
-      # - name: Smoke test
-      #   run: |
-      #     curl -sf "${{ vars.CONTROL_PLANE_URL }}/health" || true
-      #     curl -sf "${{ vars.CONSOLE_URL }}" -o /dev/null || true
+      # Smoke: poll Control Plane /health and console (set CONTROL_PLANE_URL and CONSOLE_URL in repo vars)
+      - name: Smoke test
+        run: |
+          if [ -n "${{ vars.CONTROL_PLANE_URL }}" ]; then
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              if curl -sf "${{ vars.CONTROL_PLANE_URL }}/health"; then break; fi
+              [ $i -eq 10 ] && exit 1
+              sleep 30
+            done
+          fi
+          if [ -n "${{ vars.CONSOLE_URL }}" ]; then
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              if curl -sf "${{ vars.CONSOLE_URL }}" -o /dev/null; then break; fi
+              [ $i -eq 10 ] && exit 1
+              sleep 30
+            done
+          fi

@@ -1,17 +1,33 @@
 # Render Blueprint: AI Factory Control Plane
-# Deploy from Render Dashboard: New > Blueprint > connect repo and select render.yaml
-# Ensure DATABASE_URL (or Supabase connection) is set in Render env.
+# Two services, branch-based: main = staging, prod = production.
+# After first sync in Render Dashboard (New > Blueprint), deploys auto-trigger on git push.
+# Set DATABASE_URL and CORS_ORIGIN per service in Render Dashboard > Environment.
 
 services:
   - type: web
-    name: ai-factory-control-plane
+    name: ai-factory-api-staging
     runtime: docker
     dockerContext: ./control-plane
     dockerfilePath: ./Dockerfile
+    branch: main
     envVars:
       - key: PORT
-        generateValue: "3001"
+        value: "10000"
       - key: NODE_ENV
         value: production
-    healthCheckPath: /v1/health
-    # Add DATABASE_URL (or Supabase) in Render Dashboard > Environment
+      # Set in Dashboard: DATABASE_URL (staging), CORS_ORIGIN (staging console URL)
+    healthCheckPath: /health
+
+  - type: web
+    name: ai-factory-api-prod
+    runtime: docker
+    dockerContext: ./control-plane
+    dockerfilePath: ./Dockerfile
+    branch: prod
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: NODE_ENV
+        value: production
+      # Set in Dashboard: DATABASE_URL (prod), CORS_ORIGIN (prod console URL)
+    healthCheckPath: /health
