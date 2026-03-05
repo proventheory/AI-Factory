@@ -3,10 +3,24 @@ on:
   push:
     branches: [main, prod]
 jobs:
-  migrate-and-smoke:
+  migrate-and-smoke-staging:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF_STAGING }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_STAGING }}
+      CONTROL_PLANE_URL: ${{ vars.CONTROL_PLANE_URL_STAGING }}
+      CONSOLE_URL: ${{ vars.CONSOLE_URL_STAGING }}
     steps:
       - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Supabase db push (staging)
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase db push --include-all --non-interactive
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -19,28 +33,74 @@ jobs:
         run: npm run build
         working-directory: console
         env:
-          NEXT_PUBLIC_CONTROL_PLANE_API: https://api.example.com
-      # Optional: Supabase db push when SUPABASE_* secrets are configured
-      # - name: Supabase db push
-      #   run: npx supabase db push
-      #   env:
-      #     SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      # Smoke: poll Control Plane /health and console (set CONTROL_PLANE_URL and CONSOLE_URL in repo vars).
-      # Fails only when vars are set and URLs don't respond. Until Render/Vercel are deployed, leave vars unset or set continue-on-error: true.
-      - name: Smoke test
-        continue-on-error: true
+          NEXT_PUBLIC_CONTROL_PLANE_API: ${{ vars.CONTROL_PLANE_URL_STAGING }}
+      - name: Wait for deploy then smoke (staging)
         run: |
-          if [ -n "${{ vars.CONTROL_PLANE_URL }}" ]; then
-            for i in 1 2 3 4 5 6 7 8 9 10; do
-              if curl -sf "${{ vars.CONTROL_PLANE_URL }}/health"; then break; fi
-              [ $i -eq 10 ] && exit 1
-              sleep 30
+          set -e
+          if [ -n "$CONTROL_PLANE_URL" ]; then
+            echo "Polling Control Plane $CONTROL_PLANE_URL/health ..."
+            for i in $(seq 1 20); do
+              if curl -sf "${CONTROL_PLANE_URL}/health" > /dev/null; then echo "Control Plane OK"; break; fi
+              [ $i -eq 20 ] && { echo "Control Plane did not become ready"; exit 1; }
+              sleep 15
             done
           fi
-          if [ -n "${{ vars.CONSOLE_URL }}" ]; then
-            for i in 1 2 3 4 5 6 7 8 9 10; do
-              if curl -sf "${{ vars.CONSOLE_URL }}" -o /dev/null; then break; fi
-              [ $i -eq 10 ] && exit 1
-              sleep 30
+          if [ -n "$CONSOLE_URL" ]; then
+            echo "Polling Console $CONSOLE_URL ..."
+            for i in $(seq 1 20); do
+              if curl -sf "$CONSOLE_URL" -o /dev/null; then echo "Console OK"; break; fi
+              [ $i -eq 20 ] && { echo "Console did not become ready"; exit 1; }
+              sleep 15
+            done
+          fi
+
+  migrate-and-smoke-prod:
+    if: github.ref == 'refs/heads/prod'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF_PROD }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD_PROD }}
+      CONTROL_PLANE_URL: ${{ vars.CONTROL_PLANE_URL_PROD }}
+      CONSOLE_URL: ${{ vars.CONSOLE_URL_PROD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Supabase db push (prod)
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase db push --include-all --non-interactive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: console/package-lock.json
+      - name: Install console deps
+        run: npm ci
+        working-directory: console
+      - name: Build console
+        run: npm run build
+        working-directory: console
+        env:
+          NEXT_PUBLIC_CONTROL_PLANE_API: ${{ vars.CONTROL_PLANE_URL_PROD }}
+      - name: Wait for deploy then smoke (prod)
+        run: |
+          set -e
+          if [ -n "$CONTROL_PLANE_URL" ]; then
+            echo "Polling Control Plane $CONTROL_PLANE_URL/health ..."
+            for i in $(seq 1 20); do
+              if curl -sf "${CONTROL_PLANE_URL}/health" > /dev/null; then echo "Control Plane OK"; break; fi
+              [ $i -eq 20 ] && { echo "Control Plane did not become ready"; exit 1; }
+              sleep 15
+            done
+          fi
+          if [ -n "$CONSOLE_URL" ]; then
+            echo "Polling Console $CONSOLE_URL ..."
+            for i in $(seq 1 20); do
+              if curl -sf "$CONSOLE_URL" -o /dev/null; then echo "Console OK"; break; fi
+              [ $i -eq 20 ] && { echo "Console did not become ready"; exit 1; }
+              sleep 15
             done
           fi
