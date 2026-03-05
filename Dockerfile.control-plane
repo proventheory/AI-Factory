@@ -8,7 +8,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-optional
 # Copy source; bundle with esbuild (avoids tsc cross-package resolution issues in Docker)
 COPY control-plane runners adapters ./
-RUN npx esbuild control-plane/src/index.ts \
+RUN npx esbuild ./control-plane/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \
   --outfile=dist/control-plane-bundle.js --sourcemap \
   --external:pg --external:express --external:cors --external:uuid
