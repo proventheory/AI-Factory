@@ -14,6 +14,7 @@ resource "supabase_project" "staging" {
 }
 
 resource "supabase_project" "prod" {
+  count             = var.create_supabase_prod ? 1 : 0
   organization_id   = var.supabase_organization_id
   name              = "ai-factory-prod"
   database_password = var.supabase_db_password_prod

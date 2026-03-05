@@ -1,7 +1,6 @@
 # Vercel provider reads VERCEL_API_TOKEN from the environment automatically.
-provider "vercel" {
-  team_id = var.vercel_team_id
-}
+# For team accounts, set VERCEL_TEAM_ID in env; omit for personal account.
+provider "vercel" {}
 
 resource "vercel_project" "console" {
   name      = "ai-factory-console"
@@ -14,8 +13,7 @@ resource "vercel_project" "console" {
     repo = var.github_repo
   }
 
-  # Production branch = prod (per plan)
-  production_branch = "prod"
+  # Set Production branch to "prod" in Vercel Dashboard → Project → Settings → Git after first apply.
 }
 
 # Staging / Preview (main and PRs) — use Supabase staging + optional Control Plane staging URL
@@ -26,11 +24,12 @@ resource "vercel_project_environment_variable" "staging_supabase_url" {
   target     = ["preview", "development"]
 }
 
+# Sensitive vars cannot target "development" in Vercel API — use preview + set in dashboard for local if needed
 resource "vercel_project_environment_variable" "staging_supabase_anon" {
   project_id = vercel_project.console.id
   key        = "NEXT_PUBLIC_SUPABASE_ANON_KEY"
   value      = "REPLACE_AFTER_FIRST_APPLY"
-  target     = ["preview", "development"]
+  target     = ["preview"]
   sensitive  = true
 }
 
@@ -41,11 +40,14 @@ resource "vercel_project_environment_variable" "staging_control_plane" {
   target    = ["preview", "development"]
 }
 
-# Production — use Supabase prod + Control Plane prod URL
+# Production — use Supabase prod when created, else staging (e.g. when org at 2-project limit)
+locals {
+  supabase_prod_ref = var.create_supabase_prod ? supabase_project.prod[0].id : supabase_project.staging.id
+}
 resource "vercel_project_environment_variable" "prod_supabase_url" {
   project_id = vercel_project.console.id
   key        = "NEXT_PUBLIC_SUPABASE_URL"
-  value      = "https://${supabase_project.prod.id}.supabase.co"
+  value      = "https://${local.supabase_prod_ref}.supabase.co"
   target     = ["production"]
 }
 

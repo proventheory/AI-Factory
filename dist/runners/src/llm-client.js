@@ -92,4 +92,47 @@ export async function chat(options) {
 export function isGatewayConfigured() {
     return Boolean(process.env.LLM_GATEWAY_URL);
 }
+// ---------------------------------------------------------------------------
+// Local-only LLM call (no gateway, no cloud — just OPENAI_API_KEY)
+// Used by scripts/self-heal.ts for local self-healing without any infra.
+// ---------------------------------------------------------------------------
+const MODEL_MAP = {
+    "max/chat": "gpt-4o",
+    "auto/chat": "gpt-4o-mini",
+    "fast/chat": "gpt-4o-mini",
+};
+export async function chatLocal(options) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+        throw new Error("OPENAI_API_KEY is not set. Required for local self-healing.");
+    }
+    const model = MODEL_MAP[options.model ?? "max/chat"] ?? options.model ?? "gpt-4o";
+    const start = Date.now();
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+            model,
+            messages: options.messages,
+            max_tokens: options.max_tokens ?? 4096,
+            temperature: options.temperature ?? 0,
+        }),
+    });
+    const latency_ms = Date.now() - start;
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`OpenAI API error ${res.status}: ${text}`);
+    }
+    const data = (await res.json());
+    return {
+        content: data.choices?.[0]?.message?.content ?? "",
+        model_id: data.model ?? model,
+        tokens_in: data.usage?.prompt_tokens,
+        tokens_out: data.usage?.completion_tokens,
+        latency_ms,
+    };
+}
 //# sourceMappingURL=llm-client.js.map

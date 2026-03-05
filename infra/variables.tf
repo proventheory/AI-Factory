@@ -50,3 +50,9 @@ variable "control_plane_url_prod" {
   default     = ""
   description = "Control Plane API URL for production. Set after deploy."
 }
+
+variable "create_supabase_prod" {
+  type        = bool
+  default     = false
+  description = "Create a separate Supabase project for production. Set to false when org is at free project limit (2); production will use staging project."
+}

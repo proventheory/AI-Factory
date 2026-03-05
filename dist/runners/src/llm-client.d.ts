@@ -36,4 +36,11 @@ export interface LLMChatResult {
 export declare function isSafeToCache(jobType: string): boolean;
 export declare function chat(options: LLMChatOptions): Promise<LLMChatResult>;
 export declare function isGatewayConfigured(): boolean;
+export interface ChatLocalOptions {
+    model?: ModelTier | string;
+    messages: LLMChatMessage[];
+    max_tokens?: number;
+    temperature?: number;
+}
+export declare function chatLocal(options: ChatLocalOptions): Promise<LLMChatResult>;
 //# sourceMappingURL=llm-client.d.ts.map

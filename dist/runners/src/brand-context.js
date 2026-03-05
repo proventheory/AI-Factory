@@ -22,7 +22,7 @@ export async function loadBrandContext(initiativeId) {
         const brandRes = await fetch(`${cpUrl}/v1/brand_profiles/${init.brand_profile_id}`);
         if (!brandRes.ok)
             return null;
-        const profile = await brandRes.json();
+        const profile = (await brandRes.json());
         const ctx = {
             id: profile.id,
             name: profile.name,

@@ -187,5 +187,18 @@ export function registerAllHandlers() {
     registerTriageHandler();
     registerOpenHandsResolverHandler();
     registerSweAgentHandler();
+    // 8090: Quality gates, slop guard, continuous improvement
+    registry.set("quality_gate", async (client, context, params) => {
+        const { handleQualityGate } = await import("./quality-gate.js");
+        await handleQualityGate(client, context, params);
+    });
+    registry.set("slop_guard", async (client, context, params) => {
+        const { handleSlopGuard } = await import("./slop-guard.js");
+        await handleSlopGuard(client, context, params);
+    });
+    registry.set("optimizer", async (client, context, params) => {
+        const { handleOptimizer } = await import("./optimizer.js");
+        await handleOptimizer(client, context, params);
+    });
 }
 //# sourceMappingURL=index.js.map

@@ -9,8 +9,8 @@ output "supabase_staging_url" {
 }
 
 output "supabase_prod_url" {
-  value       = "https://${supabase_project.prod.id}.supabase.co"
-  description = "Supabase prod project URL. Use in Console env as NEXT_PUBLIC_SUPABASE_URL for production."
+  value       = "https://${local.supabase_prod_ref}.supabase.co"
+  description = "Supabase prod project URL (uses staging when create_supabase_prod is false)."
 }
 
 output "supabase_staging_project_ref" {
@@ -19,6 +19,6 @@ output "supabase_staging_project_ref" {
 }
 
 output "supabase_prod_project_ref" {
-  value       = supabase_project.prod.id
-  description = "Supabase prod project ref (for CLI and GitHub Secrets)."
+  value       = local.supabase_prod_ref
+  description = "Supabase prod project ref (same as staging when create_supabase_prod is false)."
 }

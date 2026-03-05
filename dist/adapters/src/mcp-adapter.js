@@ -24,10 +24,10 @@ export class McpAdapter {
         const args = request.arguments ?? {};
         const result = await callMcpTool(this.serverName, toolName, args);
         if (result.isError) {
-            const errMsg = result.content?.map(c => c.text).join("\n") ?? "MCP tool call failed";
+            const errMsg = result.content?.map((c) => c.text).join("\n") ?? "MCP tool call failed";
             throw new Error(errMsg);
         }
-        const textContent = result.content?.filter(c => c.type === "text").map(c => c.text).join("\n") ?? "";
+        const textContent = result.content?.filter((c) => c.type === "text").map((c) => c.text).join("\n") ?? "";
         return {
             data: { content: textContent, raw: result.content },
             uri: `mcp://${this.serverName}/${toolName}`,

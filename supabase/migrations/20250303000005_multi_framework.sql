@@ -4,8 +4,8 @@
 BEGIN;
 
 -- plan_nodes: agent role (MetaGPT)
-COMMENT ON COLUMN plan_nodes.agent_role IS 'Agent role: product_manager, architect, engineer, qa, reviewer';
 ALTER TABLE plan_nodes ADD COLUMN IF NOT EXISTS agent_role text;
+COMMENT ON COLUMN plan_nodes.agent_role IS 'Agent role: product_manager, architect, engineer, qa, reviewer';
 ALTER TABLE plan_nodes ADD COLUMN IF NOT EXISTS config jsonb;
 ALTER TABLE plan_nodes ADD COLUMN IF NOT EXISTS timeout_seconds int;
 ALTER TABLE plan_nodes ADD COLUMN IF NOT EXISTS consumes_artifact_types text[];
