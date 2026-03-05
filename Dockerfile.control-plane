@@ -3,9 +3,12 @@
 
 FROM node:20-alpine AS builder
 WORKDIR /app
+# Copy dependency manifests first for better layer caching
 COPY package.json package-lock.json ./
-RUN npm ci
-COPY . .
+RUN npm ci --no-optional
+# Copy source and config needed for tsc
+COPY tsconfig.json ./
+COPY control-plane runners adapters ./
 RUN npm run build
 
 FROM node:20-alpine

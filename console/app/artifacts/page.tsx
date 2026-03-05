@@ -5,7 +5,7 @@ import Link from "next/link";
 import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton, Input, Select } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { useArtifacts } from "@/hooks/use-api";
-import type { ArtifactRow } from "@/lib/api";
+import { formatApiError, type ArtifactRow } from "@/lib/api";
 
 export default function ArtifactsPage() {
   const [classFilter, setClassFilter] = useState("");
@@ -36,7 +36,7 @@ export default function ArtifactsPage() {
         <Stack>
           <PageHeader title="Artifacts" />
           <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
-            Error: {(error as Error).message}
+            Error: {formatApiError(error)}
           </div>
         </Stack>
       </PageFrame>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton, Badge } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { useRuns } from "@/hooks/use-api";
+import { formatApiError } from "@/lib/api";
 
 type RunRow = {
   id: string;
@@ -68,7 +69,7 @@ export default function RunsPage() {
         <Stack>
           <PageHeader title="Pipeline Runs" description="Orchestration run history." />
           <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
-            Error: {(error as Error).message}
+            Error: {formatApiError(error)}
           </div>
         </Stack>
       </PageFrame>

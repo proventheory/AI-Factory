@@ -54,6 +54,7 @@ const NAV_GROUPS: { title: string; items: { href: string; label: string }[] }[] 
     items: [
       { href: "/secrets", label: "Secrets" },
       { href: "/email-marketing", label: "Email Marketing" },
+      { href: "/self-heal", label: "Self-heal" },
       { href: "/admin", label: "Admin" },
     ],
   },
@@ -81,6 +82,7 @@ function getBreadcrumbs(pathname: string | null): { href: string; label: string 
     audit: "Audit",
     secrets: "Secrets",
     "email-marketing": "Email Marketing",
+    "self-heal": "Self-heal",
     admin: "Admin",
     brands: "Brands",
     "document-templates": "Document Templates",
@@ -201,7 +203,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="flex-1 min-h-0 overflow-y-auto">
-          <div className="min-w-0">{children}</div>
+          <div className="min-w-0 p-6 md:p-8">{children}</div>
         </main>
       </div>
     </div>

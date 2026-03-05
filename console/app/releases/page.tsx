@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatApiError } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
@@ -28,7 +29,7 @@ export default function ReleasesPage() {
     fetch(`${API}/v1/releases?${params}`)
       .then((r) => r.json())
       .then((d: { items?: ReleaseRow[] }) => setItems(d.items ?? []))
-      .catch((e) => setError(e.message))
+      .catch((e) => setError(formatApiError(e)))
       .finally(() => setLoading(false));
   }, [statusFilter]);
 

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button, Modal, Input, Select, PageFrame, Stack, CardSection, TableFrame, PageHeader, EmptyState, Badge, LoadingSkeleton, DataTable } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { useInitiatives, useCreateInitiative } from "@/hooks/use-api";
-import type { InitiativeRow } from "@/lib/api";
+import { formatApiError, type InitiativeRow } from "@/lib/api";
 
 function riskVariant(risk: string): "success" | "warning" | "error" | "neutral" {
   if (risk === "high") return "error";
@@ -74,7 +74,7 @@ export default function InitiativesPage() {
         <Stack>
           <PageHeader title="Initiatives" />
           <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
-            Error: {(error as Error).message}
+            Error: {formatApiError(error)}
           </div>
         </Stack>
       </PageFrame>

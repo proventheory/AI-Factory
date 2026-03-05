@@ -30,6 +30,10 @@ export default function NewBrandPage() {
   const [copyVoice, setCopyVoice] = useState("");
   const [bannedWords, setBannedWords] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#3b82f6");
+  const [secondaryColor, setSecondaryColor] = useState("#64748b");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [fontHeadings, setFontHeadings] = useState("Inter");
+  const [fontBody, setFontBody] = useState("Inter");
   const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -65,7 +69,11 @@ export default function NewBrandPage() {
             ? bannedWords.split(",").map((s) => s.trim()).filter(Boolean)
             : undefined,
         },
-        design_tokens: { color: { brand: { "500": primaryColor } } },
+        design_tokens: {
+          color: { brand: { "500": primaryColor, "600": secondaryColor } },
+          ...(fontHeadings || fontBody ? { typography: { font_headings: fontHeadings, font_body: fontBody } } : {}),
+          ...(logoUrl ? { logo_url: logoUrl } : {}),
+        },
       });
       router.push(`/brands/${result.id}`);
     } catch (err: any) {
@@ -111,6 +119,14 @@ export default function NewBrandPage() {
                 />
               </div>
               <div>
+                <label className={labelCls}>Logo URL</label>
+                <Input
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="https://… or /logo.svg"
+                />
+              </div>
+              <div>
                 <label className={labelCls}>Primary Color</label>
                 <div className="flex items-center gap-2">
                   <input
@@ -124,6 +140,37 @@ export default function NewBrandPage() {
                     onChange={(e) => setPrimaryColor(e.target.value)}
                   />
                 </div>
+              </div>
+              <div>
+                <label className={labelCls}>Secondary Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                    className="h-9 w-9 cursor-pointer rounded border"
+                  />
+                  <Input
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Font (Headings)</label>
+                <Input
+                  value={fontHeadings}
+                  onChange={(e) => setFontHeadings(e.target.value)}
+                  placeholder="e.g. Inter, Georgia"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Font (Body)</label>
+                <Input
+                  value={fontBody}
+                  onChange={(e) => setFontBody(e.target.value)}
+                  placeholder="e.g. Inter, system-ui"
+                />
               </div>
             </div>
           </CardSection>

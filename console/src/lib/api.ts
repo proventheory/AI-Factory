@@ -3,6 +3,16 @@
  */
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
+/** User-friendly message when Control Plane is unreachable (e.g. wrong API URL on Vercel). */
+export function formatApiError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("ENETUNREACH") || msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+    return "Cannot reach the Control Plane API. If this app is deployed, set NEXT_PUBLIC_CONTROL_PLANE_API to your deployed API URL (e.g. your Render service URL) and ensure CORS allows this origin.";
+  }
+  if (msg.includes("404") || msg.includes("Not Found")) return "The requested resource was not found.";
+  return msg;
+}
+
 export type RunRow = {
   id: string;
   status: string;
