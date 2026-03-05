@@ -6,10 +6,12 @@ WORKDIR /app
 # Copy dependency manifests first for better layer caching
 COPY package.json package-lock.json ./
 RUN npm ci --no-optional
-# Copy source and config needed for tsc
+# Copy source and config needed for tsc (use root tsconfig so cross-package imports resolve)
 COPY tsconfig.json ./
 COPY control-plane runners adapters ./
-RUN npm run build
+# Remove nested tsconfigs so tsc -p . uses only root config (required for cross-package resolution)
+RUN rm -f control-plane/tsconfig.json
+RUN npx tsc -p .
 
 FROM node:20-alpine
 WORKDIR /app
