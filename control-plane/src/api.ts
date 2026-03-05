@@ -1421,7 +1421,7 @@ app.get("/v1/analytics", async (req, res) => {
       })).filter(t => t.children.length > 0),
     };
     if (cost_treemap.children.length === 0) {
-      cost_treemap.children = [{ name: "No LLM usage", value: 1 }];
+      cost_treemap.children = [{ name: "No LLM usage", children: [{ name: "—", value: 1 }] }];
     }
 
     const artifact_breakdown = {
