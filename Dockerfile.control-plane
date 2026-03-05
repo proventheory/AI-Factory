@@ -6,11 +6,11 @@ WORKDIR /app
 # Copy dependency manifests first for better layer caching
 COPY package.json package-lock.json ./
 RUN npm ci --no-optional
-# Copy source; bundle with esbuild (avoids tsc cross-package resolution issues in Docker)
-COPY control-plane runners adapters ./
-RUN mkdir -p dist && npx esbuild /app/control-plane/src/index.ts \
+# Copy full repo (except node_modules via .dockerignore); then bundle
+COPY . .
+RUN mkdir -p dist && npx esbuild control-plane/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \
-  --outfile=/app/dist/control-plane-bundle.js --sourcemap \
+  --outfile=dist/control-plane-bundle.js --sourcemap \
   --external:pg --external:express --external:cors --external:uuid
 
 FROM node:20-alpine
