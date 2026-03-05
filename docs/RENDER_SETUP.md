@@ -94,6 +94,8 @@ DATABASE_URL='postgresql://...' npm run db:migrate:new
 
 This runs console_required_tables, webhook_outbox, and brand_design_tokens_flat. Run once per environment (staging/prod) so the Control Plane and Console pages (Agent Memory, Webhook Outbox, MCP Servers, LLM Budgets, Routing Policies, Document Templates) work.
 
+**If Render uses a different DB than your local `.env`:** get the staging (or prod) connection string from Supabase → Project → Settings → Database (Session pooler URI with password), then run locally: `DATABASE_URL='postgresql://...' npm run db:migrate:new`. Use the same URI as the one set in Render → service → Environment for DATABASE_URL.
+
 ---
 
 ## 7. References
