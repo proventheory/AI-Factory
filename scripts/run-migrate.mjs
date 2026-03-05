@@ -52,8 +52,18 @@ async function run() {
       } catch (err) {
         const code = err.code;
         if (m.skipIfErrorCode && code === m.skipIfErrorCode) {
+          try {
+            await client.query("ROLLBACK");
+          } catch (_) {
+            /* ignore rollback error */
+          }
           console.log(`Skipped ${m.name}: ${m.skipMessage}`);
         } else {
+          try {
+            await client.query("ROLLBACK");
+          } catch (_) {
+            /* ignore */
+          }
           throw err;
         }
       }
