@@ -2,7 +2,7 @@
 
 Actionable to-dos derived from the Platform UI revamp plan. Total: **1,001 items**.
 
-**Deferred work completed (this pass):** Admin CRUD for all 10 resources (initiatives, plans, runs, job_runs, artifacts, approvals, plan_nodes, plan_edges, tool_calls, agent_memory): list + show for each; new + edit for initiatives. Magic UI Number Ticker on Console dashboard. ProfessorX branding (templateName + tagline "Conduct your code.") in email-marketing-factory. `render.yaml` for Control Plane deploy; deploy quick reference in DEPLOYMENT_PLAN_WITH_MCP.md. Full MUI→shadcn migration in email-marketing-factory remains page-by-page using the same primitives.
+**Deferred work completed (this pass):** Admin CRUD for all 10 resources (initiatives, plans, runs, job_runs, artifacts, approvals, plan_nodes, plan_edges, tool_calls, agent_memory): list + show for each; new + edit for initiatives. Magic UI Number Ticker on Console dashboard. ProfessorX branding (templateName + tagline "When an individual acquires great power, the use or misuse of that power is everything.") in email-marketing-factory. `render.yaml` for Control Plane deploy; deploy quick reference in DEPLOYMENT_PLAN_WITH_MCP.md. Full MUI→shadcn migration in email-marketing-factory remains page-by-page using the same primitives.
 
 **Additional work completed (FULL_IMPLEMENTATION pass):** MCP servers admin (list + show + new + edit + delete with test-connection); agent_memory show + edit pages; plan_nodes and plan_edges wired to real plan API; run detail page with per-node LLM usage, artifacts, rerun button; Cost page with date range, job_type, and tier filters plus p50/p95 percentiles; initiative edit wired to PATCH API. See [docs/FULL_IMPLEMENTATION_5000_ITEMS.md](FULL_IMPLEMENTATION_5000_ITEMS.md).
 

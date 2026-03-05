@@ -56,7 +56,7 @@ export type Config = {
 
 const themeConfig: Config = {
   templateName: 'ProfessorX',
-  tagline: 'Conduct your code.',
+  tagline: 'When an individual acquires great power, the use or misuse of that power is everything.',
   homePageUrl: '/',
   settingsCookieName: 'sneat-mui-next-demo-1',
   mode: 'system', // 'system', 'light', 'dark'
