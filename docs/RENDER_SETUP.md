@@ -82,15 +82,17 @@ If a deploy fails on Render, use MCP: *“List recent deploys for ai-factory-api
 
 ---
 
-## 6. DB migrations (webhook_outbox, brand_design_tokens_flat)
+## 6. DB migrations (Console/API required tables)
 
-`npm run db:migrate` runs core schemas plus `supabase/migrations/20250303100000_webhook_outbox.sql` and `20250303100001_brand_design_tokens_flat.sql`. Set **DATABASE_URL** (e.g. from Supabase **Settings → Database**):
+`npm run db:migrate` runs core schemas (001, 002) plus: webhook_outbox, **console_required_tables** (agent_memory, mcp_server_config, llm_budgets, routing_policies, brand_themes, brand_profiles, document_templates, document_components), and brand_design_tokens_flat.
+
+For a DB that already has the core schema, use:
 
 ```bash
-DATABASE_URL='postgresql://...' npm run db:migrate
+DATABASE_URL='postgresql://...' npm run db:migrate:new
 ```
 
-Or run the two migration files manually in the Supabase SQL editor.
+This runs console_required_tables, webhook_outbox, and brand_design_tokens_flat. Run once per environment (staging/prod) so the Control Plane and Console pages (Agent Memory, Webhook Outbox, MCP Servers, LLM Budgets, Routing Policies, Document Templates) work.
 
 ---
 

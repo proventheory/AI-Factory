@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Run core schemas and optional Supabase migrations using pg (no psql required).
- * Reads DATABASE_URL from env.
- * Order: 001_core_schema, 002, webhook_outbox, console_required_tables, brand_design_tokens_flat.
+ * Run console-required tables, webhook_outbox, brand_design_tokens_flat.
+ * Use when the core schema (001, 002) is already applied. Reads DATABASE_URL from env.
  */
 import pg from "pg";
 import { readFileSync, existsSync } from "fs";
@@ -21,10 +20,8 @@ if (!url) {
 const client = new pg.Client({ connectionString: url });
 
 const migrations = [
-  { path: "schemas/001_core_schema.sql", name: "001_core_schema", skipIfErrorCode: "42710", skipMessage: "objects already exist" },
-  { path: "schemas/002_state_machines_and_constraints.sql", name: "002_state_machines_and_constraints", skipIfErrorCode: "42710", skipMessage: "objects already exist" },
-  { path: "supabase/migrations/20250303100000_webhook_outbox.sql", name: "webhook_outbox" },
   { path: "supabase/migrations/20250303100002_console_required_tables.sql", name: "console_required_tables" },
+  { path: "supabase/migrations/20250303100000_webhook_outbox.sql", name: "webhook_outbox" },
   {
     path: "supabase/migrations/20250303100001_brand_design_tokens_flat.sql",
     name: "brand_design_tokens_flat",
