@@ -1,5 +1,5 @@
 import { loadBrandContext, brandContextToDesignTokens } from "../brand-context.js";
-import { tokens } from "../../../packages/ui/src/tokens.js";
+import { tokens } from "../tokens.js";
 
 export async function handleUiScaffold(request: {
   run_id: string;

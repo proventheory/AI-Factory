@@ -1,6 +1,6 @@
 import { chat, type LLMChatOptions } from "../llm-client.js";
 import { loadBrandContext, brandContextToSystemPrompt, brandContextToDesignTokens } from "../brand-context.js";
-import { tokens } from "../../../packages/ui/src/tokens.js";
+import { tokens } from "../tokens.js";
 
 export async function handleEmailGenerate(request: {
   run_id: string;

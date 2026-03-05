@@ -89,3 +89,13 @@ npm run baseline    # writes .self-heal-baseline.json
 | **Ask the platform to self-heal from GitHub** | Add the **fix-me** label to an issue or PR; set `ENABLE_SELF_HEAL=true` on the Control Plane and configure the GitHub webhook to `POST /v1/webhooks/github`. |
 
 For gating (evals, human approval) on self-healing PRs, see [LLM_GATEWAY_AND_OPTIMIZATION.md](LLM_GATEWAY_AND_OPTIMIZATION.md) (“Self-healing gating policy”).
+
+---
+
+## Debugging Render build failures (Render MCP)
+
+If the Control Plane build fails on Render and you want an AI to read the logs and fix the code:
+
+1. **Select a workspace** in the Render MCP (Cursor/Claude). The Render MCP needs a workspace to be selected before it can list services or fetch logs. In your Render dashboard, note your account/workspace; then in Cursor, use the Render MCP and select that workspace when prompted.
+2. **Fetch build logs:** Use the Render MCP tools `list_services` (to get the service ID for `ai-factory-api-staging` or `ai-factory-api-prod`), then `list_logs` with `resource: [serviceId]` and `type: ["build"]` to get the build log lines.
+3. **Fix and push:** Apply the same fixes you would for local tsc (path aliases, implicit `any`, missing modules), then commit and push so Render redeploys.
