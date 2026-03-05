@@ -3,7 +3,7 @@ import cors from "cors";
 import { v4 as uuid } from "uuid";
 import { pool, withTransaction } from "./db.js";
 import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
-import { executeRollback } from "./release-manager.js";
+import { executeRollback, routeRun } from "./release-manager.js";
 
 const app = express();
 // CORS: allow comma-separated origins (e.g. multiple Vercel URLs) or "*"
@@ -15,11 +15,11 @@ app.use(express.json());
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-/** RBAC stub: resolve role from header or JWT. In production use Supabase Auth + custom claim. */
+/** RBAC stub: resolve role from header or JWT. In production use Supabase Auth + custom claim. Default operator so Console can compile/start without auth. */
 function getRole(_req: express.Request): "viewer" | "operator" | "approver" | "admin" {
   const role = _req.headers["x-role"] as string | undefined;
   if (role === "admin" || role === "approver" || role === "operator" || role === "viewer") return role;
-  return "viewer";
+  return "operator";
 }
 
 /** Flatten design_tokens for brand_design_tokens_flat. Returns { path, value_text, value_json, type, group }[] */
@@ -354,6 +354,49 @@ app.post("/v1/initiatives/:id/plan", async (req, res) => {
     const msg = (e as Error).message;
     if (msg === "Initiative not found") return res.status(404).json({ error: msg });
     res.status(500).json({ error: msg });
+  }
+});
+
+/** POST /v1/plans/:id/start — create a run for this plan (get or create release, then createRun). Body: { environment?: "sandbox"|"staging"|"prod" }. */
+app.post("/v1/plans/:id/start", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const planId = req.params.id;
+    const environment = (req.body as { environment?: string })?.environment ?? "sandbox";
+    if (!["sandbox", "staging", "prod"].includes(environment)) {
+      return res.status(400).json({ error: "environment must be sandbox, staging, or prod" });
+    }
+    const planRow = await pool.query("SELECT id FROM plans WHERE id = $1", [planId]);
+    if (planRow.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+
+    let releaseId: string;
+    try {
+      const route = await routeRun(pool, environment as "sandbox" | "staging" | "prod");
+      releaseId = route.releaseId;
+    } catch (routeErr) {
+      const msg = (routeErr as Error).message;
+      if (!msg.includes("No promoted release")) throw routeErr;
+      const ins = await pool.query(
+        `INSERT INTO releases (id, status, percent_rollout, policy_version) VALUES ($1, 'promoted', 100, 'latest') RETURNING id`,
+        [uuid()]
+      );
+      releaseId = ins.rows[0].id;
+    }
+
+    const runId = await withTransaction(async (client) => {
+      return createRun(client, {
+        planId,
+        releaseId,
+        policyVersion: "latest",
+        environment: environment as "sandbox" | "staging" | "prod",
+        cohort: "control",
+        rootIdempotencyKey: `console:${planId}:${Date.now()}`,
+      });
+    });
+    res.status(201).json({ id: runId });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
   }
 });
 
@@ -693,6 +736,29 @@ app.get("/v1/artifacts/:id", async (req, res) => {
     res.json(artifact);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/artifacts/:id/content — artifact body for preview (e.g. landing page HTML). Use as view URL. */
+app.get("/v1/artifacts/:id/content", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT id, artifact_type, metadata_json, uri FROM artifacts WHERE id = $1", [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).send("Artifact not found");
+    const row = r.rows[0] as { artifact_type: string; metadata_json: { content?: string } | null; uri?: string };
+    let content: string | null = row.metadata_json?.content ?? null;
+    if (content == null && row.uri?.startsWith("supabase-storage://")) {
+      try {
+        const { downloadArtifact } = await import("../../runners/src/artifact-storage.js");
+        content = await downloadArtifact(row.uri);
+      } catch { /* storage not configured */ }
+    }
+    if (content == null) return res.status(404).send("Artifact content not available");
+    const isHtml = row.artifact_type === "landing_page";
+    res.setHeader("Content-Type", isHtml ? "text/html; charset=utf-8" : "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=60");
+    res.send(content);
+  } catch (e) {
+    res.status(500).send(String((e as Error).message));
   }
 });
 
@@ -1540,23 +1606,27 @@ app.get("/v1/brand_profiles/:id", async (req, res) => {
 app.post("/v1/brand_profiles", async (req, res) => {
   try {
     const body = req.body as {
-      name: string; identity?: unknown; tone?: unknown; visual_style?: unknown; copy_style?: unknown;
+      name: string; slug?: string; identity?: unknown; tone?: unknown; visual_style?: unknown; copy_style?: unknown;
       design_tokens?: unknown; deck_theme?: unknown; report_theme?: unknown;
     };
     if (!body.name) return res.status(400).json({ error: "name required" });
-    const slug = body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const slug =
+      (typeof body.slug === "string" && body.slug.trim())
+        ? body.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+        : body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const r = await pool.query(
       `INSERT INTO brand_profiles (name, slug, identity, tone, visual_style, copy_style, design_tokens, deck_theme, report_theme)
        VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb) RETURNING *`,
       [
-        body.name, slug,
-        body.identity ? JSON.stringify(body.identity) : null,
-        body.tone ? JSON.stringify(body.tone) : null,
-        body.visual_style ? JSON.stringify(body.visual_style) : null,
-        body.copy_style ? JSON.stringify(body.copy_style) : null,
-        body.design_tokens ? JSON.stringify(body.design_tokens) : null,
-        body.deck_theme ? JSON.stringify(body.deck_theme) : null,
-        body.report_theme ? JSON.stringify(body.report_theme) : null,
+        body.name,
+        slug,
+        JSON.stringify(body.identity ?? {}),
+        JSON.stringify(body.tone ?? {}),
+        JSON.stringify(body.visual_style ?? {}),
+        JSON.stringify(body.copy_style ?? {}),
+        JSON.stringify(body.design_tokens ?? {}),
+        JSON.stringify(body.deck_theme ?? {}),
+        JSON.stringify(body.report_theme ?? {}),
       ]
     );
     const inserted = r.rows[0] as { id: string; design_tokens?: unknown };

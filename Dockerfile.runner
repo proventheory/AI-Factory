@@ -1,0 +1,22 @@
+# Build and run Runner worker from repo root (shares DB with Control Plane).
+# Render: type: worker, dockerContext: ., dockerfilePath: ./Dockerfile.runner
+# Set DATABASE_URL, CONTROL_PLANE_URL, LLM_GATEWAY_URL in Render Dashboard.
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --no-optional
+COPY . .
+RUN mkdir -p dist && npx esbuild runners/src/index.ts \
+  --bundle --platform=node --target=node20 --format=cjs \
+  --outfile=dist/runner-bundle.js --sourcemap \
+  --external:pg --external:uuid
+
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+RUN npm pkg set type=commonjs
+COPY --from=builder /app/dist ./dist
+CMD ["node", "dist/runner-bundle.js"]

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { TokenTreeView } from "@/components/TokenTreeView";
 import { useBrandProfile, useUpdateBrandProfile } from "@/hooks/use-api";
+import { buildDesignTokens, readDesignTokensFromBrand } from "../../token-helpers";
 
 export default function EditBrandPage() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +35,12 @@ export default function EditBrandPage() {
   const [copyVoice, setCopyVoice] = useState("");
   const [bannedWords, setBannedWords] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#3b82f6");
+  const [secondaryColor, setSecondaryColor] = useState("#64748b");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [wordmarkBold, setWordmarkBold] = useState("");
+  const [wordmarkLight, setWordmarkLight] = useState("");
+  const [fontHeadings, setFontHeadings] = useState("Inter");
+  const [fontBody, setFontBody] = useState("Inter");
   const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
@@ -42,7 +49,7 @@ export default function EditBrandPage() {
     const tone = (brand.tone ?? {}) as Record<string, any>;
     const vs = (brand.visual_style ?? {}) as Record<string, any>;
     const cs = (brand.copy_style ?? {}) as Record<string, any>;
-    const dt = (brand.design_tokens ?? {}) as Record<string, any>;
+    const dt = (brand.design_tokens ?? {}) as Record<string, unknown>;
 
     setName(brand.name ?? "");
     setArchetype(identity.archetype ?? "");
@@ -56,7 +63,15 @@ export default function EditBrandPage() {
     setStyleDesc(vs.style_description ?? "");
     setCopyVoice(cs.voice ?? "");
     setBannedWords((cs.banned_words ?? []).join(", "));
-    setPrimaryColor(dt?.color?.brand?.["500"] ?? "#3b82f6");
+
+    const tokens = readDesignTokensFromBrand(dt);
+    setPrimaryColor(tokens.primaryColor);
+    setSecondaryColor(tokens.secondaryColor);
+    setLogoUrl(tokens.logoUrl);
+    setWordmarkBold(tokens.wordmarkBold);
+    setWordmarkLight(tokens.wordmarkLight);
+    setFontHeadings(tokens.fontHeadings);
+    setFontBody(tokens.fontBody);
   }, [brand]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,7 +108,15 @@ export default function EditBrandPage() {
             ? bannedWords.split(",").map((s) => s.trim()).filter(Boolean)
             : undefined,
         },
-        design_tokens: { color: { brand: { "500": primaryColor } } },
+        design_tokens: buildDesignTokens({
+          primaryColor,
+          secondaryColor,
+          fontHeadings,
+          fontBody,
+          logoUrl,
+          wordmarkBold,
+          wordmarkLight,
+        }),
       });
       router.push(`/brands/${id}`);
     } catch (err: any) {
@@ -169,6 +192,30 @@ export default function EditBrandPage() {
                 />
               </div>
               <div>
+                <label className={labelCls}>Logo URL</label>
+                <Input
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="https://… or /logo.svg"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Wordmark (bold part)</label>
+                <Input
+                  value={wordmarkBold}
+                  onChange={(e) => setWordmarkBold(e.target.value)}
+                  placeholder="e.g. Pharmacy"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Wordmark (light part)</label>
+                <Input
+                  value={wordmarkLight}
+                  onChange={(e) => setWordmarkLight(e.target.value)}
+                  placeholder="e.g. time"
+                />
+              </div>
+              <div>
                 <label className={labelCls}>Primary Color</label>
                 <div className="flex items-center gap-2">
                   <input
@@ -182,6 +229,37 @@ export default function EditBrandPage() {
                     onChange={(e) => setPrimaryColor(e.target.value)}
                   />
                 </div>
+              </div>
+              <div>
+                <label className={labelCls}>Secondary Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                    className="h-9 w-9 cursor-pointer rounded border"
+                  />
+                  <Input
+                    value={secondaryColor}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Font (Headings)</label>
+                <Input
+                  value={fontHeadings}
+                  onChange={(e) => setFontHeadings(e.target.value)}
+                  placeholder="e.g. Inter, Georgia"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Font (Body)</label>
+                <Input
+                  value={fontBody}
+                  onChange={(e) => setFontBody(e.target.value)}
+                  placeholder="e.g. Inter, system-ui"
+                />
               </div>
             </div>
           </CardSection>

@@ -134,6 +134,30 @@ const TEMPLATE_SWE_AGENT: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[]
   ],
 };
 
+/** Marketing: brand → copy → deck (campaign deliverables). */
+const TEMPLATE_MARKETING: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
+  nodes: [
+    { node_key: "brand", job_type: "brand_compile", agent_role: "product_manager", node_type: "job" },
+    { node_key: "copy", job_type: "copy_generate", agent_role: "product_manager", node_type: "job", consumes_artifact_types: ["tokens_json", "css_vars"] },
+    { node_key: "deck", job_type: "deck_generate", agent_role: "product_manager", node_type: "job", consumes_artifact_types: ["copy"] },
+  ],
+  edges: [
+    { from_key: "brand", to_key: "copy", condition: "success" },
+    { from_key: "copy", to_key: "deck", condition: "success" },
+  ],
+};
+
+/** Landing: copy (hero/CTA) → landing page artifact (stub or full generator). */
+const TEMPLATE_LANDING: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
+  nodes: [
+    { node_key: "copy", job_type: "copy_generate", agent_role: "product_manager", node_type: "job" },
+    { node_key: "landing", job_type: "landing_page_generate", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["copy"] },
+  ],
+  edges: [
+    { from_key: "copy", to_key: "landing", condition: "success" },
+  ],
+};
+
 const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] }> = {
   software: TEMPLATE_SOFTWARE,
   issue_fix: TEMPLATE_ISSUE_FIX,
@@ -143,6 +167,8 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   crew: TEMPLATE_CREW,
   self_heal: TEMPLATE_SELF_HEAL,
   swe_agent: TEMPLATE_SWE_AGENT,
+  marketing: TEMPLATE_MARKETING,
+  landing: TEMPLATE_LANDING,
 };
 
 /** Load initiative; uses core columns so it works with or without multi_framework (000005) ALTERs. */

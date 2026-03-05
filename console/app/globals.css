@@ -29,6 +29,18 @@ body {
   color: var(--brand-color-text-primary);
 }
 
+/* Mobile: safe-area insets for notched devices, touch-friendly */
+.safe-area-padding {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
 
 
 @layer base {

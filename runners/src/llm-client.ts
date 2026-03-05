@@ -61,6 +61,53 @@ export function isSafeToCache(jobType: string): boolean {
   return SAFE_TO_CACHE.has(jobType);
 }
 
+/** Default tier by job type when no routing policy exists. */
+export function pickTier(jobType: string): ModelTier {
+  const maxTypes = new Set(["codegen", "write_patch", "design", "openhands_resolver"]);
+  if (maxTypes.has(jobType)) return "max/chat";
+  if (isSafeToCache(jobType)) return "fast/chat";
+  return "auto/chat";
+}
+
+// ---------------------------------------------------------------------------
+// Routing policies: resolve model_tier from Control Plane (LLM governance)
+// ---------------------------------------------------------------------------
+
+const ROUTING_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let routingCache: { policies: { job_type: string; model_tier: string }[]; ts: number } | null = null;
+
+function getControlPlaneUrl(): string {
+  return (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
+}
+
+async function getRoutingPolicies(): Promise<{ job_type: string; model_tier: string }[]> {
+  if (routingCache && Date.now() - routingCache.ts < ROUTING_CACHE_TTL_MS) {
+    return routingCache.policies;
+  }
+  try {
+    const base = getControlPlaneUrl();
+    const res = await fetch(`${base}/v1/routing_policies?limit=500`);
+    if (!res.ok) return [];
+    const data = (await res.json()) as { items?: { job_type: string; model_tier: string }[] };
+    const policies = data.items ?? [];
+    routingCache = { policies, ts: Date.now() };
+    return policies;
+  } catch {
+    return routingCache?.policies ?? [];
+  }
+}
+
+const VALID_TIERS: ModelTier[] = ["auto/chat", "fast/chat", "max/chat"];
+
+/** Resolve model tier for a job type: routing_policies from Control Plane, else pickTier. */
+export async function resolveTier(jobType: string): Promise<ModelTier> {
+  const policies = await getRoutingPolicies();
+  const policy = policies.find((p) => p.job_type === jobType);
+  const tier = policy?.model_tier?.trim();
+  if (tier && VALID_TIERS.includes(tier as ModelTier)) return tier as ModelTier;
+  return pickTier(jobType);
+}
+
 function getGatewayUrl(): string {
   const url = process.env.LLM_GATEWAY_URL;
   if (!url) {

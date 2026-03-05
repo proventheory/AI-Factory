@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { pool } from "./db.js";
 import { startApi } from "./api.js";
 import { reapStaleLeases } from "./reaper.js";

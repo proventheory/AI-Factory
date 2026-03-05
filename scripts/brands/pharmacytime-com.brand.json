@@ -1,0 +1,103 @@
+{
+  "name": "Pharmacy Time",
+  "slug": "pharmacytime-com",
+  "identity": {
+    "tagline": "Precision compounding for personalized care.",
+    "website": "https://pharmacytime.com",
+    "archetype": "trusted_care",
+    "description": "Modern medical weight loss and precision compounding, delivered online. Trusted by 10K+ patients nationwide. GLP-1 options, licensed providers, end-to-end care 100% online."
+  },
+  "tone": {
+    "formality": "professional",
+    "reading_level": "grade_8",
+    "voice": "warm, clear, trustworthy"
+  },
+  "visual_style": {
+    "notes": "Blue-dominant palette, clean layout, Aventa + Bebas Neue typography. Text wordmark 'pharmacy' + 'time' in header."
+  },
+  "design_tokens": {
+    "identity": {
+      "tagline": "Precision compounding for personalized care.",
+      "website": "https://pharmacytime.com"
+    },
+    "voice": {
+      "reading_level": "grade_8",
+      "formality": "professional"
+    },
+    "colors": {
+      "brand": {
+        "primary": "#0066cc",
+        "primary_dark": "#0052a3",
+        "primary_light": "#42a5f5",
+        "primary_lighter": "#90caf9",
+        "primary_lightest": "#e3f2fd",
+        "500": "#1F8FFF",
+        "400": "#47A3FF",
+        "800": "#0053A4",
+        "950": "#002952",
+        "050": "#C2E0FF"
+      },
+      "text": {
+        "primary": "#1a1a1a",
+        "secondary": "#666666",
+        "muted": "#666666",
+        "inverse": "#ffffff"
+      },
+      "surface": {
+        "base": "#ffffff",
+        "raised": "#f8f9fa",
+        "blue": "#e3f2fd"
+      },
+      "border": {
+        "subtle": "#e0e0e0",
+        "default": "#e0e0e0"
+      }
+    },
+    "typography": {
+      "fonts": {
+        "heading": "Aventa, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        "body": "Aventa, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        "display": "Bebas Neue, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        "mono": "ui-monospace, monospace"
+      },
+      "scale": {
+        "xs": "0.75rem",
+        "sm": "0.875rem",
+        "base": "1rem",
+        "lg": "1.125rem",
+        "xl": "1.25rem",
+        "2xl": "1.5rem",
+        "3xl": "2rem",
+        "4xl": "2.5rem",
+        "5xl": "3.5rem"
+      },
+      "weight": {
+        "normal": 400,
+        "medium": 500,
+        "semibold": 600,
+        "bold": 700
+      }
+    },
+    "logo": {
+      "url": "https://pharmacytime.com/favicon.ico",
+      "wordmark": "pharmacy time",
+      "wordmark_bold": "Pharmacy",
+      "wordmark_light": "time",
+      "type": "wordmark"
+    },
+    "spacing": {
+      "xs": "0.5rem",
+      "sm": "1rem",
+      "md": "2rem",
+      "lg": "3rem",
+      "xl": "4rem"
+    },
+    "layout": {
+      "containerMaxWidth": "1200px",
+      "containerPadding": "32px",
+      "borderRadius": "4px",
+      "borderRadiusLg": "8px",
+      "borderRadiusXl": "1.5rem"
+    }
+  }
+}

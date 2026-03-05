@@ -43,11 +43,12 @@ function NavContent({
                 <Link
                   href={href}
                   onClick={onNavClick}
-                  className={`block px-3 py-2 rounded text-sm ${
+                  className={`block px-3 py-2.5 min-h-[44px] flex items-center rounded-lg text-sm touch-manipulation ${
                     pathname === href || (href !== "/" && pathname?.startsWith(href + "/"))
-                      ? "bg-brand-600 text-white"
+                      ? "bg-brand-600 text-white font-medium"
                       : "text-slate-300 hover:bg-slate-800"
                   }`}
+                  aria-current={pathname === href || (href !== "/" && pathname?.startsWith(href + "/")) ? "page" : undefined}
                 >
                   {label}
                 </Link>
@@ -76,14 +77,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Drawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} title="Menu" side="left">
-        <nav className="bg-slate-900 text-white -m-4 p-4 min-h-full flex flex-col">
-          <div className="flex gap-1 mb-4 overflow-x-auto pb-2 md:hidden">
+        <nav className="bg-slate-900 text-white min-h-full flex flex-col safe-area-padding drawer-nav">
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-2 md:hidden shrink-0">
             {BRANCHES.map((b) => (
               <button
                 key={b.id}
                 type="button"
                 onClick={() => setActiveBranchId(b.id)}
-                className={`shrink-0 rounded px-3 py-1.5 text-sm ${
+                className={`shrink-0 rounded-lg px-3 py-2.5 text-sm min-h-[44px] touch-manipulation ${
                   activeBranchId === b.id ? "bg-brand-600 text-white" : "bg-slate-800 text-slate-300"
                 }`}
               >
@@ -106,11 +107,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 shrink-0 border-b border-border-subtle bg-white flex items-center px-4 gap-4">
+        <header className="min-h-14 shrink-0 border-b border-border-subtle bg-white flex items-center px-4 sm:px-6 gap-2 sm:gap-4 py-2 safe-area-padding">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="md:hidden p-2 rounded-md text-text-secondary hover:bg-surface-sunken"
+            className="md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center p-2 -ml-2 rounded-md text-text-secondary hover:bg-surface-sunken touch-manipulation"
             aria-label="Open menu"
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -127,9 +128,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </span>
             ))}
           </nav>
-          <div className="flex-1 flex items-center justify-end gap-3">
+          <div className="flex-1 flex items-center justify-end gap-2 sm:gap-3 min-h-[44px]">
             <select
-              className="rounded-md border border-border-default bg-white px-3 py-1.5 text-body-small text-text-primary focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className="rounded-md border border-border-default bg-white px-3 py-2 min-h-[44px] text-body-small text-text-primary focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 touch-manipulation"
               aria-label="Environment"
             >
               <option value="sandbox">sandbox</option>
@@ -159,7 +160,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="flex-1 min-h-0 overflow-y-auto">
-          <div className="min-w-0 p-6 md:p-8">{children}</div>
+          <div className="min-w-0 p-4 sm:p-6 lg:p-8">{children}</div>
         </main>
       </div>
     </div>

@@ -7,8 +7,10 @@
   "scripts": {
     "build": "tsc",
     "start:control-plane": "node dist/control-plane/src/index.js",
+    "dev:control-plane": "npx tsx control-plane/src/index.ts",
     "start:runner": "node dist/runners/src/index.js",
     "db:migrate": "node scripts/run-migrate.mjs",
+    "db:migrate:new": "node scripts/run-migrate-supabase-only.mjs",
     "lint": "tsc --noEmit",
     "test": "npx tsx --test runners/tests/*.test.ts scripts/*.test.ts",
     "test:runners": "npx tsx --test runners/tests/*.test.ts",
@@ -22,7 +24,8 @@
     "self-heal:tsc": "npx tsx scripts/self-heal.ts --step tsc",
     "self-heal:verbose": "npx tsx scripts/self-heal.ts --verbose",
     "self-heal:openhands": "npx tsx scripts/self-heal.ts --agent openhands",
-    "self-heal:swe": "npx tsx scripts/self-heal.ts --agent swe-agent"
+    "self-heal:swe": "npx tsx scripts/self-heal.ts --agent swe-agent",
+    "preview-landing": "npx tsx scripts/preview-landing.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",
@@ -36,6 +39,7 @@
     "@types/node": "^22.13.0",
     "@types/pg": "^8.11.11",
     "@types/uuid": "^10.0.0",
+    "dotenv": "^16.6.1",
     "esbuild": "^0.24.2",
     "tsx": "^4.21.0",
     "typescript": "^5.7.3"

@@ -9,7 +9,7 @@ export function PageFrame({
 }) {
   return (
     <div
-      className={`mx-auto w-full max-w-[1400px] px-4 py-4 md:px-6 md:py-6 ${className}`}
+      className={`mx-auto w-full max-w-[1400px] px-4 py-4 sm:px-6 sm:py-6 ${className}`}
     >
       {children}
     </div>

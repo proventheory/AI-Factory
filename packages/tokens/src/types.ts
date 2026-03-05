@@ -31,7 +31,15 @@ export type DesignTokens = {
   image_generation?: Record<string, unknown>;
   motion?: Record<string, unknown>;
   // Legacy / compatibility
-  logo?: { url?: string };
+  logo?: {
+    url?: string;
+    /** Full wordmark text (e.g. "pharmacy time") */
+    wordmark?: string;
+    /** When type is "wordmark", optional two-part: bold segment then light segment */
+    wordmark_bold?: string;
+    wordmark_light?: string;
+    type?: "image" | "wordmark";
+  };
   logo_url?: string;
 };
 

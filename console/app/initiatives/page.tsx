@@ -6,6 +6,7 @@ import { Button, Modal, Input, Select, PageFrame, Stack, CardSection, TableFrame
 import type { Column } from "@/components/ui/DataTable";
 import { useInitiatives, useCreateInitiative } from "@/hooks/use-api";
 import { formatApiError, type InitiativeRow } from "@/lib/api";
+import { INTENT_TYPES } from "@/config/intent-types";
 
 function riskVariant(risk: string): "success" | "warning" | "error" | "neutral" {
   if (risk === "high") return "error";
@@ -18,6 +19,7 @@ export default function InitiativesPage() {
   const [riskLevel, setRiskLevel] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [createIntent, setCreateIntent] = useState("");
+  const [createIntentOther, setCreateIntentOther] = useState("");
   const [createTitle, setCreateTitle] = useState("");
   const [createRisk, setCreateRisk] = useState<"low" | "med" | "high">("low");
   const [createSourceRef, setCreateSourceRef] = useState("");
@@ -30,11 +32,12 @@ export default function InitiativesPage() {
   const createMutation = useCreateInitiative();
   const items = data?.items ?? [];
 
+  const resolvedIntent = createIntent === "other" ? createIntentOther.trim() : createIntent;
   const handleCreate = () => {
-    if (!createIntent.trim() || !createRisk) return;
+    if (!resolvedIntent || !createRisk) return;
     createMutation.mutate(
       {
-        intent_type: createIntent.trim(),
+        intent_type: resolvedIntent,
         title: createTitle.trim() || null,
         risk_level: createRisk,
         source_ref: createSourceRef.trim() || undefined,
@@ -43,6 +46,7 @@ export default function InitiativesPage() {
         onSuccess: () => {
           setCreateOpen(false);
           setCreateIntent("");
+          setCreateIntentOther("");
           setCreateTitle("");
           setCreateRisk("low");
           setCreateSourceRef("");
@@ -93,7 +97,25 @@ export default function InitiativesPage() {
         <div className="space-y-4">
           <label className="block text-body-small text-text-secondary">
             Intent type <span className="text-state-danger">*</span>
-            <Input className="mt-1" value={createIntent} onChange={(e) => setCreateIntent(e.target.value)} placeholder="e.g. vercel_deploy" />
+            <Select
+              className="mt-1"
+              value={createIntent}
+              onChange={(e) => setCreateIntent(e.target.value)}
+            >
+              <option value="">Select pipeline type…</option>
+              {INTENT_TYPES.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+              <option value="other">Other (custom)</option>
+            </Select>
+            {createIntent === "other" && (
+              <Input
+                className="mt-2"
+                value={createIntentOther}
+                onChange={(e) => setCreateIntentOther(e.target.value)}
+                placeholder="e.g. vercel_deploy"
+              />
+            )}
           </label>
           <label className="block text-body-small text-text-secondary">
             Title
@@ -116,7 +138,7 @@ export default function InitiativesPage() {
             <Button
               variant="primary"
               onClick={handleCreate}
-              disabled={!createIntent.trim() || createMutation.isPending}
+              disabled={!resolvedIntent || createMutation.isPending}
             >
               {createMutation.isPending ? "Creating…" : "Create"}
             </Button>

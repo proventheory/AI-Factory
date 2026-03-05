@@ -1,7 +1,5 @@
-# Render Blueprint: AI Factory Control Plane
-# Two services, branch-based: main = staging, prod = production.
-# After first sync in Render Dashboard (New > Blueprint), deploys auto-trigger on git push.
-# Set DATABASE_URL and CORS_ORIGIN per service in Render Dashboard > Environment.
+# Render Blueprint: AI Factory Control Plane + Runner worker
+# Two web services (API), one background worker (runner). Set DATABASE_URL, CORS_ORIGIN (API), CONTROL_PLANE_URL, LLM_GATEWAY_URL (runner) in Dashboard.
 
 services:
   - type: web
@@ -17,6 +15,17 @@ services:
         value: production
       # Set in Dashboard: DATABASE_URL (staging), CORS_ORIGIN (staging console URL)
     healthCheckPath: /health
+
+  - type: worker
+    name: ai-factory-runner-staging
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./Dockerfile.runner
+    branch: main
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set in Dashboard: DATABASE_URL (same as API), CONTROL_PLANE_URL (e.g. https://ai-factory-api-staging.onrender.com), LLM_GATEWAY_URL
 
   - type: web
     name: ai-factory-api-prod

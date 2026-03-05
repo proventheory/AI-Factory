@@ -179,6 +179,16 @@ export default function RunDetailPage() {
     { key: "artifact_class", header: "Class" },
     { key: "artifact_type", header: "Type" },
     { key: "uri", header: "URI", render: (r) => <span className="truncate max-w-[200px] block" title={r.uri}>{r.uri}</span> },
+    {
+      key: "view",
+      header: "",
+      render: (r) =>
+        r.artifact_type === "landing_page" ? (
+          <a href={`${API}/v1/artifacts/${r.id}/content`} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline text-sm">
+            View page
+          </a>
+        ) : null,
+    },
     { key: "created_at", header: "Created", render: (r) => new Date(r.created_at).toLocaleString() },
   ];
 

@@ -1,10 +1,10 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { PageFrame, Stack, CardSection, PageHeader, Tabs, TabsList, TabsTrigger, TabsContent, LoadingSkeleton } from "@/components/ui";
+import { PageFrame, Stack, CardSection, PageHeader, Tabs, TabsList, TabsTrigger, TabsContent, LoadingSkeleton, Button } from "@/components/ui";
 
 const PlanDagViewer = dynamic(
   () => import("@/components/flow/PlanDagViewer").then((m) => ({ default: m.PlanDagViewer })),
@@ -18,12 +18,14 @@ type PlanEdge = { from_node_id: string; to_node_id: string; condition: string };
 
 export default function PlanDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
   const [plan, setPlan] = useState<Record<string, unknown> | null>(null);
   const [nodes, setNodes] = useState<PlanNode[]>([]);
   const [edges, setEdges] = useState<PlanEdge[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("details");
+  const [startBusy, setStartBusy] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -37,6 +39,25 @@ export default function PlanDetailPage() {
       .catch((e) => setError(e.message));
   }, [id]);
 
+  async function handleStartRun() {
+    setStartBusy(true);
+    setError(null);
+    try {
+      const r = await fetch(`${API}/v1/plans/${id}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ environment: "sandbox" }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Start run failed");
+      if (j.id) router.push(`/runs/${j.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Start run failed");
+    } finally {
+      setStartBusy(false);
+    }
+  }
+
   if (error) return <PageFrame><p className="text-red-600">Error: {error}</p></PageFrame>;
   if (!plan) return <PageFrame><LoadingSkeleton className="h-64 w-full rounded-lg" /></PageFrame>;
 
@@ -47,7 +68,12 @@ export default function PlanDetailPage() {
           title={`Plan ${String(plan.id).slice(0, 8)}…`}
           description={`Initiative: ${String(plan.initiative_title ?? plan.initiative_id)} · Hash: ${String(plan.plan_hash).slice(0, 16)}…`}
           actions={
-            <Link href="/plans" className="text-brand-600 hover:underline text-sm">← Plans</Link>
+            <div className="flex items-center gap-2">
+              <Button variant="primary" onClick={handleStartRun} disabled={startBusy}>
+                {startBusy ? "Starting…" : "Start run"}
+              </Button>
+              <Link href="/plans" className="text-brand-600 hover:underline text-sm">← Plans</Link>
+            </div>
           }
         />
         <Tabs value={activeTab} onValueChange={setActiveTab}>

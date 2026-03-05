@@ -6,29 +6,32 @@ import Link from "next/link";
 import { PageHeader, Card, CardContent, Button, Input, Select } from "@/components/ui";
 import { useCreateInitiative } from "@/hooks/use-api";
 import { getResource } from "@/lib/admin-registry";
+import { INTENT_TYPES } from "@/config/intent-types";
 
 const resource = getResource("initiatives")!;
 
 export default function AdminInitiativesNewPage() {
   const router = useRouter();
   const [intent_type, setIntentType] = useState("");
+  const [intent_type_other, setIntentTypeOther] = useState("");
   const [title, setTitle] = useState("");
   const [risk_level, setRiskLevel] = useState<"low" | "med" | "high">("low");
   const [source_ref, setSourceRef] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const resolvedIntent = intent_type === "other" ? intent_type_other.trim() : intent_type;
   const createMutation = useCreateInitiative();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!intent_type.trim()) {
+    if (!resolvedIntent) {
       setError("Intent type is required.");
       return;
     }
     createMutation.mutate(
       {
-        intent_type: intent_type.trim(),
+        intent_type: resolvedIntent,
         title: title.trim() || null,
         risk_level,
         source_ref: source_ref.trim() || undefined,
@@ -60,12 +63,25 @@ export default function AdminInitiativesNewPage() {
             )}
             <div>
               <label className="mb-1 block text-body-small font-medium text-text-primary">Intent type *</label>
-              <Input
+              <Select
                 value={intent_type}
                 onChange={(e) => setIntentType(e.target.value)}
-                placeholder="e.g. feature"
                 className="w-full"
-              />
+              >
+                <option value="">Select pipeline type…</option>
+                {INTENT_TYPES.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+                <option value="other">Other (custom)</option>
+              </Select>
+              {intent_type === "other" && (
+                <Input
+                  value={intent_type_other}
+                  onChange={(e) => setIntentTypeOther(e.target.value)}
+                  placeholder="e.g. custom_pipeline"
+                  className="mt-2 w-full"
+                />
+              )}
             </div>
             <div>
               <label className="mb-1 block text-body-small font-medium text-text-primary">Title</label>

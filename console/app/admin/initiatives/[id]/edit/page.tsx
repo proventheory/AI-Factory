@@ -6,6 +6,7 @@ import Link from "next/link";
 import { PageHeader, Card, CardContent, Button, Input, Select } from "@/components/ui";
 import { useInitiative, useUpdateInitiative } from "@/hooks/use-api";
 import { getResource } from "@/lib/admin-registry";
+import { INTENT_TYPES } from "@/config/intent-types";
 
 const resource = getResource("initiatives")!;
 
@@ -16,14 +17,20 @@ export default function AdminInitiativeEditPage() {
   const { data, isLoading, error } = useInitiative(id);
   const updateMutation = useUpdateInitiative();
   const [intent_type, setIntentType] = useState("");
+  const [intent_type_other, setIntentTypeOther] = useState("");
   const [title, setTitle] = useState("");
   const [risk_level, setRiskLevel] = useState<"low" | "med" | "high">("low");
   const [source_ref, setSourceRef] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const resolvedIntent = intent_type === "other" ? intent_type_other.trim() : intent_type;
+
   useEffect(() => {
     if (data) {
-      setIntentType(data.intent_type ?? "");
+      const it = data.intent_type ?? "";
+      const known = INTENT_TYPES.some((t) => t.value === it);
+      setIntentType(known ? it : "other");
+      if (!known) setIntentTypeOther(it);
       setTitle((data as { title?: string | null }).title ?? "");
       setRiskLevel((data.risk_level as "low" | "med" | "high") || "low");
       setSourceRef((data as { source_ref?: string }).source_ref ?? "");
@@ -36,7 +43,7 @@ export default function AdminInitiativeEditPage() {
     try {
       await updateMutation.mutateAsync({
         id,
-        body: { intent_type, title: title || null, risk_level, source_ref: source_ref || undefined },
+        body: { intent_type: resolvedIntent, title: title || null, risk_level, source_ref: source_ref || undefined },
       });
       router.push(`/admin/initiatives/${id}`);
     } catch (err) {
@@ -84,11 +91,25 @@ export default function AdminInitiativeEditPage() {
             )}
             <div>
               <label className="mb-1 block text-body-small font-medium text-text-primary">Intent type *</label>
-              <Input
+              <Select
                 value={intent_type}
                 onChange={(e) => setIntentType(e.target.value)}
                 className="w-full"
-              />
+              >
+                <option value="">Select pipeline type…</option>
+                {INTENT_TYPES.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+                <option value="other">Other (custom)</option>
+              </Select>
+              {intent_type === "other" && (
+                <Input
+                  value={intent_type_other}
+                  onChange={(e) => setIntentTypeOther(e.target.value)}
+                  placeholder="Custom intent type"
+                  className="mt-2 w-full"
+                />
+              )}
             </div>
             <div>
               <label className="mb-1 block text-body-small font-medium text-text-primary">Title</label>

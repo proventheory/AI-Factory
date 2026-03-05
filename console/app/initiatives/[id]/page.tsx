@@ -1,8 +1,9 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
@@ -17,14 +18,19 @@ type Initiative = {
   source_ref?: string | null;
 };
 
+type PlanItem = { id: string; plan_hash: string; created_at: string };
+
 export default function InitiativeDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
   const [item, setItem] = useState<Initiative | null>(null);
-  const [plans, setPlans] = useState<{ id: string; plan_hash: string; created_at: string }[]>([]);
+  const [plans, setPlans] = useState<PlanItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [compileBusy, setCompileBusy] = useState(false);
+  const [startBusy, setStartBusy] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refetch = useCallback(() => {
     if (!id) return;
     Promise.all([
       fetch(`${API}/v1/initiatives/${id}`).then((r) => r.json()),
@@ -33,11 +39,53 @@ export default function InitiativeDetailPage() {
       .then(([init, pl]) => {
         setItem(init.error ? null : init);
         setPlans(pl.items ?? []);
+        setError(null);
       })
       .catch((e) => setError(e.message));
   }, [id]);
 
-  if (error) return <p className="text-red-600">Error: {error}</p>;
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  async function handleCompilePlan() {
+    setCompileBusy(true);
+    setError(null);
+    try {
+      const r = await fetch(`${API}/v1/initiatives/${id}/plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Compile failed");
+      refetch();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Compile failed");
+    } finally {
+      setCompileBusy(false);
+    }
+  }
+
+  async function handleStartRun(planId: string) {
+    setStartBusy(planId);
+    setError(null);
+    try {
+      const r = await fetch(`${API}/v1/plans/${planId}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ environment: "sandbox" }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Start run failed");
+      if (j.id) router.push(`/runs/${j.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Start run failed");
+    } finally {
+      setStartBusy(null);
+    }
+  }
+
   if (!item) return <p className="text-slate-500">Loading...</p>;
 
   return (
@@ -59,17 +107,34 @@ export default function InitiativeDetailPage() {
           {item.source_ref && (<><dt className="text-slate-500">Source ref</dt><dd><a href={item.source_ref} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline truncate block max-w-md">{item.source_ref}</a></dd></>)}
         </dl>
       </div>
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-body-small text-red-800" role="alert">
+          {error}
+        </div>
+      )}
       <div className="bg-white border border-slate-200 rounded-lg p-4">
-        <h2 className="font-semibold text-slate-900 mb-2">Plans</h2>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <h2 className="font-semibold text-slate-900">Plans</h2>
+          <Button variant="primary" onClick={handleCompilePlan} disabled={compileBusy}>
+            {compileBusy ? "Compiling…" : "Compile plan"}
+          </Button>
+        </div>
         {plans.length === 0 ? (
-          <p className="text-slate-500 text-sm">No plans yet.</p>
+          <p className="text-slate-500 text-sm">No plans yet. Click &quot;Compile plan&quot; to create one.</p>
         ) : (
           <ul className="space-y-2">
             {plans.map((p) => (
-              <li key={p.id}>
+              <li key={p.id} className="flex items-center gap-3 flex-wrap">
                 <Link href={`/plans/${p.id}`} className="text-brand-600 hover:underline font-mono text-sm">
                   {p.id.slice(0, 8)}… — {String(p.plan_hash).slice(0, 12)}… — {new Date(p.created_at).toLocaleString()}
                 </Link>
+                <Button
+                  variant="secondary"
+                  onClick={() => handleStartRun(p.id)}
+                  disabled={startBusy !== null}
+                >
+                  {startBusy === p.id ? "Starting…" : "Start run"}
+                </Button>
               </li>
             ))}
           </ul>

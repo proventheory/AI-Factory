@@ -47,6 +47,59 @@ ProfessorX is the **operator console** for the AI Factory: one control surface t
 
 **Test & deploy (marketing):** Create a brand and a document template, then confirm they appear in the Console and (when runners are connected) that jobs like brand-compile or deck-generate can consume them. Deploy = same stack (Console + Control Plane + DB).
 
+**Local full flow (browser):** From repo root, ensure `.env` has `DATABASE_URL`. Run Control Plane: `npm run dev:control-plane` (loads `.env`). Run Console: `cd console && npm run dev`. Open http://localhost:3000 → Orchestration → Initiatives → open an initiative → **Compile plan** → **Start run** (per plan) → open run → Artifacts → **View page** for a landing_page artifact. If compile or start fails, the initiative page shows the API error inline so you can fix and retry.
+
+---
+
+### Can I spin up a landing page? (Marketing agency)
+
+**Yes, via the engine.** The pipeline generates the page; you open it with a **view URL**.
+
+**How it works**
+
+1. **Initiative** – Create an initiative with **intent_type: landing** (or marketing). Attach a **brand** (e.g. Pharmacytime) so the runner has design_tokens and identity.
+2. **Plan** – Compile the plan. The **landing** template is: copy_generate → landing_page_generate. The **marketing** template adds brand_compile and deck_generate.
+3. **Run** – Start the run. When a runner is connected, it runs copy_generate (hero/CTA), then landing_page_generate (brand + copy → single HTML with header, hero, CTA).
+4. **View URL** – Open **Runs** → that run → **Artifacts** tab. For the **landing_page** artifact, click **View page**. That opens the Control Plane content URL: `{CONTROL_PLANE_API}/v1/artifacts/{artifact_id}/content`, which returns the HTML so the browser renders the landing page.
+
+So the **engine** produces the page; the **URL** to launch it is the artifact content endpoint. No separate “preview script” needed for normal use.
+
+**Also in place**
+
+- **Brands + design tokens** – Colors, typography, logo (including two-part wordmark e.g. Pharmacy **bold** + time *light*). Used by landing_page_generate, decks, emails.
+- **Document templates** – For decks and reports. **Landing** uses copy from the predecessor artifact (copy_generate).
+- **Optional deploy** – A future adapter could deploy the generated HTML to Vercel or static hosting; today you view via the artifact content URL.
+
+---
+
+## 3b. “So what can I actually do with what we have?”
+
+**If you can’t spin a landing page, it can feel like you can’t do much.** Here’s what *is* there and when it’s useful.
+
+**What works today (concrete)**
+
+| What | Where | What you get |
+|------|--------|----------------|
+| **One place for client brand** | **Brands** | Colors, fonts, logo, tone in one profile. Everything that *does* generate output (emails, decks, future landing) can pull from here. So you’re not rebuilding “Acme’s blue” in every tool. |
+| **Reusable deck/report templates** | **Document templates** | Define a pitch deck or report once (sections, KPI blocks, charts). When a runner generates a deck for a brand, it uses this. So: template + brand = consistent client decks. |
+| **Email marketing app** | **Email Marketing** (nav) | Full app (flows, segments, templates) proxied from ProfessorX. If you use that stack, you get a single entry point from the Console. |
+| **Pipeline tracking** | **Initiatives → Plans → Runs** | Track “Acme Q2 campaign” or “Client X one-pager” as an initiative, attach a plan, see runs/jobs/artifacts when the pipeline runs. So ProfessorX is your **ops view** for work that the Factory executes. |
+| **Cost and control** | **Routing policies, LLM budgets** | Cap spend per job type or initiative; point jobs at cheaper/faster models where it’s safe. |
+
+**Where it feels thin**
+
+- **No “create landing page”** → no instant client landing pages. You only get the benefits above (brand, templates, email app, tracking).
+- **Runners must be running** for initiatives to turn into real artifacts (decks, copy, etc.). Without that, ProfessorX is mostly **setup + tracking**, not “click and get a deliverable.”
+
+**What would make it feel worth it (marketing)**
+
+1. **Landing page job** – One pipeline step: “generate and (optionally) deploy a landing page from this brand + brief.” That’s the missing “I can do something visible for clients” piece.
+2. **Clear “marketing” flow in the UI** – e.g. “New campaign” → pick client brand → pick template (deck / report / future: landing) → run. So it’s obvious that brands + templates = deliverables.
+
+**Bottom line**
+
+With what we have: you **can** centralize client brands, define deck/report templates, use the email app from one place, and track campaigns as initiatives. You **can’t** yet spin up a landing page. Adding that one job type (and a simple “marketing” flow) is what would make ProfessorX feel like “I can actually do a lot” for a marketing agency.
+
 ---
 
 ## 4. Shared Capabilities (Both Agencies)

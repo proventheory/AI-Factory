@@ -12,6 +12,7 @@ import {
   CardSection,
 } from "@/components/ui";
 import { useCreateBrandProfile } from "@/hooks/use-api";
+import { buildDesignTokens } from "../token-helpers";
 
 export default function NewBrandPage() {
   const router = useRouter();
@@ -32,6 +33,8 @@ export default function NewBrandPage() {
   const [primaryColor, setPrimaryColor] = useState("#3b82f6");
   const [secondaryColor, setSecondaryColor] = useState("#64748b");
   const [logoUrl, setLogoUrl] = useState("");
+  const [wordmarkBold, setWordmarkBold] = useState("");
+  const [wordmarkLight, setWordmarkLight] = useState("");
   const [fontHeadings, setFontHeadings] = useState("Inter");
   const [fontBody, setFontBody] = useState("Inter");
   const [error, setError] = useState("");
@@ -69,20 +72,15 @@ export default function NewBrandPage() {
             ? bannedWords.split(",").map((s) => s.trim()).filter(Boolean)
             : undefined,
         },
-        design_tokens: {
-          color: { brand: { "500": primaryColor, "600": secondaryColor } },
-          colors: { brand: { "500": primaryColor, "600": secondaryColor } },
-          ...(fontHeadings || fontBody
-            ? {
-                typography: {
-                  font_headings: fontHeadings,
-                  font_body: fontBody,
-                  fonts: { heading: fontHeadings, body: fontBody },
-                },
-              }
-            : {}),
-          ...(logoUrl ? { logo_url: logoUrl, logo: { url: logoUrl } } : {}),
-        },
+        design_tokens: buildDesignTokens({
+          primaryColor,
+          secondaryColor,
+          fontHeadings,
+          fontBody,
+          logoUrl,
+          wordmarkBold,
+          wordmarkLight,
+        }),
       });
       router.push(`/brands/${result.id}`);
     } catch (err: any) {
@@ -133,6 +131,22 @@ export default function NewBrandPage() {
                   value={logoUrl}
                   onChange={(e) => setLogoUrl(e.target.value)}
                   placeholder="https://… or /logo.svg"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Wordmark (bold part)</label>
+                <Input
+                  value={wordmarkBold}
+                  onChange={(e) => setWordmarkBold(e.target.value)}
+                  placeholder="e.g. Pharmacy"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Wordmark (light part)</label>
+                <Input
+                  value={wordmarkLight}
+                  onChange={(e) => setWordmarkLight(e.target.value)}
+                  placeholder="e.g. time"
                 />
               </div>
               <div>
