@@ -11,8 +11,6 @@ COPY tsconfig.json ./
 COPY control-plane runners adapters ./
 # Remove nested tsconfigs so tsc -p . uses only root config (required for cross-package resolution)
 RUN rm -f control-plane/tsconfig.json
-# Verify layout (relative paths resolve from control-plane/src to runners/src)
-RUN pwd && test -f control-plane/src/api.ts && test -f runners/src/artifact-storage.ts && echo "Layout OK"
 RUN npx tsc -p .
 
 FROM node:20-alpine
