@@ -6,20 +6,20 @@ WORKDIR /app
 # Copy dependency manifests first for better layer caching
 COPY package.json package-lock.json ./
 RUN npm ci --no-optional
-# Copy source and Docker tsconfig (node resolution so cross-package relative imports resolve)
-COPY tsconfig.json tsconfig.docker.json ./
+# Copy source; bundle with esbuild (avoids tsc cross-package resolution issues in Docker)
 COPY control-plane runners adapters ./
-RUN rm -f control-plane/tsconfig.json
-RUN npx tsc -p tsconfig.docker.json
+RUN npx esbuild control-plane/src/index.ts \
+  --bundle --platform=node --target=node20 --format=cjs \
+  --outfile=dist/control-plane-bundle.js --sourcemap \
+  --external:pg --external:express --external:cors --external:uuid
 
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-# Emitted JS is CommonJS; ensure Node treats .js as CJS (default when "type" is commonjs)
 RUN npm pkg set type=commonjs
 COPY --from=builder /app/dist ./dist
 EXPOSE 10000
 ENV PORT=10000
-CMD ["node", "dist/control-plane/src/index.js"]
+CMD ["node", "dist/control-plane-bundle.js"]
