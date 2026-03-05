@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /**
- * Run schemas/001_core_schema.sql and 002_state_machines_and_constraints.sql
- * using pg (no psql required). Reads DATABASE_URL from env.
+ * Run core schemas and optional Supabase migrations using pg (no psql required).
+ * Reads DATABASE_URL from env.
+ * Order: 001_core_schema, 002_state_machines_and_constraints,
+ *        supabase/migrations/20250303100000_webhook_outbox,
+ *        supabase/migrations/20250303100001_brand_design_tokens_flat.
  */
 import pg from "pg";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -19,15 +22,26 @@ if (!url) {
 
 const client = new pg.Client({ connectionString: url });
 
+const migrations = [
+  { path: "schemas/001_core_schema.sql", name: "001_core_schema" },
+  { path: "schemas/002_state_machines_and_constraints.sql", name: "002_state_machines_and_constraints" },
+  { path: "supabase/migrations/20250303100000_webhook_outbox.sql", name: "webhook_outbox" },
+  { path: "supabase/migrations/20250303100001_brand_design_tokens_flat.sql", name: "brand_design_tokens_flat" },
+];
+
 async function run() {
   await client.connect();
   try {
-    const sql1 = readFileSync(join(root, "schemas/001_core_schema.sql"), "utf8");
-    const sql2 = readFileSync(join(root, "schemas/002_state_machines_and_constraints.sql"), "utf8");
-    await client.query(sql1);
-    console.log("Ran schemas/001_core_schema.sql");
-    await client.query(sql2);
-    console.log("Ran schemas/002_state_machines_and_constraints.sql");
+    for (const { path: relPath, name } of migrations) {
+      const fullPath = join(root, relPath);
+      if (!existsSync(fullPath)) {
+        console.log(`Skipping ${relPath} (file not found)`);
+        continue;
+      }
+      const sql = readFileSync(fullPath, "utf8");
+      await client.query(sql);
+      console.log(`Ran ${name}`);
+    }
     console.log("Migration complete.");
   } finally {
     await client.end();
