@@ -6,18 +6,19 @@ WORKDIR /app
 # Copy dependency manifests first for better layer caching
 COPY package.json package-lock.json ./
 RUN npm ci --no-optional
-# Copy source and config needed for tsc (use root tsconfig so cross-package imports resolve)
-COPY tsconfig.json ./
+# Copy source and Docker tsconfig (node resolution so cross-package relative imports resolve)
+COPY tsconfig.json tsconfig.docker.json ./
 COPY control-plane runners adapters ./
-# Remove nested tsconfigs so tsc -p . uses only root config (required for cross-package resolution)
 RUN rm -f control-plane/tsconfig.json
-RUN npx tsc -p .
+RUN npx tsc -p tsconfig.docker.json
 
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
+# Emitted JS is CommonJS; ensure Node treats .js as CJS (default when "type" is commonjs)
+RUN npm pkg set type=commonjs
 COPY --from=builder /app/dist ./dist
 EXPOSE 10000
 ENV PORT=10000
