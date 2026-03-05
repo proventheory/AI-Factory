@@ -9,6 +9,7 @@ import { PieChart } from "@/components/charts/PieChart";
 import { BarChart } from "@/components/charts/BarChart";
 import { useRuns, useJobRuns } from "@/hooks/use-api";
 import { useRunsOverTime, useRunStatusDistribution, useJobsByType } from "@/hooks/use-chart-data";
+import { formatApiError } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
@@ -50,7 +51,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API}/v1/dashboard`).then((r) => r.json()).then(setDashboardData).catch((e) => setError(e.message));
+    fetch(`${API}/v1/dashboard`).then((r) => r.json()).then(setDashboardData).catch((e) => setError(formatApiError(e)));
   }, []);
   useEffect(() => {
     fetch(`${API}/v1/health`).then((r) => r.json()).then((d: { active_leases?: Lease[] }) => setLeases(d.active_leases ?? [])).catch(() => {});
@@ -59,7 +60,7 @@ export default function DashboardPage() {
   const data = dashboardData;
   const loading = !data && !error;
   const chartsLoading = allRunsLoading || jobRunsLoading;
-  const displayError = error ?? (runsError as Error | null)?.message ?? null;
+  const displayError = error ?? (runsError ? formatApiError(runsError) : null);
 
   if (displayError) {
     return (
@@ -67,7 +68,7 @@ export default function DashboardPage() {
         <Stack>
           <PageHeader title="Overview" />
           <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
-            Error: {displayError}
+            {displayError}
           </div>
         </Stack>
       </PageFrame>

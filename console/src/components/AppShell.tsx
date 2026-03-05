@@ -1,111 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Dropdown, Drawer } from "@/components/ui";
 import { CommandPalette } from "@/components/CommandPalette";
+import { IconBar } from "@/components/IconBar";
+import {
+  BRANCHES,
+  getGroupsForBranch,
+  getBranchForHref,
+  getBreadcrumbs,
+  type NavGroup,
+  type NavItem,
+  type BranchId,
+} from "@/config/nav";
 
-const NAV_GROUPS: { title: string; items: { href: string; label: string }[] }[] = [
-  {
-    title: "DASHBOARD",
-    items: [
-      { href: "/dashboard", label: "Overview" },
-      { href: "/health", label: "Scheduler Health" },
-    ],
-  },
-  {
-    title: "ORCHESTRATION",
-    items: [
-      { href: "/initiatives", label: "Initiatives" },
-      { href: "/plans", label: "Plans" },
-      { href: "/runs", label: "Pipeline Runs" },
-      { href: "/jobs", label: "Jobs" },
-      { href: "/tool-calls", label: "Tool Calls" },
-      { href: "/artifacts", label: "Artifacts" },
-      { href: "/approvals", label: "Approvals" },
-    ],
-  },
-  {
-    title: "CONFIG",
-    items: [
-      { href: "/releases", label: "Releases" },
-      { href: "/policies", label: "Policies" },
-      { href: "/adapters", label: "Adapters" },
-    ],
-  },
-  {
-    title: "BRAND & DESIGN",
-    items: [
-      { href: "/brands", label: "Brands" },
-      { href: "/document-templates", label: "Document Templates" },
-    ],
-  },
-  {
-    title: "MONITORING",
-    items: [
-      { href: "/analytics", label: "Analytics" },
-      { href: "/incidents", label: "Incidents" },
-      { href: "/audit", label: "Audit" },
-    ],
-  },
-  {
-    title: "OTHER",
-    items: [
-      { href: "/secrets", label: "Secrets" },
-      { href: "/email-marketing", label: "Email Marketing" },
-      { href: "/self-heal", label: "Self-heal" },
-      { href: "/admin", label: "Admin" },
-    ],
-  },
-];
-
-function getBreadcrumbs(pathname: string | null): { href: string; label: string }[] {
-  if (!pathname || pathname === "/") return [{ href: "/", label: "Home" }];
-  const segments = pathname.split("/").filter(Boolean);
-  const crumbs: { href: string; label: string }[] = [{ href: "/", label: "Home" }];
-  const labels: Record<string, string> = {
-    login: "Login",
-    dashboard: "Overview",
-    health: "Scheduler Health",
-    initiatives: "Initiatives",
-    plans: "Plans",
-    runs: "Pipeline Runs",
-    jobs: "Jobs",
-    "tool-calls": "Tool Calls",
-    artifacts: "Artifacts",
-    approvals: "Approvals",
-    releases: "Releases",
-    policies: "Policies",
-    adapters: "Adapters",
-    incidents: "Incidents",
-    audit: "Audit",
-    secrets: "Secrets",
-    "email-marketing": "Email Marketing",
-    "self-heal": "Self-heal",
-    admin: "Admin",
-    brands: "Brands",
-    "document-templates": "Document Templates",
-  };
-  let acc = "";
-  for (let i = 0; i < segments.length; i++) {
-    acc += (acc ? "/" : "/") + segments[i];
-    const label = labels[segments[i]] ?? segments[i];
-    crumbs.push({ href: acc, label: i === segments.length - 1 && segments[i].length === 36 ? "Detail" : label });
-  }
-  return crumbs;
+function filterItemsForDisplay(items: NavItem[]): NavItem[] {
+  // TODO: apply predicates (featureFlag, requiresPermission, requiresEnv) when those systems exist.
+  return items;
 }
 
-function NavContent({ pathname, onNavClick }: { pathname: string | null; onNavClick?: () => void }) {
+function NavContent({
+  pathname,
+  groups,
+  onNavClick,
+}: {
+  pathname: string | null;
+  groups: NavGroup[];
+  onNavClick?: () => void;
+}) {
   return (
     <>
-      {NAV_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.title} className="mb-4">
           <div className="px-3 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">
             {group.title}
           </div>
           <ul className="space-y-0.5">
-            {group.items.map(({ href, label }) => (
+            {filterItemsForDisplay(group.items).map(({ href, label }) => (
               <li key={href}>
                 <Link
                   href={href}
@@ -131,22 +64,45 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const breadcrumbs = getBreadcrumbs(pathname);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [activeBranchId, setActiveBranchId] = useState<BranchId | null>("command");
+
+  useEffect(() => {
+    const branch = getBranchForHref(pathname ?? "");
+    setActiveBranchId(branch ?? "command");
+  }, [pathname]);
+
+  const groups = getGroupsForBranch(activeBranchId ?? "command");
 
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Drawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} title="Menu" side="left">
-        <nav className="bg-slate-900 text-white -m-4 p-4 min-h-full">
-          <NavContent pathname={pathname} onNavClick={() => setMobileNavOpen(false)} />
+        <nav className="bg-slate-900 text-white -m-4 p-4 min-h-full flex flex-col">
+          <div className="flex gap-1 mb-4 overflow-x-auto pb-2 md:hidden">
+            {BRANCHES.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => setActiveBranchId(b.id)}
+                className={`shrink-0 rounded px-3 py-1.5 text-sm ${
+                  activeBranchId === b.id ? "bg-brand-600 text-white" : "bg-slate-800 text-slate-300"
+                }`}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+          <NavContent pathname={pathname} groups={groups} onNavClick={() => setMobileNavOpen(false)} />
         </nav>
       </Drawer>
-      <aside className="hidden md:flex w-56 bg-slate-900 text-white flex-col shrink-0">
+      <IconBar activeBranchId={activeBranchId} onSelect={setActiveBranchId} branches={BRANCHES} />
+      <aside className="hidden md:flex w-56 flex-col shrink-0 border-r border-slate-800 bg-slate-900 text-white">
         <div className="p-4 border-b border-slate-700">
           <Link href="/" className="text-xl font-bold">
             ProfessorX
           </Link>
         </div>
         <nav className="flex-1 overflow-y-auto p-2">
-          <NavContent pathname={pathname} />
+          <NavContent pathname={pathname} groups={groups} />
         </nav>
       </aside>
       <div className="flex-1 flex flex-col min-w-0">

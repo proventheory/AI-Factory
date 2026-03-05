@@ -12,6 +12,7 @@ import {
   CardSection,
   LoadingSkeleton,
 } from "@/components/ui";
+import { TokenTreeView } from "@/components/TokenTreeView";
 import { useBrandProfile, useUpdateBrandProfile } from "@/hooks/use-api";
 
 export default function EditBrandPage() {
@@ -306,6 +307,10 @@ export default function EditBrandPage() {
                 />
               </div>
             </div>
+          </CardSection>
+
+          <CardSection title="Design tokens (read-only)">
+            <TokenTreeView tokens={(brand.design_tokens ?? {}) as Record<string, unknown>} />
           </CardSection>
         </Stack>
       </form>

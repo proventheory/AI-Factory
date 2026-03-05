@@ -6,7 +6,8 @@ WORKDIR /app
 # Copy dependency manifests first for better layer caching
 COPY package.json package-lock.json ./
 RUN npm ci --no-optional
-# Copy full repo (except node_modules via .dockerignore); then bundle
+# Copy full repo (except node_modules via .dockerignore); then bundle.
+# Use relative paths for esbuild: absolute paths (e.g. /app/...) fail in Render's build context.
 COPY . .
 RUN mkdir -p dist && npx esbuild control-plane/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \

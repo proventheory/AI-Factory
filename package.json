@@ -8,7 +8,7 @@
     "build": "tsc",
     "start:control-plane": "node dist/control-plane/src/index.js",
     "start:runner": "node dist/runners/src/index.js",
-    "db:migrate": "psql $DATABASE_URL -f schemas/001_core_schema.sql && psql $DATABASE_URL -f schemas/002_state_machines_and_constraints.sql",
+    "db:migrate": "node scripts/run-migrate.mjs",
     "lint": "tsc --noEmit",
     "test": "npx tsx --test runners/tests/*.test.ts scripts/*.test.ts",
     "test:runners": "npx tsx --test runners/tests/*.test.ts",

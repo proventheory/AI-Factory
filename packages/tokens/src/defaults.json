@@ -1,0 +1,25 @@
+{
+  "identity": {},
+  "voice": { "reading_level": "grade_9", "formality": "neutral" },
+  "colors": {
+    "brand": { "500": "#3b82f6", "600": "#2563eb" },
+    "text": { "primary": "#0f172a", "secondary": "#334155", "muted": "#64748b", "inverse": "#ffffff" },
+    "surface": { "base": "#ffffff", "raised": "#f8fafc", "sunken": "#f1f5f9" },
+    "state": { "success": "#059669", "warning": "#d97706", "danger": "#dc2626", "info": "#2563eb" },
+    "border": { "subtle": "#e2e8f0", "default": "#cbd5e1", "strong": "#94a3b8" }
+  },
+  "typography": {
+    "fonts": { "heading": "Inter", "body": "Inter", "mono": "ui-monospace, monospace" },
+    "scale": { "xs": "0.75rem", "sm": "0.875rem", "base": "1rem", "lg": "1.125rem", "xl": "1.25rem", "2xl": "1.5rem" },
+    "weight": { "normal": 400, "medium": 500, "semibold": 600, "bold": 700 }
+  },
+  "spacing": { "0": "0", "1": "0.25rem", "2": "0.5rem", "3": "0.75rem", "4": "1rem", "6": "1.5rem", "8": "2rem" },
+  "layout": { "containerMax": "1280px", "sectionGap": "2rem" },
+  "components": {},
+  "email": { "containerWidth": "600px", "padding": "16px" },
+  "marketing": {},
+  "seo": { "metaTitleMax": 60, "metaDescMax": 160 },
+  "documents": {},
+  "image_generation": {},
+  "motion": { "duration": "200ms", "easing": "ease" }
+}

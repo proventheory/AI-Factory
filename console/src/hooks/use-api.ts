@@ -204,6 +204,20 @@ export function useRoutingPolicies() {
   });
 }
 
+export function useLlmBudgets(params?: { limit?: number; offset?: number }) {
+  return useQuery({
+    queryKey: ["llm_budgets", params?.limit, params?.offset],
+    queryFn: () => api.getLlmBudgets(params),
+  });
+}
+
+export function useWebhookOutbox(params?: { status?: string; limit?: number; offset?: number }) {
+  return useQuery({
+    queryKey: ["webhook_outbox", params?.status, params?.limit, params?.offset],
+    queryFn: () => api.getWebhookOutbox(params),
+  });
+}
+
 // -- Brand Engine --
 
 export function useBrandProfiles(params?: { status?: string; search?: string; limit?: number }) {

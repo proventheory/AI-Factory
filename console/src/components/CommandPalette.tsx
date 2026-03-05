@@ -4,24 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Command as CmdkCommand } from "cmdk";
 import { cn } from "@/lib/utils";
-
-const NAV_ITEMS: { label: string; href: string }[] = [
-  { label: "Overview", href: "/dashboard" },
-  { label: "Initiatives", href: "/initiatives" },
-  { label: "Plans", href: "/plans" },
-  { label: "Pipeline Runs", href: "/runs" },
-  { label: "Jobs", href: "/jobs" },
-  { label: "Artifacts", href: "/artifacts" },
-  { label: "Approvals", href: "/approvals" },
-  { label: "Tool Calls", href: "/tool-calls" },
-  { label: "Releases", href: "/releases" },
-  { label: "Policies", href: "/policies" },
-  { label: "Adapters", href: "/adapters" },
-  { label: "Incidents", href: "/incidents" },
-  { label: "Audit", href: "/audit" },
-  { label: "Secrets", href: "/secrets" },
-  { label: "Scheduler Health", href: "/health" },
-];
+import { getAllNavItems } from "@/config/nav";
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -76,7 +59,7 @@ export function CommandPalette() {
                 No results found.
               </CmdkCommand.Empty>
               <CmdkCommand.Group className="px-2 py-1.5">
-                {NAV_ITEMS.map((item) => (
+                {getAllNavItems().map((item) => (
                   <CmdkCommand.Item
                     key={item.href}
                     value={`${item.label} ${item.href}`}

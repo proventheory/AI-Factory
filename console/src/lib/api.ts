@@ -59,6 +59,8 @@ export type JobRunRow = {
   environment?: string;
   started_at: string | null;
   finished_at?: string | null;
+  job_type?: string;
+  node_key?: string;
 };
 
 export type ApprovalRow = {
@@ -361,6 +363,66 @@ export type RoutingPolicyRow = {
 
 export async function getRoutingPolicies(): Promise<{ items: RoutingPolicyRow[] }> {
   const res = await fetch(`${API}/v1/routing_policies`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// -- Webhook Outbox --
+
+export type WebhookOutboxRow = {
+  id: string;
+  event_type: string;
+  payload: unknown;
+  status: string;
+  attempt_count: number;
+  last_error: string | null;
+  next_retry_at: string | null;
+  idempotency_key: string | null;
+  destination: string | null;
+  created_at: string;
+  sent_at: string | null;
+  updated_at: string;
+};
+
+export async function getWebhookOutbox(params?: { status?: string; limit?: number; offset?: number }): Promise<{ items: WebhookOutboxRow[]; limit: number; offset: number }> {
+  const searchParams = new URLSearchParams();
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.offset) searchParams.set("offset", String(params.offset));
+  const res = await fetch(`${API}/v1/webhook_outbox?${searchParams}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function patchWebhookOutbox(id: string, body: { status?: string; attempt_count?: number; last_error?: string; next_retry_at?: string | null; sent_at?: string | null }): Promise<WebhookOutboxRow> {
+  const res = await fetch(`${API}/v1/webhook_outbox/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// -- LLM Budgets --
+
+export type LlmBudgetRow = {
+  id: string;
+  scope_type: string;
+  scope_value: string;
+  budget_tokens: number | null;
+  budget_dollars: number | null;
+  period: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getLlmBudgets(params?: { limit?: number; offset?: number }): Promise<{ items: LlmBudgetRow[]; limit: number; offset: number }> {
+  const searchParams = new URLSearchParams();
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.offset) searchParams.set("offset", String(params.offset));
+  const res = await fetch(`${API}/v1/llm_budgets?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

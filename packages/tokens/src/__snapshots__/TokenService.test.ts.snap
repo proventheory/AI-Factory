@@ -1,0 +1,153 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Export stubs exportToCssVariables produces stable CSS with default tokens 1`] = `
+":root {
+--brand-color-brand-500: #3b82f6;
+--brand-color-brand-600: #2563eb;
+--brand-color-text-primary: #0f172a;
+--brand-color-text-secondary: #334155;
+--brand-color-text-muted: #64748b;
+--brand-color-text-inverse: #ffffff;
+--brand-color-surface-base: #ffffff;
+--brand-color-surface-raised: #f8fafc;
+--brand-color-surface-sunken: #f1f5f9;
+--brand-color-state-success: #059669;
+--brand-color-state-warning: #d97706;
+--brand-color-state-danger: #dc2626;
+--brand-color-state-info: #2563eb;
+--brand-color-border-subtle: #e2e8f0;
+--brand-color-border-default: #cbd5e1;
+--brand-color-border-strong: #94a3b8;
+--brand-font-fonts-heading: Inter;
+--brand-font-fonts-body: Inter;
+--brand-font-fonts-mono: ui-monospace, monospace;
+--brand-font-scale-xs: 0.75rem;
+--brand-font-scale-sm: 0.875rem;
+--brand-font-scale-base: 1rem;
+--brand-font-scale-lg: 1.125rem;
+--brand-font-scale-xl: 1.25rem;
+--brand-font-scale-2xl: 1.5rem;
+--brand-font-weight-normal: 400;
+--brand-font-weight-medium: 500;
+--brand-font-weight-semibold: 600;
+--brand-font-weight-bold: 700;
+--brand-space-0: 0;
+--brand-space-1: 0.25rem;
+--brand-space-2: 0.5rem;
+--brand-space-3: 0.75rem;
+--brand-space-4: 1rem;
+--brand-space-6: 1.5rem;
+--brand-space-8: 2rem;
+}"
+`;
+
+exports[`Export stubs exportToDeckConfig produces stable deck config 1`] = `
+{
+  "colors": {
+    "border": {
+      "default": "#cbd5e1",
+      "strong": "#94a3b8",
+      "subtle": "#e2e8f0",
+    },
+    "brand": {
+      "500": "#3b82f6",
+      "600": "#2563eb",
+    },
+    "state": {
+      "danger": "#dc2626",
+      "info": "#2563eb",
+      "success": "#059669",
+      "warning": "#d97706",
+    },
+    "surface": {
+      "base": "#ffffff",
+      "raised": "#f8fafc",
+      "sunken": "#f1f5f9",
+    },
+    "text": {
+      "inverse": "#ffffff",
+      "muted": "#64748b",
+      "primary": "#0f172a",
+      "secondary": "#334155",
+    },
+  },
+  "motion": {
+    "duration": "200ms",
+    "easing": "ease",
+  },
+  "spacing": {
+    "0": "0",
+    "1": "0.25rem",
+    "2": "0.5rem",
+    "3": "0.75rem",
+    "4": "1rem",
+    "6": "1.5rem",
+    "8": "2rem",
+  },
+  "typography": {
+    "body": "Inter",
+    "heading": "Inter",
+    "scale": {
+      "2xl": "1.5rem",
+      "base": "1rem",
+      "lg": "1.125rem",
+      "sm": "0.875rem",
+      "xl": "1.25rem",
+      "xs": "0.75rem",
+    },
+  },
+}
+`;
+
+exports[`Export stubs exportToEmailJson produces valid JSON subset 1`] = `
+"{
+  "colors": {
+    "brand": {
+      "500": "#3b82f6",
+      "600": "#2563eb"
+    },
+    "text": {
+      "primary": "#0f172a",
+      "secondary": "#334155",
+      "muted": "#64748b",
+      "inverse": "#ffffff"
+    },
+    "surface": {
+      "base": "#ffffff",
+      "raised": "#f8fafc",
+      "sunken": "#f1f5f9"
+    },
+    "state": {
+      "success": "#059669",
+      "warning": "#d97706",
+      "danger": "#dc2626",
+      "info": "#2563eb"
+    },
+    "border": {
+      "subtle": "#e2e8f0",
+      "default": "#cbd5e1",
+      "strong": "#94a3b8"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Inter",
+      "body": "Inter",
+      "mono": "ui-monospace, monospace"
+    }
+  },
+  "email": {
+    "containerWidth": "600px",
+    "padding": "16px"
+  },
+  "spacing": {
+    "0": "0",
+    "1": "0.25rem",
+    "2": "0.5rem",
+    "3": "0.75rem",
+    "4": "1rem",
+    "6": "1.5rem",
+    "8": "2rem"
+  }
+}"
+`;

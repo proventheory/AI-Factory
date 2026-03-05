@@ -71,8 +71,17 @@ export default function NewBrandPage() {
         },
         design_tokens: {
           color: { brand: { "500": primaryColor, "600": secondaryColor } },
-          ...(fontHeadings || fontBody ? { typography: { font_headings: fontHeadings, font_body: fontBody } } : {}),
-          ...(logoUrl ? { logo_url: logoUrl } : {}),
+          colors: { brand: { "500": primaryColor, "600": secondaryColor } },
+          ...(fontHeadings || fontBody
+            ? {
+                typography: {
+                  font_headings: fontHeadings,
+                  font_body: fontBody,
+                  fonts: { heading: fontHeadings, body: fontBody },
+                },
+              }
+            : {}),
+          ...(logoUrl ? { logo_url: logoUrl, logo: { url: logoUrl } } : {}),
         },
       });
       router.push(`/brands/${result.id}`);

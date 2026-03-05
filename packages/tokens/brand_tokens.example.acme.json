@@ -1,0 +1,12 @@
+{
+  "identity": { "archetype": "innovator", "tagline": "Build what's next" },
+  "voice": { "reading_level": "grade_9", "formality": "neutral" },
+  "colors": {
+    "brand": { "500": "#2563eb", "600": "#1d4ed8" },
+    "text": { "primary": "#0f172a", "secondary": "#334155", "muted": "#64748b", "inverse": "#ffffff" }
+  },
+  "typography": {
+    "fonts": { "heading": "Inter", "body": "Inter", "mono": "ui-monospace, monospace" }
+  },
+  "logo": { "url": "https://example.com/logo.svg" }
+}

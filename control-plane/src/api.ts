@@ -6,7 +6,10 @@ import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
 import { executeRollback } from "./release-manager.js";
 
 const app = express();
-app.use(cors({ origin: process.env.CORS_ORIGIN ?? "*" }));
+// CORS: allow comma-separated origins (e.g. multiple Vercel URLs) or "*"
+const corsOrigin = process.env.CORS_ORIGIN ?? "*";
+const allowedOrigins = corsOrigin === "*" ? "*" : corsOrigin.split(",").map((s) => s.trim()).filter(Boolean);
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 const DEFAULT_LIMIT = 50;
@@ -17,6 +20,58 @@ function getRole(_req: express.Request): "viewer" | "operator" | "approver" | "a
   const role = _req.headers["x-role"] as string | undefined;
   if (role === "admin" || role === "approver" || role === "operator" || role === "viewer") return role;
   return "viewer";
+}
+
+/** Flatten design_tokens for brand_design_tokens_flat. Returns { path, value_text, value_json, type, group }[] */
+function flattenDesignTokens(obj: unknown, prefix = ""): { path: string; value_text: string | null; value_json: unknown; type: string; group: string }[] {
+  const out: { path: string; value_text: string | null; value_json: unknown; type: string; group: string }[] = [];
+  if (obj == null) return out;
+  const group = prefix ? prefix.split(".")[0] : "";
+  if (typeof obj === "string") {
+    out.push({ path: prefix, value_text: obj, value_json: null, type: "string", group });
+    return out;
+  }
+  if (typeof obj === "number" || typeof obj === "boolean") {
+    out.push({ path: prefix, value_text: String(obj), value_json: obj, type: typeof obj, group });
+    return out;
+  }
+  if (Array.isArray(obj)) {
+    out.push({ path: prefix, value_text: null, value_json: obj, type: "array", group });
+    return out;
+  }
+  if (typeof obj === "object") {
+    for (const [k, v] of Object.entries(obj)) {
+      out.push(...flattenDesignTokens(v, prefix ? `${prefix}.${k}` : k));
+    }
+  }
+  return out;
+}
+
+/** Sync design_tokens to brand_design_tokens_flat. No-op if table does not exist. */
+async function syncDesignTokensFlat(brandId: string, designTokens: unknown): Promise<void> {
+  const flat = flattenDesignTokens(designTokens);
+  if (flat.length === 0) return;
+  try {
+    await pool.query("DELETE FROM brand_design_tokens_flat WHERE brand_id = $1", [brandId]);
+    for (const row of flat) {
+      await pool.query(
+        `INSERT INTO brand_design_tokens_flat (brand_id, path, value, value_json, type, "group", updated_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, now())
+         ON CONFLICT (brand_id, path) DO UPDATE SET value = $3, value_json = $4::jsonb, type = $5, "group" = $6, updated_at = now()`,
+        [
+          brandId,
+          row.path,
+          row.value_text,
+          row.value_json != null ? JSON.stringify(row.value_json) : null,
+          row.type,
+          row.group || "root",
+        ]
+      );
+    }
+  } catch (e) {
+    if ((e as { code?: string }).code !== "42P01") throw e;
+    // 42P01 = undefined_table; ignore if migration not run
+  }
 }
 
 /** GET /health */
@@ -939,6 +994,67 @@ app.get("/v1/health", async (_req, res) => {
   }
 });
 
+/** GET /v1/webhook_outbox — list outbox rows (status, limit, offset) */
+app.get("/v1/webhook_outbox", async (req, res) => {
+  try {
+    const status = req.query.status as string | undefined;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const offset = Number(req.query.offset) || 0;
+    const conditions = status ? ["status = $1"] : ["1=1"];
+    const params: unknown[] = status ? [status, limit, offset] : [limit, offset];
+    const limitIdx = params.length - 1;
+    const offsetIdx = params.length;
+    const r = await pool.query(
+      `SELECT * FROM webhook_outbox WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params
+    );
+    res.json({ items: r.rows, limit, offset });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** PATCH /v1/webhook_outbox/:id — update status after send attempt */
+app.patch("/v1/webhook_outbox/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const body = req.body as { status?: string; attempt_count?: number; last_error?: string; next_retry_at?: string | null; sent_at?: string | null };
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    let i = 1;
+    if (body.status !== undefined) {
+      sets.push(`status = $${i++}`);
+      params.push(body.status);
+    }
+    if (body.attempt_count !== undefined) {
+      sets.push(`attempt_count = $${i++}`);
+      params.push(body.attempt_count);
+    }
+    if (body.last_error !== undefined) {
+      sets.push(`last_error = $${i++}`);
+      params.push(body.last_error);
+    }
+    if (body.next_retry_at !== undefined) {
+      sets.push(`next_retry_at = $${i++}`);
+      params.push(body.next_retry_at);
+    }
+    if (body.sent_at !== undefined) {
+      sets.push(`sent_at = $${i++}`);
+      params.push(body.sent_at);
+    }
+    sets.push("updated_at = now()");
+    params.push(id);
+    const r = await pool.query(
+      `UPDATE webhook_outbox SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
+      params
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** POST /v1/webhooks/github — create initiative from GitHub events; self-healing on fix-me label */
 app.post("/v1/webhooks/github", async (req, res) => {
   try {
@@ -1443,7 +1559,11 @@ app.post("/v1/brand_profiles", async (req, res) => {
         body.report_theme ? JSON.stringify(body.report_theme) : null,
       ]
     );
-    res.status(201).json(r.rows[0]);
+    const inserted = r.rows[0] as { id: string; design_tokens?: unknown };
+    if (body.design_tokens && inserted?.id) {
+      await syncDesignTokensFlat(inserted.id, body.design_tokens);
+    }
+    res.status(201).json(inserted);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -1480,7 +1600,11 @@ app.put("/v1/brand_profiles/:id", async (req, res) => {
       params
     );
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
-    res.json(r.rows[0]);
+    const updated = r.rows[0] as { design_tokens?: unknown };
+    if (body.design_tokens !== undefined && updated.design_tokens) {
+      await syncDesignTokensFlat(id, updated.design_tokens);
+    }
+    res.json(updated);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }

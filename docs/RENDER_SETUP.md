@@ -73,7 +73,16 @@ So: **one-time in Dashboard** = New → Blueprint, connect repo. **Rest** (env v
 
 ---
 
-## 5. References
+## 5. Build failures (troubleshooting)
+
+If a deploy fails on Render, use MCP: *“List recent deploys for ai-factory-api-staging”* then *“Get deploy &lt;id&gt;”* or *“List logs for ai-factory-api-staging in the last hour”* to see the error.
+
+- **`Could not resolve "/app/control-plane/src/index.ts"`** — The Dockerfile must use **relative** paths for esbuild (e.g. `control-plane/src/index.ts`, `dist/control-plane-bundle.js`). Absolute paths like `/app/...` fail in Render’s build context. Keep `COPY . .` so the full repo is in the image; do not switch to `COPY control-plane runners adapters ./` with absolute esbuild paths.
+- **`open Dockerfile.control-plane: no such file or directory`** — The branch you’re deploying (e.g. `prod`) doesn’t have `Dockerfile.control-plane` at the repo root. Merge `main` into that branch so the file exists, then redeploy.
+
+---
+
+## 6. References
 
 - [Render MCP Server](https://render.com/docs/mcp-server) — setup and supported actions.
 - [Render API](https://render.com/docs/api) — create API key.
