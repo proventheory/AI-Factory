@@ -33,11 +33,11 @@ export class McpAdapter implements Adapter {
     const result = await callMcpTool(this.serverName, toolName, args);
 
     if (result.isError) {
-      const errMsg = result.content?.map(c => c.text).join("\n") ?? "MCP tool call failed";
+      const errMsg = result.content?.map((c: { text?: string }) => c.text).join("\n") ?? "MCP tool call failed";
       throw new Error(errMsg);
     }
 
-    const textContent = result.content?.filter(c => c.type === "text").map(c => c.text).join("\n") ?? "";
+    const textContent = result.content?.filter((c: { type?: string; text?: string }) => c.type === "text").map((c: { text?: string }) => c.text).join("\n") ?? "";
 
     return {
       data: { content: textContent, raw: result.content },
