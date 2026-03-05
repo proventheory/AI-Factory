@@ -78,11 +78,23 @@ So: **one-time in Dashboard** = New → Blueprint, connect repo. **Rest** (env v
 If a deploy fails on Render, use MCP: *“List recent deploys for ai-factory-api-staging”* then *“Get deploy &lt;id&gt;”* or *“List logs for ai-factory-api-staging in the last hour”* to see the error.
 
 - **`Could not resolve "/app/control-plane/src/index.ts"`** — The Dockerfile must use **relative** paths for esbuild (e.g. `control-plane/src/index.ts`, `dist/control-plane-bundle.js`). Absolute paths like `/app/...` fail in Render’s build context. Keep `COPY . .` so the full repo is in the image; do not switch to `COPY control-plane runners adapters ./` with absolute esbuild paths.
-- **`open Dockerfile.control-plane: no such file or directory`** — The branch you’re deploying (e.g. `prod`) doesn’t have `Dockerfile.control-plane` at the repo root. Merge `main` into that branch so the file exists, then redeploy.
+- **`open Dockerfile.control-plane: no such file or directory`** — The branch you’re deploying (e.g. `prod`) doesn’t have `Dockerfile.control-plane` at the repo root. Merge `main` into that branch so the file exists, then redeploy. If `prod` has required status checks, open a **PR from `main` into `prod`** and merge after CI passes; direct push to `prod` will be rejected.
 
 ---
 
-## 6. References
+## 6. DB migrations (webhook_outbox, brand_design_tokens_flat)
+
+`npm run db:migrate` runs core schemas plus `supabase/migrations/20250303100000_webhook_outbox.sql` and `20250303100001_brand_design_tokens_flat.sql`. Set **DATABASE_URL** (e.g. from Supabase **Settings → Database**):
+
+```bash
+DATABASE_URL='postgresql://...' npm run db:migrate
+```
+
+Or run the two migration files manually in the Supabase SQL editor.
+
+---
+
+## 7. References
 
 - [Render MCP Server](https://render.com/docs/mcp-server) — setup and supported actions.
 - [Render API](https://render.com/docs/api) — create API key.
