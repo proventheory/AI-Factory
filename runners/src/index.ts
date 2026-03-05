@@ -8,7 +8,7 @@ import {
   jobRequestFromContext,
   persistJobResult,
 } from "./executor-registry.js";
-import { advanceSuccessors, checkRunCompletion } from "../../control-plane/src/scheduler.js";
+import { advanceSuccessors, checkRunCompletion } from "#control-plane/scheduler.js";
 
 registerAllHandlers();
 

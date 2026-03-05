@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { v4 as uuid } from "uuid";
 import type pg from "pg";
-import type { Adapter } from "@adapters/adapter-interface.js";
+import type { Adapter } from "#adapters/adapter-interface.js";
 
 /**
  * Tool-call framework (Sections 5.8, 5A, 6, 12C.10).

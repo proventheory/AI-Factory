@@ -26,7 +26,7 @@ export class McpAdapter implements Adapter {
   }
 
   async execute(request: Record<string, unknown>): Promise<AdapterResponse> {
-    const { callMcpTool } = await import("../../runners/src/mcp-client.js");
+    const { callMcpTool } = await import("#runners/mcp-client.js");
     const toolName = request.tool_name as string;
     const args = (request.arguments as Record<string, unknown>) ?? {};
 

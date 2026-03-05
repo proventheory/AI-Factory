@@ -4,6 +4,11 @@
   "private": true,
   "description": "AI Factory: autonomous orchestration system for dev and marketing pipelines",
   "type": "module",
+  "imports": {
+    "#control-plane/*": "./dist/control-plane/src/*",
+    "#runners/*": "./dist/runners/src/*",
+    "#adapters/*": "./dist/adapters/src/*"
+  },
   "scripts": {
     "build": "tsc",
     "start:control-plane": "node dist/control-plane/src/index.js",

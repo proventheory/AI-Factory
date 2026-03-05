@@ -13,7 +13,7 @@ import type {
   Executor,
   ArtifactRecord,
   ToolCallRecord,
-} from "../../control-plane/src/kernel-contract.js";
+} from "#control-plane/kernel-contract.js";
 import type { JobContext } from "./job-context.js";
 
 // ---------------------------------------------------------------------------

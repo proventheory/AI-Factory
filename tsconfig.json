@@ -16,9 +16,9 @@
     "declarationMap": true,
     "sourceMap": true,
     "paths": {
-      "@control-plane/*": ["./control-plane/src/*"],
-      "@runners/*": ["./runners/src/*"],
-      "@adapters/*": ["./adapters/src/*"]
+      "#control-plane/*": ["./control-plane/src/*"],
+      "#runners/*": ["./runners/src/*"],
+      "#adapters/*": ["./adapters/src/*"]
     }
   },
   "include": [
