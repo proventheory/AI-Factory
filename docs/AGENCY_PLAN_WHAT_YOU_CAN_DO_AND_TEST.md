@@ -60,7 +60,7 @@ ProfessorX is the **operator console** for the AI Factory: one control surface t
 1. **Initiative** – Create an initiative with **intent_type: landing** (or marketing). Attach a **brand** (e.g. Pharmacytime) so the runner has design_tokens and identity.
 2. **Plan** – Compile the plan. The **landing** template is: copy_generate → landing_page_generate. The **marketing** template adds brand_compile and deck_generate.
 3. **Run** – Start the run. When a runner is connected, it runs copy_generate (hero/CTA), then landing_page_generate (brand + copy → single HTML with header, hero, CTA).
-4. **View URL** – Open **Runs** → that run → **Artifacts** tab. For the **landing_page** artifact, click **View page**. That opens the Control Plane content URL: `{CONTROL_PLANE_API}/v1/artifacts/{artifact_id}/content`, which returns the HTML so the browser renders the landing page.
+4. **Preview URL** – Open **Pipeline Runs** → that run → **Artifacts** tab. For the **landing_page** artifact, click **Open preview** (or use the **Preview** column). The URL is: `{CONTROL_PLANE_API}/v1/artifacts/{artifact_id}/content` — it returns the HTML so the browser renders the landing page.
 
 So the **engine** produces the page; the **URL** to launch it is the artifact content endpoint. No separate “preview script” needed for normal use.
 

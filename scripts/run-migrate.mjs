@@ -25,6 +25,8 @@ const migrations = [
   { path: "schemas/002_state_machines_and_constraints.sql", name: "002_state_machines_and_constraints", skipIfErrorCode: "42710", skipMessage: "objects already exist" },
   { path: "supabase/migrations/20250303100000_webhook_outbox.sql", name: "webhook_outbox" },
   { path: "supabase/migrations/20250303100002_console_required_tables.sql", name: "console_required_tables" },
+  { path: "supabase/migrations/20250303100003_brand_embeddings.sql", name: "brand_embeddings" },
+  { path: "supabase/migrations/20250303100004_seed_default_policy.sql", name: "seed_default_policy" },
   {
     path: "supabase/migrations/20250303100001_brand_design_tokens_flat.sql",
     name: "brand_design_tokens_flat",

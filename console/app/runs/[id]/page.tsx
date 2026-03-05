@@ -174,6 +174,7 @@ export default function RunDetailPage() {
     { key: "started_at", header: "Started", render: (r) => r.started_at ? new Date(r.started_at).toLocaleString() : "—" },
   ];
 
+  const landingPageArtifacts = artifacts.filter((a) => a.artifact_type === "landing_page");
   const artifactColumns: Column<ArtifactRow>[] = [
     { key: "id", header: "ID", render: (r) => <span className="font-mono text-xs">{String(r.id).slice(0, 8)}…</span> },
     { key: "artifact_class", header: "Class" },
@@ -181,11 +182,11 @@ export default function RunDetailPage() {
     { key: "uri", header: "URI", render: (r) => <span className="truncate max-w-[200px] block" title={r.uri}>{r.uri}</span> },
     {
       key: "view",
-      header: "",
+      header: "Preview",
       render: (r) =>
         r.artifact_type === "landing_page" ? (
-          <a href={`${API}/v1/artifacts/${r.id}/content`} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline text-sm">
-            View page
+          <a href={`${API}/v1/artifacts/${r.id}/content`} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline text-sm font-medium">
+            Open preview
           </a>
         ) : null,
     },
@@ -271,6 +272,12 @@ export default function RunDetailPage() {
 
           <TabsContent value="artifacts" className="pt-4">
             <CardSection title="Artifacts">
+              {landingPageArtifacts.length > 0 && (
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                  <strong>Preview URL:</strong> For landing pages, use the <strong>Open preview</strong> link in the table (or open{" "}
+                  <code className="bg-surface-sunken px-1 rounded text-xs">{API}/v1/artifacts/&lt;artifact_id&gt;/content</code> in a new tab).
+                </p>
+              )}
               {artifacts.length === 0 ? (
                 <EmptyState title="No artifacts" description="No artifacts recorded for this run." />
               ) : (
