@@ -81,12 +81,24 @@ npm run baseline    # writes .self-heal-baseline.json
 
 ---
 
+## What self-heal covers (using existing integrations)
+
+ProfessorX is wired to **Render** (API key), **GitHub** (webhook), and **Supabase** (Postgres) via env keys and config. Self-heal uses these same integrations; no separate “hypothesis” or MCP is required for normal operation.
+
+- **Self-heal fixes:**  
+  (1) **Local** — build/type/lint errors (doctor → LLM patches → re-run).  
+  (2) **Platform (code)** — GitHub **fix-me** label creates an initiative and plan; runners run a code-fix flow (OpenHands/SWE-agent) and can open a PR.  
+  (3) **Platform (no-artifacts)** — When a run completes (initiative → plan → pipeline → jobs) but has **no artifacts** (e.g. Render worker wrong env), the Control Plane **auto-detects** via API (run status, job_runs, artifact count) and **auto-remediates**: syncs Render worker env from Control Plane and creates a new run. No human in the loop. Requires `ENABLE_SELF_HEAL=true` and `RENDER_API_KEY` on the Control Plane. Triggers: GET /v1/runs/:id/artifacts when empty, and a **background scan** every 3 minutes for terminal runs with jobs but zero artifacts.
+
+- **When to use the runbook:** If self-heal is disabled or you need manual steps, see [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **No artifacts on runs** and **Runner not claiming jobs**.
+
 ## Summary
 
 | Goal | Action |
 |------|--------|
 | **Auto-debug this repo right now (local)** | Run `npm run self-heal` in the repo (with `OPENAI_API_KEY` set). |
 | **Ask the platform to self-heal from GitHub** | Add the **fix-me** label to an issue or PR; set `ENABLE_SELF_HEAL=true` on the Control Plane and configure the GitHub webhook to `POST /v1/webhooks/github`. |
+| **Runs have no artifacts / landing page missing** | With `ENABLE_SELF_HEAL=true` and `RENDER_API_KEY` set, the Control Plane auto-remediates (worker env sync + new run). Otherwise use runbook: [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **No artifacts on runs**. |
 
 For gating (evals, human approval) on self-healing PRs, see [LLM_GATEWAY_AND_OPTIMIZATION.md](LLM_GATEWAY_AND_OPTIMIZATION.md) (“Self-healing gating policy”).
 

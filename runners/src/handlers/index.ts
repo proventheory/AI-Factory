@@ -36,16 +36,11 @@ async function writeArtifact(
   const uri = `mem://${artifactType}/${context.run_id}/${context.plan_node_id}`;
   const maxContent = artifactType === "landing_page" ? 2_000_000 : 10_000;
   const payload = JSON.stringify({ content: content.slice(0, maxContent) });
+  // Use minimal columns (no producer_plan_node_id) so INSERT never fails on core schema and never aborts the transaction.
   await client.query(
-    `INSERT INTO artifacts (id, run_id, job_run_id, producer_plan_node_id, artifact_type, artifact_class, uri, metadata_json)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::jsonb)`,
-    [params.runId, params.jobRunId, params.planNodeId, artifactType, artifactClass, uri, payload]
-  ).catch(() =>
-    client.query(
-      `INSERT INTO artifacts (run_id, job_run_id, artifact_type, artifact_class, uri, metadata_json)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-      [params.runId, params.jobRunId, artifactType, artifactClass, uri, payload]
-    )
+    `INSERT INTO artifacts (id, run_id, job_run_id, artifact_type, artifact_class, uri, metadata_json)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::jsonb)`,
+    [params.runId, params.jobRunId, artifactType, artifactClass, uri, payload]
   );
 }
 

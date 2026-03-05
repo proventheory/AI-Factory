@@ -1,3 +1,4 @@
+import "dotenv/config";
 import pg from "pg";
 import { registerWorker, claimJob, startHeartbeatLoop, completeJobSuccess, completeJobFailure } from "./runner.js";
 import { getJobContext } from "./job-context.js";
@@ -14,8 +15,13 @@ registerAllHandlers();
 
 const POLL_INTERVAL_MS = 2_000;
 
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl?.trim()) {
+  console.error("[runner] DATABASE_URL is not set. Set it in .env (same as Control Plane) so the runner can claim jobs.");
+  process.exit(1);
+}
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: databaseUrl,
   max: 10,
 });
 
@@ -26,6 +32,12 @@ const config = {
   maxConcurrency: Number(process.env.MAX_CONCURRENCY ?? "5"),
 };
 
+if (!process.env.LLM_GATEWAY_URL?.trim()) {
+  console.warn("[runner] LLM_GATEWAY_URL is not set. Set it in .env (e.g. your LiteLLM proxy or OpenAI-compatible gateway) so LLM handlers (copy_generate, landing_page_generate, etc.) can run.");
+} else {
+  console.log("[runner] LLM_GATEWAY_URL is set.");
+}
+
 let activeJobs = 0;
 
 async function pollAndExecute(): Promise<void> {
@@ -35,6 +47,15 @@ async function pollAndExecute(): Promise<void> {
   try {
     await client.query("BEGIN");
     const claimed = await claimJob(client, config.workerId);
+    // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+    if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+      if (!claimed) {
+        fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:claim", message: "claimJob returned null", data: {}, timestamp: Date.now(), hypothesisId: "H1" }) }).catch(() => {});
+      } else {
+        fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:claimed", message: "job claimed", data: { jobRunId: claimed.jobRun.id, runId: claimed.jobRun.run_id, planNodeId: claimed.jobRun.plan_node_id }, timestamp: Date.now(), hypothesisId: "H2" }) }).catch(() => {});
+      }
+    }
+    // #endregion
     if (!claimed) {
       await client.query("ROLLBACK");
       return;
@@ -88,6 +109,11 @@ async function pollAndExecute(): Promise<void> {
           await txClient.query("BEGIN");
           await handler(txClient, jobContext, { runId: jobRun.run_id, jobRunId: jobRun.id, planNodeId: jobRun.plan_node_id });
           await txClient.query("COMMIT");
+          // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+          if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+            fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:handler_done", message: "handler completed", data: { job_type: jobContext.job_type, runId: jobRun.run_id }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
+          }
+          // #endregion
         } catch (err) {
           await txClient.query("ROLLBACK");
           throw err;
@@ -95,6 +121,11 @@ async function pollAndExecute(): Promise<void> {
           txClient.release();
         }
       } else {
+        // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+        if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+          fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:no_executor_handler", message: "no executor or handler", data: { job_type: jobContext?.job_type }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
+        }
+        // #endregion
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
@@ -117,6 +148,11 @@ async function pollAndExecute(): Promise<void> {
       }
     } catch (err) {
       const errorSig = (err as Error).message?.slice(0, 200) ?? "unknown";
+      // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+      if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+        fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:catch", message: "job failed", data: { job_type: jobContext?.job_type, error: errorSig }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
+      }
+      // #endregion
       const txClient = await pool.connect();
       try {
         await txClient.query("BEGIN");
@@ -131,8 +167,9 @@ async function pollAndExecute(): Promise<void> {
       stopHeartbeat();
       activeJobs--;
     }
-  } catch {
-    await client.query("ROLLBACK");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[runner] Poll error:", err);
   } finally {
     client.release();
   }
@@ -141,7 +178,8 @@ async function pollAndExecute(): Promise<void> {
 async function main(): Promise<void> {
   console.log(`[runner] Starting worker ${config.workerId} (v${config.runnerVersion})`);
   await registerWorker(pool, config);
-
+  const q = await pool.query("SELECT count(*)::int AS c FROM job_runs WHERE status = 'queued'");
+  console.log(`[runner] DB check: ${q.rows[0]?.c ?? 0} queued job(s) visible`);
   setInterval(async () => {
     try {
       await pollAndExecute();

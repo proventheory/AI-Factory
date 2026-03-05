@@ -47,7 +47,7 @@ ProfessorX is the **operator console** for the AI Factory: one control surface t
 
 **Test & deploy (marketing):** Create a brand and a document template, then confirm they appear in the Console and (when runners are connected) that jobs like brand-compile or deck-generate can consume them. Deploy = same stack (Console + Control Plane + DB).
 
-**Local full flow (browser):** From repo root, ensure `.env` has `DATABASE_URL`. Run Control Plane: `npm run dev:control-plane` (loads `.env`). Run Console: `cd console && npm run dev`. Open http://localhost:3000 → Orchestration → Initiatives → open an initiative → **Compile plan** → **Start run** (per plan) → open run → Artifacts → **View page** for a landing_page artifact. If compile or start fails, the initiative page shows the API error inline so you can fix and retry.
+**Local full flow (browser):** From repo root, ensure `.env` has `DATABASE_URL`, `CONTROL_PLANE_URL` (e.g. `http://localhost:3001`), and `LLM_GATEWAY_URL`. Run **Control Plane:** `npm run dev:control-plane`. Run **Runner:** `npm run dev:runner` (so jobs execute and the landing page artifact is created). Run **Console:** `cd console && npm run dev`. Open http://localhost:3000 → Initiatives → open a **landing** initiative → **Compile plan** → **Start run** → open the run → **Artifacts** tab → **Open preview** for the landing page. Without a runner, jobs stay queued and no artifact appears.
 
 ---
 

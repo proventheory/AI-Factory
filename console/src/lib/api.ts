@@ -446,6 +446,77 @@ export async function getUsageByJobType(params?: { from?: string; to?: string })
   return res.json();
 }
 
+// -- Analytics (real run activity, cost, artifacts) --
+
+export type AnalyticsPayload = {
+  run_activity_heatmap: { id: string; data: { x: string; y: number }[] }[];
+  cost_treemap: { name: string; children: { name: string; children?: { name: string; value: number }[]; value?: number }[] };
+  artifact_breakdown: { name: string; children: { name: string; value: number }[] };
+  from: string;
+  to: string;
+};
+
+export async function getAnalytics(params?: { from?: string; to?: string }): Promise<AnalyticsPayload> {
+  const searchParams = new URLSearchParams();
+  if (params?.from) searchParams.set("from", params.from);
+  if (params?.to) searchParams.set("to", params.to);
+  const res = await fetch(`${API}/v1/analytics?${searchParams}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// -- Email campaigns --
+
+export type EmailCampaignRow = {
+  id: string;
+  title: string | null;
+  intent_type: string;
+  risk_level: string;
+  created_at: string;
+  status?: string;
+  subject_line?: string | null;
+  from_name?: string | null;
+  from_email?: string | null;
+  template_artifact_id?: string | null;
+  audience_segment_ref?: string | null;
+  metadata_updated_at?: string | null;
+};
+
+export async function getEmailCampaigns(params?: { limit?: number; offset?: number }): Promise<{ items: EmailCampaignRow[]; limit: number; offset: number }> {
+  const searchParams = new URLSearchParams();
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.offset) searchParams.set("offset", String(params.offset));
+  const res = await fetch(`${API}/v1/email_campaigns?${searchParams}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getEmailCampaign(id: string): Promise<EmailCampaignRow & { reply_to?: string | null; metadata_json?: unknown }> {
+  const res = await fetch(`${API}/v1/email_campaigns/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function createEmailCampaign(body: { title?: string; subject_line?: string; from_name?: string; from_email?: string }): Promise<EmailCampaignRow> {
+  const res = await fetch(`${API}/v1/email_campaigns`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function updateEmailCampaign(id: string, body: { subject_line?: string; from_name?: string; from_email?: string; reply_to?: string; audience_segment_ref?: string }): Promise<EmailCampaignRow> {
+  const res = await fetch(`${API}/v1/email_campaigns/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 // -- Brand Engine --
 
 export type BrandProfileRow = {

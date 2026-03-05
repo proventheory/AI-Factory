@@ -21,6 +21,7 @@ const client = new pg.Client({ connectionString: url });
 
 const migrations = [
   { path: "supabase/migrations/20250303100002_console_required_tables.sql", name: "console_required_tables" },
+  { path: "supabase/migrations/20250303100003_brand_embeddings.sql", name: "brand_embeddings" },
   { path: "supabase/migrations/20250303100000_webhook_outbox.sql", name: "webhook_outbox" },
   {
     path: "supabase/migrations/20250303100001_brand_design_tokens_flat.sql",

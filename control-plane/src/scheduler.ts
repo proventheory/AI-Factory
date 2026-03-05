@@ -100,6 +100,14 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
     await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'started')`, [runId]).catch(() => {});
   }
 
+  // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+  if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+    const rootJobCount = nodes.rows.filter((n) => (inDegree.get(n.id) ?? 0) === 0 && (n as { node_type?: string }).node_type !== "approval").length;
+    try {
+      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "control-plane/src/scheduler.ts:createRun", message: "createRun done", data: { runId, planId: params.planId, rootJobCount, nodeCount: nodes.rows.length }, timestamp: Date.now(), hypothesisId: "H2" }) }).catch(() => {});
+    } catch { /* ignore */ }
+  }
+  // #endregion
   return runId;
 }
 
@@ -161,6 +169,14 @@ export async function advanceSuccessors(
            VALUES ($1, $2, $3, 1, 'queued', $4)`,
           [jobRunId, runId, to_node_id, idempotencyKey],
         );
+        // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+        if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+          try {
+            const nodeJob = await db.query<{ job_type: string }>("SELECT job_type FROM plan_nodes WHERE id = $1", [to_node_id]);
+            fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "control-plane/src/scheduler.ts:advanceSuccessors", message: "job_run enqueued", data: { runId, to_node_id, job_type: nodeJob.rows[0]?.job_type }, timestamp: Date.now(), hypothesisId: "H2" }) }).catch(() => {});
+          } catch { /* ignore */ }
+        }
+        // #endregion
       }
     }
   }

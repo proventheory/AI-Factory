@@ -40,7 +40,7 @@ export async function claimJob(client: pg.PoolClient, workerId: string): Promise
      FROM job_runs jr
      JOIN node_progress np ON np.run_id = jr.run_id AND np.plan_node_id = jr.plan_node_id
      WHERE jr.status = 'queued' AND np.status = 'eligible'
-     ORDER BY np.eligible_at NULLS FIRST, jr.created_at
+     ORDER BY np.eligible_at NULLS FIRST, jr.id
      FOR UPDATE OF jr SKIP LOCKED
      LIMIT 1`,
   );

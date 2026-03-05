@@ -4,6 +4,7 @@ import { v4 as uuid } from "uuid";
 import { pool, withTransaction } from "./db.js";
 import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
 import { executeRollback, routeRun } from "./release-manager.js";
+import { triggerNoArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
 
 const app = express();
 // CORS: allow comma-separated origins (e.g. multiple Vercel URLs) or "*"
@@ -141,13 +142,109 @@ app.get("/v1/initiatives/:id", async (req, res) => {
   }
 });
 
+/** GET /v1/email_campaigns — list initiatives with intent_type = email_campaign + metadata */
+app.get("/v1/email_campaigns", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+    const offset = Number(req.query.offset) || 0;
+    const r = await pool.query(
+      `SELECT i.id, i.title, i.intent_type, i.risk_level, i.created_at, i.status,
+              m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.audience_segment_ref, m.updated_at AS metadata_updated_at
+       FROM initiatives i
+       LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
+       WHERE i.intent_type = 'email_campaign'
+       ORDER BY i.created_at DESC LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    res.json({ items: r.rows, limit, offset });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/email_campaigns/:id — single email campaign (initiative + metadata) */
+app.get("/v1/email_campaigns/:id", async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT i.*, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
+       FROM initiatives i
+       LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
+       WHERE i.id = $1 AND i.intent_type = 'email_campaign'`,
+      [req.params.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/email_campaigns — create initiative (email_campaign) + optional metadata */
+app.post("/v1/email_campaigns", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as { title?: string; subject_line?: string; from_name?: string; from_email?: string };
+    const id = uuid();
+    await pool.query(
+      `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, 'medium')`,
+      [id, body.title ?? "New email campaign"]
+    );
+    await pool.query(
+      `INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email) VALUES ($1, $2, $3, $4)`,
+      [id, body.subject_line ?? null, body.from_name ?? null, body.from_email ?? null]
+    );
+    const r = await pool.query(
+      `SELECT i.id, i.title, i.created_at, m.subject_line, m.from_name, m.from_email
+       FROM initiatives i LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id WHERE i.id = $1`,
+      [id]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** PATCH /v1/email_campaigns/:id — update campaign metadata (upsert) */
+app.patch("/v1/email_campaigns/:id", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const id = req.params.id;
+    const exists = await pool.query("SELECT id FROM initiatives WHERE id = $1 AND intent_type = 'email_campaign'", [id]);
+    if (exists.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    const body = req.body as Record<string, unknown>;
+    const allowed = ["subject_line", "from_name", "from_email", "reply_to", "audience_segment_ref"];
+    const updates: string[] = [];
+    const params: unknown[] = [id];
+    let i = 2;
+    for (const field of allowed) {
+      if (body[field] !== undefined) {
+        updates.push(`${field} = $${i++}`);
+        params.push(body[field]);
+      }
+    }
+    updates.push("updated_at = now()");
+    const r = await pool.query(
+      `INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email)
+       VALUES ($1, null, null, null)
+       ON CONFLICT (initiative_id) DO UPDATE SET ${updates.join(", ")}
+       RETURNING *`,
+      params
+    );
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** PATCH /v1/initiatives/:id — update initiative (Operator+) */
 app.patch("/v1/initiatives/:id", async (req, res) => {
   try {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const body = req.body as Record<string, unknown>;
-    const allowed = ["intent_type", "title", "risk_level", "goal_state", "source_ref", "template_id", "priority"];
+    const allowed = ["intent_type", "title", "risk_level", "goal_state", "source_ref", "template_id", "priority", "brand_profile_id"];
     const sets: string[] = [];
     const params: unknown[] = [];
     let i = 1;
@@ -176,16 +273,16 @@ app.post("/v1/initiatives", async (req, res) => {
   try {
     const body = req.body as {
       intent_type?: string; title?: string; risk_level?: string; created_by?: string;
-      goal_state?: string; goal_metadata?: Record<string, unknown>; source_ref?: string; template_id?: string; priority?: number;
+      goal_state?: string; goal_metadata?: Record<string, unknown>; source_ref?: string; template_id?: string; priority?: number; brand_profile_id?: string | null;
     };
-    const { intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority } = body;
+    const { intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority, brand_profile_id } = body;
     if (!intent_type || !risk_level) return res.status(400).json({ error: "intent_type and risk_level required" });
     const r = await pool.query(
-      `INSERT INTO initiatives (intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority)
-       VALUES ($1,$2,$3::risk_level,$4,$5,$6::jsonb,$7,$8,$9) RETURNING *`,
+      `INSERT INTO initiatives (intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority, brand_profile_id)
+       VALUES ($1,$2,$3::risk_level,$4,$5,$6::jsonb,$7,$8,$9,$10) RETURNING *`,
       [
         intent_type, title ?? null, risk_level, created_by ?? null,
-        goal_state ?? null, goal_metadata ? JSON.stringify(goal_metadata) : null, source_ref ?? null, template_id ?? null, priority ?? 0,
+        goal_state ?? null, goal_metadata ? JSON.stringify(goal_metadata) : null, source_ref ?? null, template_id ?? null, priority ?? 0, brand_profile_id ?? null,
       ]
     );
     res.status(201).json(r.rows[0]);
@@ -299,6 +396,7 @@ app.get("/v1/runs/:id/artifacts", async (req, res) => {
       "SELECT * FROM artifacts WHERE run_id = $1 ORDER BY created_at",
       [runId]
     );
+    if (r.rows.length === 0) setImmediate(() => triggerNoArtifactsRemediationForRun(runId));
     res.json({ items: r.rows });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
@@ -1255,6 +1353,85 @@ app.get("/v1/usage/by_model", async (req, res) => {
       GROUP BY model_id, model_tier ORDER BY calls DESC
     `, [from, to]);
     res.json({ items: r.rows, from, to });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/analytics — run activity heatmap, cost tree, artifact breakdown (real data) */
+app.get("/v1/analytics", async (req, res) => {
+  try {
+    const from = (req.query.from as string) ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const to = (req.query.to as string) ?? new Date().toISOString();
+    const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const HOURS = ["00", "02", "04", "06", "08", "10", "12", "14", "16", "18", "20", "22"];
+
+    const [heatmapRows, byJobType, byModel, artifactRows] = await Promise.all([
+      pool.query(
+        `SELECT extract(dow from started_at)::int AS dow, extract(hour from started_at)::int AS hour, count(*)::int AS c
+         FROM runs WHERE started_at IS NOT NULL AND started_at BETWEEN $1 AND $2
+         GROUP BY 1, 2 ORDER BY 1, 2`,
+        [from, to]
+      ).then(r => r.rows as { dow: number; hour: number; c: number }[]),
+      pool.query(`
+        SELECT pn.job_type, lc.model_tier,
+               count(*)::int AS calls,
+               (coalesce(sum(lc.tokens_in), 0) + coalesce(sum(lc.tokens_out), 0))::bigint AS tokens
+        FROM llm_calls lc
+        JOIN job_runs jr ON jr.id = lc.job_run_id
+        JOIN plan_nodes pn ON pn.id = jr.plan_node_id
+        WHERE lc.created_at BETWEEN $1 AND $2
+        GROUP BY pn.job_type, lc.model_tier ORDER BY calls DESC
+      `, [from, to]).then(r => r.rows as { job_type: string; model_tier: string; calls: number; tokens: number }[]),
+      pool.query(`
+        SELECT model_tier, model_id, count(*)::int AS calls,
+               (coalesce(sum(tokens_in), 0) + coalesce(sum(tokens_out), 0))::bigint AS tokens
+        FROM llm_calls WHERE created_at BETWEEN $1 AND $2
+        GROUP BY model_tier, model_id ORDER BY calls DESC
+      `, [from, to]).then(r => r.rows as { model_tier: string; model_id: string; calls: number; tokens: number }[]),
+      pool.query(
+        `SELECT artifact_type, count(*)::int AS c FROM artifacts WHERE created_at BETWEEN $1 AND $2 GROUP BY artifact_type ORDER BY c DESC`,
+        [from, to]
+      ).then(r => r.rows as { artifact_type: string; c: number }[]),
+    ]);
+
+    const heatmapByKey: Record<string, Record<number, number>> = {};
+    DAYS.forEach(d => { heatmapByKey[d] = {}; for (let h = 0; h < 24; h += 2) heatmapByKey[d][h] = 0; });
+    for (const row of heatmapRows) {
+      const day = DAYS[row.dow];
+      const hourBucket = row.hour - (row.hour % 2);
+      if (day != null && hourBucket >= 0 && hourBucket < 24) (heatmapByKey[day] ??= {})[hourBucket] = (heatmapByKey[day][hourBucket] ?? 0) + row.c;
+    }
+    const run_activity_heatmap = DAYS.map(day => ({
+      id: day,
+      data: HOURS.map((h, i) => ({ x: h, y: heatmapByKey[day]?.[i * 2] ?? 0 })),
+    }));
+
+    const tierToJob: Record<string, Record<string, number>> = {};
+    for (const row of byJobType) {
+      const tier = row.model_tier || "default";
+      if (!tierToJob[tier]) tierToJob[tier] = {};
+      tierToJob[tier][row.job_type] = (tierToJob[tier][row.job_type] || 0) + Number(row.tokens);
+    }
+    const cost_treemap = {
+      name: "Costs",
+      children: Object.entries(tierToJob).map(([tier, jobs]) => ({
+        name: tier,
+        children: Object.entries(jobs).map(([job, value]) => ({ name: job, value: Math.max(1, Number(value)) })),
+      })).filter(t => t.children.length > 0),
+    };
+    if (cost_treemap.children.length === 0) {
+      cost_treemap.children = [{ name: "No LLM usage", value: 1 }];
+    }
+
+    const artifact_breakdown = {
+      name: "Artifacts",
+      children: artifactRows.length
+        ? artifactRows.map(row => ({ name: row.artifact_type || "unknown", value: row.c }))
+        : [{ name: "No artifacts", value: 1 }],
+    };
+
+    res.json({ run_activity_heatmap, cost_treemap, artifact_breakdown, from, to });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }

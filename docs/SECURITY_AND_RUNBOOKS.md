@@ -57,12 +57,27 @@
 5. Restart service.
 
 ### Runner not claiming jobs
-1. Check Runner logs for errors.
-2. Verify `DATABASE_URL` is correct.
-3. Check `worker_registry` table for Runner heartbeat.
-4. Check `job_runs` for queued jobs: `SELECT * FROM job_runs WHERE status = 'queued' LIMIT 5`.
-5. Check `job_claims` for stale leases: `SELECT * FROM job_claims WHERE released_at IS NULL AND heartbeat_at < now() - interval '2 minutes'`.
-6. Restart Runner if needed.
+1. **Same DB as Control Plane:** Start both from the same repo root so they load the same `.env` and `DATABASE_URL`. If the Runner uses a different DB, it will never see queued jobs.
+2. Check Runner logs for errors (and for “Executing job” when work exists).
+3. Verify `DATABASE_URL` is correct.
+4. Check `worker_registry` table for Runner heartbeat.
+5. Check `job_runs` for queued jobs: `SELECT * FROM job_runs WHERE status = 'queued' LIMIT 5`.
+6. Check `job_claims` for stale leases: `SELECT * FROM job_claims WHERE released_at IS NULL AND heartbeat_at < now() - interval '2 minutes'`.
+7. Restart Runner if needed.
+
+### No artifacts on runs (e.g. landing page “Open preview” missing)
+Runs exist and jobs may be queued, but the Artifacts tab stays empty. Usually the same root cause as “Runner not claiming jobs” or the worker has wrong env so jobs never complete.
+
+**Self-heal:** When `ENABLE_SELF_HEAL=true` and `RENDER_API_KEY` are set on the Control Plane, it auto-detects runs with no artifacts (via API) and remediates (sync worker env, create new run). See [SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md). Use the steps below when self-heal is disabled or for manual fix.
+
+1. **Render worker env (most common):** In Render Dashboard open the **worker** service (e.g. `ai-factory-runner-staging`), not the API. Under **Environment** set the same values as the API:
+   - `DATABASE_URL` — same Supabase connection string as the Control Plane API.
+   - `CONTROL_PLANE_URL` — e.g. `https://ai-factory-api-staging.onrender.com`.
+   - `LLM_GATEWAY_URL` — e.g. your LiteLLM/gateway URL.
+   Save; Render redeploys the worker. Wait until the worker is **Running** and healthy.
+2. **Verify runner is connected:** Check `worker_registry` for recent heartbeats; check Runner logs for “Executing job” and no repeated “No eligible job” when there is work.
+3. **Re-run or start a new run:** In Console open the run → **Re-run**, or create a new initiative → Compile plan → Start run. Then open the run → **Artifacts** tab; after jobs complete you should see artifacts and “Open preview” for landing_page.
+4. **If still no artifacts:** See “Runner not claiming jobs” above and [RUNNERS_DEPLOYMENT.md](RUNNERS_DEPLOYMENT.md). For a structured debug (hypotheses + logs), see [DEBUG_ARTIFACTS_HYPOTHESES.md](DEBUG_ARTIFACTS_HYPOTHESES.md) (used with Cursor debug-mode instrumentation).
 
 ### Evals failing in CI
 1. Check GitHub Actions → "Evals (Prompt CI)" workflow.

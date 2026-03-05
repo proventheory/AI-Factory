@@ -84,10 +84,18 @@ export async function getJobContext(
   client: pg.PoolClient,
   jobRun: { id: string; run_id: string; plan_node_id: string }
 ): Promise<JobContext | null> {
-  const runResult = await client.query(
-    "SELECT id, plan_id, workspace_path, human_feedback FROM runs WHERE id = $1",
-    [jobRun.run_id]
-  );
+  let runResult: { rows: Array<Record<string, unknown>> };
+  try {
+    runResult = await client.query(
+      "SELECT id, plan_id, workspace_path, human_feedback FROM runs WHERE id = $1",
+      [jobRun.run_id]
+    );
+  } catch {
+    runResult = await client.query(
+      "SELECT id, plan_id FROM runs WHERE id = $1",
+      [jobRun.run_id]
+    );
+  }
   if (runResult.rows.length === 0) return null;
   const run = runResult.rows[0];
   const planId = run.plan_id as string;

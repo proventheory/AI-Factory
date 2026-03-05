@@ -197,6 +197,47 @@ export function useUsageByJobType(params?: { from?: string; to?: string }) {
   });
 }
 
+export function useAnalytics(params?: { from?: string; to?: string }) {
+  return useQuery({
+    queryKey: ["analytics", params?.from, params?.to],
+    queryFn: () => api.getAnalytics(params),
+  });
+}
+
+export function useEmailCampaigns(params?: { limit?: number; offset?: number }) {
+  return useQuery({
+    queryKey: ["email_campaigns", params?.limit, params?.offset],
+    queryFn: () => api.getEmailCampaigns(params),
+  });
+}
+
+export function useEmailCampaign(id: string | null) {
+  return useQuery({
+    queryKey: ["email_campaign", id],
+    queryFn: () => api.getEmailCampaign(id!),
+    enabled: !!id,
+  });
+}
+
+export function useCreateEmailCampaign() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { title?: string; subject_line?: string; from_name?: string; from_email?: string }) => api.createEmailCampaign(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["email_campaigns"] }),
+  });
+}
+
+export function useUpdateEmailCampaign() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Parameters<typeof api.updateEmailCampaign>[1] }) => api.updateEmailCampaign(id, body),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["email_campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["email_campaign", id] });
+    },
+  });
+}
+
 export function useRoutingPolicies() {
   return useQuery({
     queryKey: ["routing_policies"],

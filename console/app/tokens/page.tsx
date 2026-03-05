@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
 import { PageFrame, Stack, PageHeader } from "@/components/ui";
 import { TokenTreeView } from "@/components/TokenTreeView";
+import { useBrandProfiles, useBrandProfile } from "@/hooks/use-api";
 
 // Platform-level defaults (aligned with packages/tokens defaults.json and BRAND_DESIGN_TOKENS_UPGRADE_PLAN.md)
 const PLATFORM_TOKEN_DEFAULTS: Record<string, unknown> = {
@@ -31,17 +34,66 @@ const PLATFORM_TOKEN_DEFAULTS: Record<string, unknown> = {
 };
 
 export default function TokenRegistryPage() {
+  const [selectedBrandId, setSelectedBrandId] = useState<string>("");
+  const { data: brandsData } = useBrandProfiles({ status: "active", limit: 200 });
+  const { data: selectedBrand } = useBrandProfile(selectedBrandId || null);
+  const brands = brandsData?.items ?? [];
+
   return (
     <PageFrame>
       <Stack>
         <PageHeader
           title="Token Registry"
-          description="Platform-level design token definitions. Brand themes reference or override these. See docs/BRAND_DESIGN_TOKENS_UPGRADE_PLAN.md for the full token system."
+          description="Platform-level design token definitions and per-brand token sets. Brand themes reference or override platform defaults. See docs/BRAND_DESIGN_TOKENS_UPGRADE_PLAN.md for the full token system."
         />
+
+        {/* By brand first so you see one brand at a time; platform defaults are reference below. */}
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="mb-2 text-body font-semibold text-slate-900">By brand</h2>
+          <p className="mb-3 text-body-small text-text-muted">
+            View one brand&apos;s tokens at a time. Select a brand to see only that brand&apos;s design tokens (overrides and extensions to platform defaults).
+          </p>
+          <div className="mb-3">
+            <label htmlFor="token-registry-brand" className="mb-1 block text-body-small font-medium text-slate-700">
+              Brand
+            </label>
+            <select
+              id="token-registry-brand"
+              value={selectedBrandId}
+              onChange={(e) => setSelectedBrandId(e.target.value)}
+              className="block w-full max-w-sm rounded-md border border-slate-300 bg-white px-3 py-2 text-body-small text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="">— Select a brand —</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            {brands.length === 0 && (
+              <p className="mt-2 text-body-small text-text-muted">
+                No brands yet. Create one in <Link href="/brands" className="text-brand-600 hover:underline">Studio → Brands</Link> to see brand-specific tokens here.
+              </p>
+            )}
+          </div>
+          {selectedBrandId && selectedBrand && (
+            <div className="mt-3">
+              <p className="mb-2 text-body-small font-medium text-slate-700">
+                <Link href={`/brands/${selectedBrand.id}`} className="text-brand-600 hover:underline">{selectedBrand.name}</Link>
+                {" — design tokens"}
+              </p>
+              <TokenTreeView
+                tokens={(selectedBrand.design_tokens ?? {}) as Record<string, unknown>}
+                className="mt-2"
+              />
+            </div>
+          )}
+        </section>
+
         <section className="rounded-lg border border-slate-200 bg-white p-4">
           <h2 className="mb-2 text-body font-semibold text-slate-900">Platform defaults (read-only)</h2>
           <p className="mb-3 text-body-small text-text-muted">
-            These tokens are used as the base for brand themes. Brands can override any path in their profile.
+            Base tokens used for brand themes. Brands override specific paths in their profile.
           </p>
           <TokenTreeView tokens={PLATFORM_TOKEN_DEFAULTS} className="mt-2" />
         </section>

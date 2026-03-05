@@ -190,6 +190,11 @@ export async function handleLandingPageGenerate({
   params,
   writeArtifact,
 }: LandingPageGenerateParams): Promise<void> {
+  // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+  if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/handlers/landing-page-generate.ts:entry", message: "landing_page_generate start", data: { runId: params.runId }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
+  }
+  // #endregion
   const { loadBrandContext } = await import("../brand-context.js");
   const brand = context.initiative_id ? await loadBrandContext(context.initiative_id) : null;
 
@@ -225,5 +230,15 @@ export async function handleLandingPageGenerate({
     title: typeof title === "string" ? title : undefined,
   });
 
+  // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+  if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/handlers/landing-page-generate.ts:before_write", message: "before writeArtifact landing_page", data: { htmlLen: html.length }, timestamp: Date.now(), hypothesisId: "H4" }) }).catch(() => {});
+  }
+  // #endregion
   await writeArtifact(client, context, params, "landing_page", html, "docs");
+  // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+  if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/handlers/landing-page-generate.ts:after_write", message: "writeArtifact landing_page done", data: {}, timestamp: Date.now(), hypothesisId: "H4" }) }).catch(() => {});
+  }
+  // #endregion
 }

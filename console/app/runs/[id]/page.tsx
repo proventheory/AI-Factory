@@ -279,7 +279,10 @@ export default function RunDetailPage() {
                 </p>
               )}
               {artifacts.length === 0 ? (
-                <EmptyState title="No artifacts" description="No artifacts recorded for this run." />
+                <EmptyState
+                  title="No artifacts"
+                  description="Jobs haven't produced artifacts yet. A runner must be running and connected to the same database to claim and execute jobs (copy_generate → landing_page_generate). If you expect artifacts: start a runner locally (npm run dev:runner with DATABASE_URL, CONTROL_PLANE_URL, LLM_GATEWAY_URL in .env) or ensure the Render worker service is running with those env vars. Then Re-run this run or start a new run."
+                />
               ) : (
                 <TableFrame>
                   <DataTable columns={artifactColumns} data={artifacts} keyExtractor={(r) => r.id} />

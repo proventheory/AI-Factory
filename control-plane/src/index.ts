@@ -3,10 +3,11 @@ import { pool } from "./db.js";
 import { startApi } from "./api.js";
 import { reapStaleLeases } from "./reaper.js";
 import { computeDrift, executeRollback, routeRun } from "./release-manager.js";
-import { checkRunCompletion } from "./scheduler.js";
+import { scanAndRemediateNoArtifactsRuns } from "./no-artifacts-self-heal.js";
 
 const REAPER_INTERVAL_MS = 30_000;
 const DRIFT_CHECK_INTERVAL_MS = 60_000;
+const NO_ARTIFACTS_SCAN_INTERVAL_MS = 3 * 60_000; // 3 minutes
 
 async function startReaperLoop(): Promise<void> {
   setInterval(async () => {
@@ -39,6 +40,16 @@ async function startDriftMonitor(): Promise<void> {
   }, DRIFT_CHECK_INTERVAL_MS);
 }
 
+async function startNoArtifactsScanLoop(): Promise<void> {
+  setInterval(async () => {
+    try {
+      await scanAndRemediateNoArtifactsRuns();
+    } catch (err) {
+      console.error("[self-heal] No-artifacts scan error:", err);
+    }
+  }, NO_ARTIFACTS_SCAN_INTERVAL_MS);
+}
+
 async function main(): Promise<void> {
   console.log("[control-plane] Starting AI Factory Control Plane...");
 
@@ -47,6 +58,9 @@ async function main(): Promise<void> {
 
   await startDriftMonitor();
   console.log("[control-plane] Drift monitor started");
+
+  await startNoArtifactsScanLoop();
+  console.log("[control-plane] No-artifacts self-heal scan started");
 
   startApi();
   console.log("[control-plane] API started");

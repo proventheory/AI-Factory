@@ -32,23 +32,32 @@ See `runners/src/runner.ts` (claim/heartbeat) and `runners/src/index.ts` (poll l
 
 ## Run locally
 
-From the repo root, with a `.env` or exported vars:
+From the repo root. Ensure `.env` has `DATABASE_URL`, `CONTROL_PLANE_URL` (e.g. `http://localhost:3001`), and `LLM_GATEWAY_URL` (e.g. your LiteLLM proxy or gateway).
 
+**Option A – dev scripts (recommended):**
 ```bash
-export DATABASE_URL="postgresql://..."
-export CONTROL_PLANE_URL="http://localhost:3001"   # or your Control Plane URL
-export LLM_GATEWAY_URL="http://localhost:4000"     # or your LiteLLM proxy
+# Terminal 1: Control Plane
+npm run dev:control-plane
 
-cd runners && npm run build && node dist/index.js
+# Terminal 2: Runner (loads .env automatically)
+npm run dev:runner
 ```
+Then open the Console (e.g. `cd console && npm run dev`), go to an initiative with intent **landing**, click **Compile plan** → **Start run**. The runner will claim jobs (copy_generate, then landing_page_generate) and the **Artifacts** tab will show **Open preview** for the landing page.
 
-Or run the Control Plane locally too (same `DATABASE_URL`), create an initiative, compile a plan, start a run; the runner will pick up jobs.
+**Option B – built output:**
+```bash
+npm run build
+export DATABASE_URL="postgresql://..."
+export CONTROL_PLANE_URL="http://localhost:3001"
+export LLM_GATEWAY_URL="http://localhost:4000"
+npm run start:runner
+```
 
 ---
 
 ## Deploy as a process
 
-- **Render (recommended)**: The repo includes a **worker** service in `render.yaml` and `Dockerfile.runner`. After syncing the Blueprint, **ai-factory-runner-staging** will deploy from `main`. Set in the worker’s Environment: `DATABASE_URL` (same as API), `CONTROL_PLANE_URL` (e.g. `https://ai-factory-api-staging.onrender.com`), `LLM_GATEWAY_URL`. The worker runs `node dist/runner-bundle.js`.
+- **Render (recommended)**: The repo includes a **worker** service in `render.yaml` and `Dockerfile.runner`. After syncing the Blueprint, **ai-factory-runner-staging** will deploy from `main`. Set in the worker’s Environment: `DATABASE_URL` (same as API), `CONTROL_PLANE_URL` (e.g. `https://ai-factory-api-staging.onrender.com`), `LLM_GATEWAY_URL`. Without these, jobs stay queued. The worker runs `node dist/runner-bundle.js`.
 - **Render (manual)**: Add a **Background Worker**; use `dockerContext: .`, `dockerfilePath: ./Dockerfile.runner`. Set the same env vars as above.
 - **Railway / Fly.io / ECS / etc.**: Use `Dockerfile.runner` or run `npm run build` then `npm run start:runner` with `DATABASE_URL`, `CONTROL_PLANE_URL`, `LLM_GATEWAY_URL`.
 - **Same host as Control Plane**: Run `node dist/runners/src/index.js` (or `npm run start:runner`) with the same `DATABASE_URL`.

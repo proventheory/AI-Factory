@@ -9,6 +9,7 @@
     "start:control-plane": "node dist/control-plane/src/index.js",
     "dev:control-plane": "npx tsx control-plane/src/index.ts",
     "start:runner": "node dist/runners/src/index.js",
+    "dev:runner": "npx tsx runners/src/index.ts",
     "db:migrate": "node scripts/run-migrate.mjs",
     "db:migrate:new": "node scripts/run-migrate-supabase-only.mjs",
     "lint": "tsc --noEmit",

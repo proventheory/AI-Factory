@@ -160,23 +160,14 @@ export async function executeToolCall(
       throw new Error(`Verification failed: ${verifyResult.reason}`);
     }
 
-    // Store response artifact (with producer_plan_node_id for lineage when column exists)
+    // Store response artifact. Use minimal columns (no producer_plan_node_id) so INSERT never aborts the transaction.
     const artifactId = uuid();
-    await client
-      .query(
-        `INSERT INTO artifacts (id, run_id, job_run_id, producer_plan_node_id, artifact_type, artifact_class, uri, sha256, metadata_json)
-         VALUES ($1, $2, $3, $4, $5, 'external_object_refs', $6, $7, $8)`,
-        [artifactId, params.runId, params.jobRunId, params.planNodeId, `${params.adapterName}_response`,
-         response.uri ?? `mem://${toolCallId}`, response.sha256 ?? null, JSON.stringify(response.data)],
-      )
-      .catch(() =>
-        client.query(
-          `INSERT INTO artifacts (id, run_id, job_run_id, artifact_type, artifact_class, uri, sha256, metadata_json)
-           VALUES ($1, $2, $3, $4, 'external_object_refs', $5, $6, $7)`,
-          [artifactId, params.runId, params.jobRunId, `${params.adapterName}_response`,
-           response.uri ?? `mem://${toolCallId}`, response.sha256 ?? null, JSON.stringify(response.data)],
-        )
-      );
+    await client.query(
+      `INSERT INTO artifacts (id, run_id, job_run_id, artifact_type, artifact_class, uri, sha256, metadata_json)
+       VALUES ($1, $2, $3, $4, 'external_object_refs', $5, $6, $7)`,
+      [artifactId, params.runId, params.jobRunId, `${params.adapterName}_response`,
+       response.uri ?? `mem://${toolCallId}`, response.sha256 ?? null, JSON.stringify(response.data)],
+    );
 
     await client.query(
       `UPDATE tool_calls SET status = 'succeeded', response_artifact_id = $2, ended_at = now()
