@@ -145,9 +145,10 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   swe_agent: TEMPLATE_SWE_AGENT,
 };
 
+/** Load initiative; uses core columns so it works with or without multi_framework (000005) ALTERs. */
 export async function loadInitiative(db: DbClient, initiativeId: string): Promise<Initiative | null> {
   const r = await db.query(
-    "SELECT id, intent_type, title, risk_level, created_by, created_at, goal_state, goal_metadata, source_ref, template_id, priority, metadata FROM initiatives WHERE id = $1",
+    "SELECT id, intent_type, title, risk_level, created_by, created_at FROM initiatives WHERE id = $1",
     [initiativeId]
   );
   return (r.rows[0] as Initiative) ?? null;
