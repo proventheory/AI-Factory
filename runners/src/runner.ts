@@ -1,6 +1,6 @@
 import { v4 as uuid } from "uuid";
 import type pg from "pg";
-import type { JobRun, JobClaim } from "#control-plane/types.js";
+import type { JobRun, JobClaim } from "../../control-plane/src/types.js";
 
 const LEASE_DURATION_MS = 10 * 60_000; // 10 minutes
 const HEARTBEAT_INTERVAL_MS = 30_000;   // 30 seconds

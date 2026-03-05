@@ -14,13 +14,7 @@
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true,
-    "resolvePackageJsonImports": false,
-    "paths": {
-      "#control-plane/*": ["./control-plane/src/*"],
-      "#runners/*": ["./runners/src/*"],
-      "#adapters/*": ["./adapters/src/*"]
-    }
+    "sourceMap": true
   },
   "include": [
     "control-plane/src/**/*",

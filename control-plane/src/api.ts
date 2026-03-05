@@ -630,7 +630,7 @@ app.get("/v1/artifacts/:id", async (req, res) => {
     const artifact = r.rows[0] as { uri?: string; [k: string]: unknown };
     if (artifact.uri?.startsWith("supabase-storage://")) {
       try {
-        const { getArtifactSignedUrl } = await import("#runners/artifact-storage.js");
+        const { getArtifactSignedUrl } = await import("../../runners/src/artifact-storage.js");
         const downloadUrl = await getArtifactSignedUrl(artifact.uri);
         if (downloadUrl) (artifact as Record<string, unknown>).download_url = downloadUrl;
       } catch { /* storage not configured */ }
