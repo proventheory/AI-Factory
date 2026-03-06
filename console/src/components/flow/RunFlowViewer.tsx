@@ -24,7 +24,10 @@ export function RunFlowViewer({ runId, className, onNodeClick }: {
   const completedCount = Object.values(nodeStatuses).filter((s) => s === "succeeded").length;
   const totalCount = Object.keys(nodeStatuses).length;
 
-  const planId = runData ? String((runData as Record<string, unknown>).plan_id ?? "") : "";
+  const runRow = runData && typeof runData === "object" && "run" in runData
+    ? (runData as { run?: { plan_id?: string } }).run
+    : (runData as { plan_id?: string } | undefined);
+  const planId = runRow ? String(runRow.plan_id ?? "") : "";
 
   if (runLoading) return <LoadingSkeleton className="h-[500px] w-full rounded-lg" />;
   if (runError) return <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">Failed to load run: {(runError as Error).message}</div>;

@@ -27,6 +27,7 @@ type RunDetail = {
 type ToolCallRow = { id: string; job_run_id: string; capability: string; operation_key: string; status: string; started_at: string | null };
 type ArtifactRow = { id: string; artifact_type: string; artifact_class: string; uri: string; created_at: string };
 type ValidationRow = { id: string; validator_type: string; status: string; job_run_id: string | null; created_at: string };
+type LlmCallRow = { id: string; job_run_id: string | null; model_tier: string; model_id: string; tokens_in: number | null; tokens_out: number | null; latency_ms: number | null; created_at: string };
 type AuditRow = { source: string; id: string; run_id: string; job_run_id: string | null; event_type: string; created_at: string; payload_json: unknown };
 
 export default function RunDetailPage() {
@@ -36,6 +37,7 @@ export default function RunDetailPage() {
   const [data, setData] = useState<RunDetail | null>(null);
   const [toolCalls, setToolCalls] = useState<ToolCallRow[]>([]);
   const [validations, setValidations] = useState<ValidationRow[]>([]);
+  const [llmCalls, setLlmCalls] = useState<LlmCallRow[]>([]);
   const [auditItems, setAuditItems] = useState<AuditRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
@@ -95,6 +97,14 @@ export default function RunDetailPage() {
       .then((r) => r.json())
       .then((d: { items?: ValidationRow[] }) => setValidations(d.items ?? []))
       .catch(() => setValidations([]));
+  }, [id, activeTab]);
+
+  useEffect(() => {
+    if (!id || activeTab !== "ai_calls") return;
+    fetch(`${API}/v1/llm_calls?run_id=${id}&limit=100`)
+      .then((r) => r.json())
+      .then((d: { items?: LlmCallRow[] }) => setLlmCalls(d.items ?? []))
+      .catch(() => setLlmCalls([]));
   }, [id, activeTab]);
 
   useEffect(() => {
@@ -213,12 +223,23 @@ export default function RunDetailPage() {
     {
       key: "view",
       header: "Preview",
-      render: (r) =>
-        r.artifact_type === "landing_page" ? (
-          <a href={`${API}/v1/artifacts/${r.id}/content`} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline text-sm font-medium">
-            Open preview
-          </a>
-        ) : null,
+      render: (r) => {
+        if (r.artifact_type === "landing_page") {
+          return (
+            <a href={`${API}/v1/artifacts/${r.id}/content`} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline text-sm font-medium">
+              Open preview
+            </a>
+          );
+        }
+        if (r.artifact_type === "email_template") {
+          return (
+            <Link href={`/email-marketing/artifacts/${r.id}/edit`} className="text-brand-600 hover:underline text-sm font-medium">
+              Edit / preview
+            </Link>
+          );
+        }
+        return null;
+      },
     },
     { key: "created_at", header: "Created", render: (r) => new Date(r.created_at).toLocaleString() },
   ];
@@ -255,6 +276,7 @@ export default function RunDetailPage() {
             <TabsTrigger value="tool_calls">Tool Calls</TabsTrigger>
             <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
             <TabsTrigger value="validations">Validations</TabsTrigger>
+            <TabsTrigger value="ai_calls">AI Calls</TabsTrigger>
             <TabsTrigger value="secrets">Secrets Access</TabsTrigger>
             <TabsTrigger value="events">Events</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
@@ -328,6 +350,30 @@ export default function RunDetailPage() {
               ) : (
                 <TableFrame>
                   <DataTable columns={validationColumns} data={validations} keyExtractor={(r) => r.id} />
+                </TableFrame>
+              )}
+            </CardSection>
+          </TabsContent>
+
+          <TabsContent value="ai_calls" className="pt-4">
+            <CardSection title="AI calls">
+              {llmCalls.length === 0 ? (
+                <EmptyState title="No AI calls" description="No LLM calls recorded for this run. Email/copy jobs that use a template without the LLM fallback do not create entries." />
+              ) : (
+                <TableFrame>
+                  <DataTable
+                    columns={([
+                      { key: "id", header: "ID", render: (r: LlmCallRow) => <span className="font-mono text-xs">{String(r.id).slice(0, 8)}…</span> },
+                      { key: "job_run_id", header: "Job run", render: (r: LlmCallRow) => r.job_run_id ? <span className="font-mono text-xs">{String(r.job_run_id).slice(0, 8)}…</span> : "—" },
+                      { key: "model_id", header: "Model" },
+                      { key: "tokens_in", header: "Tokens in", render: (r: LlmCallRow) => r.tokens_in ?? "—" },
+                      { key: "tokens_out", header: "Tokens out", render: (r: LlmCallRow) => r.tokens_out ?? "—" },
+                      { key: "latency_ms", header: "Latency (ms)", render: (r: LlmCallRow) => r.latency_ms ?? "—" },
+                      { key: "created_at", header: "Created", render: (r: LlmCallRow) => new Date(r.created_at).toLocaleString() },
+                    ]) as Column<LlmCallRow>[]}
+                    data={llmCalls}
+                    keyExtractor={(r) => r.id}
+                  />
                 </TableFrame>
               )}
             </CardSection>

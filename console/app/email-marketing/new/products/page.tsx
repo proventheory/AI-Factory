@@ -89,10 +89,17 @@ export default function EmailMarketingNewProductsPage() {
   const fetchProducts = useSitemapProducts();
   const hasPrefilled = useRef<string | null>(null);
 
-  // Prefill from brand tokens (overrides wizard state when brand has different url/type)
+  // Prefill from brand tokens only when wizard has no sitemap yet (first visit); otherwise keep wizard state so cache restore works
   useEffect(() => {
     if (!brandId || !brand?.design_tokens || typeof brand.design_tokens !== "object") return;
     if (hasPrefilled.current === brandId) return;
+    const state = getWizardState();
+    const existingUrl = (state.sitemap_url as string)?.trim() || "";
+    const cache = state.products_cache as ProductsCache | undefined;
+    if (existingUrl || (cache && Array.isArray(cache.items) && cache.items.length > 0)) {
+      hasPrefilled.current = brandId;
+      return;
+    }
     hasPrefilled.current = brandId;
     const dt = brand.design_tokens as Record<string, unknown>;
     const rawUrl =
@@ -105,16 +112,22 @@ export default function EmailMarketingNewProductsPage() {
     if (sitemapTypeVal) setSitemapType(sitemapTypeVal);
   }, [brandId, brand?.design_tokens, brand?.id]);
 
-  // Restore cached products when sitemap URL/type match cache (normalized); clear when they don't
+  // Restore cached products when sitemap URL/type match cache; if we have cache but url is empty (e.g. SSR/hydration), rehydrate from cache
   useEffect(() => {
     const cache = getProductsCache();
-    if (!cache) return;
+    if (!cache || !cache.items.length) return;
     if (cacheMatchesUrl(sitemapUrl, sitemapType, cache)) {
-      if (cache.items.length > 0) {
-        setItems(cache.items);
-        setTotalAvailable(cache.totalAvailable);
-        setHasMore(cache.hasMore);
-      }
+      setItems(cache.items);
+      setTotalAvailable(cache.totalAvailable);
+      setHasMore(cache.hasMore);
+      return;
+    }
+    if (!sitemapUrl.trim()) {
+      setSitemapUrl(cache.sitemap_url || "");
+      setSitemapType(cache.sitemap_type || "ecommerce");
+      setItems(cache.items);
+      setTotalAvailable(cache.totalAvailable);
+      setHasMore(cache.hasMore);
       return;
     }
     setItems([]);
