@@ -91,7 +91,14 @@ export default function InitiativesPage() {
         <PageHeader
           title="Initiatives"
           description="Create and manage initiatives by intent type and risk level."
-          actions={<Button variant="primary" onClick={() => setCreateOpen(true)}>Create initiative</Button>}
+          actions={
+            <div className="flex items-center gap-2">
+              <Link href="/email-marketing/new">
+                <Button variant="secondary">New email campaign (wizard)</Button>
+              </Link>
+              <Button variant="primary" onClick={() => setCreateOpen(true)}>Create initiative</Button>
+            </div>
+          }
         />
         <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create initiative">
         <div className="space-y-4">
