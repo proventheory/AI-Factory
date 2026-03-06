@@ -269,6 +269,27 @@ export async function checkRunCompletion(db: DbClient, runId: string): Promise<b
 }
 
 /**
+ * When a job fails, mark the run as failed if there are no more queued or running
+ * job_runs for this run. So the run status stops being "running" and pollers (e.g.
+ * the email wizard) see "failed" instead of timing out.
+ */
+export async function markRunFailedIfNoPendingJobs(db: DbClient, runId: string): Promise<void> {
+  const pending = await db.query<{ c: string }>(
+    `SELECT count(*)::text AS c FROM job_runs WHERE run_id = $1 AND status IN ('queued', 'running')`,
+    [runId],
+  );
+  if (Number(pending.rows[0]?.c ?? 0) > 0) return;
+  await db.query(
+    `UPDATE runs SET status = 'failed', ended_at = now() WHERE id = $1 AND status = 'running'`,
+    [runId],
+  );
+  await db.query(
+    `INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`,
+    [runId],
+  ).catch(() => {});
+}
+
+/**
  * Acquire the scheduler lock for a run (prevents duplicate schedulers).
  */
 export async function acquireRunLock(

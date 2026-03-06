@@ -55,7 +55,22 @@ If these are set, the control plane can push DATABASE_URL, CONTROL_PLANE_URL, an
 
 If you use a separate **llm-gateway** service, keep `https://llm-gateway.onrender.com`.
 
+**Done when:** Runner has `LLM_GATEWAY_URL` = `https://ai-factory-gateway-staging.onrender.com`. You do not need `llm-gateway.onrender.com` for the runner unless you use that as a separate gateway.
+
 **Verdict:** Confirm CONTROL_PLANE_URL is `ai-factory` (not `a1-factory`). Confirm LLM_GATEWAY_URL points to the gateway service that’s actually deployed and healthy.
+
+---
+
+## Is https://llm-gateway.onrender.com needed?
+
+- **This repo:** The blueprint defines **ai-factory-gateway-staging** (`https://ai-factory-gateway-staging.onrender.com`). That service uses LiteLLM (Dockerfile.gateway) and exposes `/health` and `/health/readiness`; use it for runner `LLM_GATEWAY_URL` and for health checks.
+- **llm-gateway.onrender.com** is a separate Render service. If it returns `{"Hello":"World"}` at `/` and `{"detail":"Not Found"}` at `/health` and `/health/readiness`, it is **not** running the LiteLLM proxy from this repo—it's a different app (e.g. a stub). Nothing in this repo needs to change; use **ai-factory-gateway-staging** for health-checkable gateways, or redeploy the "llm-gateway" service from this repo's **Dockerfile.gateway** (same as ai-factory-gateway-staging) if you want that URL to have LiteLLM and health endpoints.
+
+**How to verify a gateway (LiteLLM from this repo):**
+
+1. **ai-factory-gateway-staging:** `curl -s -o /dev/null -w "%{http_code}" https://ai-factory-gateway-staging.onrender.com/health/readiness` — expect **200**.
+2. **If you don't use llm-gateway:** Point the runner at **ai-factory-gateway-staging** only; you can ignore llm-gateway.onrender.com.
+3. **If you want llm-gateway to support /health:** Deploy it from this repo with `Dockerfile.gateway` (and gateway/config.yaml) so it runs LiteLLM; then `/health` and `/health/readiness` will work.
 
 ---
 

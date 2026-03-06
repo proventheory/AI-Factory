@@ -19,7 +19,7 @@ import {
   jobRequestFromContext,
   persistJobResult,
 } from "./executor-registry.js";
-import { advanceSuccessors, checkRunCompletion } from "../../control-plane/src/scheduler.js";
+import { advanceSuccessors, checkRunCompletion, markRunFailedIfNoPendingJobs } from "../../control-plane/src/scheduler.js";
 
 registerAllHandlers();
 
@@ -179,6 +179,7 @@ async function pollAndExecute(): Promise<void> {
       try {
         await txClient.query("BEGIN");
         await completeJobFailure(txClient, jobRun.id, jobRun.run_id, jobRun.plan_node_id, config.workerId, errorSig);
+        await markRunFailedIfNoPendingJobs(txClient, jobRun.run_id);
         await txClient.query("COMMIT");
       } catch {
         await txClient.query("ROLLBACK").catch(() => {});
