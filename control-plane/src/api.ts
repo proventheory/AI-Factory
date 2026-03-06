@@ -21,6 +21,44 @@ app.use(express.json());
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
+/** $ per 1M tokens [input, output]. Order: more specific model names first. */
+const LLM_PRICING: { prefix: string; input: number; output: number }[] = [
+  { prefix: "gpt-4o-mini", input: 0.15, output: 0.6 },
+  { prefix: "gpt-4o", input: 2.5, output: 10 },
+  { prefix: "gpt-4-turbo", input: 10, output: 30 },
+  { prefix: "o1-mini", input: 3, output: 12 },
+  { prefix: "o1", input: 15, output: 60 },
+  { prefix: "gpt-4", input: 10, output: 30 },
+  { prefix: "gpt-3.5", input: 0.5, output: 1.5 },
+  { prefix: "claude-3-5-sonnet", input: 3, output: 15 },
+  { prefix: "claude-3-5-haiku", input: 0.25, output: 1.25 },
+  { prefix: "claude-3-opus", input: 15, output: 75 },
+  { prefix: "claude-3-sonnet", input: 3, output: 15 },
+  { prefix: "claude-3-haiku", input: 0.25, output: 1.25 },
+  { prefix: "claude-3", input: 3, output: 15 },
+  { prefix: "claude-sonnet", input: 3, output: 15 },
+  { prefix: "claude-opus", input: 15, output: 75 },
+  { prefix: "claude-haiku", input: 0.25, output: 1.25 },
+  { prefix: "claude", input: 3, output: 15 },
+];
+
+function llmProvider(modelId: string): "OpenAI" | "Anthropic" | "Other" {
+  const id = (modelId || "").toLowerCase();
+  if (id.startsWith("gpt-") || id.startsWith("o1-") || id.startsWith("o1")) return "OpenAI";
+  if (id.startsWith("claude")) return "Anthropic";
+  return "Other";
+}
+
+function llmCostUsd(modelId: string, tokensIn: number, tokensOut: number): number {
+  const inM = (tokensIn || 0) / 1_000_000;
+  const outM = (tokensOut || 0) / 1_000_000;
+  const id = (modelId || "").toLowerCase();
+  for (const p of LLM_PRICING) {
+    if (id.startsWith(p.prefix)) return inM * p.input + outM * p.output;
+  }
+  return inM * 1 + outM * 2; // default $1 / $2 per 1M
+}
+
 /** DB enum risk_level is 'low' | 'med' | 'high'. Normalize 'medium' -> 'med' so old clients never break. */
 function normalizeRiskLevel(s: string | undefined): "low" | "med" | "high" {
   if (s === "medium") return "med";
@@ -615,6 +653,53 @@ app.get("/v1/runs/:id/status", async (req, res) => {
   }
 });
 
+/** POST /v1/runs/:id/image_assignment — persist image assignment from runner (email_generate_mjml). Body: ImageAssignment JSON. */
+app.post("/v1/runs/:id/image_assignment", async (req, res) => {
+  try {
+    const runId = req.params.id;
+    const body = req.body as Record<string, unknown>;
+    if (!body || typeof body !== "object") return res.status(400).json({ error: "Body must be ImageAssignment JSON object" });
+    const r = await pool.query(
+      "UPDATE runs SET image_assignment_json = $2::jsonb WHERE id = $1 RETURNING id",
+      [runId, JSON.stringify(body)]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Run not found" });
+    res.status(200).json({ ok: true, run_id: runId });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/runs/:id/validate_image_assignment — run V001–V012 from run.image_assignment_json + template contract, write validations. */
+app.post("/v1/runs/:id/validate_image_assignment", async (req, res) => {
+  try {
+    const runId = req.params.id;
+    const runRow = await pool.query("SELECT image_assignment_json FROM runs WHERE id = $1", [runId]);
+    if (runRow.rows.length === 0) return res.status(404).json({ error: "Run not found" });
+    const assignment = runRow.rows[0].image_assignment_json;
+    if (!assignment || typeof assignment !== "object") return res.status(400).json({ error: "Run has no image_assignment_json" });
+    const templateId = (assignment as { template_id?: string }).template_id;
+    if (!templateId) return res.status(400).json({ error: "image_assignment_json missing template_id" });
+    const contractRow = await pool.query(
+      "SELECT hero_required, logo_safe_hero, product_hero_allowed, max_content_slots, max_product_slots, collapses_empty_modules FROM template_image_contracts WHERE template_id = $1 AND version = 'v1'",
+      [templateId]
+    );
+    const contract = contractRow.rows.length > 0 ? contractRow.rows[0] : null;
+    const { evaluateImageAssignmentValidations } = await import("./template-image-validators.js");
+    const results = evaluateImageAssignmentValidations(assignment, contract);
+    for (const v of results) {
+      await pool.query(
+        "INSERT INTO validations (id, run_id, validator_type, status, created_at) VALUES (gen_random_uuid(), $1, $2, $3, now())",
+        [runId, `image_assignment:${v.code}`, v.status]
+      );
+    }
+    const failed = results.filter((r) => r.status === "fail");
+    res.status(200).json({ ok: true, run_id: runId, evaluated: results.length, failed: failed.length, results });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** POST /v1/runs/:id/cancel — set run cancelled (cancelled_at + status or metadata) */
 app.post("/v1/runs/:id/cancel", async (req, res) => {
   try {
@@ -670,8 +755,20 @@ app.post("/v1/plans/:id/start", async (req, res) => {
     if (!["sandbox", "staging", "prod"].includes(environment)) {
       return res.status(400).json({ error: "environment must be sandbox, staging, or prod" });
     }
-    const planRow = await pool.query("SELECT id FROM plans WHERE id = $1", [planId]);
+    const planRow = await pool.query("SELECT id, initiative_id FROM plans WHERE id = $1", [planId]);
     if (planRow.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+    const initiativeId = (planRow.rows[0] as { initiative_id: string }).initiative_id;
+    const initRow = await pool.query("SELECT template_id, intent_type FROM initiatives WHERE id = $1", [initiativeId]);
+    if (initRow.rows.length > 0) {
+      const { template_id: templateId, intent_type: intentType } = initRow.rows[0] as { template_id: string | null; intent_type: string };
+      if (intentType === "email_campaign" && templateId) {
+        const gate = await runTemplateLintGate(pool, templateId);
+        if (!gate.ok) {
+          const message = "Template lint failed: " + gate.errors.map((e) => `${e.code}: ${e.message}`).join("; ");
+          return res.status(400).json({ error: message, lint_errors: gate.errors });
+        }
+      }
+    }
 
     let releaseId: string;
     try {
@@ -1136,12 +1233,12 @@ app.get("/v1/llm_calls", async (req, res) => {
   }
 });
 
-/** GET /v1/usage — aggregate LLM usage with percentiles and error rates */
+/** GET /v1/usage — aggregate LLM usage with percentiles, error rates, provider breakdown, and estimated cost */
 app.get("/v1/usage", async (req, res) => {
   try {
     const from = (req.query.from as string) ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
     const to = (req.query.to as string) ?? new Date().toISOString();
-    const [byTier, totals, percentiles] = await Promise.all([
+    const [byTier, byModelRows, totals, percentiles] = await Promise.all([
       pool.query(`
         SELECT model_tier, count(*)::int AS calls,
                coalesce(sum(tokens_in), 0)::bigint AS tokens_in,
@@ -1150,6 +1247,14 @@ app.get("/v1/usage", async (req, res) => {
         FROM llm_calls WHERE created_at BETWEEN $1 AND $2
         GROUP BY model_tier ORDER BY calls DESC
       `, [from, to]).then(r => r.rows),
+      pool.query(`
+        SELECT model_tier, model_id,
+               count(*)::int AS calls,
+               coalesce(sum(tokens_in), 0)::bigint AS tokens_in,
+               coalesce(sum(tokens_out), 0)::bigint AS tokens_out
+        FROM llm_calls WHERE created_at BETWEEN $1 AND $2
+        GROUP BY model_tier, model_id ORDER BY calls DESC
+      `, [from, to]).then(r => r.rows as { model_tier: string; model_id: string; calls: number; tokens_in: string; tokens_out: string }[]),
       pool.query(`
         SELECT count(*)::int AS calls,
                coalesce(sum(tokens_in), 0)::bigint AS tokens_in,
@@ -1167,7 +1272,58 @@ app.get("/v1/usage", async (req, res) => {
       SELECT count(*)::int AS c FROM job_runs
       WHERE status = 'failed' AND started_at BETWEEN $1 AND $2
     `, [from, to]).then(r => r.rows[0]?.c ?? 0).catch(() => 0);
-    res.json({ by_tier: byTier, totals, percentiles, error_count: errorCount, from, to });
+
+    let estimated_cost_usd = 0;
+    const byProviderMap: Record<string, { calls: number; tokens_in: number; tokens_out: number; estimated_cost_usd: number }> = {};
+    for (const row of byModelRows) {
+      const tokensIn = Number(row.tokens_in) || 0;
+      const tokensOut = Number(row.tokens_out) || 0;
+      const cost = llmCostUsd(row.model_id, tokensIn, tokensOut);
+      estimated_cost_usd += cost;
+      const provider = llmProvider(row.model_id);
+      if (!byProviderMap[provider]) {
+        byProviderMap[provider] = { calls: 0, tokens_in: 0, tokens_out: 0, estimated_cost_usd: 0 };
+      }
+      byProviderMap[provider].calls += row.calls;
+      byProviderMap[provider].tokens_in += tokensIn;
+      byProviderMap[provider].tokens_out += tokensOut;
+      byProviderMap[provider].estimated_cost_usd += cost;
+    }
+    const by_provider = Object.entries(byProviderMap).map(([provider, agg]) => ({
+      provider,
+      ...agg,
+      estimated_cost_usd: Math.round(agg.estimated_cost_usd * 100) / 100,
+    })).sort((a, b) => b.estimated_cost_usd - a.estimated_cost_usd);
+
+    const by_model = byModelRows.map(row => {
+      const tokensIn = Number(row.tokens_in) || 0;
+      const tokensOut = Number(row.tokens_out) || 0;
+      const cost = llmCostUsd(row.model_id, tokensIn, tokensOut);
+      return {
+        model_tier: row.model_tier,
+        model_id: row.model_id,
+        provider: llmProvider(row.model_id),
+        calls: row.calls,
+        tokens_in: tokensIn,
+        tokens_out: tokensOut,
+        estimated_cost_usd: Math.round(cost * 100) / 100,
+      };
+    });
+
+    const totalsWithCost = {
+      ...totals,
+      estimated_cost_usd: Math.round(estimated_cost_usd * 100) / 100,
+    };
+    res.json({
+      by_tier: byTier,
+      by_provider,
+      by_model,
+      totals: totalsWithCost,
+      percentiles,
+      error_count: errorCount,
+      from,
+      to,
+    });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -2462,7 +2618,7 @@ app.post("/v1/campaign-images/copy", async (req, res) => {
 // Email Templates CRUD (Email Marketing Factory)
 // =====================================================================
 
-/** GET /v1/email_templates */
+/** GET /v1/email_templates — list with image_slots, product_slots, layout_style for picker. */
 app.get("/v1/email_templates", async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
@@ -2473,21 +2629,31 @@ app.get("/v1/email_templates", async (req, res) => {
     const params: unknown[] = [];
     let i = 1;
     if (type) {
-      conditions.push(`type = $${i++}`);
+      conditions.push(`t.type = $${i++}`);
       params.push(type);
     }
     if (brand_profile_id && isValidUuid(brand_profile_id)) {
-      conditions.push(`(brand_profile_id = $${i++} OR brand_profile_id IS NULL)`);
+      conditions.push(`(t.brand_profile_id = $${i++} OR t.brand_profile_id IS NULL)`);
       params.push(brand_profile_id);
     }
     params.push(limit, offset);
-    const q = `SELECT * FROM email_templates WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
-    const countQ = `SELECT count(*)::int AS total FROM email_templates WHERE ${conditions.join(" AND ")}`;
+    const q = `SELECT t.*, c.max_content_slots, c.max_product_slots
+      FROM email_templates t
+      LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1'
+      WHERE ${conditions.join(" AND ")} ORDER BY t.created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
+    const countQ = `SELECT count(*)::int AS total FROM email_templates t WHERE ${conditions.join(" AND ")}`;
     const [itemsResult, totalResult] = await Promise.all([
       pool.query(q, params),
       pool.query(countQ, params.slice(0, -2)),
     ]);
-    res.json({ items: itemsResult.rows, total: totalResult.rows[0]?.total ?? 0 });
+    const items = itemsResult.rows as Record<string, unknown>[];
+    for (const row of items) {
+      const contract = row.max_content_slots != null || row.max_product_slots != null ? { max_content_slots: row.max_content_slots as number | undefined, max_product_slots: row.max_product_slots as number | undefined } : null;
+      enrichTemplateRow(row, contract);
+      delete row.max_content_slots;
+      delete row.max_product_slots;
+    }
+    res.json({ items, total: totalResult.rows[0]?.total ?? 0 });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -2522,16 +2688,93 @@ function productSlotsFromMjml(mjml: string | null): number {
   return max;
 }
 
-/** GET /v1/email_templates/:id — includes product_slots (computed from mjml) for wizard validation. */
+/** Compute content image slot count from MJML ([image 1], [image 2], ...). */
+function contentSlotsFromMjml(mjml: string | null): number {
+  if (!mjml || typeof mjml !== "string") return 0;
+  const matches = mjml.matchAll(/\[image\s+(\d+)\]/gi);
+  let max = 0;
+  for (const m of matches) {
+    const n = parseInt(m[1], 10);
+    if (n > max) max = n;
+  }
+  return max;
+}
+
+/** Add image_slots, product_slots, layout_style to a template row (from contract or MJML). */
+function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content_slots?: number; max_product_slots?: number } | null): void {
+  const mjml = row.mjml as string | null;
+  const typeLabel = (row.type as string) ?? "email";
+  (row as Record<string, unknown>).image_slots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
+  (row as Record<string, unknown>).product_slots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
+  (row as Record<string, unknown>).layout_style = `${typeLabel} (email template)`;
+}
+
+/** GET /v1/email_templates/:id — includes image_slots, product_slots, layout_style for wizard validation. */
 app.get("/v1/email_templates/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    const r = await pool.query("SELECT * FROM email_templates WHERE id = $1", [id]);
+    const r = await pool.query(
+      "SELECT t.*, c.max_content_slots, c.max_product_slots FROM email_templates t LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1' WHERE t.id = $1",
+      [id]
+    );
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
     const row = r.rows[0] as Record<string, unknown>;
-    const mjml = row.mjml as string | null;
-    (row as Record<string, unknown>).product_slots = productSlotsFromMjml(mjml);
+    const contract = row.max_content_slots != null || row.max_product_slots != null ? { max_content_slots: row.max_content_slots as number | undefined, max_product_slots: row.max_product_slots as number | undefined } : null;
+    enrichTemplateRow(row, contract);
+    delete row.max_content_slots;
+    delete row.max_product_slots;
     res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/**
+ * Run template lint gate for proof-run: returns ok false if any error-severity issues.
+ * Used by POST /v1/plans/:id/start and POST /v1/runs/:id/rerun to block starting a run when the template fails lint.
+ */
+async function runTemplateLintGate(
+  db: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> },
+  templateId: string,
+): Promise<{ ok: boolean; errors: Array<{ code: string; message: string }> }> {
+  const q = await db.query(
+    "SELECT t.id, t.mjml, c.hero_required, c.logo_safe_hero, c.product_hero_allowed, c.mixed_content_and_product_pool, c.collapses_empty_modules, c.max_content_slots, c.max_product_slots, c.supports_content_images, c.supports_product_images, c.optional_modules FROM email_templates t LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1' WHERE t.id = $1",
+    [templateId],
+  );
+  if (q.rows.length === 0) return { ok: true, errors: [] };
+  const row = q.rows[0];
+  const contract = row.hero_required != null ? row : null;
+  if (!contract) {
+    return {
+      ok: false,
+      errors: [{ code: "L004", message: "Template has no template_image_contracts row (version v1). Add a contract before starting a run." }],
+    };
+  }
+  const mjml = (row.mjml as string) ?? "";
+  const { lintTemplateMjml } = await import("./template-image-linter.js");
+  const results = lintTemplateMjml(mjml, contract, templateId);
+  const errors = results.filter((r) => r.severity === "error").map((r) => ({ code: r.code, message: r.message }));
+  return { ok: errors.length === 0, errors };
+}
+
+/** GET /v1/email_templates/:id/lint — L001–L010 template image lint. Requires template_image_contracts row (v1). */
+app.get("/v1/email_templates/:id/lint", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const q = await pool.query(
+      "SELECT t.id, t.name, t.mjml, c.hero_required, c.logo_safe_hero, c.product_hero_allowed, c.mixed_content_and_product_pool, c.collapses_empty_modules, c.max_content_slots, c.max_product_slots, c.supports_content_images, c.supports_product_images, c.optional_modules FROM email_templates t LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1' WHERE t.id = $1",
+      [id]
+    );
+    if (q.rows.length === 0) return res.status(404).json({ error: "Template not found" });
+    const row = q.rows[0];
+    const contract = row.hero_required != null ? row : null;
+    if (!contract) {
+      return res.status(400).json({ contract_missing: true, error: "Template has no template_image_contracts row (version v1); lint failed." });
+    }
+    const mjml = (row.mjml as string) ?? "";
+    const { lintTemplateMjml } = await import("./template-image-linter.js");
+    const results = lintTemplateMjml(mjml, contract, id);
+    res.json({ template_id: id, contract_present: true, results });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -2572,13 +2815,14 @@ app.post("/v1/email_templates", async (req, res) => {
   }
 });
 
-/** PATCH /v1/email_templates/:id */
+/** PATCH /v1/email_templates/:id — optional lint_on_save: when true, run L001–L010 after update; fail with 400 if any error-severity issues. */
 app.patch("/v1/email_templates/:id", async (req, res) => {
   try {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const id = req.params.id;
     const body = req.body as Record<string, unknown>;
+    const lintOnSave = body.lint_on_save === true;
     const allowed = ["type", "name", "image_url", "mjml", "template_json", "sections_json", "img_count", "brand_profile_id"];
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -2601,7 +2845,26 @@ app.patch("/v1/email_templates/:id", async (req, res) => {
       params
     );
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
-    res.json(r.rows[0]);
+    const row = r.rows[0] as Record<string, unknown>;
+    if (lintOnSave) {
+      const cq = await pool.query(
+        "SELECT c.hero_required, c.logo_safe_hero, c.product_hero_allowed, c.mixed_content_and_product_pool, c.collapses_empty_modules, c.max_content_slots, c.max_product_slots, c.supports_content_images, c.supports_product_images, c.optional_modules FROM template_image_contracts c WHERE c.template_id = $1 AND c.version = 'v1'",
+        [id]
+      );
+      const contract = cq.rows.length > 0 ? cq.rows[0] : null;
+      if (!contract) {
+        return res.status(400).json({ error: "lint_on_save requires a template_image_contracts row (version v1) for this template.", lint_errors: [{ code: "L004", severity: "error", message: "Missing template image contract." }] });
+      }
+      const mjml = (row.mjml as string) ?? "";
+      const { lintTemplateMjml } = await import("./template-image-linter.js");
+      const lintResults = lintTemplateMjml(mjml, contract, id);
+      const errors = lintResults.filter((x) => x.severity === "error");
+      if (errors.length > 0) {
+        return res.status(400).json({ error: "Template lint failed. Fix errors before saving.", lint_errors: errors, lint_results: lintResults });
+      }
+      (row as Record<string, unknown>).lint_results = lintResults;
+    }
+    res.json(row);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
