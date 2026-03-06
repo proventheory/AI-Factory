@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton, Badge } from "@/components/ui";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton, Badge, Button, AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
-import { useRuns } from "@/hooks/use-api";
+import { useRuns, useCancelRun } from "@/hooks/use-api";
 import { formatApiError } from "@/lib/api";
 import { INTENT_TYPES } from "@/config/intent-types";
 
@@ -30,10 +30,30 @@ function statusVariant(status: string): "success" | "warning" | "error" | "neutr
   return "neutral";
 }
 
+const RUNS_POLL_MS = 10_000; // poll so status updates (cancel, reaper) show up
+
 export default function RunsPage() {
   const [intentFilter, setIntentFilter] = useState<string>("");
-  const { data, isLoading, error } = useRuns({ limit: 50, intent_type: intentFilter || undefined });
+  const [confirmingRunId, setConfirmingRunId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const { data, isLoading, error } = useRuns(
+    { limit: 50, intent_type: intentFilter || undefined },
+    { refetchInterval: RUNS_POLL_MS }
+  );
+  const cancelRun = useCancelRun();
   const items = (data?.items ?? []) as RunRow[];
+
+  function openCancelConfirm(runId: string) {
+    setConfirmingRunId(runId);
+  }
+
+  function confirmCancelRun() {
+    const runId = confirmingRunId;
+    setConfirmingRunId(null);
+    if (!runId) return;
+    setCancellingId(runId);
+    cancelRun.mutateAsync({ runId }).finally(() => setCancellingId(null));
+  }
 
   const columns: Column<RunRow>[] = [
     {
@@ -74,6 +94,25 @@ export default function RunsPage() {
           {row.top_error_signature ?? "—"}
         </span>
       ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      render: (row) => {
+        const active = row.status === "running" || row.status === "queued";
+        if (!active) return null;
+        const busy = cancellingId === row.id;
+        return (
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!!cancellingId}
+            onClick={() => openCancelConfirm(row.id)}
+          >
+            {busy ? "…" : "Cancel"}
+          </Button>
+        );
+      },
     },
   ];
 
@@ -137,6 +176,21 @@ export default function RunsPage() {
           )}
         </CardSection>
       </Stack>
+
+      <AlertDialog open={confirmingRunId !== null} onOpenChange={(open) => !open && setConfirmingRunId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel run?</AlertDialogTitle>
+            <AlertDialogDescription>This run will be marked failed. This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep running</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmCancelRun} className="bg-red-600 hover:bg-red-700">
+              Cancel run
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageFrame>
   );
 }

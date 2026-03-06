@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { PageFrame, Stack, CardSection, TableFrame, PageHeader, Tabs, TabsList, TabsTrigger, TabsContent, DataTable, Badge, Button, EmptyState, LoadingSkeleton } from "@/components/ui";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, Tabs, TabsList, TabsTrigger, TabsContent, DataTable, Badge, Button, EmptyState, LoadingSkeleton, AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel } from "@/components/ui";
 
 const RunFlowViewer = dynamic(
   () => import("@/components/flow/RunFlowViewer").then((m) => ({ default: m.RunFlowViewer })),
@@ -20,6 +20,7 @@ type RunDetail = {
   plan_edges: Record<string, unknown>[];
   node_progress: Record<string, unknown>[];
   job_runs: Record<string, unknown>[];
+  artifacts?: ArtifactRow[];
   run_events: Record<string, unknown>[];
 };
 
@@ -34,12 +35,12 @@ export default function RunDetailPage() {
   const id = params.id as string;
   const [data, setData] = useState<RunDetail | null>(null);
   const [toolCalls, setToolCalls] = useState<ToolCallRow[]>([]);
-  const [artifacts, setArtifacts] = useState<ArtifactRow[]>([]);
   const [validations, setValidations] = useState<ValidationRow[]>([]);
   const [auditItems, setAuditItems] = useState<AuditRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
+  const [confirmAction, setConfirmAction] = useState<"cancel" | "rollback" | null>(null);
 
   const refetch = useCallback(() => {
     if (!id) return;
@@ -71,20 +72,21 @@ export default function RunDetailPage() {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load run"));
   }, [id]);
 
+  // Poll run while status is running/queued so UI updates when reaper or cancel changes status
+  useEffect(() => {
+    if (!id || !data?.run) return;
+    const status = (data.run as { status?: string }).status;
+    if (status !== "running" && status !== "queued") return;
+    const interval = setInterval(refetch, 10_000);
+    return () => clearInterval(interval);
+  }, [id, data?.run, refetch]);
+
   useEffect(() => {
     if (!id || activeTab !== "tool_calls") return;
     fetch(`${API}/v1/tool_calls?run_id=${id}&limit=100`)
       .then((r) => r.json())
       .then((d: { items?: ToolCallRow[] }) => setToolCalls(d.items ?? []))
       .catch(() => setToolCalls([]));
-  }, [id, activeTab]);
-
-  useEffect(() => {
-    if (!id || activeTab !== "artifacts") return;
-    fetch(`${API}/v1/artifacts?run_id=${id}&limit=100`)
-      .then((r) => r.json())
-      .then((d: { items?: ArtifactRow[] }) => setArtifacts(d.items ?? []))
-      .catch(() => setArtifacts([]));
   }, [id, activeTab]);
 
   useEffect(() => {
@@ -117,8 +119,16 @@ export default function RunDetailPage() {
     }
   }
 
-  async function handleCancel() {
-    if (!confirm("Cancel this run? It will be marked failed.")) return;
+  function openCancelConfirm() {
+    setConfirmAction("cancel");
+  }
+
+  function openRollbackConfirm() {
+    setConfirmAction("rollback");
+  }
+
+  async function doCancel() {
+    setConfirmAction(null);
     setActionBusy("cancel");
     try {
       const r = await fetch(`${API}/v1/runs/${id}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
@@ -132,8 +142,8 @@ export default function RunDetailPage() {
     }
   }
 
-  async function handleRollback() {
-    if (!confirm("Trigger rollback for this run’s release in this environment?")) return;
+  async function doRollback() {
+    setConfirmAction(null);
     setActionBusy("rollback");
     try {
       const r = await fetch(`${API}/v1/runs/${id}/rollback`, { method: "POST", headers: { "Content-Type": "application/json" } });
@@ -145,6 +155,11 @@ export default function RunDetailPage() {
     } finally {
       setActionBusy(null);
     }
+  }
+
+  function onConfirmDialogAction() {
+    if (confirmAction === "cancel") void doCancel();
+    else if (confirmAction === "rollback") void doRollback();
   }
 
   async function handleApprove(action: "approve" | "reject") {
@@ -188,6 +203,7 @@ export default function RunDetailPage() {
     { key: "started_at", header: "Started", render: (r) => r.started_at ? new Date(r.started_at).toLocaleString() : "—" },
   ];
 
+  const artifacts = data?.artifacts ?? [];
   const landingPageArtifacts = artifacts.filter((a) => a.artifact_type === "landing_page");
   const artifactColumns: Column<ArtifactRow>[] = [
     { key: "id", header: "ID", render: (r) => <span className="font-mono text-xs">{String(r.id).slice(0, 8)}…</span> },
@@ -224,8 +240,8 @@ export default function RunDetailPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Link href="/runs" className="text-brand-600 hover:underline text-sm shrink-0">← Runs</Link>
               <Button variant="secondary" onClick={handleRerun} disabled={!!actionBusy}>{actionBusy === "rerun" ? "…" : "Re-run"}</Button>
-              <Button variant="secondary" onClick={handleCancel} disabled={!!actionBusy || (run.status !== "running" && run.status !== "queued")}>{actionBusy === "cancel" ? "…" : "Cancel run"}</Button>
-              <Button variant="secondary" onClick={handleRollback} disabled={!!actionBusy}>{actionBusy === "rollback" ? "…" : "Rollback"}</Button>
+              <Button variant="secondary" onClick={openCancelConfirm} disabled={!!actionBusy || (run.status !== "running" && run.status !== "queued")}>{actionBusy === "cancel" ? "…" : "Cancel run"}</Button>
+              <Button variant="secondary" onClick={openRollbackConfirm} disabled={!!actionBusy}>{actionBusy === "rollback" ? "…" : "Rollback"}</Button>
               <Button variant="secondary" onClick={() => handleApprove("approve")} disabled={!!actionBusy}>{actionBusy === "approve" ? "…" : "Approve"}</Button>
               <Button variant="secondary" onClick={() => handleApprove("reject")} disabled={!!actionBusy}>{actionBusy === "reject" ? "…" : "Reject"}</Button>
               <Button variant="ghost" onClick={handleExportMdd}>Export .mdd</Button>
@@ -353,6 +369,26 @@ export default function RunDetailPage() {
           </TabsContent>
         </Tabs>
       </Stack>
+
+      <AlertDialog open={confirmAction !== null} onOpenChange={(open) => !open && setConfirmAction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction === "cancel" ? "Cancel run?" : confirmAction === "rollback" ? "Trigger rollback?" : ""}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction === "cancel" && "This run will be marked failed. This action cannot be undone."}
+              {confirmAction === "rollback" && "Roll back this run’s release in this environment. This action cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep</AlertDialogCancel>
+            <AlertDialogAction onClick={onConfirmDialogAction}>
+              {confirmAction === "cancel" ? "Cancel run" : confirmAction === "rollback" ? "Rollback" : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageFrame>
   );
 }

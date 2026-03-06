@@ -100,6 +100,18 @@ export async function getRun(id: string): Promise<RunRow & { job_runs?: unknown[
   return res.json();
 }
 
+export async function getRunStatus(id: string): Promise<{ status: string }> {
+  const res = await fetch(`${API}/v1/runs/${id}/status`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getRunArtifacts(runId: string): Promise<{ items: ArtifactRow[] }> {
+  const res = await fetch(`${API}/v1/runs/${runId}/artifacts`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function getInitiatives(params?: { intent_type?: string; risk_level?: string; limit?: number }): Promise<{ items: InitiativeRow[] }> {
   const searchParams = new URLSearchParams();
   if (params?.intent_type) searchParams.set("intent_type", params.intent_type);
@@ -220,6 +232,16 @@ export async function getApproval(id: string): Promise<ApprovalRow> {
 
 export async function rerunRun(id: string): Promise<{ id: string }> {
   const res = await fetch(`${API}/v1/runs/${id}/rerun`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function cancelRun(id: string, reason?: string): Promise<{ id: string; status: string; cancelled_at?: string }> {
+  const res = await fetch(`${API}/v1/runs/${id}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reason != null ? { reason } : {}),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -498,7 +520,16 @@ export async function getEmailCampaign(id: string): Promise<EmailCampaignRow & {
   return res.json();
 }
 
-export async function createEmailCampaign(body: { title?: string; subject_line?: string; from_name?: string; from_email?: string }): Promise<EmailCampaignRow> {
+export async function createEmailCampaign(body: {
+  title?: string;
+  subject_line?: string;
+  from_name?: string;
+  from_email?: string;
+  brand_profile_id?: string;
+  template_id?: string;
+  template_artifact_id?: string;
+  metadata_json?: unknown;
+}): Promise<EmailCampaignRow> {
   const res = await fetch(`${API}/v1/email_campaigns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -508,12 +539,64 @@ export async function createEmailCampaign(body: { title?: string; subject_line?:
   return res.json();
 }
 
-export async function updateEmailCampaign(id: string, body: { subject_line?: string; from_name?: string; from_email?: string; reply_to?: string; audience_segment_ref?: string }): Promise<EmailCampaignRow> {
+export async function updateEmailCampaign(id: string, body: {
+  subject_line?: string;
+  from_name?: string;
+  from_email?: string;
+  reply_to?: string;
+  audience_segment_ref?: string;
+  template_artifact_id?: string;
+  metadata_json?: unknown;
+}): Promise<EmailCampaignRow> {
   const res = await fetch(`${API}/v1/email_campaigns/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function fetchSitemapProducts(params: {
+  sitemap_url: string;
+  sitemap_type: string;
+  page?: number;
+  limit?: number;
+}): Promise<{ items: Array<{ src: string; title: string; product_url: string }>; has_more: boolean }> {
+  const res = await fetch(`${API}/v1/sitemap/products`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export type EmailTemplateRow = {
+  id: string;
+  type: string;
+  name: string;
+  image_url: string | null;
+  mjml: string | null;
+  template_json: unknown;
+  sections_json: unknown;
+  img_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getEmailTemplates(params?: { type?: string; limit?: number; offset?: number }): Promise<{ items: EmailTemplateRow[]; total: number }> {
+  const searchParams = new URLSearchParams();
+  if (params?.type) searchParams.set("type", params.type);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.offset) searchParams.set("offset", String(params.offset));
+  const res = await fetch(`${API}/v1/email_templates?${searchParams}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getEmailTemplate(id: string): Promise<EmailTemplateRow> {
+  const res = await fetch(`${API}/v1/email_templates/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -690,7 +773,7 @@ export async function deleteDocumentTemplate(id: string): Promise<{ id: string; 
 export const api = {
   getRuns, getRun, getInitiatives, getInitiative, createInitiative, updateInitiative, getPlans, getPlan,
   getJobRuns, getJobRun, getArtifacts, getArtifact, getToolCalls, getApprovals,
-  getPendingApprovals, getApproval, rerunRun, getLlmCalls, getUsage,
+  getPendingApprovals, getApproval, rerunRun, cancelRun, getLlmCalls, getUsage,
   getAgentMemory, getAgentMemoryById, getMcpServers, getMcpServer, createMcpServer,
   deleteMcpServer, testMcpServer, getJobRunLlmCalls, getRoutingPolicies, getUsageByJobType,
   getBrandProfiles, getBrandProfile, createBrandProfile, updateBrandProfile, deleteBrandProfile,

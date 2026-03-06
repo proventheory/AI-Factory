@@ -3,10 +3,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/lib/api";
 
-export function useRuns(params?: { status?: string; intent_type?: string; limit?: number }) {
+export function useRuns(
+  params?: { status?: string; intent_type?: string; limit?: number },
+  options?: { refetchInterval?: number | false }
+) {
   return useQuery({
     queryKey: ["runs", params?.status, params?.intent_type, params?.limit],
     queryFn: () => api.getRuns(params),
+    refetchInterval: options?.refetchInterval,
   });
 }
 
@@ -138,6 +142,17 @@ export function useRerunRun() {
   });
 }
 
+export function useCancelRun() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ runId, reason }: { runId: string; reason?: string }) => api.cancelRun(runId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+      queryClient.invalidateQueries({ queryKey: ["run"] });
+    },
+  });
+}
+
 export function useLlmCalls(params?: { run_id?: string; model_tier?: string; limit?: number; offset?: number }) {
   return useQuery({
     queryKey: ["llm_calls", params?.run_id, params?.model_tier, params?.limit, params?.offset],
@@ -222,7 +237,7 @@ export function useEmailCampaign(id: string | null) {
 export function useCreateEmailCampaign() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title?: string; subject_line?: string; from_name?: string; from_email?: string }) => api.createEmailCampaign(body),
+    mutationFn: (body: Parameters<typeof api.createEmailCampaign>[0]) => api.createEmailCampaign(body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["email_campaigns"] }),
   });
 }
@@ -235,6 +250,27 @@ export function useUpdateEmailCampaign() {
       queryClient.invalidateQueries({ queryKey: ["email_campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["email_campaign", id] });
     },
+  });
+}
+
+export function useSitemapProducts() {
+  return useMutation({
+    mutationFn: (params: { sitemap_url: string; sitemap_type: string; page?: number; limit?: number }) => api.fetchSitemapProducts(params),
+  });
+}
+
+export function useEmailTemplates(params?: { type?: string; limit?: number; offset?: number }) {
+  return useQuery({
+    queryKey: ["email_templates", params?.type, params?.limit, params?.offset],
+    queryFn: () => api.getEmailTemplates(params),
+  });
+}
+
+export function useEmailTemplate(id: string | null) {
+  return useQuery({
+    queryKey: ["email_template", id],
+    queryFn: () => api.getEmailTemplate(id!),
+    enabled: !!id,
   });
 }
 

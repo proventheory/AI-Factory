@@ -6,6 +6,7 @@ import { pool, withTransaction } from "./db.js";
 import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
 import { executeRollback, routeRun } from "./release-manager.js";
 import { triggerNoArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
+import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
 
 const app = express();
 // CORS: allow comma-separated origins (e.g. multiple Vercel URLs) or "*"
@@ -167,7 +168,7 @@ app.get("/v1/email_campaigns", async (req, res) => {
 app.get("/v1/email_campaigns/:id", async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT i.*, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
+      `SELECT i.id, i.title, i.created_at, i.brand_profile_id, i.template_id, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
        FROM initiatives i
        LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
        WHERE i.id = $1 AND i.intent_type = 'email_campaign'`,
@@ -185,18 +186,34 @@ app.post("/v1/email_campaigns", async (req, res) => {
   try {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
-    const body = req.body as { title?: string; subject_line?: string; from_name?: string; from_email?: string };
+    const body = req.body as {
+      title?: string;
+      subject_line?: string;
+      from_name?: string;
+      from_email?: string;
+      brand_profile_id?: string;
+      template_id?: string;
+      template_artifact_id?: string;
+      metadata_json?: unknown;
+    };
     const id = uuid();
     await pool.query(
-      `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, 'medium')`,
-      [id, body.title ?? "New email campaign"]
+      `INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, 'medium', $3, $4)`,
+      [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null]
     );
     await pool.query(
-      `INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email) VALUES ($1, $2, $3, $4)`,
-      [id, body.subject_line ?? null, body.from_name ?? null, body.from_email ?? null]
+      `INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email, template_artifact_id, metadata_json) VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [
+        id,
+        body.subject_line ?? null,
+        body.from_name ?? null,
+        body.from_email ?? null,
+        body.template_artifact_id ?? null,
+        body.metadata_json != null ? JSON.stringify(body.metadata_json) : null,
+      ]
     );
     const r = await pool.query(
-      `SELECT i.id, i.title, i.created_at, m.subject_line, m.from_name, m.from_email
+      `SELECT i.id, i.title, i.created_at, i.brand_profile_id, i.template_id, m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.metadata_json
        FROM initiatives i LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id WHERE i.id = $1`,
       [id]
     );
@@ -215,14 +232,26 @@ app.patch("/v1/email_campaigns/:id", async (req, res) => {
     const exists = await pool.query("SELECT id FROM initiatives WHERE id = $1 AND intent_type = 'email_campaign'", [id]);
     if (exists.rows.length === 0) return res.status(404).json({ error: "Not found" });
     const body = req.body as Record<string, unknown>;
-    const allowed = ["subject_line", "from_name", "from_email", "reply_to", "audience_segment_ref"];
+    const allowed = [
+      "subject_line",
+      "from_name",
+      "from_email",
+      "reply_to",
+      "audience_segment_ref",
+      "template_artifact_id",
+      "metadata_json",
+    ];
     const updates: string[] = [];
     const params: unknown[] = [id];
     let i = 2;
     for (const field of allowed) {
       if (body[field] !== undefined) {
-        updates.push(`${field} = $${i++}`);
-        params.push(body[field]);
+        if (field === "metadata_json") {
+          updates.push(`metadata_json = $${i++}::jsonb`);
+        } else {
+          updates.push(`${field} = $${i++}`);
+        }
+        params.push(field === "metadata_json" && body[field] != null ? JSON.stringify(body[field]) : body[field]);
       }
     }
     updates.push("updated_at = now()");
@@ -234,6 +263,40 @@ app.patch("/v1/email_campaigns/:id", async (req, res) => {
       params
     );
     res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/sitemap/products — fetch products from sitemap URL (port from email-marketing-factory campaigns route) */
+app.post("/v1/sitemap/products", async (req, res) => {
+  try {
+    const body = req.body as {
+      sitemap_url?: string;
+      sitemap_type?: string;
+      page?: number;
+      limit?: number;
+    };
+    const sitemap_url = body.sitemap_url;
+    const sitemap_type = body.sitemap_type as SitemapType | undefined;
+    if (!sitemap_url || !sitemap_type) {
+      return res.status(400).json({ error: "sitemap_url and sitemap_type are required" });
+    }
+    const allowedTypes: SitemapType[] = ["drupal", "ecommerce", "bigcommerce", "shopify"];
+    if (!allowedTypes.includes(sitemap_type)) {
+      return res.status(400).json({
+        error: `sitemap_type must be one of: ${allowedTypes.join(", ")}`,
+      });
+    }
+    const page = Math.max(1, Number(body.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(body.limit) || 20));
+    const result = await fetchSitemapProducts({
+      sitemap_url,
+      sitemap_type,
+      page,
+      limit,
+    });
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -375,20 +438,21 @@ app.get("/v1/runs", async (req, res) => {
   }
 });
 
-/** GET /v1/runs/:id — full flight recorder (run + plan + node_progress + job_runs + tool_calls + events) */
+/** GET /v1/runs/:id — full flight recorder (run + plan + node_progress + job_runs + artifacts + events) */
 app.get("/v1/runs/:id", async (req, res) => {
   try {
     const runId = req.params.id;
-    const [run, planNodes, planEdges, nodeProgress, jobRuns, runEvents] = await Promise.all([
+    const [run, planNodes, planEdges, nodeProgress, jobRuns, runArtifacts, runEvents] = await Promise.all([
       pool.query("SELECT * FROM runs WHERE id = $1", [runId]).then(r => r.rows[0]),
       pool.query("SELECT pn.* FROM plans p JOIN plan_nodes pn ON pn.plan_id = p.id WHERE p.id = (SELECT plan_id FROM runs WHERE id = $1)", [runId]).then(r => r.rows),
       pool.query("SELECT pe.* FROM plans p JOIN plan_edges pe ON pe.plan_id = p.id WHERE p.id = (SELECT plan_id FROM runs WHERE id = $1)", [runId]).then(r => r.rows),
       pool.query("SELECT * FROM node_progress WHERE run_id = $1", [runId]).then(r => r.rows),
       pool.query("SELECT jr.* FROM job_runs jr WHERE jr.run_id = $1 ORDER BY plan_node_id, attempt DESC", [runId]).then(r => r.rows),
+      pool.query("SELECT * FROM artifacts WHERE run_id = $1 ORDER BY created_at", [runId]).then(r => r.rows),
       pool.query("SELECT * FROM run_events WHERE run_id = $1 ORDER BY created_at", [runId]).then(r => r.rows),
     ]);
     if (!run) return res.status(404).json({ error: "Run not found" });
-    res.json({ run, plan_nodes: planNodes, plan_edges: planEdges, node_progress: nodeProgress, job_runs: jobRuns, run_events: runEvents });
+    res.json({ run, plan_nodes: planNodes, plan_edges: planEdges, node_progress: nodeProgress, job_runs: jobRuns, artifacts: runArtifacts, run_events: runEvents });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -453,7 +517,9 @@ app.post("/v1/initiatives/:id/plan", async (req, res) => {
     const initiativeId = req.params.id;
     const body = (req.body as { seed?: string; force?: boolean }) ?? {};
     const { compilePlan } = await import("./plan-compiler.js");
-    const compiled = await compilePlan(pool, initiativeId, { seed: body.seed, force: body.force });
+    const compiled = await withTransaction((client) =>
+      compilePlan(client, initiativeId, { seed: body.seed, force: body.force })
+    );
     const nodeCount = compiled.nodeIds.size;
     res.status(201).json({ id: compiled.planId, initiative_id: initiativeId, status: "draft", nodes: nodeCount, plan_hash: compiled.planHash });
   } catch (e) {
@@ -653,14 +719,17 @@ app.post("/v1/approvals", async (req, res) => {
       await pool.query("DELETE FROM approval_requests WHERE run_id = $1 AND plan_node_id = $2", [run_id, plan_node_id]).catch(() => {});
       if (actionVal === "approved") {
         const client = await pool.connect();
+        let committed = false;
         try {
           await client.query("BEGIN");
           await completeApprovalAndAdvance(client, run_id, plan_node_id);
           await client.query("COMMIT");
+          committed = true;
         } catch (e) {
-          await client.query("ROLLBACK");
+          await client.query("ROLLBACK").catch(() => {});
           throw e;
         } finally {
+          if (!committed) await client.query("ROLLBACK").catch(() => {});
           client.release();
         }
       }
@@ -1245,7 +1314,7 @@ app.post("/v1/webhooks/github", async (req, res) => {
       if (initId) {
         try {
           const { compilePlan } = await import("./plan-compiler.js");
-          await compilePlan(pool, initId, { force: true });
+          await withTransaction((client) => compilePlan(client, initId, { force: true }));
         } catch { /* plan compilation is best-effort on webhook */ }
       }
       return res.status(201).json({ initiative_id: initId, self_heal: true, repo, source_ref: sourceUrl });
@@ -1285,7 +1354,7 @@ app.post("/v1/initiatives/:id/replan", async (req, res) => {
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const initiativeId = req.params.id;
     const { compilePlan } = await import("./plan-compiler.js");
-    const compiled = await compilePlan(pool, initiativeId, { force: true });
+    const compiled = await withTransaction((client) => compilePlan(client, initiativeId, { force: true }));
     res.status(201).json({ id: compiled.planId, initiative_id: initiativeId, status: "draft", nodes: compiled.nodeIds.size, plan_hash: compiled.planHash });
   } catch (e) {
     const msg = (e as Error).message;
@@ -2156,6 +2225,130 @@ app.delete("/v1/document_templates/:id/components/:cid", async (req, res) => {
     );
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
     res.status(200).json({ deleted: true, id: cid });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+// =====================================================================
+// Email Templates CRUD (Email Marketing Factory)
+// =====================================================================
+
+/** GET /v1/email_templates */
+app.get("/v1/email_templates", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+    const offset = Number(req.query.offset) || 0;
+    const type = req.query.type as string | undefined;
+    const conditions: string[] = ["1=1"];
+    const params: unknown[] = [];
+    let i = 1;
+    if (type) {
+      conditions.push(`type = $${i++}`);
+      params.push(type);
+    }
+    params.push(limit, offset);
+    const q = `SELECT * FROM email_templates WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
+    const countQ = `SELECT count(*)::int AS total FROM email_templates WHERE ${conditions.join(" AND ")}`;
+    const [itemsResult, totalResult] = await Promise.all([
+      pool.query(q, params),
+      pool.query(countQ, params.slice(0, -2)),
+    ]);
+    res.json({ items: itemsResult.rows, total: totalResult.rows[0]?.total ?? 0 });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/email_templates/:id */
+app.get("/v1/email_templates/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const r = await pool.query("SELECT * FROM email_templates WHERE id = $1", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/email_templates */
+app.post("/v1/email_templates", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as {
+      type?: string;
+      name?: string;
+      image_url?: string;
+      mjml?: string;
+      template_json?: unknown;
+      sections_json?: unknown;
+      img_count?: number;
+    };
+    const r = await pool.query(
+      `INSERT INTO email_templates (type, name, image_url, mjml, template_json, sections_json, img_count)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7) RETURNING *`,
+      [
+        body.type ?? "newsletter",
+        body.name ?? "Untitled",
+        body.image_url ?? null,
+        body.mjml ?? null,
+        body.template_json ?? null,
+        body.sections_json ?? null,
+        body.img_count ?? 0,
+      ]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** PATCH /v1/email_templates/:id */
+app.patch("/v1/email_templates/:id", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const id = req.params.id;
+    const body = req.body as Record<string, unknown>;
+    const allowed = ["type", "name", "image_url", "mjml", "template_json", "sections_json", "img_count"];
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    let i = 1;
+    for (const field of allowed) {
+      if (body[field] !== undefined) {
+        if (field === "template_json" || field === "sections_json") {
+          sets.push(`${field} = $${i++}::jsonb`);
+        } else {
+          sets.push(`${field} = $${i++}`);
+        }
+        params.push(body[field]);
+      }
+    }
+    if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
+    sets.push("updated_at = now()");
+    params.push(id);
+    const r = await pool.query(
+      `UPDATE email_templates SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
+      params
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** DELETE /v1/email_templates/:id */
+app.delete("/v1/email_templates/:id", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const id = req.params.id;
+    const r = await pool.query("DELETE FROM email_templates WHERE id = $1 RETURNING id", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.status(200).json({ deleted: true, id });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
