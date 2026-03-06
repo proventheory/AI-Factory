@@ -130,7 +130,7 @@ async function pollAndExecute(): Promise<void> {
           await txClient.query("BEGIN");
           await handler(txClient, jobContext, { runId: jobRun.run_id, jobRunId: jobRun.id, planNodeId: jobRun.plan_node_id });
           await txClient.query("COMMIT");
-          const countResult = await txClient.query<{ c: number }>("SELECT count(*)::int AS c FROM artifacts WHERE run_id = $1", [jobRun.run_id]);
+          const countResult = await txClient.query<{ c: number }>("SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1", [jobRun.run_id]);
           const artifactCount = countResult.rows[0]?.c ?? 0;
           console.log("[runner] handler transaction committed (artifacts persisted)", { run_id: jobRun.run_id, job_type: jobContext.job_type, artifact_count: artifactCount });
           // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)

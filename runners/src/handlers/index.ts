@@ -46,7 +46,7 @@ async function writeArtifact(
   const payload = JSON.stringify(payloadObj);
   // Use minimal columns (no producer_plan_node_id) so INSERT never fails on core schema and never aborts the transaction.
   const r = await client.query<{ id: string }>(
-    `INSERT INTO artifacts (id, run_id, job_run_id, artifact_type, artifact_class, uri, metadata_json)
+    `INSERT INTO public.artifacts (id, run_id, job_run_id, artifact_type, artifact_class, uri, metadata_json)
      VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::jsonb)
      RETURNING id`,
     [params.runId, params.jobRunId, artifactType, artifactClass, uri, payload]
@@ -406,7 +406,7 @@ export function registerAllHandlers(): void {
       // Post-write verification: re-read and confirm stored length matches generated (no truncation)
       if (artifactId) {
         const r = await client.query<{ metadata_json: { content?: string } | null }>(
-          "SELECT metadata_json FROM artifacts WHERE id = $1",
+          "SELECT metadata_json FROM public.artifacts WHERE id = $1",
           [artifactId]
         );
         const storedContent = r.rows[0]?.metadata_json?.content;
@@ -436,7 +436,9 @@ export function registerAllHandlers(): void {
             [artifactId, context.run_id, params.jobRunId, JSON.stringify(preWrite.details)]
           ).catch(() => {});
         }
-      }
+        }
+        const preCommitCount = await client.query<{ c: number }>("SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1", [context.run_id]);
+        console.log("[runner] email_generate_mjml pre-commit artifact count", { run_id: context.run_id, count: preCommitCount.rows[0]?.c ?? 0 });
       }
     }
   });

@@ -47,7 +47,7 @@ If these are set, the control plane can push DATABASE_URL, CONTROL_PLANE_URL, an
 
 **What DATABASE_URL should the runner have (staging)?**  
 The **exact same** connection string as **ai-factory-api-staging**. Easiest: **Render → ai-factory-api-staging → Environment** → copy `DATABASE_URL` → **ai-factory-runner-staging → Environment** → paste as `DATABASE_URL`.  
-Alternatively, get the URI from **Supabase → [ai-factory-staging](https://supabase.com/dashboard/project/anqhihkvovuhfzsyqtxu/settings/database)** → Project Settings → Database → **Connection string** → **URI** (Session pooler or Transaction pooler), replace `[YOUR-PASSWORD]` with your staging DB password. Use that same URI for both the Control Plane and the runner so they share one database.
+Use **Session pooler** (port **5432**) or **Direct connection** — not Transaction pooler (6543). With Transaction pooler, the runner can commit the artifact but the next query may hit a different backend (e.g. replica) and see no rows; then the UI shows no artifacts. In Supabase → Database → Connection string, pick **Session** (or **Direct**) and use that URI for both API and runner.
 | CONTROL_PLANE_URL | Yes | ✓ | **Check for typo:** must be `https://**ai**-factory-api-staging.onrender.com` (not `a1-factory`). |
 | LLM_GATEWAY_URL or OPENAI_API_KEY | Yes | ✓ (both) | Runner can call gateway or OpenAI direct. |
 
