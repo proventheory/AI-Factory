@@ -48,8 +48,8 @@ function normalizeSitemapUrl(url: string): string {
   return (url || "").trim().replace(/\/+$/, "");
 }
 
-function setProductsCache(cache: ProductsCache) {
-  setWizardState({ products_cache: cache });
+function setProductsCache(cache: ProductsCache, brandId?: string) {
+  setWizardState({ products_cache: cache, wizard_sitemap_brand_id: brandId ?? getWizardState().wizard_sitemap_brand_id });
 }
 
 export default function EmailMarketingNewProductsPage() {
@@ -89,11 +89,33 @@ export default function EmailMarketingNewProductsPage() {
   const fetchProducts = useSitemapProducts();
   const hasPrefilled = useRef<string | null>(null);
 
+  // When brand changes, clear sitemap/cache from a previous brand so we don't show another brand's URL/products
+  useEffect(() => {
+    const state = getWizardState();
+    const cacheBrandId = state.wizard_sitemap_brand_id as string | undefined;
+    if (!brandId || !cacheBrandId || cacheBrandId === brandId) return;
+    setWizardState({
+      sitemap_url: "",
+      sitemap_type: "ecommerce",
+      products_cache: undefined,
+      wizard_sitemap_brand_id: undefined,
+    });
+    setSitemapUrl("");
+    setSitemapType("ecommerce");
+    setItems([]);
+    setTotalAvailable(null);
+    setHasMore(false);
+    setSelected(new Set());
+    hasPrefilled.current = null;
+  }, [brandId]);
+
   // Prefill from brand tokens only when wizard has no sitemap yet (first visit); otherwise keep wizard state so cache restore works
   useEffect(() => {
     if (!brandId || !brand?.design_tokens || typeof brand.design_tokens !== "object") return;
     if (hasPrefilled.current === brandId) return;
     const state = getWizardState();
+    const cacheBrand = state.wizard_sitemap_brand_id as string | undefined;
+    if (cacheBrand != null && cacheBrand !== brandId) return;
     const existingUrl = (state.sitemap_url as string)?.trim() || "";
     const cache = state.products_cache as ProductsCache | undefined;
     if (existingUrl || (cache && Array.isArray(cache.items) && cache.items.length > 0)) {
@@ -110,10 +132,13 @@ export default function EmailMarketingNewProductsPage() {
     const sitemapTypeVal = typeof rawType === "string" ? rawType : "ecommerce";
     if (url) setSitemapUrl(url);
     if (sitemapTypeVal) setSitemapType(sitemapTypeVal);
+    setWizardState({ wizard_sitemap_brand_id: brandId });
   }, [brandId, brand?.design_tokens, brand?.id]);
 
-  // Restore cached products when sitemap URL/type match cache; if we have cache but url is empty (e.g. SSR/hydration), rehydrate from cache
+  // Restore cached products when sitemap URL/type match cache AND cache is for current brand; if we have cache but url is empty (e.g. SSR/hydration), rehydrate from cache only if same brand
   useEffect(() => {
+    const state = getWizardState();
+    if (brandId && (state.wizard_sitemap_brand_id as string) !== brandId) return;
     const cache = getProductsCache();
     if (!cache || !cache.items.length) return;
     if (cacheMatchesUrl(sitemapUrl, sitemapType, cache)) {
@@ -133,7 +158,7 @@ export default function EmailMarketingNewProductsPage() {
     setItems([]);
     setTotalAvailable(null);
     setHasMore(false);
-  }, [sitemapUrl, sitemapType]);
+  }, [brandId, sitemapUrl, sitemapType]);
 
   const handleFetch = async (append = false) => {
     const url = sitemapUrl.trim();
@@ -162,7 +187,7 @@ export default function EmailMarketingNewProductsPage() {
           totalAvailable: total ?? combined.length,
           hasMore: more,
           ...cachePayload,
-        });
+        }, brandId);
       } else {
         setItems(newItems);
         setSelected(new Set());
@@ -172,10 +197,10 @@ export default function EmailMarketingNewProductsPage() {
           totalAvailable: total,
           hasMore: more,
           ...cachePayload,
-        });
+        }, brandId);
       }
       setHasMore(more);
-      setWizardState({ sitemap_url: normalizedUrl, sitemap_type: sitemapType });
+      setWizardState({ sitemap_url: normalizedUrl, sitemap_type: sitemapType, wizard_sitemap_brand_id: brandId ?? undefined });
     } catch (_e) {
       if (!append) {
         setItems([]);
@@ -186,7 +211,7 @@ export default function EmailMarketingNewProductsPage() {
           hasMore: false,
           sitemap_url: normalizedUrl,
           sitemap_type: sitemapType,
-        });
+        }, brandId);
       }
       setHasMore(false);
     }

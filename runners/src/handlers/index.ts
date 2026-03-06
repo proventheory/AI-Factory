@@ -396,7 +396,10 @@ export function registerAllHandlers(): void {
         recordLlmCall(client, context.run_id, params.jobRunId, tier, modelId, tokensIn, tokensOut, latencyMs),
     };
     const out = await handleEmailGenerateMjml(request);
-    if (out?.content != null) {
+    if (out?.content == null || out.content.length === 0) {
+      throw new Error("email_generate_mjml produced no content (template and LLM path both failed or returned empty)");
+    }
+    {
       const len = out.content.length;
       if (len > 10_000) console.log("[runner] email_template content length exceeds 10KB, storing full length", { run_id: context.run_id, contentLen: len });
       const artifactId = await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template", out.metadata);

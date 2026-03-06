@@ -140,7 +140,7 @@ async function pollAndExecute(): Promise<void> {
           fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:no_executor_handler", message: "no executor or handler", data: { job_type: jobContext?.job_type }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
         }
         // #endregion
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        throw new Error(`No executor or handler for job_type=${jobContext?.job_type ?? "unknown"}. Ensure the runner is up to date and has a handler for this job (e.g. email_generate_mjml).`);
       }
 
       const txClient = await pool.connect();

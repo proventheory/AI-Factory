@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button } from "@/components/ui";
 import { useCreateEmailCampaign } from "@/hooks/use-api";
-import { getRunStatus, getRunArtifacts } from "@/lib/api";
+import { getRunStatus, getRunArtifacts, type ArtifactRow } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 const WIZARD_KEY = "email_marketing_wizard";
@@ -101,19 +101,27 @@ export default function EmailMarketingNewGeneratePage() {
         await new Promise((r) => setTimeout(r, 2000));
         const status = await getRunStatus(runId);
         if (status.status === "succeeded") {
-          const { items } = await getRunArtifacts(runId);
-          const emailArtifact = items?.find(
-            (a) => a.artifact_type === "email_template" || a.artifact_class === "email_template"
-          );
-          clearWizardState();
-          if (emailArtifact?.id) {
-            router.push(`/email-marketing/runs/${runId}/artifacts/${emailArtifact.id}/edit`);
-            return;
+          // Poll artifacts with retries (handles replication lag / eventual consistency)
+          let items: ArtifactRow[] = [];
+          for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 1500));
+            const res = await getRunArtifacts(runId);
+            items = res.items ?? [];
+            const emailArtifact = items.find(
+              (a) => a.artifact_type === "email_template" || a.artifact_class === "email_template"
+            );
+            if (emailArtifact?.id) {
+              clearWizardState();
+              router.push(`/email-marketing/runs/${runId}/artifacts/${emailArtifact.id}/edit`);
+              return;
+            }
           }
-          router.push(`/runs/${runId}`);
+          clearWizardState();
+          router.push(`/runs/${runId}?no_email_artifact=1`);
           return;
         }
         if (status.status === "failed") {
+          clearWizardState();
           router.push(`/runs/${runId}`);
           return;
         }

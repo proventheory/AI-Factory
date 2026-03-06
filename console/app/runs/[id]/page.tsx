@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -33,7 +33,9 @@ type AuditRow = { source: string; id: string; run_id: string; job_run_id: string
 export default function RunDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params.id as string;
+  const noEmailArtifact = searchParams.get("no_email_artifact") === "1";
   const [data, setData] = useState<RunDetail | null>(null);
   const [toolCalls, setToolCalls] = useState<ToolCallRow[]>([]);
   const [validations, setValidations] = useState<ValidationRow[]>([]);
@@ -41,7 +43,7 @@ export default function RunDetailPage() {
   const [auditItems, setAuditItems] = useState<AuditRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(noEmailArtifact ? "artifacts" : "overview");
   const [confirmAction, setConfirmAction] = useState<"cancel" | "rollback" | null>(null);
 
   const refetch = useCallback(() => {
@@ -333,7 +335,13 @@ export default function RunDetailPage() {
               {artifacts.length === 0 ? (
                 <EmptyState
                   title="No artifacts"
-                  description="Jobs haven't produced artifacts yet. A runner must be running and connected to the same database to claim and execute jobs (copy_generate → landing_page_generate). If you expect artifacts: start a runner locally (npm run dev:runner with DATABASE_URL, CONTROL_PLANE_URL, LLM_GATEWAY_URL in .env) or ensure the Render worker service is running with those env vars. Then Re-run this run or start a new run."
+                  description={
+                    noEmailArtifact
+                      ? "The run completed but no email artifact was found (we checked several times). This can happen if the runner writes to a different database than the Control Plane, or the job failed to write before reporting success. Use Re-run to try again, or check that your worker uses the same DATABASE_URL as the Control Plane."
+                      : (data?.run?.status as string) === "succeeded"
+                        ? "Run completed but no artifacts were produced. If this was an email campaign: ensure a runner is connected to the same database as the Control Plane, then Re-run. For other job types, check that the runner executed the job and wrote artifacts."
+                        : "Jobs haven't produced artifacts yet. A runner must be running and connected to the same database to claim and execute jobs. If you expect artifacts: start a runner locally (npm run dev:runner with DATABASE_URL, CONTROL_PLANE_URL, LLM_GATEWAY_URL in .env) or ensure the Render worker service is running with those env vars. Then Re-run this run or start a new run."
+                  }
                 />
               ) : (
                 <TableFrame>
