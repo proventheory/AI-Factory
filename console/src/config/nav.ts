@@ -173,8 +173,6 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "template": "Template",
   "generate": "Generate",
   "campaigns": "Campaigns",
-  "runs": "Runs",
-  "artifacts": "Artifacts",
   "edit": "Edit",
   "self-heal": "Self-heal",
   admin: "Admin",

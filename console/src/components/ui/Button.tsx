@@ -1,6 +1,6 @@
 "use client";
 
-import { type ButtonHTMLAttributes, forwardRef } from "react";
+import { type ButtonHTMLAttributes, type ReactElement, cloneElement, forwardRef, isValidElement } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
@@ -8,6 +8,8 @@ type Size = "sm" | "md" | "lg";
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
+  /** When true, render the single child element with button styles merged (e.g. <Button asChild><Link href="...">...</Link></Button>). */
+  asChild?: boolean;
 }
 
 const variantClasses: Record<Variant, string> = {
@@ -23,14 +25,27 @@ const sizeClasses: Record<Size, string> = {
   lg: "px-4 py-2.5 text-base rounded-md",
 };
 
+const baseClass =
+  "inline-flex items-center justify-center border font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none";
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = "", variant = "primary", size = "md", disabled, ...props }, ref) => (
-    <button
-      ref={ref}
-      className={`inline-flex items-center justify-center border font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
-      disabled={disabled}
-      {...props}
-    />
-  )
+  ({ className = "", variant = "primary", size = "md", disabled, asChild, children, ...props }, ref) => {
+    const combinedClassName = `${baseClass} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`.trim();
+    if (asChild && isValidElement(children)) {
+      const child = children as ReactElement<{ className?: string }>;
+      const childClassName = [combinedClassName, child.props?.className].filter(Boolean).join(" ");
+      return cloneElement(child, { ...child.props, className: childClassName });
+    }
+    return (
+      <button
+        ref={ref}
+        className={combinedClassName}
+        disabled={disabled}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  }
 );
 Button.displayName = "Button";
