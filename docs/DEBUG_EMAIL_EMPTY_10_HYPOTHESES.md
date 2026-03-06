@@ -139,3 +139,29 @@ When the email artifact preview is empty (boilerplate only, broken image placeho
 6. **Failure:** Any `[MJML] ... failed (H...)` or `not ok (H5)`?
 
 If runner runs on **Render**, use Render dashboard → Logs and filter/search for your `run_id` and `[MJML]`.
+
+---
+
+## Verification chain (template–payload contract and artifact quality)
+
+When the template path ran but the output is wrong (e.g. placeholder not filled, logo missing, or preview empty/truncated), confirm in order:
+
+1. **Run used template path**  
+   Artifact `metadata_json.email_generation_path === 'template'`. If `'llm'`, the template path was skipped (see H4, H5, H8).
+
+2. **Final sectionJson for that run**  
+   Runner logs: `[MJML] template payload (H6/H7)` and `[MJML] template contract` include `sectionJson_keys`, `template_placeholders`, `unfilled_placeholders`. Grep by `run_id`.
+
+3. **Raw MJML template for that template_id**  
+   GET `/v1/email_templates/:id` (or DB `email_templates.mjml`) and confirm the template body. Check which Handlebars placeholders it uses (e.g. `{{header}}`, `{{logoUrl}}`).
+
+4. **Placeholder names in MJML vs keys in sectionJson**  
+   Logs: `[MJML] template contract` with `template_placeholders` and `unfilled_placeholders`. If `unfilled_placeholders` is non-empty, the template expects a variable the payload did not provide (or alias map did not cover).
+
+5. **Compiled HTML before save**  
+   Pre-write checks (in handler) assert: length ≥ 15KB, structural tag present, campaign copy snippet in HTML, logo URL in HTML when brand has logo. Failures log `[MJML] pre-write check failed` with `run_id`, `job_run_id`, `template_id`.
+
+6. **Saved artifact length vs compiled length**  
+   Post-write (runner): re-read artifact and compare `metadata_json.content.length` to `generated_html_len`. If stored &lt; 95% of generated, job fails and logs `[runner] post-write check failed`. Artifact metadata stores `generated_html_len` and `template_id_used` for debugging.
+
+All of the above logs are grep-friendly by `run_id`.

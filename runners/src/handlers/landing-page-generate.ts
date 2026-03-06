@@ -180,8 +180,9 @@ export interface LandingPageGenerateParams {
     params: { runId: string; jobRunId: string; planNodeId: string },
     artifactType: string,
     content: string,
-    artifactClass?: string
-  ) => Promise<void>;
+    artifactClass?: string,
+    metadata?: Record<string, unknown>
+  ) => Promise<void | string | null>;
 }
 
 export async function handleLandingPageGenerate({

@@ -14,7 +14,7 @@ import { pool } from "./db.js";
 import { startApi } from "./api.js";
 import { reapStaleLeases, reconcileRunStatuses } from "./reaper.js";
 import { computeDrift, executeRollback, routeRun } from "./release-manager.js";
-import { scanAndRemediateNoArtifactsRuns } from "./no-artifacts-self-heal.js";
+import { scanAndRemediateNoArtifactsRuns, scanAndRemediateBadArtifactRuns } from "./no-artifacts-self-heal.js";
 
 const REAPER_INTERVAL_MS = 30_000;
 const DRIFT_CHECK_INTERVAL_MS = 60_000;
@@ -63,6 +63,7 @@ async function startNoArtifactsScanLoop(): Promise<void> {
   setInterval(async () => {
     try {
       await scanAndRemediateNoArtifactsRuns();
+      await scanAndRemediateBadArtifactRuns();
     } catch (err) {
       console.error("[self-heal] No-artifacts scan error:", err);
     }

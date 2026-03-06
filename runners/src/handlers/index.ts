@@ -32,16 +32,26 @@ async function writeArtifact(
   artifactType: string,
   content: string,
   artifactClass: string = "docs",
-): Promise<void> {
+  metadata?: Record<string, unknown>,
+): Promise<string | null> {
   const uri = `mem://${artifactType}/${context.run_id}/${context.plan_node_id}`;
   const maxContent = artifactType === "landing_page" || artifactType === "email_template" ? 2_000_000 : 10_000;
-  const payload = JSON.stringify({ content: content.slice(0, maxContent) });
+  const contentSliced = content.slice(0, maxContent);
+  const payloadObj: Record<string, unknown> = { content: contentSliced };
+  if (metadata != null && typeof metadata === "object" && !Array.isArray(metadata)) {
+    for (const [k, v] of Object.entries(metadata)) {
+      if (k !== "content") payloadObj[k] = v;
+    }
+  }
+  const payload = JSON.stringify(payloadObj);
   // Use minimal columns (no producer_plan_node_id) so INSERT never fails on core schema and never aborts the transaction.
-  await client.query(
+  const r = await client.query<{ id: string }>(
     `INSERT INTO artifacts (id, run_id, job_run_id, artifact_type, artifact_class, uri, metadata_json)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::jsonb)`,
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::jsonb)
+     RETURNING id`,
     [params.runId, params.jobRunId, artifactType, artifactClass, uri, payload]
   );
+  return r.rows[0]?.id ?? null;
 }
 
 async function recordLlmCall(
@@ -389,7 +399,41 @@ export function registerAllHandlers(): void {
     if (out?.content != null) {
       const len = out.content.length;
       if (len > 10_000) console.log("[runner] email_template content length exceeds 10KB, storing full length", { run_id: context.run_id, contentLen: len });
-      await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template");
+      const artifactId = await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template", out.metadata);
+      // Post-write verification: re-read and confirm stored length matches generated (no truncation)
+      if (artifactId) {
+        const r = await client.query<{ metadata_json: { content?: string } | null }>(
+          "SELECT metadata_json FROM artifacts WHERE id = $1",
+          [artifactId]
+        );
+        const storedContent = r.rows[0]?.metadata_json?.content;
+        const storedLen = typeof storedContent === "string" ? storedContent.length : 0;
+        const generatedLen = out.content.length;
+        const postWritePassed = generatedLen === 0 || storedLen >= generatedLen * 0.95;
+        if (!postWritePassed) {
+          const msg = `[runner] post-write check failed: stored artifact truncated (generated=${generatedLen}, stored=${storedLen})`;
+          console.error(msg, { run_id: context.run_id, job_run_id: params.jobRunId });
+          await client.query(
+            `INSERT INTO artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
+             VALUES ($1, $2, $3, 'post_write', false, $4::jsonb)`,
+            [artifactId, context.run_id, params.jobRunId, JSON.stringify({ generated_len: generatedLen, stored_len: storedLen })]
+          ).catch(() => {});
+          throw new Error(msg);
+        }
+        await client.query(
+          `INSERT INTO artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
+           VALUES ($1, $2, $3, 'post_write', true, $4::jsonb)`,
+          [artifactId, context.run_id, params.jobRunId, JSON.stringify({ generated_len: generatedLen, stored_len: storedLen })]
+        ).catch(() => {});
+        const preWrite = (out.metadata as Record<string, unknown> | undefined)?.pre_write_verification as { passed: boolean; details?: unknown } | undefined;
+        if (preWrite?.passed && preWrite.details != null) {
+          await client.query(
+            `INSERT INTO artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
+             VALUES ($1, $2, $3, 'pre_write', true, $4::jsonb)`,
+            [artifactId, context.run_id, params.jobRunId, JSON.stringify(preWrite.details)]
+          ).catch(() => {});
+        }
+      }
     }
   });
   registry.set("brand_compile", async (client, context, params) => {

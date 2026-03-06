@@ -6,7 +6,7 @@ import mjml2html from "mjml";
 import { pool, withTransaction } from "./db.js";
 import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
 import { executeRollback, routeRun } from "./release-manager.js";
-import { triggerNoArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
+import { triggerNoArtifactsRemediationForRun, triggerBadArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
 import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
 import { tokenizeBrandFromUrl } from "./brand-tokenize-from-url.js";
 
@@ -544,6 +544,7 @@ app.get("/v1/runs/:id/artifacts", async (req, res) => {
       [runId]
     );
     if (r.rows.length === 0) setImmediate(() => triggerNoArtifactsRemediationForRun(runId));
+    else setImmediate(() => triggerBadArtifactsRemediationForRun(runId));
     res.json({ items: r.rows });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });

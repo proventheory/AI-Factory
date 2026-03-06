@@ -3,6 +3,7 @@
  * Ported from email-marketing-factory ai-engine mjmlJsonGen; adapted to load brand/template from Control Plane.
  */
 
+import { createHash } from "node:crypto";
 import mjml2html from "mjml";
 import Handlebars from "handlebars";
 import { chat, type LLMChatOptions } from "../llm-client.js";
@@ -11,6 +12,27 @@ import { tokens } from "../tokens.js";
 import { getArtifactSignedUrl } from "../artifact-storage.js";
 
 const CONTROL_PLANE_URL = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
+
+/** Minimum HTML length (bytes) for non-trivial template emails; below this the job fails. */
+const MIN_HTML_LENGTH = 15_000;
+
+/** Handlebars placeholder regex: {{name}} */
+const PLACEHOLDER_REGEX = /\{\{(\w+)\}\}/g;
+
+/** Map concept key -> list of placeholder names that should receive that value (template–payload contract). */
+const PLACEHOLDER_ALIASES: Record<string, string[]> = {
+  logo: ["logoUrl", "logo_url", "logo", "brandLogo", "brand_logo", "logo_src", "logoSrc"],
+  brandColor: ["brandColor", "color", "primaryColor", "brand_color"],
+  campaignCopy: [
+    "campaignPrompt", "headline", "title", "header", "subhead", "body", "message", "description",
+    "prehead", "eyebrow", "offerText", "offer", "content", "main_message", "mainMessage", "theme", "intro", "copy", "promo_text",
+  ],
+  fontFamily: ["fontFamily", "fonts"],
+  heroImage: ["imageUrl", "image_url", "image_src", "imageSrc", "hero_image", "hero_image_url", "heroImageUrl"],
+  footer: ["footer"],
+  ctaText: ["cta_text", "cta_label"],
+  ctaUrl: ["cta_url", "cta_link"],
+};
 
 export interface EmailGenerateMjmlInput {
   template_id?: string;
@@ -230,10 +252,47 @@ export async function handleEmailGenerateMjml(request: {
         "prehead", "eyebrow", "offerText", "offer", "content", "main_message", "mainMessage", "theme", "intro", "copy", "promo_text",
       ];
       for (const k of copyKeys) (sectionJson as Record<string, unknown>)[k] = campaignPrompt;
+
+      // Template–payload contract: extract placeholders from MJML and fill any missing from alias map
+      const templatePlaceholders = [...new Set([...templateMjml.matchAll(PLACEHOLDER_REGEX)].map((m) => m[1]))];
+      const conceptValues: Record<string, unknown> = {
+        logo,
+        brandColor,
+        campaignCopy: campaignPrompt,
+        fontFamily,
+        heroImage,
+        footer: (sectionJson as Record<string, unknown>).footer,
+        ctaText: "Learn more",
+        ctaUrl: "#",
+      };
+      for (const ph of templatePlaceholders) {
+        const v = (sectionJson as Record<string, unknown>)[ph];
+        if (v !== undefined && v !== null && String(v).trim() !== "") continue;
+        for (const [concept, aliases] of Object.entries(PLACEHOLDER_ALIASES)) {
+          if (aliases.includes(ph)) {
+            (sectionJson as Record<string, unknown>)[ph] = conceptValues[concept];
+            break;
+          }
+        }
+      }
+      const unfilledPlaceholders = templatePlaceholders.filter(
+        (ph) => {
+          const v = (sectionJson as Record<string, unknown>)[ph];
+          return v === undefined || v === null || String(v).trim() === "";
+        }
+      );
+      console.log("[MJML] template contract", {
+        run_id: runId,
+        template_id: input.template_id,
+        template_placeholders: templatePlaceholders,
+        sectionJson_keys: Object.keys(sectionJson),
+        unfilled_placeholders: unfilledPlaceholders,
+      });
+
       // #region agent log
       const productObjectKeys = Object.keys(productObjects);
       console.log("[MJML] template payload (H6/H7)", { run_id: runId, template_id: input.template_id, sectionJsonKeys: Object.keys(sectionJson), productsCount: productList.length, productObjectKeys, imagesCount: imagesArray.length, hasLogo: !!logoUrl, logoUrlSnippet: (logoUrl ?? "").slice(0, 60), campaignPromptLen: campaignPrompt.length, sectionsJsonMerged });
-      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:sectionJson", message: "MJML sectionJson", data: { run_id: runId, sectionJsonKeys: Object.keys(sectionJson), productsCount: productList.length, hasLogo: !!logoUrl, campaignPromptLen: campaignPrompt.length }, timestamp: Date.now(), hypothesisId: "H7" }) }).catch(() => {});
+      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:sectionJson", message: "MJML sectionJson", data: { run_id: runId, sectionJsonKeys: Object.keys(sectionJson), productsCount: productList.length, hasLogo: !!logoUrl, campaignPromptLen: campaignPrompt.length, template_placeholders: templatePlaceholders, unfilled_placeholders: unfilledPlaceholders }, timestamp: Date.now(), hypothesisId: "H7" }) }).catch(() => {});
       // #endregion
       const compile = Handlebars.compile(templateMjml);
       let mjmlOut = compile(sectionJson);
@@ -268,6 +327,51 @@ export async function handleEmailGenerateMjml(request: {
       console.log("[MJML] compile success (H9)", { run_id: runId, htmlLen: html?.length ?? 0, campaignPromptSnippet: campaignPrompt.slice(0, 40) });
       fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:compile success", message: "MJML compile success", data: { run_id: runId, htmlLen: html?.length ?? 0 }, timestamp: Date.now(), hypothesisId: "H9" }) }).catch(() => {});
       // #endregion
+
+      // Pre-write verification (quality gate)
+      const htmlLen = html?.length ?? 0;
+      if (htmlLen < MIN_HTML_LENGTH) {
+        const msg = `[MJML] pre-write check failed: html length ${htmlLen} < ${MIN_HTML_LENGTH}`;
+        console.log(msg, { run_id: runId, job_run_id: jobRunId, template_id: input.template_id });
+        throw new Error(msg);
+      }
+      const hasStructure = /<\/html>|<\/table>|<\/body>/i.test(html ?? "");
+      if (!hasStructure) {
+        const msg = "[MJML] pre-write check failed: compiled HTML missing structural tag (</html>, </table>, or </body>)";
+        console.log(msg, { run_id: runId, job_run_id: jobRunId, template_id: input.template_id });
+        throw new Error(msg);
+      }
+      if (campaignPrompt.trim().length > 0) {
+        const snippet = campaignPrompt.trim().slice(0, 20).replace(/[<>]/g, "");
+        if (snippet.length >= 3 && !(html ?? "").includes(snippet)) {
+          const msg = `[MJML] pre-write check failed: campaign copy not found in HTML (snippet: ${snippet.slice(0, 15)}...)`;
+          console.log(msg, { run_id: runId, job_run_id: jobRunId, template_id: input.template_id });
+          throw new Error(msg);
+        }
+      }
+      if (logoUrl && logoUrl.length > 0) {
+        const logoInHtml = (html ?? "").includes(logoUrl) || (html ?? "").includes(logoUrl.slice(0, 60));
+        if (!logoInHtml) {
+          const msg = "[MJML] pre-write check failed: brand has logo but logo URL not found in compiled HTML";
+          console.log(msg, { run_id: runId, job_run_id: jobRunId, template_id: input.template_id, logoUrlSnippet: logoUrl.slice(0, 50) });
+          throw new Error(msg);
+        }
+      }
+      if (fontFamily && (mjmlOut.includes("</mj-head>") || (html ?? "").includes("font-family"))) {
+        const fontInOutput = (html ?? "").includes(fontFamily) || (html ?? "").includes(fontFamily.split(",")[0]?.trim() ?? "");
+        if (!fontInOutput) {
+          console.log("[MJML] pre-write optional: fontFamily not found in HTML", { run_id: runId, fontFamily: fontFamily.slice(0, 30) });
+        }
+      }
+
+      const promptHash = createHash("sha256").update(campaignPrompt).digest("hex").slice(0, 16);
+      const preWriteVerification = {
+        passed: true,
+        details: {
+          checks: ["length", "structure", "campaign_copy", "logo"],
+          generated_len: htmlLen,
+        },
+      };
       return {
         artifact_type: "email_template",
         artifact_class: "email_template",
@@ -278,6 +382,14 @@ export async function handleEmailGenerateMjml(request: {
           mjml: mjmlOut,
           email_generation_path: "template",
           mjml_template_id: input.template_id ?? null,
+          generated_html_len: html?.length ?? 0,
+          template_id_used: input.template_id ?? null,
+          brand_profile_id_used: brandCtx?.id ?? null,
+          logo_url_used: logoUrl ? logoUrl.slice(0, 80) : null,
+          prompt_hash: promptHash,
+          template_placeholders: templatePlaceholders,
+          unfilled_placeholders: unfilledPlaceholders,
+          pre_write_verification: preWriteVerification,
         },
       };
     } catch (_e) {
@@ -331,6 +443,7 @@ export async function handleEmailGenerateMjml(request: {
 
   const content = result.content ?? "";
   const html = content.includes("<") ? content : `<html><body><p>${content.replace(/\n/g, "</p><p>")}</p></body></html>`;
+  const promptHash = createHash("sha256").update(campaignPrompt).digest("hex").slice(0, 16);
 
   return {
     artifact_type: "email_template",
@@ -341,6 +454,11 @@ export async function handleEmailGenerateMjml(request: {
       brand_color: brandColor,
       email_generation_path: "llm",
       mjml_template_id: null,
+      generated_html_len: html.length,
+      template_id_used: null,
+      brand_profile_id_used: brandCtx?.id ?? null,
+      logo_url_used: null,
+      prompt_hash: promptHash,
     },
   };
 }

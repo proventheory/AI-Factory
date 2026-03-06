@@ -20,7 +20,11 @@ import type { Environment, Cohort } from "./types.js";
 /** Run IDs we already remediated (avoid loop). Cleared on process restart. */
 export const noArtifactsRemediatedRunIds = new Set<string>();
 
+/** Run IDs we already remediated for bad-artifacts (avoid loop). */
+export const badArtifactsRemediatedRunIds = new Set<string>();
+
 const SCAN_LIMIT = 5;
+const BAD_ARTIFACT_SCAN_LIMIT = 5;
 const TERMINAL_STATUSES = ["succeeded", "failed"] as const;
 
 /**
@@ -130,5 +134,89 @@ export async function scanAndRemediateNoArtifactsRuns(): Promise<void> {
   for (const row of runs.rows) {
     if (noArtifactsRemediatedRunIds.has(row.id)) continue;
     await triggerNoArtifactsRemediationForRun(row.id);
+  }
+}
+
+/**
+ * If this run has at least one email_template artifact that is bad (failed verification or heuristic),
+ * trigger the same remediation as no-artifacts (sync worker env, create new run).
+ */
+export async function triggerBadArtifactsRemediationForRun(runId: string): Promise<void> {
+  const selfHeal = process.env.ENABLE_SELF_HEAL === "true";
+  const hasKey = !!process.env.RENDER_API_KEY?.trim();
+  if (!selfHeal || !hasKey) return;
+  if (noArtifactsRemediatedRunIds.has(runId) || badArtifactsRemediatedRunIds.has(runId)) return;
+
+  const run = await pool.query<{ status: string }>("SELECT status FROM runs WHERE id = $1", [runId]);
+  if (run.rows.length === 0) return;
+  if (!TERMINAL_STATUSES.includes(run.rows[0].status as (typeof TERMINAL_STATUSES)[number])) return;
+
+  const jobCount = await pool.query<{ c: number }>("SELECT count(*)::int AS c FROM job_runs WHERE run_id = $1", [runId]);
+  if ((jobCount.rows[0]?.c ?? 0) === 0) return;
+
+  const arts = await pool.query<{ id: string; metadata_json: Record<string, unknown> | null }>(
+    "SELECT id, metadata_json FROM artifacts WHERE run_id = $1 AND artifact_type = 'email_template'",
+    [runId]
+  );
+  if (arts.rows.length === 0) return;
+
+  let hasBad = false;
+  try {
+    const failedVer = await pool.query(
+      "SELECT 1 FROM artifact_verifications av JOIN artifacts a ON a.id = av.artifact_id WHERE a.run_id = $1 AND av.passed = false LIMIT 1",
+      [runId]
+    );
+    if (failedVer.rows.length > 0) hasBad = true;
+  } catch {
+    // artifact_verifications table may not exist yet
+  }
+  if (!hasBad) {
+    for (const row of arts.rows) {
+      const meta = row.metadata_json;
+      if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+        const genLen = meta.generated_html_len as number | undefined;
+        const content = meta.content as string | undefined;
+        const storedLen = typeof content === "string" ? content.length : 0;
+        if (typeof genLen === "number" && genLen > 0 && storedLen < genLen * 0.95) hasBad = true;
+        if (meta.email_generation_path === "template" && (meta.template_id_used == null || meta.mjml_template_id == null)) hasBad = true;
+        if (hasBad) break;
+      }
+    }
+  }
+
+  if (hasBad) {
+    badArtifactsRemediatedRunIds.add(runId);
+    setImmediate(() => runNoArtifactsRemediation(runId));
+  }
+}
+
+/**
+ * Scan for runs that are terminal, have job_runs, and have at least one email_template artifact
+ * that is bad (failed verification or heuristic); trigger remediation.
+ */
+export async function scanAndRemediateBadArtifactRuns(): Promise<void> {
+  const selfHeal = process.env.ENABLE_SELF_HEAL === "true";
+  const hasKey = !!process.env.RENDER_API_KEY?.trim();
+  if (!selfHeal || !hasKey) return;
+
+  let runIds: { id: string }[] = [];
+  try {
+    const r = await pool.query<{ id: string }>(
+      `SELECT r.id FROM runs r
+       WHERE r.status = ANY($1::text[])
+         AND (SELECT count(*)::int FROM job_runs jr WHERE jr.run_id = r.id) > 0
+         AND (SELECT count(*)::int FROM artifacts a WHERE a.run_id = r.id AND a.artifact_type = 'email_template') > 0
+       ORDER BY r.ended_at DESC NULLS LAST
+       LIMIT $2`,
+      [TERMINAL_STATUSES, BAD_ARTIFACT_SCAN_LIMIT]
+    );
+    runIds = r.rows;
+  } catch {
+    // artifact_verifications or query may fail if schema not migrated
+  }
+
+  for (const row of runIds) {
+    if (badArtifactsRemediatedRunIds.has(row.id)) continue;
+    await triggerBadArtifactsRemediationForRun(row.id);
   }
 }
