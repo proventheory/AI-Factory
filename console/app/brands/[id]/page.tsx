@@ -118,53 +118,105 @@ export default function BrandDetailPage() {
         )}
 
         <CardSection title="Brand Identity">
-          <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-            <div>
-              <span className="text-text-secondary">Archetype</span>
-              <p className="font-medium">{identity.archetype ?? "—"}</p>
-            </div>
-            <div>
-              <span className="text-text-secondary">Industry</span>
-              <p className="font-medium">{identity.industry ?? "—"}</p>
-            </div>
-            <div className="col-span-2">
-              <span className="text-text-secondary">Tagline</span>
-              <p className="font-medium">{identity.tagline ?? "—"}</p>
-            </div>
-            {identity.mission && (
-              <div className="col-span-2 md:col-span-4">
-                <span className="text-text-secondary">Mission</span>
-                <p>{identity.mission}</p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+              <div>
+                <span className="text-text-secondary">Archetype</span>
+                <p className="font-medium">{identity.archetype ?? "—"}</p>
               </div>
-            )}
-            {identity.values?.length > 0 && (
-              <div className="col-span-2 md:col-span-4">
-                <span className="text-text-secondary">Values</span>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {identity.values.map((v: string) => (
-                    <Badge key={v}>{v}</Badge>
-                  ))}
+              <div>
+                <span className="text-text-secondary">Industry</span>
+                <p className="font-medium">{identity.industry ?? "—"}</p>
+              </div>
+              <div className="col-span-2">
+                <span className="text-text-secondary">Tagline</span>
+                <p className="font-medium">{identity.tagline ?? "—"}</p>
+              </div>
+              {identity.mission && (
+                <div className="col-span-2 md:col-span-4">
+                  <span className="text-text-secondary">Mission</span>
+                  <p>{identity.mission}</p>
                 </div>
-              </div>
-            )}
-            {(identity.website || identity.contact_email || identity.location) && (
-              <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4">
-                {identity.website && (
+              )}
+              {identity.values?.length > 0 && (
+                <div className="col-span-2 md:col-span-4">
+                  <span className="text-text-secondary">Values</span>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {identity.values.map((v: string) => (
+                      <Badge key={v}>{v}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(identity.website || identity.contact_email || identity.location) && (
+                <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4">
+                  {identity.website && (
+                    <div>
+                      <span className="text-text-secondary">Website</span>
+                      <p className="font-medium"><a href={identity.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{identity.website}</a></p>
+                    </div>
+                  )}
+                  {identity.contact_email && (
+                    <div>
+                      <span className="text-text-secondary">Contact email</span>
+                      <p className="font-medium">{identity.contact_email}</p>
+                    </div>
+                  )}
+                  {identity.location && (
+                    <div>
+                      <span className="text-text-secondary">Location</span>
+                      <p className="font-medium">{identity.location}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {((dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) || (dt.social_media?.length > 0) || (dt.contact_info?.length > 0) || (dt.asset_urls?.length > 0)) && (
+              <div className="border-t border-border pt-4 grid gap-3 text-sm">
+                <span className="text-text-secondary font-medium">Sitemap & links</span>
+                {(dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) && (
                   <div>
-                    <span className="text-text-secondary">Website</span>
-                    <p className="font-medium"><a href={identity.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{identity.website}</a></p>
+                    <span className="text-text-secondary">Brand sitemap</span>
+                    <p className="font-medium">
+                      <a href={dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
+                        {dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url}
+                      </a>
+                      {(dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type) ? ` (${dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type})` : ""}
+                    </p>
                   </div>
                 )}
-                {identity.contact_email && (
+                {Array.isArray(dt.social_media) && dt.social_media.length > 0 && (
                   <div>
-                    <span className="text-text-secondary">Contact email</span>
-                    <p className="font-medium">{identity.contact_email}</p>
+                    <span className="text-text-secondary">Social</span>
+                    <ul className="mt-1 list-disc list-inside">
+                      {dt.social_media.map((s: { name?: string; url?: string }, i: number) => (
+                        <li key={i}>
+                          {s.name && <span>{s.name}: </span>}
+                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{s.url}</a>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
-                {identity.location && (
+                {Array.isArray(dt.contact_info) && dt.contact_info.length > 0 && (
                   <div>
-                    <span className="text-text-secondary">Location</span>
-                    <p className="font-medium">{identity.location}</p>
+                    <span className="text-text-secondary">Contact</span>
+                    <ul className="mt-1 list-disc list-inside">
+                      {dt.contact_info.map((c: { type?: string; value?: string }, i: number) => (
+                        <li key={i}>{c.type}: {c.value}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {Array.isArray(dt.asset_urls) && dt.asset_urls.length > 0 && (
+                  <div>
+                    <span className="text-text-secondary">Asset URLs</span>
+                    <ul className="mt-1 list-disc list-inside break-all">
+                      {dt.asset_urls.slice(0, 5).map((u: string, i: number) => (
+                        <li key={i}><a href={u} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{u}</a></li>
+                      ))}
+                      {dt.asset_urls.length > 5 && <li className="text-text-secondary">+{dt.asset_urls.length - 5} more</li>}
+                    </ul>
                   </div>
                 )}
               </div>
@@ -270,58 +322,6 @@ export default function BrandDetailPage() {
             )}
           </div>
         </CardSection>
-
-        {((dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) || (dt.social_media?.length > 0) || (dt.contact_info?.length > 0) || (dt.asset_urls?.length > 0)) && (
-          <CardSection title="Brand sitemap & links">
-            <div className="grid gap-3 text-sm">
-              {(dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) && (
-                <div>
-                  <span className="text-text-secondary">Brand sitemap</span>
-                  <p className="font-medium">
-                    <a href={dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
-                      {dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url}
-                    </a>
-                    {(dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type) ? ` (${dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type})` : ""}
-                  </p>
-                </div>
-              )}
-              {Array.isArray(dt.social_media) && dt.social_media.length > 0 && (
-                <div>
-                  <span className="text-text-secondary">Social</span>
-                  <ul className="mt-1 list-disc list-inside">
-                    {dt.social_media.map((s: { name?: string; url?: string }, i: number) => (
-                      <li key={i}>
-                        {s.name && <span>{s.name}: </span>}
-                        <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{s.url}</a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {Array.isArray(dt.contact_info) && dt.contact_info.length > 0 && (
-                <div>
-                  <span className="text-text-secondary">Contact</span>
-                  <ul className="mt-1 list-disc list-inside">
-                    {dt.contact_info.map((c: { type?: string; value?: string }, i: number) => (
-                      <li key={i}>{c.type}: {c.value}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {Array.isArray(dt.asset_urls) && dt.asset_urls.length > 0 && (
-                <div>
-                  <span className="text-text-secondary">Asset URLs</span>
-                  <ul className="mt-1 list-disc list-inside break-all">
-                    {dt.asset_urls.slice(0, 5).map((u: string, i: number) => (
-                      <li key={i}><a href={u} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{u}</a></li>
-                    ))}
-                    {dt.asset_urls.length > 5 && <li className="text-text-secondary">+{dt.asset_urls.length - 5} more</li>}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </CardSection>
-        )}
 
         <CardSection title="Design Tokens — Color Palette">
           <div className="flex flex-wrap gap-2">

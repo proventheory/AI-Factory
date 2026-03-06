@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Button,
@@ -20,6 +20,7 @@ import {
   type SocialLink,
   type ContactItem,
 } from "../../token-helpers";
+import { createSupabaseBrowserClient } from "@/lib/supabase";
 
 export default function EditBrandPage() {
   const { id } = useParams<{ id: string }>();
@@ -55,6 +56,10 @@ export default function EditBrandPage() {
   const [contactInfo, setContactInfo] = useState<ContactItem[]>([]);
   const [assetUrls, setAssetUrls] = useState<string[]>([]);
   const [assetUrlsText, setAssetUrlsText] = useState("");
+  const [assetUploading, setAssetUploading] = useState(false);
+  const assetFileInputRef = useRef<HTMLInputElement>(null);
+  const [ctaText, setCtaText] = useState("");
+  const [ctaLink, setCtaLink] = useState("");
   const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
@@ -95,7 +100,41 @@ export default function EditBrandPage() {
     setContactInfo(tokens.contactInfo);
     setAssetUrls(tokens.assetUrls);
     setAssetUrlsText(tokens.assetUrls.join("\n"));
+    setCtaText(tokens.ctaText);
+    setCtaLink(tokens.ctaLink);
   }, [brand]);
+
+  const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length || !id) return;
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) {
+      setSubmitError("Upload is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable asset uploads.");
+      return;
+    }
+    setAssetUploading(true);
+    setSubmitError("");
+    const added: string[] = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const ext = file.name.split(".").pop() || "bin";
+        const path = `brands/${id}/assets/${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage.from("upload").upload(path, file, { upsert: false });
+        if (error) throw new Error(error.message);
+        const { data } = supabase.storage.from("upload").getPublicUrl(path);
+        added.push(data.publicUrl);
+      }
+      const next = [...assetUrls, ...added];
+      setAssetUrls(next);
+      setAssetUrlsText(next.join("\n"));
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setAssetUploading(false);
+      e.target.value = "";
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,6 +186,8 @@ export default function EditBrandPage() {
           socialMedia,
           contactInfo,
           assetUrls: assetUrlsText.split("\n").map((u) => u.trim()).filter(Boolean),
+          ctaText,
+          ctaLink,
         }),
       });
       router.push(`/brands/${id}`);
@@ -295,107 +336,125 @@ export default function EditBrandPage() {
             </div>
           </CardSection>
 
-          <CardSection title="Identity">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className={labelCls}>Archetype</label>
-                <Input
-                  value={archetype}
-                  onChange={(e) => setArchetype(e.target.value)}
-                  placeholder="e.g. trusted caretaker"
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Industry</label>
-                <Input
-                  value={industry}
-                  onChange={(e) => setIndustry(e.target.value)}
-                  placeholder="e.g. telehealth"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className={labelCls}>Tagline</label>
-                <Input
-                  value={tagline}
-                  onChange={(e) => setTagline(e.target.value)}
-                  placeholder="Short tagline"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className={labelCls}>Mission</label>
-                <textarea
-                  className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  rows={2}
-                  value={mission}
-                  onChange={(e) => setMission(e.target.value)}
-                  placeholder="Brand mission statement"
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Website</label>
-                <Input
-                  type="url"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  placeholder="https://example.com"
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Contact email</label>
-                <Input
-                  type="email"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  placeholder="brand@example.com"
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Location</label>
-                <Input
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g. San Francisco, CA"
-                />
-              </div>
-            </div>
-          </CardSection>
-
-          <CardSection title="Brand sitemap & products">
-            <p className="text-body-small text-text-secondary mb-3">
-              Brand sitemap URL and type (used by email wizard, decks, reports, and initiatives).
+          <CardSection title="Brand Identity">
+            <p className="text-body-small text-text-secondary mb-4">
+              Core identity, sitemap & links, social, contact, and assets. Used by email wizard, decks, reports, and initiatives.
             </p>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className={labelCls}>Brand sitemap type</label>
-                <Select
-                  value={sitemapType}
-                  onChange={(e) => setSitemapType(e.target.value)}
-                >
-                  <option value="drupal">Drupal</option>
-                  <option value="ecommerce">WooCommerce / ecommerce</option>
-                  <option value="bigcommerce">BigCommerce</option>
-                  <option value="shopify">Shopify</option>
-                </Select>
-              </div>
-              <div className="md:col-span-2">
-                <label className={labelCls}>Brand sitemap URL</label>
-                <Input
-                  type="url"
-                  value={sitemapUrl}
-                  onChange={(e) => setSitemapUrl(e.target.value)}
-                  placeholder="https://example.com/sitemap_products.xml"
-                />
-              </div>
-            </div>
-          </CardSection>
 
-          <CardSection title="Social & contact">
-            <p className="text-body-small text-text-secondary mb-3">
-              Social links (name + URL) and contact entries (type + value), e.g. phone, email.
-            </p>
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
-                <label className={labelCls}>Social links</label>
+                <h4 className="text-body font-medium text-text-primary mb-3">Identity</h4>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className={labelCls}>Archetype</label>
+                    <Input
+                      value={archetype}
+                      onChange={(e) => setArchetype(e.target.value)}
+                      placeholder="e.g. trusted caretaker"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Industry</label>
+                    <Input
+                      value={industry}
+                      onChange={(e) => setIndustry(e.target.value)}
+                      placeholder="e.g. telehealth"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className={labelCls}>Tagline</label>
+                    <Input
+                      value={tagline}
+                      onChange={(e) => setTagline(e.target.value)}
+                      placeholder="Short tagline"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className={labelCls}>Mission</label>
+                    <textarea
+                      className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      rows={2}
+                      value={mission}
+                      onChange={(e) => setMission(e.target.value)}
+                      placeholder="Brand mission statement"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Website</label>
+                    <Input
+                      type="url"
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                      placeholder="https://example.com"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Contact email</label>
+                    <Input
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      placeholder="brand@example.com"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Location</label>
+                    <Input
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="e.g. San Francisco, CA"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-body font-medium text-text-primary mb-3">Sitemap & links</h4>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className={labelCls}>Brand sitemap type</label>
+                    <Select
+                      value={sitemapType}
+                      onChange={(e) => setSitemapType(e.target.value)}
+                    >
+                      <option value="drupal">Drupal</option>
+                      <option value="ecommerce">WooCommerce / ecommerce</option>
+                      <option value="bigcommerce">BigCommerce</option>
+                      <option value="shopify">Shopify</option>
+                      <option value="shopify_json">Shopify (JSON)</option>
+                    </Select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className={labelCls}>Brand sitemap URL</label>
+                    <Input
+                      type="url"
+                      value={sitemapUrl}
+                      onChange={(e) => setSitemapUrl(e.target.value)}
+                      placeholder="https://example.com/sitemap_products.xml"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>CTA button text</label>
+                    <Input
+                      value={ctaText}
+                      onChange={(e) => setCtaText(e.target.value)}
+                      placeholder="e.g. Shop now"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>CTA link</label>
+                    <Input
+                      type="url"
+                      value={ctaLink}
+                      onChange={(e) => setCtaLink(e.target.value)}
+                      placeholder="https://..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-body font-medium text-text-primary mb-3">Social</h4>
                 {socialMedia.map((s, i) => (
                   <div key={i} className="flex gap-2 mb-2">
                     <Input
@@ -435,8 +494,9 @@ export default function EditBrandPage() {
                   Add social link
                 </Button>
               </div>
+
               <div>
-                <label className={labelCls}>Contact info</label>
+                <h4 className="text-body font-medium text-text-primary mb-3">Contact</h4>
                 {contactInfo.map((c, i) => (
                   <div key={i} className="flex gap-2 mb-2">
                     <Input
@@ -476,20 +536,45 @@ export default function EditBrandPage() {
                   Add contact
                 </Button>
               </div>
-            </div>
-          </CardSection>
 
-          <CardSection title="Asset URLs">
-            <p className="text-body-small text-text-secondary mb-3">
-              Image or asset URLs for this brand (one per line). Used by initiatives and email.
-            </p>
-            <textarea
-              className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono text-body-small"
-              rows={4}
-              value={assetUrlsText}
-              onChange={(e) => setAssetUrlsText(e.target.value)}
-              placeholder="https://example.com/hero.jpg&#10;https://example.com/logo.png"
-            />
+              <div>
+                <h4 className="text-body font-medium text-text-primary mb-3">Asset URLs</h4>
+                <p className="text-body-small text-text-secondary mb-2">
+                  Add image or asset URLs (one per line) or upload files. Used by initiatives and email.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <input
+                    ref={assetFileInputRef}
+                    type="file"
+                    accept="image/*,.png,.jpg,.jpeg,.gif,.webp,.svg"
+                    multiple
+                    className="hidden"
+                    onChange={handleAssetUpload}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={assetUploading || !createSupabaseBrowserClient()}
+                    onClick={() => assetFileInputRef.current?.click()}
+                  >
+                    {assetUploading ? "Uploading…" : "Upload files"}
+                  </Button>
+                  {!createSupabaseBrowserClient() && (
+                    <span className="text-body-small text-text-secondary">Configure Supabase to enable uploads.</span>
+                  )}
+                </div>
+                <textarea
+                  className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono text-body-small"
+                  rows={4}
+                  value={assetUrlsText}
+                  onChange={(e) => {
+                    setAssetUrlsText(e.target.value);
+                    setAssetUrls(e.target.value.split("\n").map((u) => u.trim()).filter(Boolean));
+                  }}
+                  placeholder="https://example.com/hero.jpg&#10;https://example.com/logo.png"
+                />
+              </div>
+            </div>
           </CardSection>
 
           <CardSection title="Tone & Voice">
