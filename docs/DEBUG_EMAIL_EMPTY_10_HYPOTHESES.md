@@ -165,3 +165,27 @@ When the template path ran but the output is wrong (e.g. placeholder not filled,
    Post-write (runner): re-read artifact and compare `metadata_json.content.length` to `generated_html_len`. If stored &lt; 95% of generated, job fails and logs `[runner] post-write check failed`. Artifact metadata stores `generated_html_len` and `template_id_used` for debugging.
 
 All of the above logs are grep-friendly by `run_id`.
+
+---
+
+## Template uses literal text instead of placeholders
+
+**Symptom:** Preview shows generic copy (e.g. "Emma SMS", "Marigold Inc.") or literal strings like "[product E title]", "[product D description]" instead of campaign copy and product data.
+
+**Cause:** The MJML template in `email_templates` contains **plain text** or **bracket-style placeholders** (e.g. `[product E title]`) instead of Handlebars variables (e.g. `{{productE_title}}` or `{{product_5_title}}`). Handlebars only replaces `{{name}}`; it does not replace literal text.
+
+**Fix:**
+- Edit the template (in DB or via Phase 5) so that headlines, body, and product slots use Handlebars: `{{headline}}`, `{{body}}`, `{{product_1_title}}`, `{{product_1_image}}`, etc. The runner fills both numeric (`product_1_title`, `product_2_image`) and letter-based (`productA_title`, `productE_title`) placeholders when the template uses them.
+- For product images when the user did not select products: store `sitemap_url` and `sitemap_type` in the campaign’s `metadata_json` (e.g. from brand prefill or UI). The runner will then fetch sitemap products and use them as fallback so product slots and images are filled.
+
+---
+
+## Copy not generating: template path vs LLM path
+
+**Template path (usual case):** When a template is selected and fetched, the runner uses **Handlebars only** — no LLM call. Campaign copy comes from `campaign_prompt` (request input or campaign `metadata_json.campaign_prompt`). If you see the right layout but wrong/missing copy, the template is likely using literal text instead of `{{headline}}` / `{{body}}` etc., or `campaign_prompt` was empty when the run started.
+
+**LLM path (fallback):** The LLM is used only when there is **no** template (no `template_id` or template fetch failed) or when Handlebars/MJML compile throws. Then the runner calls `chat()` to generate HTML. If the LLM gateway is not connected or returns errors, that fallback path can produce empty or stub content.
+
+**How to tell which path ran:** Check artifact `metadata_json.email_generation_path`: `"template"` = no LLM; `"llm"` = LLM was used. Runner logs: `[MJML] using LLM path (H8/H9)` means the LLM path ran; if you don’t see that, the template path ran and copy comes from `campaign_prompt` + placeholders, not from the LLM.
+
+**If you expect LLM-generated copy:** Ensure the run has a reason to use the LLM path (e.g. no template selected or template compile failure). Then verify runner env: `LLM_GATEWAY_URL` or `OPENAI_API_KEY` (when `llm_source === 'openai_direct'`). See `runners/src/llm-client.ts` and `docs/LLM_GATEWAY_AND_OPTIMIZATION.md`.

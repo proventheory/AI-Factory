@@ -113,9 +113,27 @@ export async function handleEmailGenerateMjml(request: {
         const templateIdFromCamp = camp.template_id ?? (camp.metadata_json && typeof camp.metadata_json === "object" ? (camp.metadata_json as { template_id?: string }).template_id : undefined);
         if (templateIdFromCamp) input.template_id = input.template_id ?? templateIdFromCamp;
         if (camp.metadata_json && typeof camp.metadata_json === "object") {
-          const meta = camp.metadata_json as { products?: unknown[]; campaign_prompt?: string };
+          const meta = camp.metadata_json as { products?: unknown[]; campaign_prompt?: string; sitemap_url?: string; sitemap_type?: string };
           if (meta.products && !input.products?.length) input.products = meta.products as EmailGenerateMjmlInput["products"];
           if (meta.campaign_prompt) input.campaign_prompt = input.campaign_prompt ?? meta.campaign_prompt;
+          if (!input.products?.length && meta.sitemap_url && meta.sitemap_type) {
+            try {
+              const sitemapRes = await fetch(`${CONTROL_PLANE_URL}/v1/sitemap/products`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sitemap_url: meta.sitemap_url, sitemap_type: meta.sitemap_type, limit: 8 }),
+              });
+              if (sitemapRes.ok) {
+                const data = (await sitemapRes.json()) as { items?: Array<{ src?: string; title?: string; product_url?: string }> };
+                if (data.items?.length) {
+                  input.products = data.items as EmailGenerateMjmlInput["products"];
+                  console.log("[MJML] fallback products from sitemap", { run_id: runId, initiative_id: initiativeId, count: data.items.length });
+                }
+              }
+            } catch (_e) {
+              console.log("[MJML] sitemap products fallback failed", { run_id: runId, err: String((_e as Error).message).slice(0, 60) });
+            }
+          }
         }
         // #region agent log
         console.log("[MJML] campaign fetch (H3/H4)", { run_id: runId, initiative_id: initiativeId, template_id: input.template_id, productsCount: (input.products ?? []).length, campaign_promptLen: (input.campaign_prompt ?? "").length, subject_line: subjectLine?.slice(0, 50) });
@@ -191,6 +209,14 @@ export async function handleEmailGenerateMjml(request: {
     numberedProducts[`product_${n}_url`] = p.link;
     numberedProducts[`product_${n}_description`] = p.description;
     productObjects[`product${n}`] = { title: p.title, description: p.description, image: p.image, link: p.link, buttonText: "Learn more" };
+    const letter = "ABCDE"[i];
+    if (letter) {
+      numberedProducts[`product${letter}_image`] = p.image;
+      numberedProducts[`product${letter}_title`] = p.title;
+      numberedProducts[`product${letter}_url`] = p.link;
+      numberedProducts[`product${letter}_description`] = p.description;
+      productObjects[`product${letter}`] = { title: p.title, description: p.description, image: p.image, link: p.link, buttonText: "Learn more" };
+    }
   });
   const imagesArray = productList.map((p) => ({ title: p.title, description: p.description, buttonText: "Learn more" }));
 
@@ -268,6 +294,17 @@ export async function handleEmailGenerateMjml(request: {
       for (const ph of templatePlaceholders) {
         const v = (sectionJson as Record<string, unknown>)[ph];
         if (v !== undefined && v !== null && String(v).trim() !== "") continue;
+        const letterMatch = /^product([A-Ea-e])(_?.+)$/.exec(ph);
+        if (letterMatch) {
+          const n = "ABCDE".indexOf(letterMatch[1].toUpperCase()) + 1;
+          const suffix = letterMatch[2].replace(/^_/, "");
+          const numKey = `product_${n}_${suffix}` as keyof typeof numberedProducts;
+          const fromNumbered = (numberedProducts as Record<string, unknown>)[numKey] ?? (productObjects as Record<string, unknown>)[`product${n}`];
+          const fromObj = (productObjects as Record<string, unknown>)[`product${letterMatch[1].toUpperCase()}`];
+          if (fromNumbered !== undefined && fromNumbered !== null) (sectionJson as Record<string, unknown>)[ph] = fromNumbered;
+          else if (fromObj != null && typeof fromObj === "object" && suffix in fromObj) (sectionJson as Record<string, unknown>)[ph] = (fromObj as Record<string, unknown>)[suffix];
+          continue;
+        }
         for (const [concept, aliases] of Object.entries(PLACEHOLDER_ALIASES)) {
           if (aliases.includes(ph)) {
             (sectionJson as Record<string, unknown>)[ph] = conceptValues[concept];
