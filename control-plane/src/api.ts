@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import * as Sentry from "@sentry/node";
 import { v4 as uuid } from "uuid";
+import mjml2html from "mjml";
 import { pool, withTransaction } from "./db.js";
 import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
 import { executeRollback, routeRun } from "./release-manager.js";
@@ -216,13 +217,13 @@ app.post("/v1/email_campaigns", async (req, res) => {
     const err = (e: unknown) => (e as { code?: string; message?: string }).code === "42703" || String((e as Error).message).includes("brand_profile_id");
     try {
       await pool.query(
-        `INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, 'medium', $3, $4)`,
+        `INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, 'med', $3, $4)`,
         [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null]
       );
     } catch (e) {
       if (err(e)) {
         await pool.query(
-          `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, 'medium')`,
+          `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, 'med')`,
           [id, body.title ?? "New email campaign"]
         );
       } else throw e;
@@ -2302,6 +2303,23 @@ app.get("/v1/email_templates", async (req, res) => {
     res.json({ items: itemsResult.rows, total: totalResult.rows[0]?.total ?? 0 });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/email_templates/:id/preview — render template MJML to HTML for preview */
+app.get("/v1/email_templates/:id/preview", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const r = await pool.query("SELECT mjml FROM email_templates WHERE id = $1", [id]);
+    if (r.rows.length === 0) return res.status(404).send("Not found");
+    const mjml = r.rows[0].mjml;
+    if (!mjml || typeof mjml !== "string") {
+      return res.status(422).send("Template has no MJML content");
+    }
+    const { html } = mjml2html(mjml, { validationLevel: "skip" });
+    res.type("text/html").send(html);
+  } catch (e) {
+    res.status(500).send(String((e as Error).message));
   }
 });
 

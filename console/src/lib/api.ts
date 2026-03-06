@@ -603,6 +603,11 @@ export async function getEmailTemplate(id: string): Promise<EmailTemplateRow> {
   return res.json();
 }
 
+/** URL for HTML preview of an email template (for iframe src). */
+export function getEmailTemplatePreviewUrl(id: string): string {
+  return `${API}/v1/email_templates/${id}/preview`;
+}
+
 // -- Brand Engine --
 
 export type BrandProfileRow = {
