@@ -15,29 +15,32 @@ const STATUS_COLORS: Record<string, string> = {
   blocked: "#f59e0b",
 };
 
-export function PlanDagViewer({ planId, nodeStatuses, className, onNodeClick }: {
+export function PlanDagViewer({ planId, nodeStatuses, className, onNodeClick, runPlanNodes, runPlanEdges }: {
   planId: string;
   nodeStatuses?: Record<string, string>;
   className?: string;
   onNodeClick?: (nodeId: string) => void;
+  /** When provided (e.g. from run detail), use these instead of fetching the plan so progress and chart match. */
+  runPlanNodes?: Array<Record<string, unknown>>;
+  runPlanEdges?: Array<Record<string, unknown>>;
 }) {
-  const { data: planData, isLoading, error } = usePlan(planId);
+  const { data: planData, isLoading, error } = usePlan(runPlanNodes == null ? planId : null);
 
   const { nodes, edges } = useMemo(() => {
-    if (!planData) return { nodes: [], edges: [] };
-    const plan = planData as Record<string, unknown>;
-    const planNodes = (plan.nodes ?? plan.plan_nodes ?? []) as Array<Record<string, unknown>>;
-    const planEdges = (plan.edges ?? plan.plan_edges ?? []) as Array<Record<string, unknown>>;
+    const planNodes = runPlanNodes ?? (planData as Record<string, unknown> | undefined)?.nodes ?? (planData as Record<string, unknown> | undefined)?.plan_nodes ?? [];
+    const planEdges = runPlanEdges ?? (planData as Record<string, unknown> | undefined)?.edges ?? (planData as Record<string, unknown> | undefined)?.plan_edges ?? [];
+    const resolved = (Array.isArray(planNodes) ? planNodes : []) as Array<Record<string, unknown>>;
+    const resolvedEdges = (Array.isArray(planEdges) ? planEdges : []) as Array<Record<string, unknown>>;
+    if (resolved.length === 0 && !planData && runPlanNodes == null) return { nodes: [], edges: [] };
+    if (resolved.length === 0) return { nodes: [], edges: [] };
 
     const flowNodes: Node[] = [];
     const flowEdges: { id: string; source: string; target: string }[] = [];
 
-    if (planNodes.length > 0) {
-      flowNodes.push({ id: "__start__", type: "startNode", position: { x: 0, y: 0 }, data: {} });
-      flowNodes.push({ id: "__end__", type: "endNode", position: { x: 0, y: 0 }, data: {} });
-    }
+    flowNodes.push({ id: "__start__", type: "startNode", position: { x: 0, y: 0 }, data: {} });
+    flowNodes.push({ id: "__end__", type: "endNode", position: { x: 0, y: 0 }, data: {} });
 
-    for (const n of planNodes) {
+    for (const n of resolved) {
       const nid = String(n.id);
       flowNodes.push({
         id: nid,
@@ -53,7 +56,7 @@ export function PlanDagViewer({ planId, nodeStatuses, className, onNodeClick }: 
       });
     }
 
-    for (const e of planEdges) {
+    for (const e of resolvedEdges) {
       flowEdges.push({ id: String(e.id ?? `${e.from_node_id}-${e.to_node_id}`), source: String(e.from_node_id), target: String(e.to_node_id) });
     }
 
@@ -67,15 +70,16 @@ export function PlanDagViewer({ planId, nodeStatuses, className, onNodeClick }: 
     leafNodes.forEach((id) => flowEdges.push({ id: `${id}-__end__`, source: id, target: "__end__" }));
 
     return layoutDag(flowNodes, flowEdges);
-  }, [planData, nodeStatuses]);
+  }, [planData, nodeStatuses, runPlanNodes, runPlanEdges]);
 
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     if (node.id.startsWith("__")) return;
     onNodeClick?.(node.id);
   }, [onNodeClick]);
 
-  if (isLoading) return <LoadingSkeleton className="h-[500px] w-full rounded-lg" />;
-  if (error) return <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">Failed to load plan: {(error as Error).message}</div>;
+  const hasData = (runPlanNodes != null && runPlanNodes.length > 0) || (planData != null && ((planData as Record<string, unknown>).nodes ?? (planData as Record<string, unknown>).plan_nodes)?.length > 0);
+  if (!hasData && isLoading) return <LoadingSkeleton className="h-[500px] w-full rounded-lg" />;
+  if (!hasData && error) return <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">Failed to load plan: {(error as Error).message}</div>;
   if (nodes.length === 0) return <div className="rounded-lg border bg-muted/30 p-8 text-center text-sm text-muted-foreground">No plan nodes found.</div>;
 
   return (

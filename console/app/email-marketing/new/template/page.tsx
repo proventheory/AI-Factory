@@ -81,9 +81,10 @@ export default function EmailMarketingNewTemplatePage() {
         const productSlots = template.product_slots ?? 0;
         const hasImages = selectedImages.length;
         const hasProducts = products.length;
-        const needsMoreImages = imgCount > 0 && hasImages < imgCount;
-        const needsMoreProducts = productSlots > 0 && hasProducts < productSlots;
-        if (needsMoreImages || needsMoreProducts) {
+        const totalSlots = imgCount + productSlots;
+        const totalContent = hasImages + hasProducts;
+        const needsMore = totalSlots > 0 && totalContent < totalSlots;
+        if (needsMore) {
           setValidationModal({
             templateId,
             needsImages: imgCount,
@@ -208,9 +209,8 @@ export default function EmailMarketingNewTemplatePage() {
               Template needs more content
             </h2>
             <p className="text-body-small text-fg-muted mb-4">
-              This template expects up to <strong>{validationModal.needsImages} image(s)</strong> and{" "}
-              <strong>{validationModal.needsProducts} product(s)</strong>. You have {validationModal.hasImages} image(s) and{" "}
-              {validationModal.hasProducts} product(s). Add more or continue anyway (some slots may be empty).
+              This template has room for up to <strong>{validationModal.needsImages} image slot(s)</strong> and{" "}
+              <strong>{validationModal.needsProducts} product slot(s)</strong> ({(validationModal.needsImages || 0) + (validationModal.needsProducts || 0)} total). You have {validationModal.hasImages} image(s) and {validationModal.hasProducts} product(s) ({(validationModal.hasImages || 0) + (validationModal.hasProducts || 0)} total). Images and products can fill slots interchangeably. Add more or continue anyway.
             </p>
             <div className="flex flex-wrap gap-2">
               {validationModal.needsImages > validationModal.hasImages && (

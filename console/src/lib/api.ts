@@ -655,8 +655,18 @@ export async function pexelsSearch(params: { q: string; per_page?: number; page?
   if (params.per_page) sp.set("per_page", String(params.per_page));
   if (params.page) sp.set("page", String(params.page));
   const res = await fetch(`${API}/v1/pexels/search?${sp}`);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const text = await res.text();
+  if (!res.ok) {
+    if (text.trimStart().startsWith("<") || res.headers.get("content-type")?.includes("text/html")) {
+      throw new Error("Pexels search unavailable. Ensure the Control Plane is running and NEXT_PUBLIC_CONTROL_PLANE_API is set to its URL (e.g. http://localhost:3001).");
+    }
+    throw new Error(text || res.statusText);
+  }
+  try {
+    return JSON.parse(text) as Awaited<ReturnType<typeof pexelsSearch>>;
+  } catch {
+    throw new Error("Pexels search unavailable. Check Control Plane is running and NEXT_PUBLIC_CONTROL_PLANE_API is correct.");
+  }
 }
 
 /** Copy image from URL (e.g. Pexels) to our CDN; returns stable URL for emails. */

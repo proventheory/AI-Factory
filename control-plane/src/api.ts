@@ -1999,13 +1999,22 @@ app.get("/v1/brand_profiles/:id", async (req, res) => {
   }
 });
 
-/** POST /v1/brand_profiles/prefill_from_url — fetch live site and extract tokens (colors, fonts, logo, sitemap). */
+/** POST /v1/brand_profiles/prefill_from_url — fetch live site and extract tokens (colors, fonts, logo, sitemap). Logo URL is copied to our CDN so the brand record can store a stable URL. */
 app.post("/v1/brand_profiles/prefill_from_url", async (req, res) => {
   try {
     const body = req.body as { url?: string };
     const url = typeof body?.url === "string" ? body.url.trim() : "";
     if (!url) return res.status(400).json({ error: "url is required" });
     const result = await tokenizeBrandFromUrl(url);
+    if (result.logo_url && !/supabase\.co\/storage\/v1\/object\/public\/upload\//.test(result.logo_url)) {
+      try {
+        const { copyImageToCdn } = await import("./campaign-images-storage.js");
+        const cdn = await copyImageToCdn(result.logo_url);
+        if (cdn?.cdn_url) result.logo_url = cdn.cdn_url;
+      } catch (_e) {
+        // keep original logo_url if copy fails
+      }
+    }
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });

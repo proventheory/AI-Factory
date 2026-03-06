@@ -359,6 +359,13 @@ function applyBrandColorsAndCampaignCopy(
     const safeBody = escapeHtml(body);
     if (out.includes(DEFAULT_HERO_BODY)) {
       out = out.replace(DEFAULT_HERO_BODY, safeBody);
+    } else {
+      // Fallback: template may have entity-encoded or slightly different text (e.g. you're → you&#39;re)
+      const emmaStart = "Emma SMS helps you";
+      if (out.includes(emmaStart) && generatedCopy?.body) {
+        const flexibleEmma = /Emma SMS helps you[\s\S]*?<\/(p|td|div)>/i;
+        out = out.replace(flexibleEmma, (_m, tag) => safeBody + "</" + tag + ">");
+      }
     }
   }
   // Replace default hero CTA button ("Explore the tool") with generated ctaText
@@ -644,7 +651,7 @@ export async function handleEmailGenerateMjml(request: {
   }
 
   const products = input.products ?? [];
-  const campaignImages = input.images ?? [];
+  const campaignImagesRaw = input.images ?? [];
   const campaignPrompt = input.campaign_prompt ?? "newsletter";
 
   let productList: ProductListItem[] = products.map((p) => ({
@@ -678,6 +685,10 @@ export async function handleEmailGenerateMjml(request: {
     }
   });
   const imagesArray = productList.map((p) => ({ title: p.title, description: p.description, buttonText: "Learn more" }));
+
+  /** Campaign image slots ([image 1], [image 2], ...) are filled from selected images first, then product images, so templates can use both interchangeably. */
+  const productImageUrls = productList.map((p) => p.image).filter((u): u is string => !!u && String(u).trim() !== "");
+  const campaignImages = [...campaignImagesRaw, ...productImageUrls];
 
   const typo = mergedTokens && typeof mergedTokens === "object" ? (mergedTokens as Record<string, unknown>).typography : undefined;
   const fontFamilyObj = typo && typeof typo === "object" ? (typo as Record<string, unknown>).fontFamily : undefined;

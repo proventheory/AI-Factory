@@ -12,7 +12,7 @@ import {
   CardSection,
 } from "@/components/ui";
 import { useCreateBrandProfile } from "@/hooks/use-api";
-import { prefillBrandFromUrl } from "@/lib/api";
+import { prefillBrandFromUrl, copyCampaignImageToCdn } from "@/lib/api";
 import { buildDesignTokens } from "../token-helpers";
 
 export default function NewBrandPage() {
@@ -79,6 +79,16 @@ export default function NewBrandPage() {
     }
     setError("");
     try {
+      let resolvedLogoUrl = logoUrl.trim();
+      if (resolvedLogoUrl && !/supabase\.co\/storage\/v1\/object\/public\/upload\//.test(resolvedLogoUrl)) {
+        try {
+          const { cdn_url } = await copyCampaignImageToCdn(resolvedLogoUrl);
+          resolvedLogoUrl = cdn_url;
+        } catch (logoErr) {
+          setError(logoErr instanceof Error ? logoErr.message : "Failed to copy logo to CDN");
+          return;
+        }
+      }
       const result = await create.mutateAsync({
         name: name.trim(),
         identity: {
@@ -110,7 +120,7 @@ export default function NewBrandPage() {
           secondaryColor,
           fontHeadings,
           fontBody,
-          logoUrl,
+          logoUrl: resolvedLogoUrl || logoUrl,
           wordmarkBold,
           wordmarkLight,
           sitemapUrl,

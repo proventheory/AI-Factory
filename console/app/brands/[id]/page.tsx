@@ -118,104 +118,133 @@ export default function BrandDetailPage() {
         )}
 
         <CardSection title="Brand Identity">
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-              <div>
-                <span className="text-text-secondary">Archetype</span>
-                <p className="font-medium">{identity.archetype ?? "—"}</p>
-              </div>
-              <div>
-                <span className="text-text-secondary">Industry</span>
-                <p className="font-medium">{identity.industry ?? "—"}</p>
-              </div>
-              <div className="col-span-2">
-                <span className="text-text-secondary">Tagline</span>
-                <p className="font-medium">{identity.tagline ?? "—"}</p>
-              </div>
+          <div className="space-y-6">
+            {/* Core identity: grid with clear label/value pairs */}
+            <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+              <dl className="space-y-1">
+                <dt className="text-xs font-medium uppercase tracking-wider text-fg-muted">Archetype</dt>
+                <dd className="text-body font-medium text-fg">{identity.archetype ?? "—"}</dd>
+              </dl>
+              <dl className="space-y-1">
+                <dt className="text-xs font-medium uppercase tracking-wider text-fg-muted">Industry</dt>
+                <dd className="text-body font-medium text-fg">{identity.industry ?? "—"}</dd>
+              </dl>
+              <dl className="space-y-1 sm:col-span-2">
+                <dt className="text-xs font-medium uppercase tracking-wider text-fg-muted">Tagline</dt>
+                <dd className="text-body font-medium text-fg">{identity.tagline ?? "—"}</dd>
+              </dl>
               {identity.mission && (
-                <div className="col-span-2 md:col-span-4">
-                  <span className="text-text-secondary">Mission</span>
-                  <p>{identity.mission}</p>
-                </div>
+                <dl className="space-y-1 sm:col-span-2 lg:col-span-4">
+                  <dt className="text-xs font-medium uppercase tracking-wider text-fg-muted">Mission</dt>
+                  <dd className="text-body text-fg mt-1 leading-relaxed">{identity.mission}</dd>
+                </dl>
               )}
               {identity.values?.length > 0 && (
-                <div className="col-span-2 md:col-span-4">
-                  <span className="text-text-secondary">Values</span>
-                  <div className="mt-1 flex flex-wrap gap-1">
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <dt className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Values</dt>
+                  <dd className="flex flex-wrap gap-1.5">
                     {identity.values.map((v: string) => (
                       <Badge key={v}>{v}</Badge>
                     ))}
-                  </div>
+                  </dd>
                 </div>
               )}
-              {(identity.website || identity.contact_email || identity.location) && (
-                <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4">
+              {(identity.website || identity.location) && (
+                <div className="flex flex-wrap gap-6 sm:col-span-2 lg:col-span-4">
                   {identity.website && (
-                    <div>
-                      <span className="text-text-secondary">Website</span>
-                      <p className="font-medium"><a href={identity.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{identity.website}</a></p>
-                    </div>
-                  )}
-                  {identity.contact_email && (
-                    <div>
-                      <span className="text-text-secondary">Contact email</span>
-                      <p className="font-medium">{identity.contact_email}</p>
-                    </div>
+                    <dl className="space-y-1">
+                      <dt className="text-xs font-medium uppercase tracking-wider text-fg-muted">Website</dt>
+                      <dd>
+                        <a href={identity.website} target="_blank" rel="noopener noreferrer" className="text-body font-medium text-brand-600 hover:underline break-all">
+                          {identity.website}
+                        </a>
+                      </dd>
+                    </dl>
                   )}
                   {identity.location && (
-                    <div>
-                      <span className="text-text-secondary">Location</span>
-                      <p className="font-medium">{identity.location}</p>
-                    </div>
+                    <dl className="space-y-1">
+                      <dt className="text-xs font-medium uppercase tracking-wider text-fg-muted">Location</dt>
+                      <dd className="text-body font-medium text-fg">{identity.location}</dd>
+                    </dl>
                   )}
                 </div>
               )}
             </div>
-            {((dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) || (dt.social_media?.length > 0) || (dt.contact_info?.length > 0) || (dt.asset_urls?.length > 0)) && (
-              <div className="border-t border-border pt-4 grid gap-3 text-sm">
-                <span className="text-text-secondary font-medium">Sitemap & links</span>
+
+            {/* Sitemap, Social, Contact (single source), Asset URLs — in sub-cards */}
+            {((dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) || (dt.social_media?.length > 0) || (dt.contact_info?.length > 0) || identity.contact_email || (dt.asset_urls?.length > 0)) && (
+              <div className="grid gap-4 sm:grid-cols-2">
                 {(dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) && (
-                  <div>
-                    <span className="text-text-secondary">Brand sitemap</span>
-                    <p className="font-medium">
-                      <a href={dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
-                        {dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url}
-                      </a>
-                      {(dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type) ? ` (${dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type})` : ""}
-                    </p>
+                  <div className="rounded-lg border border-border bg-fg-muted/5 p-4">
+                    <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Sitemap & links</h4>
+                    <a href={dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url} target="_blank" rel="noopener noreferrer" className="text-body font-medium text-brand-600 hover:underline break-all">
+                      {dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url}
+                    </a>
+                    {(dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type) && (
+                      <span className="ml-1.5 text-body-small text-fg-muted">({dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type})</span>
+                    )}
                   </div>
                 )}
+
                 {Array.isArray(dt.social_media) && dt.social_media.length > 0 && (
-                  <div>
-                    <span className="text-text-secondary">Social</span>
-                    <ul className="mt-1 list-disc list-inside">
+                  <div className="rounded-lg border border-border bg-fg-muted/5 p-4">
+                    <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-3">Social</h4>
+                    <ul className="space-y-2">
                       {dt.social_media.map((s: { name?: string; url?: string }, i: number) => (
-                        <li key={i}>
-                          {s.name && <span>{s.name}: </span>}
-                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{s.url}</a>
+                        <li key={i} className="flex items-center gap-2">
+                          {s.name && <span className="text-body-small font-medium text-fg-muted shrink-0">{s.name}</span>}
+                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-body text-brand-600 hover:underline truncate min-w-0">
+                            {s.url}
+                          </a>
                         </li>
                       ))}
                     </ul>
                   </div>
                 )}
-                {Array.isArray(dt.contact_info) && dt.contact_info.length > 0 && (
-                  <div>
-                    <span className="text-text-secondary">Contact</span>
-                    <ul className="mt-1 list-disc list-inside">
-                      {dt.contact_info.map((c: { type?: string; value?: string }, i: number) => (
-                        <li key={i}>{c.type}: {c.value}</li>
-                      ))}
+
+                {/* Contact: single place — show email once (identity or contact_info, no duplicate) */}
+                {(Array.isArray(dt.contact_info) && dt.contact_info.length > 0) || identity.contact_email ? (
+                  <div className="rounded-lg border border-border bg-fg-muted/5 p-4">
+                    <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-3">Contact</h4>
+                    <ul className="space-y-2">
+                      {identity.contact_email && !(Array.isArray(dt.contact_info) && dt.contact_info.some((c: { type?: string }) => (c.type ?? "").toLowerCase() === "email")) && (
+                        <li className="flex items-center gap-2">
+                          <span className="text-body-small font-medium text-fg-muted shrink-0">email</span>
+                          <a href={`mailto:${identity.contact_email}`} className="text-body text-brand-600 hover:underline truncate min-w-0">
+                            {identity.contact_email}
+                          </a>
+                        </li>
+                      )}
+                      {Array.isArray(dt.contact_info) && dt.contact_info.map((c: { type?: string; value?: string }, i: number) => {
+                        const isEmail = (c.type ?? "").toLowerCase() === "email";
+                        if (isEmail && identity.contact_email) return null;
+                        return (
+                          <li key={i} className="flex items-center gap-2">
+                            <span className="text-body-small font-medium text-fg-muted shrink-0">{c.type ?? "—"}</span>
+                            {isEmail ? (
+                              <a href={`mailto:${c.value}`} className="text-body text-brand-600 hover:underline truncate min-w-0">{c.value}</a>
+                            ) : (
+                              <span className="text-body text-fg">{c.value}</span>
+                            )}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
-                )}
+                ) : null}
+
                 {Array.isArray(dt.asset_urls) && dt.asset_urls.length > 0 && (
-                  <div>
-                    <span className="text-text-secondary">Asset URLs</span>
-                    <ul className="mt-1 list-disc list-inside break-all">
+                  <div className="rounded-lg border border-border bg-fg-muted/5 p-4 sm:col-span-2">
+                    <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-3">Asset URLs</h4>
+                    <ul className="space-y-2">
                       {dt.asset_urls.slice(0, 5).map((u: string, i: number) => (
-                        <li key={i}><a href={u} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{u}</a></li>
+                        <li key={i}>
+                          <a href={u} target="_blank" rel="noopener noreferrer" className="text-body text-brand-600 hover:underline break-all">
+                            {u}
+                          </a>
+                        </li>
                       ))}
-                      {dt.asset_urls.length > 5 && <li className="text-text-secondary">+{dt.asset_urls.length - 5} more</li>}
+                      {dt.asset_urls.length > 5 && <li className="text-body-small text-fg-muted">+{dt.asset_urls.length - 5} more</li>}
                     </ul>
                   </div>
                 )}

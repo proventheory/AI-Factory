@@ -21,6 +21,7 @@ import {
   type ContactItem,
 } from "../../token-helpers";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
+import { copyCampaignImageToCdn } from "@/lib/api";
 
 export default function EditBrandPage() {
   const { id } = useParams<{ id: string }>();
@@ -145,6 +146,16 @@ export default function EditBrandPage() {
     }
     setSubmitError("");
     try {
+      let resolvedLogoUrl = logoUrl.trim();
+      if (resolvedLogoUrl && !/supabase\.co\/storage\/v1\/object\/public\/upload\//.test(resolvedLogoUrl)) {
+        try {
+          const { cdn_url } = await copyCampaignImageToCdn(resolvedLogoUrl);
+          resolvedLogoUrl = cdn_url;
+        } catch (logoErr) {
+          setSubmitError(logoErr instanceof Error ? logoErr.message : "Failed to copy logo to CDN");
+          return;
+        }
+      }
       await update.mutateAsync({
         id,
         name: name.trim(),
@@ -179,7 +190,7 @@ export default function EditBrandPage() {
           secondaryColor,
           fontHeadings,
           fontBody,
-          logoUrl,
+          logoUrl: resolvedLogoUrl || logoUrl,
           wordmarkBold,
           wordmarkLight,
           sitemapUrl,

@@ -12,7 +12,7 @@ COPY . .
 RUN mkdir -p dist && npx esbuild control-plane/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \
   --outfile=dist/control-plane-bundle.js --sourcemap \
-  --external:pg --external:express --external:cors --external:uuid --external:mjml
+  --external:pg --external:express --external:cors --external:uuid --external:mjml --external:@supabase/supabase-js
 
 FROM node:20-alpine
 WORKDIR /app
