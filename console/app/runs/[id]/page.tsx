@@ -385,7 +385,7 @@ export default function RunDetailPage() {
             <AlertDialogCancel>Keep</AlertDialogCancel>
             <AlertDialogAction
               onClick={onConfirmDialogAction}
-              className={confirmAction === "cancel" ? "bg-red-600 hover:bg-red-700 text-white focus-visible:ring-red-500" : undefined}
+              className={confirmAction === "cancel" ? "bg-red-600 hover:bg-red-700 !text-white opacity-100 focus-visible:ring-red-500" : undefined}
             >
               {confirmAction === "cancel" ? "Cancel run" : confirmAction === "rollback" ? "Rollback" : "Confirm"}
             </AlertDialogAction>
