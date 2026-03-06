@@ -29,6 +29,7 @@ export default function InitiativeDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [compileBusy, setCompileBusy] = useState(false);
   const [startBusy, setStartBusy] = useState<string | null>(null);
+  const [llmSource, setLlmSource] = useState<"gateway" | "openai_direct">("gateway");
 
   const refetch = useCallback(() => {
     if (!id) return;
@@ -74,7 +75,7 @@ export default function InitiativeDetailPage() {
       const r = await fetch(`${API}/v1/plans/${planId}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ environment: "sandbox" }),
+        body: JSON.stringify({ environment: "sandbox", llm_source: llmSource }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Start run failed");
@@ -122,22 +123,37 @@ export default function InitiativeDetailPage() {
         {plans.length === 0 ? (
           <p className="text-slate-500 text-sm">No plans yet. Click &quot;Compile plan&quot; to create one.</p>
         ) : (
-          <ul className="space-y-2">
-            {plans.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 flex-wrap">
-                <Link href={`/plans/${p.id}`} className="text-brand-600 hover:underline font-mono text-sm">
-                  {p.id.slice(0, 8)}… — {String(p.plan_hash).slice(0, 12)}… — {new Date(p.created_at).toLocaleString()}
-                </Link>
-                <Button
-                  variant="secondary"
-                  onClick={() => handleStartRun(p.id)}
-                  disabled={startBusy !== null}
+          <>
+            <div className="flex items-center gap-3 flex-wrap mb-3">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <span>LLM for new runs:</span>
+                <select
+                  value={llmSource}
+                  onChange={(e) => setLlmSource(e.target.value as "gateway" | "openai_direct")}
+                  className="rounded border border-slate-300 px-2 py-1 bg-white text-slate-900"
                 >
-                  {startBusy === p.id ? "Starting…" : "Start run"}
-                </Button>
-              </li>
-            ))}
-          </ul>
+                  <option value="gateway">Gateway (recommended)</option>
+                  <option value="openai_direct">Direct OpenAI</option>
+                </select>
+              </label>
+            </div>
+            <ul className="space-y-2">
+              {plans.map((p) => (
+                <li key={p.id} className="flex items-center gap-3 flex-wrap">
+                  <Link href={`/plans/${p.id}`} className="text-brand-600 hover:underline font-mono text-sm">
+                    {p.id.slice(0, 8)}… — {String(p.plan_hash).slice(0, 12)}… — {new Date(p.created_at).toLocaleString()}
+                  </Link>
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleStartRun(p.id)}
+                    disabled={startBusy !== null}
+                  >
+                    {startBusy === p.id ? "Starting…" : "Start run"}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </div>

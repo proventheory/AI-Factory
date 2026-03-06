@@ -48,6 +48,8 @@ export interface JobRequest {
   /** Workspace path when applicable. */
   workspace_path: string | null;
   input: JobInput;
+  /** LLM source for this run: 'gateway' = LLM_GATEWAY_URL, 'openai_direct' = OPENAI_API_KEY. */
+  llm_source?: "gateway" | "openai_direct";
 }
 
 /** Structured result: patch refs, verdict, notes, metrics. */

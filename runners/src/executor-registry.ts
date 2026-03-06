@@ -62,6 +62,7 @@ export function jobRequestFromContext(context: JobContext): JobRequest {
     node_key: context.node_key,
     agent_role: context.agent_role,
     workspace_path: context.workspace_path,
+    llm_source: context.llm_source,
     input: {
       predecessor_artifact_refs: context.predecessor_artifact_ids,
       options: {

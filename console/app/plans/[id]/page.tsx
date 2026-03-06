@@ -26,6 +26,7 @@ export default function PlanDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("details");
   const [startBusy, setStartBusy] = useState(false);
+  const [llmSource, setLlmSource] = useState<"gateway" | "openai_direct">("gateway");
 
   useEffect(() => {
     if (!id) return;
@@ -46,7 +47,7 @@ export default function PlanDetailPage() {
       const r = await fetch(`${API}/v1/plans/${id}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ environment: "sandbox" }),
+        body: JSON.stringify({ environment: "sandbox", llm_source: llmSource }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Start run failed");
@@ -68,7 +69,18 @@ export default function PlanDetailPage() {
           title={`Plan ${String(plan.id).slice(0, 8)}…`}
           description={`Initiative: ${String(plan.initiative_title ?? plan.initiative_id)} · Hash: ${String(plan.plan_hash).slice(0, 16)}…`}
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <span>LLM:</span>
+                <select
+                  value={llmSource}
+                  onChange={(e) => setLlmSource(e.target.value as "gateway" | "openai_direct")}
+                  className="rounded border border-slate-300 px-2 py-1 bg-white text-slate-900"
+                >
+                  <option value="gateway">Gateway (recommended)</option>
+                  <option value="openai_direct">Direct OpenAI</option>
+                </select>
+              </label>
               <Button variant="primary" onClick={handleStartRun} disabled={startBusy}>
                 {startBusy ? "Starting…" : "Start run"}
               </Button>

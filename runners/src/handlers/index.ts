@@ -87,6 +87,7 @@ async function callLlmAndRecord(
       { role: "user", content: userPrompt },
     ],
     context: { run_id: context.run_id, job_run_id: params.jobRunId, job_type: context.job_type, initiative_id: context.initiative_id },
+    useGateway: context.llm_source === "gateway",
   });
   await recordLlmCall(client, params.runId, params.jobRunId, model, result.model_id, result.tokens_in, result.tokens_out, result.latency_ms);
 
@@ -245,6 +246,7 @@ export function registerOpenHandsResolverHandler(): void {
       issue_title: context.human_feedback ?? undefined,
       issue_body: context.human_feedback ?? undefined,
       workspace_path: context.workspace_path ?? undefined,
+      llm_source: context.llm_source,
     });
 
     await recordLlmCall(client, params.runId, params.jobRunId, "max/chat", result.model_used, undefined, undefined, undefined);
@@ -263,6 +265,7 @@ export function registerSweAgentHandler(): void {
       issue_url: issueUrl ?? undefined,
       issue_text: context.human_feedback ?? undefined,
       workspace_path: context.workspace_path ?? undefined,
+      llm_source: context.llm_source,
     });
 
     await recordLlmCall(client, params.runId, params.jobRunId, "max/chat", result.model_used, undefined, undefined, undefined);
@@ -311,6 +314,7 @@ export function registerAllHandlers(): void {
       job_run_id: params.jobRunId,
       job_type: context.job_type,
       initiative_id: context.initiative_id ?? undefined,
+      llm_source: context.llm_source,
       input: context.config as { topic?: string; content_type?: string; length?: string } | undefined,
     };
     const out = await handleCopyGenerate(request);
@@ -361,6 +365,7 @@ export function registerAllHandlers(): void {
       job_run_id: params.jobRunId,
       job_type: context.job_type,
       initiative_id: context.initiative_id ?? undefined,
+      llm_source: context.llm_source,
       input: (context.config as { subject_hint?: string; audience?: string }) ?? {},
     };
     const out = await handleEmailGenerate(request);

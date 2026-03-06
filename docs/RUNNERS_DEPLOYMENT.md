@@ -22,7 +22,9 @@ See `runners/src/runner.ts` (claim/heartbeat) and `runners/src/index.ts` (poll l
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | Same Postgres as the Control Plane. Runner reads `job_runs`, `node_progress`, `plan_nodes`, etc., and writes artifacts, `job_events`, `node_progress`. |
 | `CONTROL_PLANE_URL` | For brand/routing | Base URL of the Control Plane API (e.g. `https://ai-factory-api-staging.onrender.com`). Used to load brand context (initiative → brand_profile) and **routing_policies** (model tier per job type). |
-| `LLM_GATEWAY_URL` | For LLM jobs | LiteLLM Proxy or gateway URL. Any job that calls an LLM (prd, codegen, copy_generate, etc.) needs this. |
+| `LLM_GATEWAY_URL` | For LLM jobs (or use keys below) | LiteLLM Proxy or gateway URL. If unset, runner can use **direct OpenAI** when `OPENAI_API_KEY` is set. |
+| `OPENAI_API_KEY` | For LLM jobs (if no gateway) | When `LLM_GATEWAY_URL` is not set, runner calls OpenAI directly with this key. Set on Render worker so deployed runs can run copy_generate, landing_page_generate, etc. |
+| `ANTHROPIC_API_KEY` | Optional (Claude via gateway) | For Claude; use with a gateway (e.g. LiteLLM) and set `LLM_GATEWAY_URL` to that gateway. |
 | `WORKER_ID` | No | Defaults to `worker-${pid}`. Helps identify the worker in logs and leases. |
 | `ENVIRONMENT` | No | e.g. `sandbox`, `staging`, `prod`. For logging. |
 | `MAX_CONCURRENCY` | No | Max jobs this process runs at once (default `5`). |
@@ -57,7 +59,7 @@ npm run start:runner
 
 ## Deploy as a process
 
-- **Render (recommended)**: The repo includes a **worker** service in `render.yaml` and `Dockerfile.runner`. After syncing the Blueprint, **ai-factory-runner-staging** will deploy from `main`. Set in the worker’s Environment: `DATABASE_URL` (same as API), `CONTROL_PLANE_URL` (e.g. `https://ai-factory-api-staging.onrender.com`), `LLM_GATEWAY_URL`. Without these, jobs stay queued. The worker runs `node dist/runner-bundle.js`.
+- **Render (recommended)**: The repo includes a **worker** service in `render.yaml` and `Dockerfile.runner`. After syncing the Blueprint, **ai-factory-runner-staging** will deploy from `main`. Set in the worker’s Environment: `DATABASE_URL` (same as API), `CONTROL_PLANE_URL` (e.g. `https://ai-factory-api-staging.onrender.com`), and either `LLM_GATEWAY_URL` or `OPENAI_API_KEY` (so LLM jobs run). Without these, jobs stay queued. The worker runs `node dist/runner-bundle.js`.
 - **Render (manual)**: Add a **Background Worker**; use `dockerContext: .`, `dockerfilePath: ./Dockerfile.runner`. Set the same env vars as above.
 - **Railway / Fly.io / ECS / etc.**: Use `Dockerfile.runner` or run `npm run build` then `npm run start:runner` with `DATABASE_URL`, `CONTROL_PLANE_URL`, `LLM_GATEWAY_URL`.
 - **Same host as Control Plane**: Run `node dist/runners/src/index.js` (or `npm run start:runner`) with the same `DATABASE_URL`.

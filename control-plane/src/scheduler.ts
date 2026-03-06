@@ -18,23 +18,46 @@ export interface CreateRunParams {
   routingRuleId?: string;
   promptTemplateVersion?: string;
   adapterContractVersion?: string;
+  /** 'gateway' = use LLM_GATEWAY_URL; 'openai_direct' = use OPENAI_API_KEY on runner. Default 'gateway'. */
+  llmSource?: "gateway" | "openai_direct" | null;
 }
 
 export async function createRun(db: DbClient, params: CreateRunParams): Promise<string> {
   const runId = uuid();
 
-  await db.query(
-    `INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
-       status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
-       prompt_template_version, adapter_contract_version)
-     VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11)`,
-    [
-      runId, params.planId, params.releaseId, params.policyVersion,
-      params.environment, params.cohort, params.rootIdempotencyKey,
-      params.routingReason ?? null, params.routingRuleId ?? null,
-      params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
-    ],
-  );
+  const llmSource = params.llmSource === "openai_direct" ? "openai_direct" : "gateway";
+  try {
+    await db.query(
+      `INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
+         status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
+         prompt_template_version, adapter_contract_version, llm_source)
+       VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11,$12)`,
+      [
+        runId, params.planId, params.releaseId, params.policyVersion,
+        params.environment, params.cohort, params.rootIdempotencyKey,
+        params.routingReason ?? null, params.routingRuleId ?? null,
+        params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
+        llmSource,
+      ],
+    );
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === "42703") {
+      await db.query(
+        `INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
+           status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
+           prompt_template_version, adapter_contract_version)
+         VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11)`,
+        [
+          runId, params.planId, params.releaseId, params.policyVersion,
+          params.environment, params.cohort, params.rootIdempotencyKey,
+          params.routingReason ?? null, params.routingRuleId ?? null,
+          params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
+        ],
+      );
+    } else {
+      throw err;
+    }
+  }
 
   await db.query(
     `INSERT INTO run_events (run_id, event_type) VALUES ($1, 'queued')`,

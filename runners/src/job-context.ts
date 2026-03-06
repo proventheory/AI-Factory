@@ -24,6 +24,8 @@ export interface JobContext {
   human_feedback: string | null;
   predecessor_artifact_ids: string[];
   predecessor_artifacts: PredecessorArtifact[];
+  /** 'gateway' = use LLM_GATEWAY_URL; 'openai_direct' = use OPENAI_API_KEY. Default 'gateway'. */
+  llm_source: "gateway" | "openai_direct";
   /** Optional phase/config for quality gate and other handlers. */
   config?: { phase?: string };
 }
@@ -87,18 +89,26 @@ export async function getJobContext(
   let runResult: { rows: Array<Record<string, unknown>> };
   try {
     runResult = await client.query(
-      "SELECT id, plan_id, workspace_path, human_feedback FROM runs WHERE id = $1",
+      "SELECT id, plan_id, workspace_path, human_feedback, llm_source FROM runs WHERE id = $1",
       [jobRun.run_id]
     );
   } catch {
-    runResult = await client.query(
-      "SELECT id, plan_id FROM runs WHERE id = $1",
-      [jobRun.run_id]
-    );
+    try {
+      runResult = await client.query(
+        "SELECT id, plan_id, workspace_path, human_feedback FROM runs WHERE id = $1",
+        [jobRun.run_id]
+      );
+    } catch {
+      runResult = await client.query(
+        "SELECT id, plan_id FROM runs WHERE id = $1",
+        [jobRun.run_id]
+      );
+    }
   }
   if (runResult.rows.length === 0) return null;
   const run = runResult.rows[0];
   const planId = run.plan_id as string;
+  const llm_source = (run as { llm_source?: string }).llm_source === "openai_direct" ? "openai_direct" : "gateway";
 
   let nodeResult: { rows: Array<Record<string, unknown>> };
   try {
@@ -136,5 +146,6 @@ export async function getJobContext(
     human_feedback: (run as { human_feedback?: string | null }).human_feedback ?? null,
     predecessor_artifact_ids: predecessorArtifactIds,
     predecessor_artifacts: predecessorArtifacts,
+    llm_source,
   };
 }

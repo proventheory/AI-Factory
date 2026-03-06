@@ -455,13 +455,15 @@ app.post("/v1/initiatives/:id/plan", async (req, res) => {
   }
 });
 
-/** POST /v1/plans/:id/start — create a run for this plan (get or create release, then createRun). Body: { environment?: "sandbox"|"staging"|"prod" }. */
+/** POST /v1/plans/:id/start — create a run for this plan (get or create release, then createRun). Body: { environment?: "sandbox"|"staging"|"prod", llm_source?: "gateway"|"openai_direct" }. */
 app.post("/v1/plans/:id/start", async (req, res) => {
   try {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const planId = req.params.id;
-    const environment = (req.body as { environment?: string })?.environment ?? "sandbox";
+    const body = req.body as { environment?: string; llm_source?: string };
+    const environment = body?.environment ?? "sandbox";
+    const llmSource = body?.llm_source === "openai_direct" ? "openai_direct" as const : "gateway" as const;
     if (!["sandbox", "staging", "prod"].includes(environment)) {
       return res.status(400).json({ error: "environment must be sandbox, staging, or prod" });
     }
@@ -490,6 +492,7 @@ app.post("/v1/plans/:id/start", async (req, res) => {
         environment: environment as "sandbox" | "staging" | "prod",
         cohort: "control",
         rootIdempotencyKey: `console:${planId}:${Date.now()}`,
+        llmSource,
       });
     });
     res.status(201).json({ id: runId });
@@ -504,12 +507,19 @@ app.post("/v1/runs/:id/rerun", async (req, res) => {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const runId = req.params.id;
-    const r = await pool.query(
-      "SELECT plan_id, release_id, policy_version, environment, cohort FROM runs WHERE id = $1",
+    let r = await pool.query(
+      "SELECT plan_id, release_id, policy_version, environment, cohort, llm_source FROM runs WHERE id = $1",
       [runId]
-    );
-    if (r.rows.length === 0) return res.status(404).json({ error: "Run not found" });
+    ).catch(() => null);
+    if (!r || r.rows.length === 0) {
+      r = await pool.query(
+        "SELECT plan_id, release_id, policy_version, environment, cohort FROM runs WHERE id = $1",
+        [runId]
+      );
+      if (r.rows.length === 0) return res.status(404).json({ error: "Run not found" });
+    }
     const row = r.rows[0];
+    const llmSource = (row as { llm_source?: string }).llm_source === "openai_direct" ? "openai_direct" as const : "gateway" as const;
     const newRunId = await withTransaction(async (client) => {
       return createRun(client, {
         planId: row.plan_id,
@@ -518,6 +528,7 @@ app.post("/v1/runs/:id/rerun", async (req, res) => {
         environment: row.environment,
         cohort: row.cohort,
         rootIdempotencyKey: `rerun:${runId}:${Date.now()}`,
+        llmSource,
       });
     });
     res.status(201).json({ id: newRunId });

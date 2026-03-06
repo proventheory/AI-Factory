@@ -25,6 +25,8 @@ export interface LLMChatOptions {
   temperature?: number;
   context: LLMCallContext;
   brandContext?: { id: string; name: string; systemPrompt?: string };
+  /** When false, use OPENAI_API_KEY directly even if LLM_GATEWAY_URL is set (run-level choice from Console). */
+  useGateway?: boolean;
 }
 
 export interface LLMChatResult {
@@ -108,18 +110,61 @@ export async function resolveTier(jobType: string): Promise<ModelTier> {
   return pickTier(jobType);
 }
 
-function getGatewayUrl(): string {
-  const url = process.env.LLM_GATEWAY_URL;
-  if (!url) {
+function getGatewayUrl(): string | null {
+  const url = process.env.LLM_GATEWAY_URL?.trim();
+  return url ? url.replace(/\/$/, "") : null;
+}
+
+/** When no gateway is set, call OpenAI directly using OPENAI_API_KEY. */
+async function chatViaOpenAIDirect(options: LLMChatOptions): Promise<LLMChatResult> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
     throw new Error(
-      "LLM_GATEWAY_URL is not set. Set it to the LiteLLM Proxy base URL when executors call LLMs."
+      "Neither LLM_GATEWAY_URL nor OPENAI_API_KEY is set. Set LLM_GATEWAY_URL (e.g. LiteLLM proxy) or OPENAI_API_KEY for direct OpenAI."
     );
   }
-  return url.replace(/\/$/, "");
+  const model = MODEL_MAP[options.model] ?? "gpt-4o-mini";
+  const start = Date.now();
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: options.messages,
+      max_tokens: options.max_tokens ?? 4096,
+      temperature: options.temperature ?? 0,
+    }),
+  });
+  const latency_ms = Date.now() - start;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OpenAI API error ${res.status}: ${text}`);
+  }
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    model?: string;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  return {
+    content: data.choices?.[0]?.message?.content ?? "",
+    model_id: data.model ?? model,
+    tokens_in: data.usage?.prompt_tokens,
+    tokens_out: data.usage?.completion_tokens,
+    latency_ms,
+  };
 }
 
 export async function chat(options: LLMChatOptions): Promise<LLMChatResult> {
+  if (options.useGateway === false) {
+    return chatViaOpenAIDirect(options);
+  }
   const base = getGatewayUrl();
+  if (!base) {
+    return chatViaOpenAIDirect(options);
+  }
   const start = Date.now();
 
   const headers: Record<string, string> = {
@@ -185,7 +230,7 @@ export async function chat(options: LLMChatOptions): Promise<LLMChatResult> {
 }
 
 export function isGatewayConfigured(): boolean {
-  return Boolean(process.env.LLM_GATEWAY_URL);
+  return Boolean(process.env.LLM_GATEWAY_URL?.trim()) || Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
 // ---------------------------------------------------------------------------

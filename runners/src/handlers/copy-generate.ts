@@ -6,6 +6,7 @@ export async function handleCopyGenerate(request: {
   job_run_id: string;
   job_type: string;
   initiative_id?: string;
+  llm_source?: "gateway" | "openai_direct";
   input?: { topic?: string; content_type?: string; length?: string };
 }) {
   const brandCtx = request.initiative_id ? await loadBrandContext(request.initiative_id) : null;
@@ -25,6 +26,7 @@ export async function handleCopyGenerate(request: {
       messages,
       context: { run_id: request.run_id, job_run_id: request.job_run_id, job_type: request.job_type, initiative_id: request.initiative_id },
       brandContext: brandCtx ? { id: brandCtx.id, name: brandCtx.name, systemPrompt: brandPrompt } : undefined,
+      useGateway: request.llm_source !== "openai_direct",
     });
     content = result.content;
   } catch (err) {

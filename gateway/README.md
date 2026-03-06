@@ -7,6 +7,17 @@ This folder contains config and Dockerfile for the AI Factory LLM gateway. All e
 - **Render:** New Web Service; use this Dockerfile or image `ghcr.io/berriai/litellm:main-latest` with config mounted; set env vars `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` (optional), and optionally `LANGFUSE_SECRET_KEY` / `LANGFUSE_PUBLIC_KEY`.
 - **Local:** `docker build -t ai-factory-gateway . && docker run -p 4000:4000 -e OPENAI_API_KEY=sk-... ai-factory-gateway`
 
+### Render: set API keys on the gateway service
+
+1. Open [Render Dashboard](https://dashboard.render.com).
+2. Select the **gateway** service (e.g. `llm-gateway`), **not** the runner or API.
+3. Go to **Environment** (left sidebar).
+4. Add or edit:
+   - **`OPENAI_API_KEY`** — your OpenAI API key (required; used for auto/chat, fast/chat, max/chat fallback).
+   - **`ANTHROPIC_API_KEY`** — your Anthropic API key (optional; used for Claude in max/chat tier).
+5. Click **Save changes**. Render will redeploy the service.
+6. After deploy, check **Logs** and/or `https://llm-gateway.onrender.com/health` to confirm the gateway is up.
+
 ## Routing tiers
 
 - `auto/chat` — Cheap model first (e.g. gpt-4o-mini); falls back to gpt-4o on failure.

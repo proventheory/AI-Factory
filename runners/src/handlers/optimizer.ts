@@ -48,6 +48,7 @@ Output JSON: {
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
       max_tokens: 4096,
       context: { run_id: context.run_id, job_run_id: params.jobRunId, job_type: "optimizer" },
+      useGateway: context.llm_source === "gateway",
     });
     content = result.content;
   }

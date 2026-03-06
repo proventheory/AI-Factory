@@ -32,10 +32,12 @@ const config = {
   maxConcurrency: Number(process.env.MAX_CONCURRENCY ?? "5"),
 };
 
-if (!process.env.LLM_GATEWAY_URL?.trim()) {
-  console.warn("[runner] LLM_GATEWAY_URL is not set. Set it in .env (e.g. your LiteLLM proxy or OpenAI-compatible gateway) so LLM handlers (copy_generate, landing_page_generate, etc.) can run.");
+if (process.env.LLM_GATEWAY_URL?.trim()) {
+  console.log("[runner] LLM_GATEWAY_URL is set — using gateway for LLM calls.");
+} else if (process.env.OPENAI_API_KEY?.trim()) {
+  console.log("[runner] Using OPENAI_API_KEY for direct OpenAI (no gateway).");
 } else {
-  console.log("[runner] LLM_GATEWAY_URL is set.");
+  console.warn("[runner] Neither LLM_GATEWAY_URL nor OPENAI_API_KEY set. Set one in .env so LLM handlers (copy_generate, landing_page_generate, etc.) can run.");
 }
 
 let activeJobs = 0;

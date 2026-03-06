@@ -1,7 +1,20 @@
-# Render Blueprint: AI Factory Control Plane + Runner worker
-# Two web services (API), one background worker (runner). Set DATABASE_URL, CORS_ORIGIN (API), CONTROL_PLANE_URL, LLM_GATEWAY_URL (runner) in Dashboard.
+# Render Blueprint: AI Factory Control Plane + Runner + LLM Gateway
+# Set in Dashboard: DATABASE_URL, CORS_ORIGIN (API), CONTROL_PLANE_URL + LLM_GATEWAY_URL or OPENAI_API_KEY (runner).
+# Gateway: set OPENAI_API_KEY and optionally ANTHROPIC_API_KEY on ai-factory-gateway-staging; then set LLM_GATEWAY_URL on runner to this service URL.
 
 services:
+  - type: web
+    name: ai-factory-gateway-staging
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./Dockerfile.gateway
+    branch: main
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set in Dashboard: OPENAI_API_KEY (required), ANTHROPIC_API_KEY (optional), REDIS_URL (optional)
+    healthCheckPath: /health/readiness
+
   - type: web
     name: ai-factory-api-staging
     runtime: docker
@@ -25,7 +38,7 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Set in Dashboard: DATABASE_URL (same as API), CONTROL_PLANE_URL (e.g. https://ai-factory-api-staging.onrender.com), LLM_GATEWAY_URL
+      # Set in Dashboard: DATABASE_URL (same as API), CONTROL_PLANE_URL, and either LLM_GATEWAY_URL or OPENAI_API_KEY
 
   - type: web
     name: ai-factory-api-prod

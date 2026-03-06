@@ -28,6 +28,7 @@ export interface ResolverInput {
   issue_body?: string;
   repo_url?: string;
   workspace_path?: string;
+  llm_source?: "gateway" | "openai_direct";
 }
 
 export interface ResolverOutput {
@@ -128,6 +129,7 @@ export async function runOpenHandsResolver(input: ResolverInput): Promise<Resolv
       { role: "user", content: `Issue: ${input.issue_title ?? "Unknown"}\n\n${input.issue_body ?? ""}\n\nRepo: ${input.repo_url ?? input.workspace_path ?? "unknown"}` },
     ],
     context: { run_id: "resolver", job_run_id: "resolver", job_type: "openhands_resolver" },
+    useGateway: input.llm_source !== "openai_direct",
   });
 
   return {
