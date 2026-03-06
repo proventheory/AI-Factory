@@ -8,6 +8,7 @@ import Handlebars from "handlebars";
 import { chat, type LLMChatOptions } from "../llm-client.js";
 import { loadBrandContext, brandContextToSystemPrompt, brandContextToDesignTokens } from "../brand-context.js";
 import { tokens } from "../tokens.js";
+import { getArtifactSignedUrl } from "../artifact-storage.js";
 
 const CONTROL_PLANE_URL = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 
@@ -61,7 +62,14 @@ export async function handleEmailGenerateMjml(request: {
       const assetsRes = await fetch(`${CONTROL_PLANE_URL}/v1/brand_profiles/${brandCtx.id}/assets?asset_type=logo`);
       if (assetsRes.ok) {
         const assets = (await assetsRes.json()) as { items?: Array<{ uri?: string }> };
-        logoUrl = assets.items?.[0]?.uri ?? null;
+        const rawUri = assets.items?.[0]?.uri ?? null;
+        if (rawUri?.startsWith("supabase-storage://")) {
+          const signed = await getArtifactSignedUrl(rawUri);
+          logoUrl = signed ?? rawUri;
+          if (!signed) console.log("[MJML] logo storage URI not resolved to signed URL", { brandId: brandCtx.id, uriSnippet: rawUri.slice(0, 50) });
+        } else {
+          logoUrl = rawUri;
+        }
       }
     } catch (_e) {
       console.log("[MJML] brand assets fetch failed", { brandId: brandCtx.id, err: String((_e as Error).message).slice(0, 60) });
@@ -174,7 +182,7 @@ export async function handleEmailGenerateMjml(request: {
   if (templateMjml) {
     try {
       const logo = logoUrl ?? "";
-      const heroImage = logo || productList[0]?.image ?? "";
+      const heroImage = (logo || productList[0]?.image) ?? "";
       const sectionJson: Record<string, unknown> = {
         ...(templateJson ?? {}),
         products: productList,
@@ -192,7 +200,12 @@ export async function handleEmailGenerateMjml(request: {
         logo: logo,
         brandLogo: logo,
         brand_logo: logo,
+        logo_src: logo,
+        logoSrc: logo,
         imageUrl: heroImage,
+        image_url: heroImage,
+        image_src: heroImage,
+        imageSrc: heroImage,
         brandName: brandCtx?.name ?? "",
         brand_name: brandCtx?.name ?? "",
         tagline: (brandCtx?.identity as { tagline?: string } | undefined)?.tagline ?? "",
@@ -206,6 +219,8 @@ export async function handleEmailGenerateMjml(request: {
         cta_link: "#",
         footer: `© ${new Date().getFullYear()} ${brandCtx?.name ?? ""}. All rights reserved.`,
         hero_image: heroImage,
+        hero_image_url: heroImage,
+        heroImageUrl: heroImage,
         emailTitle: subjectLine ?? campaignPrompt,
         subject_line: subjectLine ?? campaignPrompt,
       };

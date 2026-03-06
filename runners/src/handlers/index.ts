@@ -382,7 +382,7 @@ export function registerAllHandlers(): void {
       initiative_id: context.initiative_id ?? undefined,
       llm_source: context.llm_source,
       input: (context.config as { template_id?: string; products?: Array<{ src?: string; title?: string; product_url?: string }>; campaign_prompt?: string }) ?? {},
-      recordLlmCall: (tier, modelId, tokensIn, tokensOut, latencyMs) =>
+      recordLlmCall: (tier: string, modelId: string, tokensIn?: number, tokensOut?: number, latencyMs?: number) =>
         recordLlmCall(client, context.run_id, params.jobRunId, tier, modelId, tokensIn, tokensOut, latencyMs),
     };
     const out = await handleEmailGenerateMjml(request);
