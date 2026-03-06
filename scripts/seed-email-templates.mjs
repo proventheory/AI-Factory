@@ -1,8 +1,15 @@
 #!/usr/bin/env node
 /**
- * Seed 2–3 email templates (MJML) for Email Marketing wizard.
+ * Seed email templates (MJML) for Email Marketing wizard.
+ * Includes defaults + Cultura-style layouts (hero, product grid, CTA).
+ *
  * Usage: node scripts/seed-email-templates.mjs [CONTROL_PLANE_URL]
  * Env: CONTROL_PLANE_URL or pass as first arg. Default: http://localhost:3001
+ *
+ * If you get "relation email_templates does not exist", run the migration on the
+ * same DB the Control Plane uses (e.g. Render DATABASE_URL):
+ *   DATABASE_URL="postgresql://..." node scripts/run-email-templates-migration.mjs
+ * Then run this seed again.
  */
 import "dotenv/config";
 
@@ -96,6 +103,96 @@ const TEMPLATES = [
     <mj-section padding="24px">
       <mj-column>
         <mj-text font-size="12px" color="#888">{{footer}}</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`,
+  },
+  {
+    type: "promo",
+    name: "Hero + CTA (Cultura-style)",
+    img_count: 1,
+    mjml: `<mjml>
+  <mj-body background-color="#f8f9fa">
+    <mj-section background-color="#ffffff" padding="32px 24px">
+      <mj-column>
+        <mj-text font-size="14px" color="#666" align="center">{{prehead}}</mj-text>
+        <mj-text font-size="28px" font-weight="bold" align="center" padding-top="8px">{{headline}}</mj-text>
+        <mj-text font-size="16px" color="#555" align="center" line-height="1.6">{{subhead}}</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#ffffff" padding="0 24px 24px">
+      <mj-column>
+        <mj-image src="{{hero_image}}" alt="Hero" href="{{cta_url}}" />
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#ffffff" padding="0 24px 32px">
+      <mj-column>
+        <mj-button background-color="#2563eb" href="{{cta_url}}" padding="16px 32px">{{cta_text}}</mj-button>
+      </mj-column>
+    </mj-section>
+    <mj-section padding="20px">
+      <mj-column>
+        <mj-text font-size="12px" color="#999" align="center">{{footer}}</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`,
+  },
+  {
+    type: "promo",
+    name: "Two-column product spotlight",
+    img_count: 2,
+    mjml: `<mjml>
+  <mj-body background-color="#ffffff">
+    <mj-section padding="24px">
+      <mj-column>
+        <mj-text font-size="24px" font-weight="bold" align="center">{{title}}</mj-text>
+        <mj-text font-size="14px" color="#666" align="center">{{description}}</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section padding="16px 24px">
+      <mj-column width="50%">
+        <mj-image src="{{product_1_image}}" alt="Product 1" href="{{product_1_url}}" />
+        <mj-text font-size="14px" font-weight="bold" align="center">{{product_1_title}}</mj-text>
+        <mj-text font-size="12px" color="#555" align="center">{{product_1_description}}</mj-text>
+      </mj-column>
+      <mj-column width="50%">
+        <mj-image src="{{product_2_image}}" alt="Product 2" href="{{product_2_url}}" />
+        <mj-text font-size="14px" font-weight="bold" align="center">{{product_2_title}}</mj-text>
+        <mj-text font-size="12px" color="#555" align="center">{{product_2_description}}</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section padding="24px">
+      <mj-column>
+        <mj-button background-color="#16a34a" href="{{cta_url}}" align="center">{{cta_text}}</mj-button>
+      </mj-column>
+    </mj-section>
+    <mj-section padding="20px">
+      <mj-column>
+        <mj-text font-size="12px" color="#999" align="center">{{footer}}</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`,
+  },
+  {
+    type: "newsletter",
+    name: "Minimal announcement",
+    img_count: 0,
+    mjml: `<mjml>
+  <mj-body background-color="#ffffff">
+    <mj-section padding="48px 24px">
+      <mj-column>
+        <mj-text font-size="12px" color="#888" align="center">{{eyebrow}}</mj-text>
+        <mj-text font-size="26px" font-weight="bold" align="center" padding-top="8px">{{headline}}</mj-text>
+        <mj-text font-size="16px" color="#444" align="center" line-height="1.7" padding-top="16px">{{body}}</mj-text>
+        <mj-button background-color="#111" href="{{cta_url}}" padding-top="24px">{{cta_text}}</mj-button>
+      </mj-column>
+    </mj-section>
+    <mj-section padding="24px">
+      <mj-column>
+        <mj-text font-size="11px" color="#999" align="center">{{footer}}</mj-text>
       </mj-column>
     </mj-section>
   </mj-body>

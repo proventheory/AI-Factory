@@ -168,13 +168,28 @@ app.get("/v1/email_campaigns", async (req, res) => {
 /** GET /v1/email_campaigns/:id — single email campaign (initiative + metadata) */
 app.get("/v1/email_campaigns/:id", async (req, res) => {
   try {
-    const r = await pool.query(
-      `SELECT i.id, i.title, i.created_at, i.brand_profile_id, i.template_id, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
+    const id = req.params.id;
+    const fullSelect = `SELECT i.id, i.title, i.created_at, i.brand_profile_id, i.template_id, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
        FROM initiatives i
        LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
-       WHERE i.id = $1 AND i.intent_type = 'email_campaign'`,
-      [req.params.id]
-    );
+       WHERE i.id = $1 AND i.intent_type = 'email_campaign'`;
+    const minimalSelect = `SELECT i.id, i.title, i.created_at, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
+       FROM initiatives i
+       LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
+       WHERE i.id = $1 AND i.intent_type = 'email_campaign'`;
+    let r: { rows: Record<string, unknown>[] };
+    try {
+      r = await pool.query(fullSelect, [id]);
+    } catch (e) {
+      if ((e as { code?: string }).code === "42703" || String((e as Error).message).includes("brand_profile_id")) {
+        r = await pool.query(minimalSelect, [id]);
+        if (r.rows.length > 0) {
+          const row = r.rows[0] as Record<string, unknown>;
+          row.brand_profile_id = null;
+          row.template_id = null;
+        }
+      } else throw e;
+    }
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
     res.json(r.rows[0]);
   } catch (e) {
@@ -198,10 +213,20 @@ app.post("/v1/email_campaigns", async (req, res) => {
       metadata_json?: unknown;
     };
     const id = uuid();
-    await pool.query(
-      `INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, 'medium', $3, $4)`,
-      [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null]
-    );
+    const err = (e: unknown) => (e as { code?: string; message?: string }).code === "42703" || String((e as Error).message).includes("brand_profile_id");
+    try {
+      await pool.query(
+        `INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, 'medium', $3, $4)`,
+        [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null]
+      );
+    } catch (e) {
+      if (err(e)) {
+        await pool.query(
+          `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, 'medium')`,
+          [id, body.title ?? "New email campaign"]
+        );
+      } else throw e;
+    }
     await pool.query(
       `INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email, template_artifact_id, metadata_json) VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
       [
@@ -214,11 +239,12 @@ app.post("/v1/email_campaigns", async (req, res) => {
       ]
     );
     const r = await pool.query(
-      `SELECT i.id, i.title, i.created_at, i.brand_profile_id, i.template_id, m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.metadata_json
+      `SELECT i.id, i.title, i.created_at, m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.metadata_json
        FROM initiatives i LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id WHERE i.id = $1`,
       [id]
     );
-    res.status(201).json(r.rows[0]);
+    const row = r.rows[0] as Record<string, unknown>;
+    res.status(201).json({ ...row, brand_profile_id: body.brand_profile_id ?? null, template_id: body.template_id ?? null });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }

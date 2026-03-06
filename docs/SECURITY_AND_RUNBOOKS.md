@@ -56,6 +56,45 @@
 4. If DB connection fails, check Supabase status page.
 5. Restart service.
 
+### Email templates missing (Email Marketing wizard shows “we don’t have templates”)
+The Email Marketing wizard (Brand → Products → Template → Generate) lists templates from the Control Plane API. If the list is empty, the database the Control Plane uses does not have the `email_templates` table and/or no rows in it.
+
+**1. Create the table (once per environment)**  
+Use the same database as the Control Plane (e.g. Render `DATABASE_URL` or your Supabase/Neon connection string):
+
+```bash
+DATABASE_URL="postgresql://user:pass@host:5432/dbname" node scripts/run-email-templates-migration.mjs
+```
+
+**2. Seed templates**  
+Point at your deployed Control Plane URL:
+
+```bash
+CONTROL_PLANE_URL=https://ai-factory-api-staging.onrender.com node scripts/seed-email-templates.mjs
+```
+
+(Replace with your actual Control Plane base URL if different.)
+
+**3. Verify**  
+- `GET https://<control-plane-url>/v1/email_templates` should return the seeded templates.
+- In Console, open Email Marketing → New campaign → Template step; the list should show 6 templates (e.g. Simple Newsletter, Promo / Product Grid, Hero + CTA, etc.).
+
+**Env vars**
+- `DATABASE_URL` — same as the one used by the Control Plane (Render/Supabase/Neon).
+- `CONTROL_PLANE_URL` — base URL of the deployed API (e.g. `https://ai-factory-api-staging.onrender.com`).
+
+**Pull from Cultura/Focuz Supabase**  
+To copy templates from an existing Cultura Supabase project into our Control Plane:
+
+```bash
+CULTURA_SUPABASE_URL=https://aimferclcnvhawzpruzn.supabase.co \
+CULTURA_SUPABASE_ANON=<publishable-key> \
+CONTROL_PLANE_URL=https://ai-factory-api-staging.onrender.com \
+node scripts/sync-email-templates-from-cultura.mjs
+```
+
+Only rows that have MJML are synced. See `.env.example` for the variable names.
+
 ### Runner not claiming jobs
 1. **Same DB as Control Plane:** Start both from the same repo root so they load the same `.env` and `DATABASE_URL`. If the Runner uses a different DB, it will never see queued jobs.
 2. Check Runner logs for errors (and for “Executing job” when work exists).
