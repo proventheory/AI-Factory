@@ -150,7 +150,7 @@ app.get("/v1/email_campaigns", async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
     const offset = Number(req.query.offset) || 0;
     const r = await pool.query(
-      `SELECT i.id, i.title, i.intent_type, i.risk_level, i.created_at, i.status,
+      `SELECT i.id, i.title, i.intent_type, i.risk_level, i.created_at,
               m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.audience_segment_ref, m.updated_at AS metadata_updated_at
        FROM initiatives i
        LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id

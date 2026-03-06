@@ -67,7 +67,6 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "ORCHESTRATION",
     items: [
       { href: "/initiatives", label: "Initiatives", branchId: "orchestration" },
-      { href: "/admin/initiatives/new?intent_type=marketing", label: "New campaign", branchId: "orchestration" },
       { href: "/email-marketing", label: "Email Marketing", branchId: "orchestration" },
       { href: "/plans", label: "Plans", branchId: "orchestration" },
       { href: "/runs", label: "Pipeline Runs", branchId: "orchestration" },
