@@ -92,6 +92,16 @@ ProfessorX is wired to **Render** (API key), **GitHub** (webhook), and **Supabas
 
 - **When to use the runbook:** If self-heal is disabled or you need manual steps, see [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **No artifacts on runs** and **Runner not claiming jobs**.
 
+---
+
+## Why self-heal did not catch “empty” or broken email previews
+
+**Platform (no-artifacts) self-heal only triggers when a run has zero artifacts.** It does not check artifact *quality* or *content*.
+
+- **Trigger condition:** Run is terminal, had job_runs, and `(SELECT count(*) FROM artifacts WHERE run_id = $1) = 0`. If there is **at least one** artifact row, remediation is skipped.
+- **What happened in the truncation bug:** The runner wrote one `email_template` artifact, but the stored HTML was truncated (10KB limit), so the preview looked empty/broken. The run had **one** artifact, so self-heal never ran.
+- **Gap:** Self-heal fixes “no artifacts at all” (e.g. wrong worker env). It does **not** detect “artifact exists but is invalid” (truncated content, wrong type, failed upload, etc.). Those need runbook debugging, code fixes, or a future extension (e.g. validate `email_template` content length or basic HTML structure and treat “bad” artifacts like zero artifacts for remediation).
+
 ## Summary
 
 | Goal | Action |

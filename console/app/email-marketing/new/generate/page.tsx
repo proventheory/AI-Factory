@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button } from "@/components/ui";
@@ -32,6 +32,19 @@ export default function EmailMarketingNewGeneratePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<string>("");
+  const [hasTemplate, setHasTemplate] = useState<boolean>(() => Boolean(getWizardState().template_id));
+
+  // Re-read wizard state when page becomes visible (e.g. user returns from Template step)
+  useEffect(() => {
+    const sync = () => setHasTemplate(Boolean(getWizardState().template_id));
+    sync();
+    window.addEventListener("visibilitychange", sync);
+    window.addEventListener("focus", sync);
+    return () => {
+      window.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("focus", sync);
+    };
+  }, []);
 
   const createCampaign = useCreateEmailCampaign();
 
@@ -121,7 +134,7 @@ export default function EmailMarketingNewGeneratePage() {
           title="Generate"
           description="Create campaign and run the email generation pipeline."
         />
-        {!getWizardState().template_id && (
+        {!hasTemplate && (
           <p className="text-state-warning text-body-small mb-2">Select a template in the Template step first, then return here.</p>
         )}
         <div>
@@ -137,13 +150,20 @@ export default function EmailMarketingNewGeneratePage() {
         {error && <p className="text-state-danger text-body-small">{error}</p>}
         {step && <p className="text-body-small text-fg-muted">{step}</p>}
         <div className="flex flex-wrap gap-3">
-          <Button
-            variant="primary"
-            onClick={handleGenerate}
-            disabled={busy || createCampaign.isPending || !getWizardState().template_id}
-          >
-            {busy || createCampaign.isPending ? "Generating…" : "Create campaign and generate"}
-          </Button>
+          {(() => {
+            const isDisabled = busy || createCampaign.isPending || !hasTemplate;
+            return (
+              <Button
+                variant={hasTemplate ? "primary" : "secondary"}
+                onClick={handleGenerate}
+                disabled={isDisabled}
+                aria-disabled={isDisabled}
+                title={!hasTemplate ? "Select a template in the Template step first" : undefined}
+              >
+                {busy || createCampaign.isPending ? "Generating…" : "Create campaign and generate"}
+              </Button>
+            );
+          })()}
           <Button variant="secondary" asChild disabled={busy}>
             <Link href="/email-marketing/new/template">Back</Link>
           </Button>
