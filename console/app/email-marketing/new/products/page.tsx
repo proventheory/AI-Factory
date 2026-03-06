@@ -29,24 +29,62 @@ function setWizardState(updates: Record<string, unknown>) {
 
 type ProductItem = { src: string; title: string; product_url: string };
 
+type ProductsCache = {
+  items: ProductItem[];
+  totalAvailable: number | null;
+  hasMore: boolean;
+  sitemap_url: string;
+  sitemap_type: string;
+};
+
+function getProductsCache(): ProductsCache | null {
+  const state = getWizardState();
+  const cache = state.products_cache as ProductsCache | undefined;
+  if (!cache || !Array.isArray(cache.items)) return null;
+  return cache;
+}
+
+function setProductsCache(cache: ProductsCache) {
+  setWizardState({ products_cache: cache });
+}
+
 export default function EmailMarketingNewProductsPage() {
   const router = useRouter();
   const state = getWizardState();
   const brandId = state.brand_profile_id as string | undefined;
   const { data: brand } = useBrandProfile(brandId ?? null);
 
-  const [sitemapUrl, setSitemapUrl] = useState("");
-  const [sitemapType, setSitemapType] = useState("ecommerce");
-  const [items, setItems] = useState<ProductItem[]>([]);
-  const [totalAvailable, setTotalAvailable] = useState<number | null>(null);
+  const [sitemapUrl, setSitemapUrl] = useState(() => (state.sitemap_url as string) || "");
+  const [sitemapType, setSitemapType] = useState(() => (state.sitemap_type as string) || "ecommerce");
+  const [items, setItems] = useState<ProductItem[]>(() => {
+    const cache = getProductsCache();
+    const url = (state.sitemap_url as string) || "";
+    const type = (state.sitemap_type as string) || "ecommerce";
+    if (cache && cache.sitemap_url === url && cache.sitemap_type === type) return cache.items;
+    return [];
+  });
+  const [totalAvailable, setTotalAvailable] = useState<number | null>(() => {
+    const cache = getProductsCache();
+    const url = (state.sitemap_url as string) || "";
+    const type = (state.sitemap_type as string) || "ecommerce";
+    if (cache && cache.sitemap_url === url && cache.sitemap_type === type) return cache.totalAvailable;
+    return null;
+  });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(() => {
+    const cache = getProductsCache();
+    const url = (state.sitemap_url as string) || "";
+    const type = (state.sitemap_type as string) || "ecommerce";
+    if (cache && cache.sitemap_url === url && cache.sitemap_type === type) return cache.hasMore;
+    return false;
+  });
   const fetchProducts = useSitemapProducts();
   const hasPrefilled = useRef<string | null>(null);
+  const hasRestoredCache = useRef(false);
 
-  // Prefill from brand tokens
+  // Prefill from brand tokens (overrides wizard state when brand has different url/type)
   useEffect(() => {
     if (!brandId || !brand?.design_tokens || typeof brand.design_tokens !== "object") return;
     if (hasPrefilled.current === brandId) return;
@@ -62,6 +100,25 @@ export default function EmailMarketingNewProductsPage() {
     if (sitemapTypeVal) setSitemapType(sitemapTypeVal);
   }, [brandId, brand?.design_tokens, brand?.id]);
 
+  // Restore cached products when sitemap URL/type match cache; clear when they don't
+  useEffect(() => {
+    const cache = getProductsCache();
+    if (cache && cache.sitemap_url === sitemapUrl && cache.sitemap_type === sitemapType) {
+      if (!hasRestoredCache.current && cache.items.length > 0) {
+        hasRestoredCache.current = true;
+        setItems(cache.items);
+        setTotalAvailable(cache.totalAvailable);
+        setHasMore(cache.hasMore);
+      }
+      return;
+    }
+    if (cache && (cache.sitemap_url !== sitemapUrl || cache.sitemap_type !== sitemapType)) {
+      setItems([]);
+      setTotalAvailable(null);
+      setHasMore(false);
+    }
+  }, [sitemapUrl, sitemapType]);
+
   const handleFetch = async (append = false) => {
     if (!sitemapUrl.trim()) return;
     const page = append ? Math.floor(items.length / PAGE_SIZE) + 1 : 1;
@@ -73,18 +130,42 @@ export default function EmailMarketingNewProductsPage() {
         limit: PAGE_SIZE,
       });
       const newItems = res.items ?? [];
+      const total = typeof res.total === "number" ? res.total : null;
+      const more = !!res.has_more || newItems.length >= PAGE_SIZE;
       if (append) {
-        setItems((prev) => [...prev, ...newItems]);
+        const combined = [...items, ...newItems];
+        setItems(combined);
+        setProductsCache({
+          items: combined,
+          totalAvailable: total ?? combined.length,
+          hasMore: more,
+          sitemap_url: sitemapUrl.trim(),
+          sitemap_type: sitemapType,
+        });
       } else {
         setItems(newItems);
         setSelected(new Set());
-        setTotalAvailable(typeof res.total === "number" ? res.total : null);
+        setTotalAvailable(total);
+        setProductsCache({
+          items: newItems,
+          totalAvailable: total,
+          hasMore: more,
+          sitemap_url: sitemapUrl.trim(),
+          sitemap_type: sitemapType,
+        });
       }
-      setHasMore(!!res.has_more || newItems.length >= PAGE_SIZE);
+      setHasMore(more);
     } catch (_e) {
       if (!append) {
         setItems([]);
         setTotalAvailable(null);
+        setProductsCache({
+          items: [],
+          totalAvailable: null,
+          hasMore: false,
+          sitemap_url: sitemapUrl.trim(),
+          sitemap_type: sitemapType,
+        });
       }
       setHasMore(false);
     }

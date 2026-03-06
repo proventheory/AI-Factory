@@ -26,6 +26,7 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
   const runId = uuid();
 
   const llmSource = params.llmSource === "openai_direct" ? "openai_direct" : "gateway";
+  await db.query("SAVEPOINT before_runs_insert");
   try {
     await db.query(
       `INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
@@ -42,6 +43,7 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
     );
   } catch (err: unknown) {
     if ((err as { code?: string }).code === "42703") {
+      await db.query("ROLLBACK TO SAVEPOINT before_runs_insert");
       await db.query(
         `INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
            status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
@@ -57,6 +59,8 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
     } else {
       throw err;
     }
+  } finally {
+    await db.query("RELEASE SAVEPOINT before_runs_insert").catch(() => {});
   }
 
   await db.query(
