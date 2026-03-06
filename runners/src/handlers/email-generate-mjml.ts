@@ -46,13 +46,17 @@ function getBracketPlaceholderValue(
     const key = field === "src" ? "product_1_image" : field === "producturl" ? "product_1_url" : `product_1_${field}`;
     return String((sectionJson as Record<string, unknown>)[key] ?? "");
   }
-  // product A title, product B src, product E productUrl, etc.
+  // product A title, product B src, product E productUrl, product E description, etc.
   const productLetterMatch = /^product\s+([A-Ea-e])\s+(.+)$/i.exec(k);
   if (productLetterMatch) {
     const letter = productLetterMatch[1].toUpperCase();
     const field = productLetterMatch[2].trim().toLowerCase().replace(/\s+/g, "_");
     const key = field === "src" ? `product${letter}_image` : field === "producturl" ? `product${letter}_url` : `product${letter}_${field}`;
-    return String((sectionJson as Record<string, unknown>)[key] ?? "");
+    let val = String((sectionJson as Record<string, unknown>)[key] ?? "");
+    if (!val.trim() && field === "description") {
+      val = String((sectionJson as Record<string, unknown>)[`product${letter}_title`] ?? "");
+    }
+    return val;
   }
   // product productUrl (footer) -> siteUrl
   if (/^product\s+producturl$/i.test(k)) return String(sectionJson.siteUrl ?? sectionJson.site_url ?? "#");
@@ -86,6 +90,45 @@ function replaceBracketPlaceholders(html: string, sectionJson: Record<string, un
     const value = getBracketPlaceholderValue(key, sectionJson);
     return value || match;
   });
+}
+
+/** Template default accent colors (Emma SMS template) – replace with brand color in final HTML. */
+const TEMPLATE_ACCENT_COLORS = [/#FF7055/gi, /#053A5E/gi];
+
+/** Default hero headline in template – replaced with campaign prompt when present. */
+const DEFAULT_HERO_HEADLINE = "Introducing Emma SMS";
+/** Default hero body in template – replaced with campaign prompt when present. */
+const DEFAULT_HERO_BODY =
+  "Emma SMS helps you reach customers where they're at by sending relevant and timely updates to a personal and direct channel. By combining the power of SMS with email, marketers are able to create a more unified, multi-channel experience for customers.";
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * Apply brand color to template accent/CTA and replace default hero copy with campaign prompt.
+ * Runs on final HTML after bracket placeholder replacement.
+ */
+function applyBrandColorsAndCampaignCopy(
+  html: string,
+  brandColor: string,
+  campaignPrompt: string,
+): string {
+  let out = html;
+  for (const re of TEMPLATE_ACCENT_COLORS) {
+    out = out.replace(re, brandColor);
+  }
+  const prompt = campaignPrompt.trim();
+  if (prompt.length > 0) {
+    const safe = escapeHtml(prompt);
+    if (out.includes(DEFAULT_HERO_HEADLINE)) {
+      out = out.replace(DEFAULT_HERO_HEADLINE, safe);
+    }
+    if (out.includes(DEFAULT_HERO_BODY)) {
+      out = out.replace(DEFAULT_HERO_BODY, safe);
+    }
+  }
+  return out;
 }
 
 /** Map concept key -> list of placeholder names that should receive that value (template–payload contract). */
@@ -449,7 +492,11 @@ export async function handleEmailGenerateMjml(request: {
         return prefix + brandColor;
       });
       const { html: rawHtml } = mjml2html(mjmlOut, { minify: true });
-      const html = replaceBracketPlaceholders(rawHtml ?? "", sectionJson as Record<string, unknown>);
+      const html = applyBrandColorsAndCampaignCopy(
+        replaceBracketPlaceholders(rawHtml ?? "", sectionJson as Record<string, unknown>),
+        brandColor,
+        campaignPrompt,
+      );
       // #region agent log
       console.log("[MJML] compile success (H9)", { run_id: runId, htmlLen: html?.length ?? 0, campaignPromptSnippet: campaignPrompt.slice(0, 40) });
       fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:compile success", message: "MJML compile success", data: { run_id: runId, htmlLen: html?.length ?? 0 }, timestamp: Date.now(), hypothesisId: "H9" }) }).catch(() => {});
