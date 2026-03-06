@@ -70,6 +70,8 @@ async function checkCapabilityGrant(
 /**
  * Execute a tool call with full idempotency + dedupe.
  * Returns the tool_call id.
+ * When passing pool, a unique violation (23505) on insert is resolved by checking
+ * the existing row on a separate connection so the caller's transaction is not left aborted.
  */
 export async function executeToolCall(
   client: pg.PoolClient,
@@ -77,6 +79,7 @@ export async function executeToolCall(
   adapter: Adapter,
   environment: string,
   releaseId: string,
+  pool?: pg.Pool,
 ): Promise<string> {
   const idempotencyKey = computeIdempotencyKey(
     params.runId, params.planNodeId,
@@ -112,30 +115,34 @@ export async function executeToolCall(
        params.operationKey, idempotencyKey, requestHash],
     );
   } catch (err: unknown) {
-    if ((err as { code?: string }).code === "23505") {
-      // Unique violation — check existing row
-      const existing = await client.query<{
-        id: string;
-        request_hash: string | null;
-        status: string;
-        response_artifact_id: string | null;
-      }>(
-        `SELECT id, request_hash, status, response_artifact_id FROM tool_calls
-         WHERE adapter_id = $1 AND idempotency_key = $2`,
-        [params.adapterId, idempotencyKey],
-      );
-
-      if (existing.rows.length > 0) {
-        const row = existing.rows[0];
-        if (row.request_hash && row.request_hash !== requestHash) {
-          throw new Error(
-            `Request hash mismatch for idempotency_key ${idempotencyKey}: ` +
-            `existing=${row.request_hash}, new=${requestHash}`,
-          );
+    if ((err as { code?: string }).code === "23505" && pool) {
+      // Unique violation — check existing row on a separate connection (current client's tx is aborted).
+      const aux = await pool.connect();
+      try {
+        const existing = await aux.query<{
+          id: string;
+          request_hash: string | null;
+          status: string;
+          response_artifact_id: string | null;
+        }>(
+          `SELECT id, request_hash, status, response_artifact_id FROM tool_calls
+           WHERE adapter_id = $1 AND idempotency_key = $2`,
+          [params.adapterId, idempotencyKey],
+        );
+        if (existing.rows.length > 0) {
+          const row = existing.rows[0];
+          if (row.request_hash && row.request_hash !== requestHash) {
+            throw new Error(
+              `Request hash mismatch for idempotency_key ${idempotencyKey}: ` +
+              `existing=${row.request_hash}, new=${requestHash}`,
+            );
+          }
+          if (row.status === "succeeded") {
+            return row.id; // Reuse existing successful call
+          }
         }
-        if (row.status === "succeeded") {
-          return row.id; // Reuse existing successful call
-        }
+      } finally {
+        aux.release();
       }
     }
     throw err;

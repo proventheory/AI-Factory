@@ -31,7 +31,10 @@ export default function PlanDetailPage() {
   useEffect(() => {
     if (!id) return;
     fetch(`${API}/v1/plans/${id}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Failed to load plan"); });
+        return r.json();
+      })
       .then((d: { plan?: Record<string, unknown>; nodes?: PlanNode[]; edges?: PlanEdge[] }) => {
         setPlan(d.plan ?? null);
         setNodes(d.nodes ?? []);

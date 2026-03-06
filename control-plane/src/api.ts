@@ -696,41 +696,6 @@ app.post("/v1/job_runs/:id/retry", async (req, res) => {
   }
 });
 
-/** GET /v1/plans — list with pagination (optional initiative_id filter) */
-app.get("/v1/plans", async (req, res) => {
-  try {
-    const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
-    const offset = Number(req.query.offset) || 0;
-    const initiative_id = req.query.initiative_id as string | undefined;
-    let q = "SELECT p.*, i.title AS initiative_title, i.intent_type FROM plans p JOIN initiatives i ON i.id = p.initiative_id ORDER BY p.created_at DESC LIMIT $1 OFFSET $2";
-    const params: unknown[] = [limit, offset];
-    if (initiative_id) {
-      q = "SELECT p.*, i.title AS initiative_title, i.intent_type FROM plans p JOIN initiatives i ON i.id = p.initiative_id WHERE p.initiative_id = $1 ORDER BY p.created_at DESC LIMIT $2 OFFSET $3";
-      params.unshift(initiative_id);
-    }
-    const r = await pool.query(q, params);
-    res.json({ items: r.rows, limit, offset });
-  } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
-  }
-});
-
-/** GET /v1/plans/:id — plan with nodes and edges (for DAG) */
-app.get("/v1/plans/:id", async (req, res) => {
-  try {
-    const planId = req.params.id;
-    const [plan, nodes, edges] = await Promise.all([
-      pool.query("SELECT p.*, i.title AS initiative_title, i.intent_type FROM plans p JOIN initiatives i ON i.id = p.initiative_id WHERE p.id = $1", [planId]).then(r => r.rows[0]),
-      pool.query("SELECT * FROM plan_nodes WHERE plan_id = $1 ORDER BY node_key", [planId]).then(r => r.rows),
-      pool.query("SELECT * FROM plan_edges WHERE plan_id = $1", [planId]).then(r => r.rows),
-    ]);
-    if (!plan) return res.status(404).json({ error: "Plan not found" });
-    res.json({ plan, nodes, edges });
-  } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
-  }
-});
-
 /** GET /v1/job_runs — list with filters and pagination */
 app.get("/v1/job_runs", async (req, res) => {
   try {

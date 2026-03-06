@@ -4,6 +4,33 @@ Runners are the workers that **claim and execute** pipeline jobs. Without at lea
 
 ---
 
+## How it’s supposed to work (all in the cloud — no local, no AWS)
+
+You do **not** need to run anything on your laptop, and you do **not** need AWS. The intended setup is:
+
+| Component | Where it runs | Purpose |
+|-----------|----------------|---------|
+| **Console** | Vercel | UI: initiatives, compile plan, start run, view artifacts / Open preview |
+| **Control Plane API** | Render (web) | Creates runs, enqueues jobs, same DB |
+| **Runner** | Render (background worker) | Claims jobs from that DB, runs copy_generate → landing_page_generate, writes artifacts |
+| **LLM Gateway** | Render (web) | Optional; or runner uses `OPENAI_API_KEY` directly |
+| **Database** | e.g. Neon / Render Postgres | Shared by API and Runner |
+
+Flow: Console (Vercel) → API (Render) creates run + jobs → **Runner (Render worker)** claims jobs, runs them, writes artifacts → you see **Open preview** in the Console.
+
+So the fix when you see “No artifacts” and “A runner must be running…” is: **deploy and run the Runner on Render** (same DB as the API), with the env vars below. The Blueprint in `render.yaml` already defines `ai-factory-runner-staging`; ensure that worker exists, is running, and has `DATABASE_URL`, `CONTROL_PLANE_URL`, and `LLM_GATEWAY_URL` or `OPENAI_API_KEY` set in the Render dashboard.
+
+**Checklist — landing page flow in staging (no local, no AWS):**
+
+1. **Render Dashboard** → Blueprint from this repo. You should see three services (e.g. gateway, api-staging, **runner-staging**).
+2. **ai-factory-runner-staging** (Background Worker): Status **Running**. Environment: `DATABASE_URL` = same as api-staging, `CONTROL_PLANE_URL` = your staging API URL (e.g. `https://ai-factory-api-staging.onrender.com`), and either `LLM_GATEWAY_URL` = gateway URL or `OPENAI_API_KEY` = your key.
+3. **Console** (Vercel) → Create landing initiative → Compile plan → Start run.
+4. In **Pipeline Runs** → open the run → **Artifacts** tab. After the runner finishes the jobs, you should see `landing_page` and **Open preview**.
+
+If the worker service is missing, add it from the Blueprint or create a Background Worker with `Dockerfile.runner` and the env vars above.
+
+---
+
 ## What the runner does
 
 1. **Poll** the database for eligible jobs (`job_runs` + `node_progress`).

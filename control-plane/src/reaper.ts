@@ -75,7 +75,7 @@ export async function reapStaleLeases(pool: pg.Pool, maxAttemptsPerNode: number 
       await client.query("COMMIT");
       reaped++;
     } catch {
-      await client.query("ROLLBACK");
+      await client.query("ROLLBACK").catch(() => {});
     } finally {
       client.release();
     }

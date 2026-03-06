@@ -107,7 +107,7 @@ async function pollAndExecute(): Promise<void> {
           });
           await txClient.query("COMMIT");
         } catch (err) {
-          await txClient.query("ROLLBACK");
+          await txClient.query("ROLLBACK").catch(() => {});
           throw err;
         } finally {
           txClient.release();
@@ -127,7 +127,7 @@ async function pollAndExecute(): Promise<void> {
           }
           // #endregion
         } catch (err) {
-          await txClient.query("ROLLBACK");
+          await txClient.query("ROLLBACK").catch(() => {});
           throw err;
         } finally {
           txClient.release();
@@ -153,7 +153,7 @@ async function pollAndExecute(): Promise<void> {
         }
         await txClient.query("COMMIT");
       } catch (err) {
-        await txClient.query("ROLLBACK");
+        await txClient.query("ROLLBACK").catch(() => {});
         throw err;
       } finally {
         txClient.release();
@@ -179,7 +179,7 @@ async function pollAndExecute(): Promise<void> {
         await completeJobFailure(txClient, jobRun.id, jobRun.run_id, jobRun.plan_node_id, config.workerId, errorSig);
         await txClient.query("COMMIT");
       } catch {
-        await txClient.query("ROLLBACK");
+        await txClient.query("ROLLBACK").catch(() => {});
       } finally {
         txClient.release();
       }
