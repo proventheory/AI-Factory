@@ -6,6 +6,7 @@ services:
   - type: web
     name: ai-factory-gateway-staging
     runtime: docker
+    plan: standard
     dockerContext: .
     dockerfilePath: ./Dockerfile.gateway
     branch: main
