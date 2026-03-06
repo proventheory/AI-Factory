@@ -100,8 +100,9 @@ export default function EditBrandPage() {
     setContactInfo(tokens.contactInfo);
     setAssetUrls(tokens.assetUrls);
     setAssetUrlsText(tokens.assetUrls.join("\n"));
-    setCtaText(tokens.ctaText);
-    setCtaLink(tokens.ctaLink);
+    const t = tokens as unknown as Record<string, unknown>;
+    setCtaText(typeof t.ctaText === "string" ? t.ctaText : "");
+    setCtaLink(typeof t.ctaLink === "string" ? t.ctaLink : "");
   }, [brand]);
 
   const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
