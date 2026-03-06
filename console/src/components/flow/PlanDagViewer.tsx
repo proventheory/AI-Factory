@@ -77,7 +77,8 @@ export function PlanDagViewer({ planId, nodeStatuses, className, onNodeClick, ru
     onNodeClick?.(node.id);
   }, [onNodeClick]);
 
-  const hasData = (runPlanNodes != null && runPlanNodes.length > 0) || (planData != null && ((planData as Record<string, unknown>).nodes ?? (planData as Record<string, unknown>).plan_nodes)?.length > 0);
+  const planNodesFromApi = planData != null ? (planData as Record<string, unknown>).nodes ?? (planData as Record<string, unknown>).plan_nodes : undefined;
+  const hasData = (runPlanNodes != null && runPlanNodes.length > 0) || (Array.isArray(planNodesFromApi) && planNodesFromApi.length > 0);
   if (!hasData && isLoading) return <LoadingSkeleton className="h-[500px] w-full rounded-lg" />;
   if (!hasData && error) return <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">Failed to load plan: {(error as Error).message}</div>;
   if (nodes.length === 0) return <div className="rounded-lg border bg-muted/30 p-8 text-center text-sm text-muted-foreground">No plan nodes found.</div>;
