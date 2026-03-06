@@ -205,7 +205,11 @@ app.get("/v1/email_campaigns/:id", async (req, res) => {
       } else throw e;
     }
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
-    res.json(r.rows[0]);
+    const row = r.rows[0] as Record<string, unknown>;
+    if (row.template_id == null && row.metadata_json != null && typeof row.metadata_json === "object" && (row.metadata_json as Record<string, unknown>).template_id != null) {
+      row.template_id = (row.metadata_json as Record<string, unknown>).template_id;
+    }
+    res.json(row);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -243,15 +247,27 @@ app.post("/v1/email_campaigns", async (req, res) => {
       );
     } catch (e) {
       // #region agent log
-      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H4", location: "api.ts:POST email_campaigns catch", message: "INSERT error", data: { error: String((e as Error).message) }, timestamp: Date.now() }) }).catch(() => {});
+      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H2", location: "api.ts:POST email_campaigns catch", message: "INSERT initiatives fallback", data: { error: String((e as Error).message).slice(0, 80), has_template_id: !!body.template_id }, timestamp: Date.now() }) }).catch(() => {});
       // #endregion
       if (err(e)) {
-        await pool.query(
-          `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, $3)`,
-          [id, body.title ?? "New email campaign", riskLevel]
-        );
+        try {
+          await pool.query(
+            `INSERT INTO initiatives (id, intent_type, title, risk_level, template_id) VALUES ($1, 'email_campaign', $2, $3, $4)`,
+            [id, body.title ?? "New email campaign", riskLevel, body.template_id ?? null]
+          );
+        } catch (e2) {
+          if ((e2 as { code?: string }).code === "42703") {
+            await pool.query(
+              `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, $3)`,
+              [id, body.title ?? "New email campaign", riskLevel]
+            );
+          } else throw e2;
+        }
       } else throw e;
     }
+    const metadataForDb = body.metadata_json != null && typeof body.metadata_json === "object"
+      ? { ...(body.metadata_json as Record<string, unknown>), template_id: body.template_id ?? (body.metadata_json as Record<string, unknown>).template_id }
+      : (body.template_id ? { template_id: body.template_id } : null);
     await pool.query(
       `INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email, template_artifact_id, metadata_json) VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
       [
@@ -260,7 +276,7 @@ app.post("/v1/email_campaigns", async (req, res) => {
         body.from_name ?? null,
         body.from_email ?? null,
         body.template_artifact_id ?? null,
-        body.metadata_json != null ? JSON.stringify(body.metadata_json) : null,
+        metadataForDb != null ? JSON.stringify(metadataForDb) : null,
       ]
     );
     const r = await pool.query(

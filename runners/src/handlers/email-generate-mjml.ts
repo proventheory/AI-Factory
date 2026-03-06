@@ -24,6 +24,8 @@ export async function handleEmailGenerateMjml(request: {
   initiative_id?: string;
   llm_source?: "gateway" | "openai_direct";
   input?: EmailGenerateMjmlInput;
+  /** When set, record LLM usage to llm_calls (for AI Calls / run detail). */
+  recordLlmCall?: (tier: string, modelId: string, tokensIn?: number, tokensOut?: number, latencyMs?: number) => Promise<void>;
 }) {
   const brandCtx = request.initiative_id ? await loadBrandContext(request.initiative_id) : null;
   const brandPrompt = brandCtx ? brandContextToSystemPrompt(brandCtx) : "";
@@ -37,16 +39,18 @@ export async function handleEmailGenerateMjml(request: {
     try {
       const campRes = await fetch(`${CONTROL_PLANE_URL}/v1/email_campaigns/${request.initiative_id}`);
       if (campRes.ok) {
-        const camp = (await campRes.json()) as { template_id?: string; metadata_json?: { products?: unknown[]; campaign_prompt?: string } };
-        if (camp.template_id) input.template_id = input.template_id ?? camp.template_id;
+        const camp = (await campRes.json()) as { template_id?: string; metadata_json?: { template_id?: string; products?: unknown[]; campaign_prompt?: string } };
+        const templateIdFromCamp = camp.template_id ?? (camp.metadata_json && typeof camp.metadata_json === "object" ? (camp.metadata_json as { template_id?: string }).template_id : undefined);
+        if (templateIdFromCamp) input.template_id = input.template_id ?? templateIdFromCamp;
         if (camp.metadata_json && typeof camp.metadata_json === "object") {
           const meta = camp.metadata_json as { products?: unknown[]; campaign_prompt?: string };
           if (meta.products && !input.products?.length) input.products = meta.products as EmailGenerateMjmlInput["products"];
           if (meta.campaign_prompt) input.campaign_prompt = input.campaign_prompt ?? meta.campaign_prompt;
         }
+        console.log("[MJML] campaign fetch", { initiative_id: request.initiative_id, template_id: input.template_id, products: (input.products ?? []).length, campaign_prompt: (input.campaign_prompt ?? "").slice(0, 60) });
       }
     } catch (_e) {
-      // use request.input only
+      console.log("[MJML] campaign fetch failed", { initiative_id: request.initiative_id, err: String((_e as Error).message).slice(0, 80) });
     }
   }
 
@@ -60,10 +64,15 @@ export async function handleEmailGenerateMjml(request: {
         const t = (await res.json()) as { mjml?: string; template_json?: unknown };
         templateMjml = t.mjml ?? null;
         templateJson = (t.template_json as Record<string, unknown>) ?? null;
+        console.log("[MJML] template fetch ok", { template_id: input.template_id, mjml_len: templateMjml?.length ?? 0 });
+      } else {
+        console.log("[MJML] template fetch not ok", { template_id: input.template_id, status: res.status });
       }
     } catch (_e) {
-      // proceed without template
+      console.log("[MJML] template fetch failed", { template_id: input.template_id, err: String((_e as Error).message).slice(0, 80) });
     }
+  } else {
+    console.log("[MJML] no template_id", { input_keys: Object.keys(input) });
   }
 
   const products = input.products ?? [];
@@ -85,10 +94,15 @@ export async function handleEmailGenerateMjml(request: {
         contactInfo: "",
         socialMedia: [],
         campaignPrompt,
+        headline: campaignPrompt,
+        title: campaignPrompt,
+        offerText: campaignPrompt,
+        offer: campaignPrompt,
       };
       const compile = Handlebars.compile(templateMjml);
       const mjmlOut = compile(sectionJson);
       const { html } = mjml2html(mjmlOut, { minify: true });
+      console.log("[MJML] using template path", { campaignPrompt: campaignPrompt.slice(0, 60) });
       return {
         artifact_type: "email_template",
         artifact_class: "email_template",
@@ -96,10 +110,11 @@ export async function handleEmailGenerateMjml(request: {
         metadata: { brand_profile_id: brandCtx?.id, brand_color: brandColor, mjml: mjmlOut },
       };
     } catch (_e) {
-      // fall through to LLM-generated email if template compile/render fails
+      console.log("[MJML] template compile/render failed, falling back to LLM", { err: String((_e as Error).message).slice(0, 120) });
     }
   }
 
+  console.log("[MJML] using LLM path", { hasTemplate: !!templateMjml, campaignPrompt: campaignPrompt.slice(0, 60) });
   const messages: LLMChatOptions["messages"] = [];
   if (brandPrompt) {
     messages.push({
@@ -127,6 +142,16 @@ export async function handleEmailGenerateMjml(request: {
     brandContext: brandCtx ? { id: brandCtx.id, name: brandCtx.name, systemPrompt: brandPrompt } : undefined,
     useGateway: request.llm_source !== "openai_direct",
   });
+
+  if (request.recordLlmCall) {
+    await request.recordLlmCall(
+      "auto/chat",
+      result.model_id ?? "unknown",
+      result.tokens_in,
+      result.tokens_out,
+      result.latency_ms,
+    );
+  }
 
   const content = result.content ?? "";
   const html = content.includes("<") ? content : `<html><body><p>${content.replace(/\n/g, "</p><p>")}</p></body></html>`;
