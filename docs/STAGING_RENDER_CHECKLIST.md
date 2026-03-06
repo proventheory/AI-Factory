@@ -43,7 +43,11 @@ If these are set, the control plane can push DATABASE_URL, CONTROL_PLANE_URL, an
 
 | Variable | Required | You have | Notes |
 |----------|----------|----------|--------|
-| DATABASE_URL | Yes | ✓ | Must match Control Plane. |
+| DATABASE_URL | Yes | ✓ | **Must be identical to ai-factory-api-staging.** See below. |
+
+**What DATABASE_URL should the runner have (staging)?**  
+The **exact same** connection string as **ai-factory-api-staging**. Easiest: **Render → ai-factory-api-staging → Environment** → copy `DATABASE_URL` → **ai-factory-runner-staging → Environment** → paste as `DATABASE_URL`.  
+Alternatively, get the URI from **Supabase → [ai-factory-staging](https://supabase.com/dashboard/project/anqhihkvovuhfzsyqtxu/settings/database)** → Project Settings → Database → **Connection string** → **URI** (Session pooler or Transaction pooler), replace `[YOUR-PASSWORD]` with your staging DB password. Use that same URI for both the Control Plane and the runner so they share one database.
 | CONTROL_PLANE_URL | Yes | ✓ | **Check for typo:** must be `https://**ai**-factory-api-staging.onrender.com` (not `a1-factory`). |
 | LLM_GATEWAY_URL or OPENAI_API_KEY | Yes | ✓ (both) | Runner can call gateway or OpenAI direct. |
 
@@ -79,7 +83,7 @@ You should see something like:
 
 **2. Compare with runner**
 
-In Render → **ai-factory-runner-staging** → Environment → `DATABASE_URL`. The URL’s **host** (and port) must match the Control Plane’s `database_hint`. For project `anqhihkvovuhfzsyqtxu` with session pooler you expect:
+The runner logs its DB at startup: in Render → **ai-factory-runner-staging** → Logs, look for `[runner] DATABASE_URL hint (verify same as Control Plane): host=... port=...`. That **host** and **port** must match the Control Plane’s `database_hint`. You can also open Environment → `DATABASE_URL` and compare the URL’s host/port. For project `anqhihkvovuhfzsyqtxu` with session pooler you expect:
 
 - Host: `aws-1-us-east-1.pooler.supabase.com`
 - Port: `5432`
@@ -94,7 +98,7 @@ After a run that “succeeded” with no artifacts in the UI, open Supabase → 
 SELECT id, run_id, artifact_type, created_at FROM artifacts WHERE run_id = '9de6dbf0-2583-4bec-8187-59b7c2c31519' ORDER BY created_at;
 ```
 
-Replace the UUID with your actual run id (from the run detail URL, e.g. `/runs/9de6dbf0-...`). If you see a row, the runner wrote to this DB but the API might not be returning it. If you see no rows, the runner did not write — check Render logs for **ai-factory-runner-staging** for that run_id.
+Replace the UUID with your actual run id (from the run detail URL, e.g. `/runs/9de6dbf0-...`). If you see a row, the runner wrote to this DB but the API might not be returning it. If you see **no rows** but the runner logs show `[runner] handler transaction committed (artifacts persisted)` for that run_id, the runner is writing to a **different database** — fix `DATABASE_URL` on the runner (and/or Control Plane) so both use the same Supabase connection.
 
 To list recent runs and artifact counts (runs table has `started_at`, not `created_at`):
 

@@ -30,6 +30,13 @@ if (!databaseUrl?.trim()) {
   console.error("[runner] DATABASE_URL is not set. Set it in .env (same as Control Plane) so the runner can claim jobs.");
   process.exit(1);
 }
+// Log DB hint (host/port only) so you can compare with Control Plane GET /health/db — artifacts must be in the same DB.
+try {
+  const u = new URL(databaseUrl);
+  console.log("[runner] DATABASE_URL hint (verify same as Control Plane): host=" + u.hostname + " port=" + (u.port || "5432"));
+} catch {
+  console.log("[runner] DATABASE_URL hint: (could not parse URL)");
+}
 const poolSize = Math.max(1, Math.min(20, Number(process.env.DATABASE_POOL_MAX) || 5));
 const pool = new pg.Pool({
   connectionString: databaseUrl,
@@ -123,6 +130,7 @@ async function pollAndExecute(): Promise<void> {
           await txClient.query("BEGIN");
           await handler(txClient, jobContext, { runId: jobRun.run_id, jobRunId: jobRun.id, planNodeId: jobRun.plan_node_id });
           await txClient.query("COMMIT");
+          console.log("[runner] handler transaction committed (artifacts persisted)", { run_id: jobRun.run_id, job_type: jobContext.job_type });
           // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
           if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
             fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:handler_done", message: "handler completed", data: { job_type: jobContext.job_type, runId: jobRun.run_id }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
