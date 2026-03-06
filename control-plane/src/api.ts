@@ -2751,7 +2751,7 @@ async function runTemplateLintGate(
     };
   }
   const mjml = (row.mjml as string) ?? "";
-  const { lintTemplateMjml } = await import("./template-image-linter.js");
+  const { lintTemplateMjml } = await import("./template-image-linter");
   const results = lintTemplateMjml(mjml, contract, templateId);
   const errors = results.filter((r) => r.severity === "error").map((r) => ({ code: r.code, message: r.message }));
   return { ok: errors.length === 0, errors };
@@ -2772,7 +2772,7 @@ app.get("/v1/email_templates/:id/lint", async (req, res) => {
       return res.status(400).json({ contract_missing: true, error: "Template has no template_image_contracts row (version v1); lint failed." });
     }
     const mjml = (row.mjml as string) ?? "";
-    const { lintTemplateMjml } = await import("./template-image-linter.js");
+    const { lintTemplateMjml } = await import("./template-image-linter");
     const results = lintTemplateMjml(mjml, contract, id);
     res.json({ template_id: id, contract_present: true, results });
   } catch (e) {
@@ -2856,7 +2856,7 @@ app.patch("/v1/email_templates/:id", async (req, res) => {
         return res.status(400).json({ error: "lint_on_save requires a template_image_contracts row (version v1) for this template.", lint_errors: [{ code: "L004", severity: "error", message: "Missing template image contract." }] });
       }
       const mjml = (row.mjml as string) ?? "";
-      const { lintTemplateMjml } = await import("./template-image-linter.js");
+      const { lintTemplateMjml } = await import("./template-image-linter");
       const lintResults = lintTemplateMjml(mjml, contract, id);
       const errors = lintResults.filter((x) => x.severity === "error");
       if (errors.length > 0) {
