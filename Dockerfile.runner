@@ -10,7 +10,7 @@ COPY . .
 RUN mkdir -p dist && npx esbuild runners/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \
   --outfile=dist/runner-bundle.js --sourcemap \
-  --external:pg --external:uuid
+  --external:pg --external:uuid --external:mjml
 
 FROM node:20-alpine
 WORKDIR /app
