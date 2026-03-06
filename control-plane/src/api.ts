@@ -8,6 +8,7 @@ import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
 import { executeRollback, routeRun } from "./release-manager.js";
 import { triggerNoArtifactsRemediationForRun, triggerBadArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
 import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
+import { productsFromUrl, type ProductsFromUrlType } from "./products-from-url.js";
 import { tokenizeBrandFromUrl } from "./brand-tokenize-from-url.js";
 
 const app = express();
@@ -372,6 +373,48 @@ app.post("/v1/sitemap/products", async (req, res) => {
       sitemap_url,
       sitemap_type,
       page,
+      limit,
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/products/from_url — fetch products from XML sitemap or JSON URL (e.g. Shopify collection). Same response shape as sitemap/products. */
+app.post("/v1/products/from_url", async (req, res) => {
+  try {
+    const body = req.body as {
+      url?: string;
+      type?: string;
+      sitemap_type?: string;
+      limit?: number;
+    };
+    const url = body.url;
+    const type = body.type as ProductsFromUrlType | undefined;
+    if (!url || !type) {
+      return res.status(400).json({ error: "url and type are required" });
+    }
+    const allowed: ProductsFromUrlType[] = ["shopify_json", "sitemap_xml"];
+    if (!allowed.includes(type)) {
+      return res.status(400).json({
+        error: "type must be one of: shopify_json, sitemap_xml",
+      });
+    }
+    if (type === "sitemap_xml") {
+      const st = body.sitemap_type as SitemapType | undefined;
+      const allowedSt: SitemapType[] = ["drupal", "ecommerce", "bigcommerce", "shopify"];
+      if (!st || !allowedSt.includes(st)) {
+        return res.status(400).json({
+          error: "sitemap_type is required when type is sitemap_xml and must be one of: " + allowedSt.join(", "),
+        });
+      }
+    }
+    const limit = Math.min(MAX_LIMIT, Math.max(1, Number(body.limit) || 20));
+    const result = await productsFromUrl({
+      url,
+      type,
+      sitemap_type: type === "sitemap_xml" ? (body.sitemap_type as SitemapType) : undefined,
       limit,
     });
     res.json(result);
@@ -2368,6 +2411,45 @@ app.delete("/v1/document_templates/:id/components/:cid", async (req, res) => {
 });
 
 // =====================================================================
+// Pexels proxy & campaign images CDN (Email Marketing wizard)
+// =====================================================================
+
+/** GET /v1/pexels/search — proxy to Pexels API (keeps API key server-side). Query: q, per_page, page. */
+app.get("/v1/pexels/search", async (req, res) => {
+  try {
+    const key = process.env.PEXELS_API_KEY;
+    if (!key) return res.status(503).json({ error: "Pexels API not configured (PEXELS_API_KEY)" });
+    const q = (req.query.q as string)?.trim() || "nature";
+    const per_page = Math.min(Math.max(Number(req.query.per_page) || 20, 1), 80);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(q)}&per_page=${per_page}&page=${page}`;
+    const resp = await fetch(url, { headers: { Authorization: key } });
+    if (!resp.ok) {
+      const text = await resp.text();
+      return res.status(resp.status).json({ error: text || "Pexels API error" });
+    }
+    const data = await resp.json();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/campaign-images/copy — fetch image from URL and upload to our CDN (Supabase). Body: { url }. Returns { cdn_url }. */
+app.post("/v1/campaign-images/copy", async (req, res) => {
+  try {
+    const url = (req.body?.url as string)?.trim();
+    if (!url || !url.startsWith("http")) return res.status(400).json({ error: "Body must include url (http(s))" });
+    const { copyImageToCdn } = await import("./campaign-images-storage.js");
+    const result = await copyImageToCdn(url);
+    if (!result) return res.status(502).json({ error: "Failed to copy image to CDN (check SUPABASE_* env and URL)" });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+// =====================================================================
 // Email Templates CRUD (Email Marketing Factory)
 // =====================================================================
 
@@ -2419,13 +2501,28 @@ app.get("/v1/email_templates/:id/preview", async (req, res) => {
   }
 });
 
-/** GET /v1/email_templates/:id */
+/** Compute product slot count from MJML (max N in product_N_image placeholders). */
+function productSlotsFromMjml(mjml: string | null): number {
+  if (!mjml || typeof mjml !== "string") return 0;
+  const matches = mjml.matchAll(/product_(\d+)_(?:image|title|url)/gi);
+  let max = 0;
+  for (const m of matches) {
+    const n = parseInt(m[1], 10);
+    if (n > max) max = n;
+  }
+  return max;
+}
+
+/** GET /v1/email_templates/:id — includes product_slots (computed from mjml) for wizard validation. */
 app.get("/v1/email_templates/:id", async (req, res) => {
   try {
     const id = req.params.id;
     const r = await pool.query("SELECT * FROM email_templates WHERE id = $1", [id]);
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
-    res.json(r.rows[0]);
+    const row = r.rows[0] as Record<string, unknown>;
+    const mjml = row.mjml as string | null;
+    (row as Record<string, unknown>).product_slots = productSlotsFromMjml(mjml);
+    res.json(row);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }

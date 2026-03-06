@@ -53,6 +53,7 @@ export default function EmailMarketingNewGeneratePage() {
     const brandProfileId = state.brand_profile_id as string | undefined;
     const templateId = state.template_id as string | undefined;
     const products = (state.products as Array<{ src?: string; title?: string; product_url?: string }>) ?? [];
+    const selectedImages = (state.selected_images as string[]) ?? [];
 
     if (!templateId?.trim()) {
       setError("Please select a template first (go back to the Template step).");
@@ -69,6 +70,7 @@ export default function EmailMarketingNewGeneratePage() {
         template_id: templateId,
         metadata_json: {
           products,
+          images: selectedImages,
           campaign_prompt: campaignPrompt || "newsletter",
           sitemap_url: state.sitemap_url,
           sitemap_type: state.sitemap_type,

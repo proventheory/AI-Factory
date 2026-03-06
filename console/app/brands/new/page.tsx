@@ -224,6 +224,7 @@ export default function NewBrandPage() {
                   <option value="ecommerce">ecommerce / WooCommerce</option>
                   <option value="bigcommerce">BigCommerce</option>
                   <option value="shopify">Shopify</option>
+                  <option value="shopify_json">Shopify (JSON)</option>
                 </Select>
               </div>
               <div>

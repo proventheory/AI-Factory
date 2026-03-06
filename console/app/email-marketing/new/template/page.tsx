@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PageFrame, Stack, PageHeader, Button, LoadingSkeleton, ScrollArea } from "@/components/ui";
 import { useEmailTemplates } from "@/hooks/use-api";
-import { fetchEmailTemplatePreviewHtml } from "@/lib/api";
+import { fetchEmailTemplatePreviewHtml, getEmailTemplate } from "@/lib/api";
 
 const WIZARD_KEY = "email_marketing_wizard";
 const CARD_HEIGHT = 320;
@@ -38,6 +38,14 @@ export default function EmailMarketingNewTemplatePage() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [validationModal, setValidationModal] = useState<{
+    templateId: string;
+    needsImages: number;
+    needsProducts: number;
+    hasImages: number;
+    hasProducts: number;
+  } | null>(null);
+  const [validationLoading, setValidationLoading] = useState(false);
 
   useEffect(() => {
     if (!previewId) {
@@ -60,9 +68,50 @@ export default function EmailMarketingNewTemplatePage() {
       .finally(() => setPreviewLoading(false));
   }, [previewId]);
 
-  const handleUse = (templateId: string) => {
-    setWizardState({ template_id: templateId });
-    router.push("/email-marketing/new/generate");
+  const handleUse = useCallback(
+    async (templateId: string) => {
+      setValidationLoading(true);
+      setValidationModal(null);
+      try {
+        const template = await getEmailTemplate(templateId);
+        const state = getWizardState();
+        const products = (state.products as Array<unknown>) ?? [];
+        const selectedImages = (state.selected_images as string[]) ?? [];
+        const imgCount = template.img_count ?? 0;
+        const productSlots = template.product_slots ?? 0;
+        const hasImages = selectedImages.length;
+        const hasProducts = products.length;
+        const needsMoreImages = imgCount > 0 && hasImages < imgCount;
+        const needsMoreProducts = productSlots > 0 && hasProducts < productSlots;
+        if (needsMoreImages || needsMoreProducts) {
+          setValidationModal({
+            templateId,
+            needsImages: imgCount,
+            needsProducts: productSlots,
+            hasImages,
+            hasProducts,
+          });
+          return;
+        }
+        setWizardState({ template_id: templateId });
+        router.push("/email-marketing/new/generate");
+      } catch (_e) {
+        setWizardState({ template_id: templateId });
+        router.push("/email-marketing/new/generate");
+      } finally {
+        setValidationLoading(false);
+      }
+    },
+    [router]
+  );
+
+  const closeValidationModal = () => setValidationModal(null);
+  const continueAnyway = () => {
+    if (validationModal) {
+      setWizardState({ template_id: validationModal.templateId });
+      router.push("/email-marketing/new/generate");
+      closeValidationModal();
+    }
   };
 
   return (
@@ -118,8 +167,9 @@ export default function EmailMarketingNewTemplatePage() {
                           variant="primary"
                           size="sm"
                           onClick={() => handleUse(t.id)}
+                          disabled={validationLoading}
                         >
-                          Use this template
+                          {validationLoading ? "Checking…" : "Use this template"}
                         </Button>
                       </div>
                     </div>
@@ -139,10 +189,54 @@ export default function EmailMarketingNewTemplatePage() {
             Next: Generate
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/email-marketing/new/products">Back</Link>
+            <Link href="/email-marketing/new/images">Back</Link>
           </Button>
         </div>
       </Stack>
+
+      {/* Template requirements validation modal */}
+      {validationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60" onClick={closeValidationModal} aria-hidden />
+          <div
+            className="relative z-10 w-full max-w-md rounded-lg border border-border bg-card p-4 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="validation-modal-title"
+          >
+            <h2 id="validation-modal-title" className="text-body font-semibold text-fg mb-2">
+              Template needs more content
+            </h2>
+            <p className="text-body-small text-fg-muted mb-4">
+              This template expects up to <strong>{validationModal.needsImages} image(s)</strong> and{" "}
+              <strong>{validationModal.needsProducts} product(s)</strong>. You have {validationModal.hasImages} image(s) and{" "}
+              {validationModal.hasProducts} product(s). Add more or continue anyway (some slots may be empty).
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {validationModal.needsImages > validationModal.hasImages && (
+                <Button variant="secondary" size="sm" asChild>
+                  <Link href="/email-marketing/new/images" onClick={closeValidationModal}>
+                    Add more images
+                  </Link>
+                </Button>
+              )}
+              {validationModal.needsProducts > validationModal.hasProducts && (
+                <Button variant="secondary" size="sm" asChild>
+                  <Link href="/email-marketing/new/products" onClick={closeValidationModal}>
+                    Add more products
+                  </Link>
+                </Button>
+              )}
+              <Button variant="primary" size="sm" onClick={continueAnyway}>
+                Continue anyway
+              </Button>
+              <Button variant="secondary" size="sm" onClick={closeValidationModal}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Preview modal: same-height scrollable containers */}
       {previewId && (

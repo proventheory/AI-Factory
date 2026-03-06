@@ -280,6 +280,12 @@ export function useSitemapProducts() {
   });
 }
 
+export function useProductsFromUrl() {
+  return useMutation({
+    mutationFn: (params: { url: string; type: "shopify_json" | "sitemap_xml"; sitemap_type?: string; limit?: number }) => api.fetchProductsFromUrl(params),
+  });
+}
+
 export function useEmailTemplates(params?: { type?: string; brand_profile_id?: string; limit?: number; offset?: number }) {
   return useQuery({
     queryKey: ["email_templates", params?.type, params?.brand_profile_id, params?.limit, params?.offset],

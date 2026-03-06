@@ -30,6 +30,10 @@ export interface DesignTokensInput {
   contactInfo: ContactItem[];
   /** Image/asset URLs for the brand (hero, thumbnails, etc.). */
   assetUrls: string[];
+  /** CTA button label (e.g. "Shop now"). Used in emails when LLM does not override. */
+  ctaText: string;
+  /** CTA button URL. Used in emails when LLM does not override. */
+  ctaLink: string;
 }
 
 export function buildDesignTokens(opts: Partial<DesignTokensInput>): Record<string, unknown> {
@@ -46,6 +50,8 @@ export function buildDesignTokens(opts: Partial<DesignTokensInput>): Record<stri
     socialMedia,
     contactInfo,
     assetUrls,
+    ctaText,
+    ctaLink,
   } = opts;
   const colors = {
     brand: {
@@ -82,6 +88,8 @@ export function buildDesignTokens(opts: Partial<DesignTokensInput>): Record<stri
   if (socialMedia !== undefined) tokens.social_media = socialMedia;
   if (contactInfo !== undefined) tokens.contact_info = contactInfo;
   if (assetUrls !== undefined) tokens.asset_urls = assetUrls;
+  if (ctaText !== undefined) tokens.cta_text = ctaText;
+  if (ctaLink !== undefined) tokens.cta_link = ctaLink;
   return tokens;
 }
 
@@ -100,6 +108,8 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
     socialMedia: [],
     contactInfo: [],
     assetUrls: [],
+    ctaText: "",
+    ctaLink: "",
   };
   if (!dt || typeof dt !== "object") return empty;
   const colors = dt.colors as Record<string, Record<string, string>> | undefined;
@@ -119,6 +129,8 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
   const assetUrls = Array.isArray(dt.asset_urls)
     ? (dt.asset_urls as string[]).filter((u) => typeof u === "string" && u.trim() !== "")
     : [];
+  const ctaText = typeof dt.cta_text === "string" ? dt.cta_text : "";
+  const ctaLink = typeof dt.cta_link === "string" ? dt.cta_link : "";
   const rec = dt as Record<string, unknown>;
   const sitemapUrlVal =
     (typeof dt.sitemap_url === "string" ? dt.sitemap_url : null) ??
@@ -143,5 +155,7 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
     socialMedia,
     contactInfo,
     assetUrls,
+    ctaText,
+    ctaLink,
   };
 }

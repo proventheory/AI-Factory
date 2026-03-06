@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button, LoadingSkeleton, Checkbox } from "@/components/ui";
-import { useSitemapProducts, useBrandProfile } from "@/hooks/use-api";
+import { useSitemapProducts, useProductsFromUrl, useBrandProfile } from "@/hooks/use-api";
 import { updateBrandProfile } from "@/lib/api";
 
 const WIZARD_KEY = "email_marketing_wizard";
@@ -88,6 +88,7 @@ export default function EmailMarketingNewProductsPage() {
   const [saving, setSaving] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const fetchProducts = useSitemapProducts();
+  const fetchProductsFromUrl = useProductsFromUrl();
   const hasLoadedForBrand = useRef<string | null>(null);
 
   // Single source of truth: when brand (or brand data) changes, load this brand's sitemap/products from its cache or prefill from design_tokens
@@ -125,15 +126,21 @@ export default function EmailMarketingNewProductsPage() {
   const handleFetch = async (append = false) => {
     const url = sitemapUrl.trim();
     if (!url) return;
-    const page = append ? Math.floor(items.length / PAGE_SIZE) + 1 : 1;
     const normalizedUrl = normalizeSitemapUrl(url);
+    const isJson = sitemapType === "shopify_json";
     try {
-      const res = await fetchProducts.mutateAsync({
-        sitemap_url: url,
-        sitemap_type: sitemapType,
-        page,
-        limit: PAGE_SIZE,
-      });
+      const res = isJson
+        ? await fetchProductsFromUrl.mutateAsync({
+            url,
+            type: "shopify_json",
+            limit: PAGE_SIZE,
+          })
+        : await fetchProducts.mutateAsync({
+            sitemap_url: url,
+            sitemap_type: sitemapType,
+            page: append ? Math.floor(items.length / PAGE_SIZE) + 1 : 1,
+            limit: PAGE_SIZE,
+          });
       const newItems = res.items ?? [];
       const total = typeof res.total === "number" ? res.total : null;
       const more = !!res.has_more || newItems.length >= PAGE_SIZE;
@@ -232,7 +239,7 @@ export default function EmailMarketingNewProductsPage() {
         setSaving(false);
       }
     }
-    router.push("/email-marketing/new/template");
+    router.push("/email-marketing/new/images");
   };
 
   return (
@@ -261,17 +268,18 @@ export default function EmailMarketingNewProductsPage() {
             <option value="ecommerce">Ecommerce</option>
             <option value="bigcommerce">BigCommerce</option>
             <option value="shopify">Shopify</option>
+            <option value="shopify_json">Shopify (JSON)</option>
           </select>
           <Button
             variant="primary"
-            disabled={fetchProducts.isPending || !sitemapUrl.trim()}
+            disabled={(sitemapType === "shopify_json" ? fetchProductsFromUrl.isPending : fetchProducts.isPending) || !sitemapUrl.trim()}
             onClick={() => handleFetch(false)}
           >
-            {fetchProducts.isPending ? "Fetching…" : "Fetch products"}
+            {sitemapType === "shopify_json" ? (fetchProductsFromUrl.isPending ? "Fetching…" : "Fetch products") : (fetchProducts.isPending ? "Fetching…" : "Fetch products")}
           </Button>
         </div>
 
-        {fetchProducts.isPending && items.length === 0 && (
+        {(fetchProducts.isPending || fetchProductsFromUrl.isPending) && items.length === 0 && (
           <LoadingSkeleton className="h-48 rounded-lg" />
         )}
 
@@ -362,7 +370,7 @@ export default function EmailMarketingNewProductsPage() {
               </div>
             </div>
 
-            {hasMore && (
+            {hasMore && sitemapType !== "shopify_json" && (
               <Button
                 variant="secondary"
                 disabled={fetchProducts.isPending}
@@ -380,7 +388,7 @@ export default function EmailMarketingNewProductsPage() {
             onClick={handleNext}
             disabled={items.length === 0 || saving}
           >
-            {saving ? "Saving…" : "Next: Template"}
+            {saving ? "Saving…" : "Next: Images"}
           </Button>
           <Button variant="secondary" asChild>
             <Link href="/email-marketing/new/brand">Back</Link>

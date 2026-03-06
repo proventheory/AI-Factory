@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import mjml2html from "mjml";
 import Handlebars from "handlebars";
 import { chat, type LLMChatOptions } from "../llm-client.js";
-import { loadBrandContext, brandContextToSystemPrompt, brandContextToDesignTokens } from "../brand-context.js";
+import { loadBrandContext, brandContextToSystemPrompt, brandContextToDesignTokens, clearBrandCache, type BrandContext } from "../brand-context.js";
 import { tokens } from "../tokens.js";
 import { getArtifactSignedUrl } from "../artifact-storage.js";
 
@@ -25,8 +25,20 @@ const BRACKET_PLACEHOLDER_REGEX = /\[([^\]]+)\]/g;
 /** 1x1 transparent GIF data URI – used when logo URL is missing so img doesn’t show broken icon. */
 const EMPTY_IMAGE_DATA_URI = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
+/** True if URL is already our CDN (Supabase upload public URL). Used so we don't put external or signed URLs in emails. */
+function isOurCdnUrl(url: string): boolean {
+  return /supabase\.co\/storage\/v1\/object\/public\/upload\//.test(url);
+}
+
+/** Map product letter A–Z to product index 1–11 (wraps). */
+function productLetterToIndex(letter: string): number {
+  const code = letter.toUpperCase().charCodeAt(0) - 65; // A=0, Z=25
+  if (code < 0 || code > 25) return 1;
+  return (code % 11) + 1;
+}
+
 /**
- * Resolve a single bracket placeholder (e.g. "product A title", "logo", "product M src")
+ * Resolve a single bracket placeholder (e.g. "product A title", "logo", "product P src", "social media link")
  * to the value from sectionJson. Template uses [placeholder] not {{placeholder}}.
  */
 function getBracketPlaceholderValue(
@@ -39,28 +51,62 @@ function getBracketPlaceholderValue(
     return logo.trim() || EMPTY_IMAGE_DATA_URI;
   }
   if (k === "siteUrl" || k === "site_url") return String(sectionJson.siteUrl ?? sectionJson.site_url ?? "#");
-  // product M = main/hero = product 1
-  const productMMatch = /^product\s+M\s+(.+)$/i.exec(k);
-  if (productMMatch) {
-    const field = productMMatch[1].trim().toLowerCase().replace(/\s+/g, "_");
-    const key = field === "src" ? "product_1_image" : field === "producturl" ? "product_1_url" : `product_1_${field}`;
-    return String((sectionJson as Record<string, unknown>)[key] ?? "");
-  }
-  // product A title, product B src, product E productUrl, product E description, etc.
-  const productLetterMatch = /^product\s+([A-Ea-e])\s+(.+)$/i.exec(k);
+  // product productUrl (footer) -> siteUrl (check before "product X field")
+  if (/^product\s+producturl$/i.test(k)) return String(sectionJson.siteUrl ?? sectionJson.site_url ?? "#");
+  // product <Letter> <field>: A–Z map to product 1–11 (e.g. product P src, product M title, product Q productUrl)
+  const productLetterMatch = /^product\s+([A-Za-z])\s+(.+)$/i.exec(k);
   if (productLetterMatch) {
     const letter = productLetterMatch[1].toUpperCase();
-    const field = productLetterMatch[2].trim().toLowerCase().replace(/\s+/g, "_");
-    const key = field === "src" ? `product${letter}_image` : field === "producturl" ? `product${letter}_url` : `product${letter}_${field}`;
+    const rawField = productLetterMatch[2].trim().toLowerCase().replace(/\s+/g, "_");
+    const field = rawField === "producturl" ? "url" : rawField;
+    const idx = productLetterToIndex(letter);
+    const key = field === "src" ? `product_${idx}_image` : field === "url" ? `product_${idx}_url` : `product_${idx}_${field}`;
     let val = String((sectionJson as Record<string, unknown>)[key] ?? "");
-    if (!val.trim() && field === "description") {
-      val = String((sectionJson as Record<string, unknown>)[`product${letter}_title`] ?? "");
+    if (!val.trim() && (field === "description" || field === "short_info")) {
+      val = String((sectionJson as Record<string, unknown>)[`product_${idx}_title`] ?? "");
     }
     return val;
   }
-  // product productUrl (footer) -> siteUrl
-  if (/^product\s+producturl$/i.test(k)) return String(sectionJson.siteUrl ?? sectionJson.site_url ?? "#");
-  // direct key (e.g. brandName, footerRights)
+  // [A title], [A description], [B title], [B description], [C title], [C description] – value blocks
+  const valueBlockMatch = /^([A-Ca-c])\s+(title|description)$/i.exec(k);
+  if (valueBlockMatch) {
+    const letter = valueBlockMatch[1].toUpperCase();
+    const prop = valueBlockMatch[2].toLowerCase();
+    if (letter === "A") {
+      return String(prop === "title" ? (sectionJson.headline ?? sectionJson.campaignPrompt ?? "") : (sectionJson.body ?? sectionJson.campaignPrompt ?? ""));
+    }
+    if (letter === "B") {
+      return String(prop === "title" ? (sectionJson.product_1_title ?? "") : (sectionJson.product_1_description ?? sectionJson.product_1_title ?? ""));
+    }
+    if (letter === "C") {
+      return String(prop === "title" ? (sectionJson.product_2_title ?? "") : (sectionJson.product_2_description ?? sectionJson.product_2_title ?? ""));
+    }
+  }
+  // [social media link], [social media icon], [social media 2 link], etc.
+  const socialMatch = /^social\s+media\s+(\d+)\s+(link|icon)$/i.exec(k);
+  if (socialMatch) {
+    const n = Math.max(1, parseInt(socialMatch[1], 10));
+    const kind = socialMatch[2].toLowerCase();
+    const linkKey = `social_media_${n}_link`;
+    const iconKey = `social_media_${n}_icon`;
+    const v = (sectionJson as Record<string, unknown>)[kind === "link" ? linkKey : iconKey];
+    return String(v ?? (kind === "link" ? (sectionJson.siteUrl ?? "#") : ""));
+  }
+  const socialFirstMatch = /^social\s+media\s+(link|icon)$/i.exec(k);
+  if (socialFirstMatch) {
+    const kind = socialFirstMatch[1].toLowerCase();
+    const v = (sectionJson as Record<string, unknown>)[kind === "link" ? "social_media_1_link" : "social_media_1_icon"];
+    return String(v ?? (kind === "link" ? (sectionJson.siteUrl ?? "#") : ""));
+  }
+  // [image 1], [image 2], ... [image N] – campaign images (1-based)
+  const imageNumMatch = /^image\s+(\d+)$/i.exec(k);
+  if (imageNumMatch) {
+    const n = Math.max(1, parseInt(imageNumMatch[1], 10));
+    const campaignImages = sectionJson.campaign_images as string[] | undefined;
+    const url = Array.isArray(campaignImages) ? campaignImages[n - 1] : undefined;
+    return (url && typeof url === "string" && url.trim()) ? url.trim() : EMPTY_IMAGE_DATA_URI;
+  }
+  // direct key (e.g. brandName, footerRights, headline, body)
   const direct = (sectionJson as Record<string, unknown>)[k];
   if (direct !== undefined && direct !== null) return String(direct);
   // Token Registry path (e.g. colors.brand.500, typography.fonts.body, email.containerWidth)
@@ -86,14 +132,24 @@ function getByPath(obj: unknown, path: string): unknown {
 
 /** Replace all [placeholder] tokens in HTML with values from sectionJson. */
 function replaceBracketPlaceholders(html: string, sectionJson: Record<string, unknown>): string {
-  return html.replace(BRACKET_PLACEHOLDER_REGEX, (match, key) => {
+  let out = html.replace(BRACKET_PLACEHOLDER_REGEX, (match, key) => {
     const value = getBracketPlaceholderValue(key, sectionJson);
     return value || match;
   });
+  const siteUrl = String(sectionJson.siteUrl ?? sectionJson.site_url ?? "#");
+  if (siteUrl && siteUrl !== "#") {
+    out = out.replace(/href="product\s+productUrl"/gi, `href="${siteUrl}"`);
+    out = out.replace(/href="product\s+([A-Za-z])\s+productUrl"/gi, (_m, letter) => {
+      const idx = productLetterToIndex(letter);
+      const url = (sectionJson as Record<string, unknown>)[`product_${idx}_url`];
+      return `href="${String(url ?? siteUrl)}"`;
+    });
+  }
+  return out;
 }
 
 /** Template default accent colors (Emma SMS template) – replace with brand color in final HTML. */
-const TEMPLATE_ACCENT_COLORS = [/#FF7055/gi, /#053A5E/gi];
+const TEMPLATE_ACCENT_COLORS = [/#FF7055/gi, /#053A5E/gi, /#ffd875/gi];
 
 /** Default hero headline in template – replaced with campaign prompt when present. */
 const DEFAULT_HERO_HEADLINE = "Introducing Emma SMS";
@@ -101,31 +157,240 @@ const DEFAULT_HERO_HEADLINE = "Introducing Emma SMS";
 const DEFAULT_HERO_BODY =
   "Emma SMS helps you reach customers where they're at by sending relevant and timely updates to a personal and direct channel. By combining the power of SMS with email, marketers are able to create a more unified, multi-channel experience for customers.";
 
+/** Default CTA block headline in template – replaced with LLM ctaSectionHeadline when present. */
+const DEFAULT_CTA_HEADLINE = "Cut through the noise with SMS";
+/** Default CTA block subhead in template. */
+const DEFAULT_CTA_SUBHEAD = "Ready to see Emma SMS in action?";
+/** Default CTA block body in template. */
+const DEFAULT_CTA_BODY = "Request a live demo from our team to get started!";
+/** Default CTA button label in template – replaced with LLM ctaText when present. */
+const DEFAULT_CTA_BUTTON = "Request a demo";
+/** Default hero CTA button in some templates. */
+const DEFAULT_HERO_CTA = "Explore the tool";
+
+/** Template footer placeholders (Marigold/Emma) – replaced with brand footer when present. */
+const DEFAULT_FOOTER_PARTNER_LINE = "Campaign Monitor | Cheetah Digita | Emma | Sailthru | Selligent | Vuture";
+const DEFAULT_FOOTER_RIGHTS = "© 2023 Marigold Inc. All Rights Reserved";
+const DEFAULT_FOOTER_ADDRESS = "Marigold Inc., 11 Lea Ave, Nashville, TN 37210";
+
+export interface BrandFooterReplacements {
+  companyName: string;
+  footerRights: string;
+  address: string;
+  partnerLine: string;
+  termsUrl: string;
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/** LLM-generated copy for hero/CTA (from campaign prompt); used instead of raw prompt in template. */
+export interface GeneratedEmailCopy {
+  headline: string;
+  body: string;
+  ctaText: string;
+  ctaSectionHeadline?: string;
+}
+
+/** Build a short brand brief from BrandContext for the LLM (industry, tagline, tone, CTA style). */
+function buildBrandBriefForCopy(ctx: BrandContext): string {
+  const parts: string[] = [];
+  const id = ctx.identity as Record<string, unknown>;
+  if (id.industry) parts.push(`Industry: ${id.industry}`);
+  if (id.tagline) parts.push(`Tagline: "${id.tagline}"`);
+  if (id.mission) parts.push(`Mission: ${id.mission}`);
+  if (id.target_audience) parts.push(`Target audience: ${id.target_audience}`);
+  const tone = ctx.tone as Record<string, unknown>;
+  if (tone.voice_descriptors?.length) parts.push(`Voice: ${(tone.voice_descriptors as string[]).join(", ")}`);
+  if (tone.formality) parts.push(`Formality: ${tone.formality}`);
+  const copyStyle = ctx.copy_style as Record<string, unknown>;
+  if (copyStyle.cta_style) parts.push(`CTA style: ${copyStyle.cta_style}`);
+  if (copyStyle.voice) parts.push(`Copy voice: ${copyStyle.voice}`);
+  return parts.length ? parts.join(". ") : ctx.name;
+}
+
 /**
- * Apply brand color to template accent/CTA and replace default hero copy with campaign prompt.
- * Runs on final HTML after bracket placeholder replacement.
+ * Call LLM to generate email copy (headline, body, CTA) from the campaign prompt and full brand context.
+ * Uses brand tokens, identity, tone, and copy_style so copy fits the brand (not generic Emma SMS).
+ * Returns null on parse failure or if LLM is not invoked.
+ */
+async function generateEmailCopyViaLlm(
+  campaignPrompt: string,
+  brandPrompt: string | undefined,
+  brandCtx: BrandContext | undefined,
+  request: { run_id: string; job_run_id: string; job_type: string; llm_source?: string; recordLlmCall?: (model: string, modelId: string, tokensIn?: number, tokensOut?: number, latencyMs?: number) => Promise<void> },
+  initiativeId: string | null,
+): Promise<GeneratedEmailCopy | null> {
+  const trimmed = campaignPrompt.trim();
+  if (trimmed.length === 0) return null;
+
+  const brandName = brandCtx?.name ?? "Brand";
+  const brandBrief = brandCtx ? buildBrandBriefForCopy(brandCtx) : brandName;
+
+  const messages: LLMChatOptions["messages"] = [];
+  messages.push({
+    role: "system",
+    content: (brandPrompt ?? "") + "\nYou are an email copywriter. Write copy that matches this brand's identity, tone, and industry—not generic marketing. Reply with ONLY a valid JSON object, no markdown or explanation. Use these exact keys: headline (one short line), body (2-3 sentences for the main hero paragraph), ctaText (button label, e.g. \"Shop the sale\" or \"Get 50% off\"), ctaSectionHeadline (optional, one line for a secondary CTA block).",
+  });
+  messages.push({
+    role: "user",
+    content: `Brand context: ${brandBrief}. Campaign theme: ${trimmed}. Generate email copy that fits this brand and campaign. Return only valid JSON.`,
+  });
+
+  try {
+    const result = await chat({
+      model: "auto/chat",
+      messages,
+      context: {
+        run_id: request.run_id,
+        job_run_id: request.job_run_id,
+        job_type: request.job_type,
+        initiative_id: initiativeId,
+      },
+      brandContext: brandCtx ? { id: brandCtx.id, name: brandCtx.name, systemPrompt: brandPrompt } : undefined,
+      useGateway: request.llm_source !== "openai_direct",
+    });
+
+    if (request.recordLlmCall) {
+      await request.recordLlmCall(
+        "auto/chat",
+        result.model_id ?? "unknown",
+        result.tokens_in,
+        result.tokens_out,
+        result.latency_ms,
+      );
+    }
+
+    let raw = (result.content ?? "").trim();
+    const codeBlock = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
+    if (codeBlock) raw = codeBlock[1].trim();
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
+    const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
+    const ctaText = typeof parsed.ctaText === "string" ? parsed.ctaText.trim() : "Learn more";
+    const ctaSectionHeadline = typeof parsed.ctaSectionHeadline === "string" ? parsed.ctaSectionHeadline.trim() : undefined;
+    if (headline.length > 0 && body.length > 0) {
+      return { headline, body, ctaText, ctaSectionHeadline };
+    }
+  } catch (_e) {
+    console.log("[MJML] LLM copy generation failed", { run_id: request.run_id, err: String((_e as Error).message).slice(0, 80) });
+  }
+  return null;
+}
+
+type ProductListItem = { name: string; title: string; link: string; image: string; description: string };
+
+/**
+ * Optionally enrich products that have no description by calling LLM with title and URL.
+ * Gated by ENRICH_PRODUCT_DESCRIPTIONS=true (or input.enrich_descriptions). Only runs for products with empty description.
+ */
+async function enrichProductDescriptionsIfEnabled(
+  productList: ProductListItem[],
+  request: { run_id: string; job_run_id: string; job_type: string },
+): Promise<ProductListItem[]> {
+  const enabled = process.env.ENRICH_PRODUCT_DESCRIPTIONS === "true" || process.env.ENRICH_PRODUCT_DESCRIPTIONS === "1";
+  if (!enabled || productList.length === 0) return productList;
+  const needIndexes = productList
+    .map((p, i) => ({ i, desc: p.description?.trim() ?? "" }))
+    .filter(({ desc }) => desc.length === 0)
+    .map(({ i }) => i);
+  if (needIndexes.length === 0) return productList;
+
+  const lines = needIndexes.map((i) => `Product ${i}: ${productList[i].title} | ${productList[i].link}`).join("\n");
+  const messages: LLMChatOptions["messages"] = [
+    {
+      role: "system",
+      content: "You write very short product descriptions for marketing emails. Reply with ONLY a valid JSON object. Use integer keys 0, 1, 2... for each product index; value is one short sentence (under 25 words), no quotes or prefix.",
+    },
+    {
+      role: "user",
+      content: `For each product below write exactly one short sentence describing it for an email. Reply only with JSON like {"0":"...","1":"..."}.\n\n${lines}`,
+    },
+  ];
+  try {
+    const result = await chat({
+      model: "auto/chat",
+      messages,
+      context: { run_id: request.run_id, job_run_id: request.job_run_id, job_type: request.job_type },
+    });
+    const raw = (result.content ?? "").trim();
+    const json = raw.replace(/^```\w*\n?|\n?```$/g, "").trim();
+    const parsed = JSON.parse(json) as Record<string, string>;
+    const out = productList.map((p, i) => ({ ...p }));
+    for (const idx of needIndexes) {
+      const desc = parsed[String(idx)];
+      if (typeof desc === "string" && desc.trim()) {
+        out[idx].description = desc.trim().slice(0, 500);
+      }
+    }
+    console.log("[MJML] enriched product descriptions", { run_id: request.run_id, count: needIndexes.length });
+    return out;
+  } catch (_e) {
+    console.log("[MJML] enrich product descriptions failed", { run_id: request.run_id, err: String((_e as Error).message).slice(0, 60) });
+    return productList;
+  }
+}
+
+/**
+ * Apply brand color to template accent/CTA, replace default hero/CTA copy with campaign or LLM-generated copy,
+ * and replace hardcoded footer (Marigold/Emma) with brand footer.
  */
 function applyBrandColorsAndCampaignCopy(
   html: string,
   brandColor: string,
   campaignPrompt: string,
+  generatedCopy?: GeneratedEmailCopy | null,
+  footer?: BrandFooterReplacements | null,
 ): string {
   let out = html;
   for (const re of TEMPLATE_ACCENT_COLORS) {
     out = out.replace(re, brandColor);
   }
-  const prompt = campaignPrompt.trim();
-  if (prompt.length > 0) {
-    const safe = escapeHtml(prompt);
+  const headline = generatedCopy?.headline ?? campaignPrompt.trim();
+  const body = generatedCopy?.body ?? campaignPrompt.trim();
+  if (headline.length > 0) {
+    const safeHeadline = escapeHtml(headline);
     if (out.includes(DEFAULT_HERO_HEADLINE)) {
-      out = out.replace(DEFAULT_HERO_HEADLINE, safe);
+      out = out.replace(DEFAULT_HERO_HEADLINE, safeHeadline);
     }
+  }
+  if (body.length > 0) {
+    const safeBody = escapeHtml(body);
     if (out.includes(DEFAULT_HERO_BODY)) {
-      out = out.replace(DEFAULT_HERO_BODY, safe);
+      out = out.replace(DEFAULT_HERO_BODY, safeBody);
+    }
+  }
+  // Replace default hero CTA button ("Explore the tool") with generated ctaText
+  const ctaLabel = generatedCopy?.ctaText ?? campaignPrompt.trim();
+  if (ctaLabel.length > 0 && out.includes(DEFAULT_HERO_CTA)) {
+    out = out.replace(DEFAULT_HERO_CTA, escapeHtml(ctaLabel));
+  }
+  // Replace default CTA block copy when we have LLM-generated copy
+  if (generatedCopy) {
+    if (generatedCopy.ctaSectionHeadline && out.includes(DEFAULT_CTA_HEADLINE)) {
+      out = out.replace(DEFAULT_CTA_HEADLINE, escapeHtml(generatedCopy.ctaSectionHeadline));
+    }
+    if (out.includes(DEFAULT_CTA_SUBHEAD)) {
+      out = out.replace(DEFAULT_CTA_SUBHEAD, escapeHtml(generatedCopy.ctaSectionHeadline ?? generatedCopy.headline));
+    }
+    if (out.includes(DEFAULT_CTA_BODY)) {
+      out = out.replace(DEFAULT_CTA_BODY, escapeHtml(generatedCopy.body));
+    }
+    if (generatedCopy.ctaText && out.includes(DEFAULT_CTA_BUTTON)) {
+      out = out.replace(DEFAULT_CTA_BUTTON, escapeHtml(generatedCopy.ctaText));
+    }
+  }
+  // Replace hardcoded template footer with brand footer
+  if (footer) {
+    if (footer.partnerLine && out.includes(DEFAULT_FOOTER_PARTNER_LINE)) {
+      out = out.replace(DEFAULT_FOOTER_PARTNER_LINE, escapeHtml(footer.partnerLine));
+    }
+    if (footer.footerRights && out.includes(DEFAULT_FOOTER_RIGHTS)) {
+      out = out.replace(DEFAULT_FOOTER_RIGHTS, escapeHtml(footer.footerRights));
+    }
+    if (footer.address && out.includes(DEFAULT_FOOTER_ADDRESS)) {
+      out = out.replace(DEFAULT_FOOTER_ADDRESS, escapeHtml(footer.address));
     }
   }
   return out;
@@ -149,6 +414,8 @@ const PLACEHOLDER_ALIASES: Record<string, string[]> = {
 export interface EmailGenerateMjmlInput {
   template_id?: string;
   products?: Array<{ src?: string; title?: string; product_url?: string; description?: string }>;
+  /** Campaign images (CDN URLs) for template placeholders [image 1], [image 2], etc. */
+  images?: string[];
   campaign_prompt?: string;
 }
 
@@ -183,6 +450,8 @@ export async function handleEmailGenerateMjml(request: {
   }
   if (!initiativeId) console.log("[MJML] no initiative_id (H2)", { run_id: runId, job_run_id: jobRunId, input_keys: Object.keys(request.input ?? {}) });
 
+  // Ensure fresh brand profile (including design_tokens.logo from Console "Logo URL") so logo is not stale from cache
+  if (initiativeId) clearBrandCache();
   const brandCtx = initiativeId ? await loadBrandContext(initiativeId) : null;
   const brandPrompt = brandCtx ? brandContextToSystemPrompt(brandCtx) : "";
   const mergedTokens = brandCtx ? brandContextToDesignTokens(brandCtx, tokens as unknown as Record<string, unknown>) : tokens;
@@ -201,28 +470,77 @@ export async function handleEmailGenerateMjml(request: {
           const signed = await getArtifactSignedUrl(rawUri);
           logoUrl = signed ?? rawUri;
           if (!signed) console.log("[MJML] logo storage URI not resolved to signed URL", { brandId: brandCtx.id, uriSnippet: rawUri.slice(0, 50) });
-        } else {
+        } else if (rawUri?.trim()) {
           logoUrl = rawUri;
         }
       }
     } catch (_e) {
       console.log("[MJML] brand assets fetch failed", { brandId: brandCtx.id, err: String((_e as Error).message).slice(0, 60) });
     }
-    // Fallback: logo URL from brand identity or design_tokens (e.g. from prefill or profile edit when not in brand_assets)
+    // Fallback: logo URL from identity, then design_tokens (Console "Logo URL" → design_tokens.logo.url / logo_url), then mergedTokens
     if (!logoUrl?.trim() && brandCtx) {
       const fromIdentity = (brandCtx.identity as Record<string, unknown>)?.logo_url;
-      const fromTokens = brandCtx.design_tokens && typeof brandCtx.design_tokens === "object"
-        ? ((brandCtx.design_tokens as Record<string, unknown>).logo ?? (brandCtx.design_tokens as Record<string, unknown>).logo_url)
-        : undefined;
+      const dt = brandCtx.design_tokens && typeof brandCtx.design_tokens === "object" ? (brandCtx.design_tokens as Record<string, unknown>) : null;
+      const logoToken = dt?.logo;
+      const logoUrlToken = dt?.logo_url;
+      let fromTokens =
+        logoToken != null && typeof logoToken === "object" && typeof (logoToken as Record<string, unknown>).url === "string"
+          ? ((logoToken as Record<string, string>).url as string).trim()
+          : typeof logoToken === "string"
+            ? (logoToken as string).trim()
+            : typeof logoUrlToken === "string"
+              ? (logoUrlToken as string).trim()
+              : "";
+      if (!fromTokens && mergedTokens && typeof mergedTokens === "object") {
+        const mt = mergedTokens as Record<string, unknown>;
+        const ml = mt?.logo;
+        const mlu = mt?.logo_url;
+        fromTokens =
+          ml != null && typeof ml === "object" && typeof (ml as Record<string, unknown>).url === "string"
+            ? ((ml as Record<string, string>).url as string).trim()
+            : typeof ml === "string"
+              ? (ml as string).trim()
+              : typeof mlu === "string"
+                ? (mlu as string).trim()
+                : "";
+      }
       const fallback = typeof fromIdentity === "string" && fromIdentity.trim()
         ? fromIdentity.trim()
-        : typeof fromTokens === "string" && fromTokens.trim()
-          ? fromTokens.trim()
+        : fromTokens.length > 0
+          ? fromTokens
           : null;
       if (fallback) {
         logoUrl = fallback;
-        console.log("[MJML] logo from brand identity/design_tokens fallback", { brandId: brandCtx.id, snippet: fallback.slice(0, 50) });
+        console.log("[MJML] logo from brand identity/design_tokens/mergedTokens fallback", { brandId: brandCtx.id, snippet: fallback.slice(0, 60) });
+      } else {
+        console.log("[MJML] logo missing: design_tokens keys", {
+          brandId: brandCtx.id,
+          dtKeys: dt ? Object.keys(dt) : [],
+          hasLogoKey: dt ? "logo" in dt : false,
+          hasLogoUrlKey: dt ? "logo_url" in dt : false,
+          logoType: dt?.logo != null ? typeof dt.logo : "n/a",
+          logoUrlType: dt?.logo_url != null ? typeof dt.logo_url : "n/a",
+        });
       }
+    }
+  }
+  // Self-host logo: if logo is external or a signed URL, copy to our CDN so emails use a stable URL
+  if (logoUrl?.trim() && !isOurCdnUrl(logoUrl)) {
+    try {
+      const copyRes = await fetch(`${CONTROL_PLANE_URL}/v1/campaign-images/copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: logoUrl }),
+      });
+      if (copyRes.ok) {
+        const json = (await copyRes.json()) as { cdn_url?: string };
+        if (json.cdn_url) {
+          logoUrl = json.cdn_url;
+          console.log("[MJML] logo copied to CDN for email", { run_id: runId, brandId: brandCtx?.id });
+        }
+      }
+    } catch (_e) {
+      console.log("[MJML] logo copy to CDN failed (using original URL)", { run_id: runId, err: String((_e as Error).message).slice(0, 60) });
     }
   }
   // #region agent log
@@ -236,30 +554,38 @@ export async function handleEmailGenerateMjml(request: {
     try {
       const campRes = await fetch(`${CONTROL_PLANE_URL}/v1/email_campaigns/${initiativeId}`);
       if (campRes.ok) {
-        const camp = (await campRes.json()) as { template_id?: string; subject_line?: string; metadata_json?: { template_id?: string; products?: unknown[]; campaign_prompt?: string } };
+        const camp = (await campRes.json()) as { template_id?: string; subject_line?: string; metadata_json?: { template_id?: string; products?: unknown[]; images?: string[]; campaign_prompt?: string } };
         subjectLine = camp.subject_line;
         const templateIdFromCamp = camp.template_id ?? (camp.metadata_json && typeof camp.metadata_json === "object" ? (camp.metadata_json as { template_id?: string }).template_id : undefined);
         if (templateIdFromCamp) input.template_id = input.template_id ?? templateIdFromCamp;
         if (camp.metadata_json && typeof camp.metadata_json === "object") {
-          const meta = camp.metadata_json as { products?: unknown[]; campaign_prompt?: string; sitemap_url?: string; sitemap_type?: string };
+          const meta = camp.metadata_json as { products?: unknown[]; images?: string[]; campaign_prompt?: string; sitemap_url?: string; sitemap_type?: string };
           if (meta.products && !input.products?.length) input.products = meta.products as EmailGenerateMjmlInput["products"];
+          if (Array.isArray(meta.images)) input.images = meta.images;
           if (meta.campaign_prompt) input.campaign_prompt = input.campaign_prompt ?? meta.campaign_prompt;
           if (!input.products?.length && meta.sitemap_url && meta.sitemap_type) {
             try {
-              const sitemapRes = await fetch(`${CONTROL_PLANE_URL}/v1/sitemap/products`, {
+              const isJson = meta.sitemap_type === "shopify_json";
+              const productsUrl = isJson
+                ? `${CONTROL_PLANE_URL}/v1/products/from_url`
+                : `${CONTROL_PLANE_URL}/v1/sitemap/products`;
+              const body = isJson
+                ? { url: meta.sitemap_url, type: "shopify_json", limit: 8 }
+                : { sitemap_url: meta.sitemap_url, sitemap_type: meta.sitemap_type, limit: 8 };
+              const productsRes = await fetch(productsUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sitemap_url: meta.sitemap_url, sitemap_type: meta.sitemap_type, limit: 8 }),
+                body: JSON.stringify(body),
               });
-              if (sitemapRes.ok) {
-                const data = (await sitemapRes.json()) as { items?: Array<{ src?: string; title?: string; product_url?: string }> };
+              if (productsRes.ok) {
+                const data = (await productsRes.json()) as { items?: Array<{ src?: string; title?: string; product_url?: string; description?: string }> };
                 if (data.items?.length) {
                   input.products = data.items as EmailGenerateMjmlInput["products"];
-                  console.log("[MJML] fallback products from sitemap", { run_id: runId, initiative_id: initiativeId, count: data.items.length });
+                  console.log("[MJML] fallback products from " + (isJson ? "JSON URL" : "sitemap"), { run_id: runId, initiative_id: initiativeId, count: data.items.length });
                 }
               }
             } catch (_e) {
-              console.log("[MJML] sitemap products fallback failed", { run_id: runId, err: String((_e as Error).message).slice(0, 60) });
+              console.log("[MJML] sitemap/products fallback failed", { run_id: runId, err: String((_e as Error).message).slice(0, 60) });
             }
           }
         }
@@ -318,31 +644,36 @@ export async function handleEmailGenerateMjml(request: {
   }
 
   const products = input.products ?? [];
+  const campaignImages = input.images ?? [];
   const campaignPrompt = input.campaign_prompt ?? "newsletter";
 
-  const productList = products.map((p) => ({
+  let productList: ProductListItem[] = products.map((p) => ({
     name: p.title ?? "Product",
     title: p.title ?? "Product",
     link: p.product_url ?? p.src ?? "#",
     image: p.src ?? "",
     description: p.description ?? "",
   }));
+  productList = await enrichProductDescriptionsIfEnabled(productList, request);
 
   const numberedProducts: Record<string, string> = {};
   const productObjects: Record<string, { title: string; description: string; image: string; link: string; buttonText: string }> = {};
   productList.forEach((p, i) => {
     const n = i + 1;
+    const shortInfo = (p.description ?? p.title ?? "").slice(0, 60).trim() || (p.title ?? "");
     numberedProducts[`product_${n}_image`] = p.image;
     numberedProducts[`product_${n}_title`] = p.title;
     numberedProducts[`product_${n}_url`] = p.link;
     numberedProducts[`product_${n}_description`] = p.description;
+    numberedProducts[`product_${n}_short_info`] = shortInfo;
     productObjects[`product${n}`] = { title: p.title, description: p.description, image: p.image, link: p.link, buttonText: "Learn more" };
-    const letter = "ABCDE"[i];
+    const letter = "ABCDEFGHIJK"[i];
     if (letter) {
       numberedProducts[`product${letter}_image`] = p.image;
       numberedProducts[`product${letter}_title`] = p.title;
       numberedProducts[`product${letter}_url`] = p.link;
       numberedProducts[`product${letter}_description`] = p.description;
+      numberedProducts[`product${letter}_short_info`] = shortInfo;
       productObjects[`product${letter}`] = { title: p.title, description: p.description, image: p.image, link: p.link, buttonText: "Learn more" };
     }
   });
@@ -357,15 +688,47 @@ export async function handleEmailGenerateMjml(request: {
   // Use preselected MJML template with brand tokens whenever we have template + fetch succeeded (products optional).
   if (templateMjml) {
     try {
+      // Generate email copy via LLM from campaign prompt so the email shows LLM-written copy, not the raw prompt.
+      let generatedCopy: GeneratedEmailCopy | null = null;
+      if (campaignPrompt.trim().length > 0) {
+        generatedCopy = await generateEmailCopyViaLlm(
+          campaignPrompt,
+          brandPrompt ?? undefined,
+          brandCtx ?? undefined,
+          request,
+          initiativeId,
+        );
+        if (generatedCopy) {
+          console.log("[MJML] using LLM-generated copy", { run_id: runId, headlineLen: generatedCopy.headline.length, bodyLen: generatedCopy.body.length });
+        }
+      }
+
       const logo = logoUrl ?? "";
       const heroImage = (logo || productList[0]?.image) ?? "";
       const siteUrl = (brandCtx?.identity as { website?: string } | undefined)?.website ?? "#";
+      const identity = (brandCtx?.identity ?? {}) as { contact_email?: string };
+      const mt = mergedTokens as Record<string, unknown> | undefined;
+      const contactInfoFromTokens = mt?.contact_info;
+      const contactInfoStr = Array.isArray(contactInfoFromTokens) && contactInfoFromTokens.length > 0
+        ? (contactInfoFromTokens as Array<{ type?: string; value?: string }>)
+          .filter((c) => c && (c.value ?? "").trim() !== "")
+          .map((c) => (c.type?.trim() ? `${c.type.trim()}: ${(c.value ?? "").trim()}` : (c.value ?? "").trim()))
+          .join(", ")
+        : undefined;
+      const socialMediaFromTokens = (Array.isArray(mt?.social_media) ? mt.social_media : []) as Array<{ name?: string; url?: string }>;
+      const brandCtaText = (typeof mt?.cta_text === "string" && mt.cta_text.trim() !== "" ? mt.cta_text.trim() : undefined) ?? "Learn more";
+      const brandCtaLink = (typeof mt?.cta_link === "string" && mt.cta_link.trim() !== "" ? mt.cta_link.trim() : undefined) ?? "#";
+      const campaignImageEntries = Object.fromEntries(
+        campaignImages.map((url, i) => [`image_${i + 1}`, url && typeof url === "string" ? url.trim() : ""]),
+      );
       const sectionJson: Record<string, unknown> = {
         ...(templateJson ?? {}),
         products: productList,
         ...numberedProducts,
         ...productObjects,
         images: imagesArray,
+        campaign_images: campaignImages,
+        ...campaignImageEntries,
         tokens: mergedTokens as Record<string, unknown>,
         fontFamily,
         fonts: fontFamily,
@@ -391,12 +754,21 @@ export async function handleEmailGenerateMjml(request: {
         tagline: (brandCtx?.identity as { tagline?: string } | undefined)?.tagline ?? "",
         voicetone: brandCtx?.tone?.voice_descriptors?.[0] ?? "friendly",
         footerRights: `© ${new Date().getFullYear()}`,
-        contactInfo: (brandCtx?.identity as { contact_email?: string } | undefined)?.contact_email ?? "",
-        socialMedia: [],
-        cta_text: "Learn more",
-        cta_label: "Learn more",
-        cta_url: "#",
-        cta_link: "#",
+        contactInfo: contactInfoStr ?? identity.contact_email ?? "",
+        socialMedia: socialMediaFromTokens,
+        ...Object.fromEntries(
+          (socialMediaFromTokens as Array<{ url?: string; icon?: string }>).flatMap((s, i) => {
+            const n = i + 1;
+            return [
+              [`social_media_${n}_link`, (s?.url ?? "").trim() || "#"],
+              [`social_media_${n}_icon`, (s?.icon ?? "").trim() || EMPTY_IMAGE_DATA_URI],
+            ];
+          }),
+        ),
+        cta_text: brandCtaText,
+        cta_label: brandCtaText,
+        cta_url: brandCtaLink,
+        cta_link: brandCtaLink,
         footer: `© ${new Date().getFullYear()} ${brandCtx?.name ?? ""}. All rights reserved.`,
         hero_image: heroImage,
         hero_image_url: heroImage,
@@ -404,24 +776,35 @@ export async function handleEmailGenerateMjml(request: {
         emailTitle: subjectLine ?? campaignPrompt,
         subject_line: subjectLine ?? campaignPrompt,
       };
-      // Campaign copy: set after templateJson so our prompt overrides any template defaults (header, body, etc.)
+      // Campaign copy: set after templateJson. Use LLM-generated copy when available; otherwise raw campaign prompt.
       const copyKeys = [
         "campaignPrompt", "headline", "title", "header", "subhead", "body", "message", "description",
         "prehead", "eyebrow", "offerText", "offer", "content", "main_message", "mainMessage", "theme", "intro", "copy", "promo_text",
       ];
       for (const k of copyKeys) (sectionJson as Record<string, unknown>)[k] = campaignPrompt;
+      if (generatedCopy) {
+        (sectionJson as Record<string, unknown>).headline = generatedCopy.headline;
+        (sectionJson as Record<string, unknown>).body = generatedCopy.body;
+        (sectionJson as Record<string, unknown>).header = generatedCopy.headline;
+        (sectionJson as Record<string, unknown>).campaignPrompt = campaignPrompt;
+        (sectionJson as Record<string, unknown>).cta_text = generatedCopy.ctaText;
+        (sectionJson as Record<string, unknown>).cta_label = generatedCopy.ctaText;
+        if (generatedCopy.ctaSectionHeadline) {
+          (sectionJson as Record<string, unknown>).ctaSectionHeadline = generatedCopy.ctaSectionHeadline;
+        }
+      }
 
       // Template–payload contract: extract placeholders from MJML and fill any missing from alias map
       const templatePlaceholders = [...new Set([...templateMjml.matchAll(PLACEHOLDER_REGEX)].map((m) => m[1]))];
       const conceptValues: Record<string, unknown> = {
         logo,
         brandColor,
-        campaignCopy: campaignPrompt,
+        campaignCopy: (generatedCopy?.headline ?? campaignPrompt),
         fontFamily,
         heroImage,
         footer: (sectionJson as Record<string, unknown>).footer,
-        ctaText: "Learn more",
-        ctaUrl: "#",
+        ctaText: (generatedCopy?.ctaText ?? brandCtaText),
+        ctaUrl: (sectionJson as Record<string, unknown>).cta_link ?? brandCtaLink,
       };
       for (const ph of templatePlaceholders) {
         const v = (sectionJson as Record<string, unknown>)[ph];
@@ -492,10 +875,20 @@ export async function handleEmailGenerateMjml(request: {
         return prefix + brandColor;
       });
       const { html: rawHtml } = mjml2html(mjmlOut, { minify: true });
+      const year = new Date().getFullYear();
+      const brandFooter: BrandFooterReplacements = {
+        companyName: brandCtx?.name ?? "",
+        footerRights: `© ${year} ${brandCtx?.name ?? ""}. All rights reserved.`,
+        address: (brandCtx?.identity as { location?: string })?.location ?? (sectionJson.contactInfo as string) ?? "",
+        partnerLine: brandCtx?.name ? `${brandCtx.name}${siteUrl && siteUrl !== "#" ? ` | ${siteUrl.replace(/^https?:\/\//, "")}` : ""}` : "",
+        termsUrl: siteUrl && siteUrl !== "#" ? `${siteUrl.replace(/\/$/, "")}/terms` : "#",
+      };
       const html = applyBrandColorsAndCampaignCopy(
         replaceBracketPlaceholders(rawHtml ?? "", sectionJson as Record<string, unknown>),
         brandColor,
         campaignPrompt,
+        generatedCopy,
+        brandFooter,
       );
       // #region agent log
       console.log("[MJML] compile success (H9)", { run_id: runId, htmlLen: html?.length ?? 0, campaignPromptSnippet: campaignPrompt.slice(0, 40) });

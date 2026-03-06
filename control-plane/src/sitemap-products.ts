@@ -13,6 +13,7 @@ export interface SitemapProduct {
   src: string;
   title: string;
   product_url: string;
+  description?: string;
 }
 
 export interface FetchSitemapProductsOptions {

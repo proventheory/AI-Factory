@@ -593,8 +593,24 @@ export async function fetchSitemapProducts(params: {
   sitemap_type: string;
   page?: number;
   limit?: number;
-}): Promise<{ items: Array<{ src: string; title: string; product_url: string }>; has_more: boolean; total?: number }> {
+}): Promise<{ items: Array<{ src: string; title: string; product_url: string; description?: string }>; has_more: boolean; total?: number }> {
   const res = await fetch(`${API}/v1/sitemap/products`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** Fetch products from JSON URL (e.g. Shopify collection) or XML sitemap. Use when type is shopify_json or to unify with sitemap. */
+export async function fetchProductsFromUrl(params: {
+  url: string;
+  type: "shopify_json" | "sitemap_xml";
+  sitemap_type?: string;
+  limit?: number;
+}): Promise<{ items: Array<{ src: string; title: string; product_url: string; description?: string }>; has_more: boolean; total?: number }> {
+  const res = await fetch(`${API}/v1/products/from_url`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -612,10 +628,50 @@ export type EmailTemplateRow = {
   template_json: unknown;
   sections_json: unknown;
   img_count: number;
+  /** Computed from MJML (max product_N slot). Used by wizard to validate selection. */
+  product_slots?: number;
   brand_profile_id?: string | null;
   created_at: string;
   updated_at: string;
 };
+
+/** Pexels API proxy (search photos). */
+export async function pexelsSearch(params: { q: string; per_page?: number; page?: number }): Promise<{
+  page: number;
+  per_page: number;
+  photos: Array<{
+    id: number;
+    src: { original: string; medium: string; large: string; large2x: string };
+    alt: string;
+    photographer: string;
+    photographer_url: string;
+  }>;
+  total_results: number;
+  next_page?: string;
+  prev_page?: string;
+}> {
+  const sp = new URLSearchParams();
+  sp.set("q", params.q.trim() || "nature");
+  if (params.per_page) sp.set("per_page", String(params.per_page));
+  if (params.page) sp.set("page", String(params.page));
+  const res = await fetch(`${API}/v1/pexels/search?${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** Copy image from URL (e.g. Pexels) to our CDN; returns stable URL for emails. */
+export async function copyCampaignImageToCdn(url: string): Promise<{ cdn_url: string }> {
+  const res = await fetch(`${API}/v1/campaign-images/copy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((err as { error?: string }).error ?? "Copy to CDN failed");
+  }
+  return res.json();
+}
 
 export async function getEmailTemplates(params?: { type?: string; brand_profile_id?: string; limit?: number; offset?: number }): Promise<{ items: EmailTemplateRow[]; total: number }> {
   const searchParams = new URLSearchParams();
