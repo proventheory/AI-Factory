@@ -403,7 +403,11 @@ export function registerAllHandlers(): void {
       const len = out.content.length;
       if (len > 10_000) console.log("[runner] email_template content length exceeds 10KB, storing full length", { run_id: context.run_id, contentLen: len });
       const artifactId = await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template", out.metadata);
-      // Post-write verification and optional artifact_verifications: never throw so the artifact commit is not rolled back
+      // Commit the artifact immediately so it is never rolled back by a later failure (e.g. "transaction is aborted" from verification)
+      if (artifactId) {
+        await client.query("COMMIT");
+      }
+      // Post-write verification and optional artifact_verifications: run in a new transaction; never throw
       if (artifactId) {
         try {
           const r = await client.query<{ metadata_json: { content?: string } | null }>(
