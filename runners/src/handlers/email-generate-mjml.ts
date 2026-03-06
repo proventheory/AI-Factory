@@ -69,7 +69,8 @@ export async function handleEmailGenerateMjml(request: {
   const products = input.products ?? [];
   const campaignPrompt = input.campaign_prompt ?? "newsletter";
 
-  if (templateMjml && products.length > 0) {
+  // Use preselected MJML template with brand tokens whenever we have template + fetch succeeded (products optional).
+  if (templateMjml) {
     try {
       const sectionJson: Record<string, unknown> = {
         ...(templateJson ?? {}),
@@ -83,6 +84,7 @@ export async function handleEmailGenerateMjml(request: {
         footerRights: `© ${new Date().getFullYear()}`,
         contactInfo: "",
         socialMedia: [],
+        campaignPrompt,
       };
       const compile = Handlebars.compile(templateMjml);
       const mjmlOut = compile(sectionJson);
@@ -93,8 +95,8 @@ export async function handleEmailGenerateMjml(request: {
         content: html,
         metadata: { brand_profile_id: brandCtx?.id, brand_color: brandColor, mjml: mjmlOut },
       };
-    } catch (e) {
-      // fall through to LLM-generated email
+    } catch (_e) {
+      // fall through to LLM-generated email if template compile/render fails
     }
   }
 

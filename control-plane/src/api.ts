@@ -187,7 +187,7 @@ app.get("/v1/email_campaigns/:id", async (req, res) => {
        FROM initiatives i
        LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
        WHERE i.id = $1 AND i.intent_type = 'email_campaign'`;
-    const minimalSelect = `SELECT i.id, i.title, i.created_at, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
+    const minimalSelect = `SELECT i.id, i.title, i.created_at, i.template_id, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
        FROM initiatives i
        LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
        WHERE i.id = $1 AND i.intent_type = 'email_campaign'`;
@@ -200,7 +200,7 @@ app.get("/v1/email_campaigns/:id", async (req, res) => {
         if (r.rows.length > 0) {
           const row = r.rows[0] as Record<string, unknown>;
           row.brand_profile_id = null;
-          row.template_id = null;
+          if (!("template_id" in row)) row.template_id = null;
         }
       } else throw e;
     }

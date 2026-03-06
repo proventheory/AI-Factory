@@ -180,12 +180,15 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   email_campaign: TEMPLATE_EMAIL_CAMPAIGN,
 };
 
-/** Load initiative; uses minimal columns so it works with core schema (no created_by/template_id). */
+/** Load initiative; includes template_id when present for email_campaign and other template-driven flows. */
 export async function loadInitiative(db: DbClient, initiativeId: string): Promise<Initiative | null> {
   const r = await db.query(
+    "SELECT id, intent_type, title, risk_level, created_at, template_id FROM initiatives WHERE id = $1",
+    [initiativeId]
+  ).catch(() => db.query(
     "SELECT id, intent_type, title, risk_level, created_at FROM initiatives WHERE id = $1",
     [initiativeId]
-  );
+  ));
   const row = r.rows[0] as Record<string, unknown> | undefined;
   if (!row) return null;
   return {

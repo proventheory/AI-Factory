@@ -44,6 +44,10 @@ function getProductsCache(): ProductsCache | null {
   return cache;
 }
 
+function normalizeSitemapUrl(url: string): string {
+  return (url || "").trim().replace(/\/+$/, "");
+}
+
 function setProductsCache(cache: ProductsCache) {
   setWizardState({ products_cache: cache });
 }
@@ -56,18 +60,20 @@ export default function EmailMarketingNewProductsPage() {
 
   const [sitemapUrl, setSitemapUrl] = useState(() => (state.sitemap_url as string) || "");
   const [sitemapType, setSitemapType] = useState(() => (state.sitemap_type as string) || "ecommerce");
+  const cacheMatchesUrl = (url: string, type: string, c: ProductsCache) =>
+    normalizeSitemapUrl(c.sitemap_url) === normalizeSitemapUrl(url) && c.sitemap_type === type;
   const [items, setItems] = useState<ProductItem[]>(() => {
     const cache = getProductsCache();
     const url = (state.sitemap_url as string) || "";
     const type = (state.sitemap_type as string) || "ecommerce";
-    if (cache && cache.sitemap_url === url && cache.sitemap_type === type) return cache.items;
+    if (cache && cacheMatchesUrl(url, type, cache)) return cache.items;
     return [];
   });
   const [totalAvailable, setTotalAvailable] = useState<number | null>(() => {
     const cache = getProductsCache();
     const url = (state.sitemap_url as string) || "";
     const type = (state.sitemap_type as string) || "ecommerce";
-    if (cache && cache.sitemap_url === url && cache.sitemap_type === type) return cache.totalAvailable;
+    if (cache && cacheMatchesUrl(url, type, cache)) return cache.totalAvailable;
     return null;
   });
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -77,12 +83,11 @@ export default function EmailMarketingNewProductsPage() {
     const cache = getProductsCache();
     const url = (state.sitemap_url as string) || "";
     const type = (state.sitemap_type as string) || "ecommerce";
-    if (cache && cache.sitemap_url === url && cache.sitemap_type === type) return cache.hasMore;
+    if (cache && cacheMatchesUrl(url, type, cache)) return cache.hasMore;
     return false;
   });
   const fetchProducts = useSitemapProducts();
   const hasPrefilled = useRef<string | null>(null);
-  const hasRestoredCache = useRef(false);
 
   // Prefill from brand tokens (overrides wizard state when brand has different url/type)
   useEffect(() => {
@@ -100,31 +105,31 @@ export default function EmailMarketingNewProductsPage() {
     if (sitemapTypeVal) setSitemapType(sitemapTypeVal);
   }, [brandId, brand?.design_tokens, brand?.id]);
 
-  // Restore cached products when sitemap URL/type match cache; clear when they don't
+  // Restore cached products when sitemap URL/type match cache (normalized); clear when they don't
   useEffect(() => {
     const cache = getProductsCache();
-    if (cache && cache.sitemap_url === sitemapUrl && cache.sitemap_type === sitemapType) {
-      if (!hasRestoredCache.current && cache.items.length > 0) {
-        hasRestoredCache.current = true;
+    if (!cache) return;
+    if (cacheMatchesUrl(sitemapUrl, sitemapType, cache)) {
+      if (cache.items.length > 0) {
         setItems(cache.items);
         setTotalAvailable(cache.totalAvailable);
         setHasMore(cache.hasMore);
       }
       return;
     }
-    if (cache && (cache.sitemap_url !== sitemapUrl || cache.sitemap_type !== sitemapType)) {
-      setItems([]);
-      setTotalAvailable(null);
-      setHasMore(false);
-    }
+    setItems([]);
+    setTotalAvailable(null);
+    setHasMore(false);
   }, [sitemapUrl, sitemapType]);
 
   const handleFetch = async (append = false) => {
-    if (!sitemapUrl.trim()) return;
+    const url = sitemapUrl.trim();
+    if (!url) return;
     const page = append ? Math.floor(items.length / PAGE_SIZE) + 1 : 1;
+    const normalizedUrl = normalizeSitemapUrl(url);
     try {
       const res = await fetchProducts.mutateAsync({
-        sitemap_url: sitemapUrl.trim(),
+        sitemap_url: url,
         sitemap_type: sitemapType,
         page,
         limit: PAGE_SIZE,
@@ -132,6 +137,10 @@ export default function EmailMarketingNewProductsPage() {
       const newItems = res.items ?? [];
       const total = typeof res.total === "number" ? res.total : null;
       const more = !!res.has_more || newItems.length >= PAGE_SIZE;
+      const cachePayload = {
+        sitemap_url: normalizedUrl,
+        sitemap_type: sitemapType,
+      };
       if (append) {
         const combined = [...items, ...newItems];
         setItems(combined);
@@ -139,8 +148,7 @@ export default function EmailMarketingNewProductsPage() {
           items: combined,
           totalAvailable: total ?? combined.length,
           hasMore: more,
-          sitemap_url: sitemapUrl.trim(),
-          sitemap_type: sitemapType,
+          ...cachePayload,
         });
       } else {
         setItems(newItems);
@@ -150,11 +158,11 @@ export default function EmailMarketingNewProductsPage() {
           items: newItems,
           totalAvailable: total,
           hasMore: more,
-          sitemap_url: sitemapUrl.trim(),
-          sitemap_type: sitemapType,
+          ...cachePayload,
         });
       }
       setHasMore(more);
+      setWizardState({ sitemap_url: normalizedUrl, sitemap_type: sitemapType });
     } catch (_e) {
       if (!append) {
         setItems([]);
@@ -163,7 +171,7 @@ export default function EmailMarketingNewProductsPage() {
           items: [],
           totalAvailable: null,
           hasMore: false,
-          sitemap_url: sitemapUrl.trim(),
+          sitemap_url: normalizedUrl,
           sitemap_type: sitemapType,
         });
       }

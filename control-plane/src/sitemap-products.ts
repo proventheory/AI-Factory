@@ -89,9 +89,8 @@ export async function fetchSitemapProducts(
   }
   const total = urlList.length;
 
-  const updateLimit = sitemap_type === "shopify" ? 100 : safeLimit;
-  const start = (safePage - 1) * updateLimit;
-  const paginated = urlList.slice(start, start + updateLimit);
+  const start = (safePage - 1) * safeLimit;
+  const paginated = urlList.slice(start, start + safeLimit);
   const has_more = start + paginated.length < urlList.length;
 
   const pattern = "products";
