@@ -3,5 +3,7 @@
 FROM ghcr.io/berriai/litellm:main-latest
 COPY gateway/config.yaml /app/config.yaml
 ENV LITELLM_CONFIG_PATH=/app/config.yaml
-EXPOSE 4000
-CMD ["litellm", "--config", "/app/config.yaml", "--port", "4000"]
+# Render sets PORT=10000; use it so the service listens where the load balancer sends traffic
+ENV PORT=10000
+EXPOSE 10000
+CMD ["sh", "-c", "litellm --config /app/config.yaml --port ${PORT}"]
