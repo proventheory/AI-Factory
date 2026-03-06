@@ -1000,8 +1000,8 @@ app.patch("/v1/artifacts/:id", async (req, res) => {
 
     await pool.query("UPDATE artifacts SET metadata_json = $1::jsonb WHERE id = $2", [JSON.stringify(nextMeta), id]);
     const updated = await pool.query("SELECT * FROM artifacts WHERE id = $1", [id]);
-    const row = updated.rows[0] as { run_id?: string };
-    if (process.env.NODE_ENV !== "test") console.info("[PATCH artifact]", { artifact_id: id, run_id: row?.run_id });
+    const updatedRow = updated.rows[0] as { run_id?: string };
+    if (process.env.NODE_ENV !== "test") console.info("[PATCH artifact]", { artifact_id: id, run_id: updatedRow?.run_id });
     res.json(updated.rows[0]);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
