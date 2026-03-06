@@ -119,6 +119,17 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
   const assetUrls = Array.isArray(dt.asset_urls)
     ? (dt.asset_urls as string[]).filter((u) => typeof u === "string" && u.trim() !== "")
     : [];
+  const rec = dt as Record<string, unknown>;
+  const sitemapUrlVal =
+    (typeof dt.sitemap_url === "string" ? dt.sitemap_url : null) ??
+    (typeof rec.brand_sitemap_url === "string" ? rec.brand_sitemap_url : null) ??
+    (typeof rec.email_sitemap_url === "string" ? rec.email_sitemap_url : "") ??
+    empty.sitemapUrl;
+  const sitemapTypeVal =
+    (typeof dt.sitemap_type === "string" ? dt.sitemap_type : null) ??
+    (typeof rec.brand_sitemap_type === "string" ? rec.brand_sitemap_type : null) ??
+    (typeof rec.email_sitemap_type === "string" ? rec.email_sitemap_type : "") ??
+    empty.sitemapType;
   return {
     primaryColor: brand?.["500"] ?? brand?.primary ?? empty.primaryColor,
     secondaryColor: brand?.["600"] ?? brand?.primary_dark ?? empty.secondaryColor,
@@ -127,8 +138,8 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
     logoUrl: logo?.url ?? (typeof dt.logo_url === "string" ? dt.logo_url : null) ?? empty.logoUrl,
     wordmarkBold: logo?.wordmark_bold ?? empty.wordmarkBold,
     wordmarkLight: logo?.wordmark_light ?? empty.wordmarkLight,
-    sitemapUrl: (typeof dt.sitemap_url === "string" ? dt.sitemap_url : null) ?? (typeof (dt as Record<string, unknown>).brand_sitemap_url === "string" ? (dt as Record<string, unknown>).brand_sitemap_url : null) ?? (typeof (dt as Record<string, unknown>).email_sitemap_url === "string" ? (dt as Record<string, unknown>).email_sitemap_url : "") ?? empty.sitemapUrl,
-    sitemapType: (typeof dt.sitemap_type === "string" ? dt.sitemap_type : null) ?? (typeof (dt as Record<string, unknown>).brand_sitemap_type === "string" ? (dt as Record<string, unknown>).brand_sitemap_type : null) ?? (typeof (dt as Record<string, unknown>).email_sitemap_type === "string" ? (dt as Record<string, unknown>).email_sitemap_type : "") ?? empty.sitemapType,
+    sitemapUrl: sitemapUrlVal,
+    sitemapType: sitemapTypeVal,
     socialMedia,
     contactInfo,
     assetUrls,

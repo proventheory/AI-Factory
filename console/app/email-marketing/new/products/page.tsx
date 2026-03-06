@@ -52,10 +52,14 @@ export default function EmailMarketingNewProductsPage() {
     if (hasPrefilled.current === brandId) return;
     hasPrefilled.current = brandId;
     const dt = brand.design_tokens as Record<string, unknown>;
-    const url = (typeof dt.sitemap_url === "string" ? dt.sitemap_url : null) ?? (typeof dt.brand_sitemap_url === "string" ? dt.brand_sitemap_url : null) ?? (typeof (dt as Record<string, unknown>).email_sitemap_url === "string" ? (dt as Record<string, unknown>).email_sitemap_url : "") ?? "";
-    const type = (typeof dt.sitemap_type === "string" ? dt.sitemap_type : null) ?? (typeof dt.brand_sitemap_type === "string" ? dt.brand_sitemap_type : null) ?? (typeof (dt as Record<string, unknown>).email_sitemap_type === "string" ? (dt as Record<string, unknown>).email_sitemap_type : "") ?? "ecommerce";
+    const rawUrl =
+      dt.sitemap_url ?? dt.brand_sitemap_url ?? (dt as Record<string, unknown>).email_sitemap_url;
+    const rawType =
+      dt.sitemap_type ?? dt.brand_sitemap_type ?? (dt as Record<string, unknown>).email_sitemap_type;
+    const url = typeof rawUrl === "string" ? rawUrl : "";
+    const sitemapTypeVal = typeof rawType === "string" ? rawType : "ecommerce";
     if (url) setSitemapUrl(url);
-    if (type) setSitemapType(type);
+    if (sitemapTypeVal) setSitemapType(sitemapTypeVal);
   }, [brandId, brand?.design_tokens, brand?.id]);
 
   const handleFetch = async (append = false) => {
