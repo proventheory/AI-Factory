@@ -101,15 +101,17 @@ export default function EmailMarketingNewGeneratePage() {
         await new Promise((r) => setTimeout(r, 2000));
         const status = await getRunStatus(runId);
         if (status.status === "succeeded") {
-          // Poll artifacts with retries (handles replication lag / eventual consistency)
-          let items: ArtifactRow[] = [];
-          for (let attempt = 0; attempt < 3; attempt++) {
-            if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 1500));
+          setStep("Loading email preview…");
+          // Give runner time to commit; then poll artifacts (handles replication lag / eventual consistency)
+          await new Promise((r) => setTimeout(r, 2500));
+          for (let attempt = 0; attempt < 8; attempt++) {
+            if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
             const res = await getRunArtifacts(runId);
-            items = res.items ?? [];
-            const emailArtifact = items.find(
+            const items = res.items ?? [];
+            let emailArtifact = items.find(
               (a) => a.artifact_type === "email_template" || a.artifact_class === "email_template"
             );
+            if (!emailArtifact?.id && items.length === 1) emailArtifact = items[0];
             if (emailArtifact?.id) {
               clearWizardState();
               router.push(`/email-marketing/runs/${runId}/artifacts/${emailArtifact.id}/edit`);

@@ -91,11 +91,21 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "control-plane" });
 });
 
-/** GET /health/db — check DB connectivity */
+/** GET /health/db — check DB connectivity; returns safe database_hint (host/port) so you can verify Control Plane and Runner use the same DB */
 app.get("/health/db", async (_req, res) => {
   try {
     await pool.query("SELECT 1");
-    res.json({ status: "ok", db: "connected" });
+    const url = process.env.DATABASE_URL;
+    let database_hint: { host?: string; port?: string } | undefined;
+    if (url && typeof url === "string") {
+      try {
+        const u = new URL(url.replace(/^postgres:\/\//, "postgresql://"));
+        database_hint = { host: u.hostname || undefined, port: u.port || undefined };
+      } catch {
+        database_hint = { host: "(parse error)" };
+      }
+    }
+    res.json({ status: "ok", db: "connected", database_hint });
   } catch (e) {
     res.status(503).json({ status: "error", db: String((e as Error).message) });
   }

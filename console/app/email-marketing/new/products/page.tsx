@@ -37,19 +37,37 @@ type ProductsCache = {
   sitemap_type: string;
 };
 
-function getProductsCache(): ProductsCache | null {
+/** Per-brand cache so one brand's sitemap/products never leak to another. */
+function getProductsCacheForBrand(brandId: string | undefined): ProductsCache | null {
+  if (!brandId) return null;
   const state = getWizardState();
-  const cache = state.products_cache as ProductsCache | undefined;
+  const byBrand = (state.products_cache_by_brand ?? migrateLegacyCache(state)) as Record<string, ProductsCache> | undefined;
+  const cache = byBrand?.[brandId];
   if (!cache || !Array.isArray(cache.items)) return null;
   return cache;
+}
+
+/** Migrate legacy single cache into per-brand map (one-time). */
+function migrateLegacyCache(state: Record<string, unknown>): Record<string, ProductsCache> | undefined {
+  const byBrand = state.products_cache_by_brand as Record<string, ProductsCache> | undefined;
+  if (byBrand && typeof byBrand === "object") return byBrand;
+  const legacy = state.products_cache as ProductsCache | undefined;
+  const legacyBrandId = state.wizard_sitemap_brand_id as string | undefined;
+  if (legacy && Array.isArray(legacy.items) && legacyBrandId) {
+    return { [legacyBrandId]: legacy };
+  }
+  return undefined;
 }
 
 function normalizeSitemapUrl(url: string): string {
   return (url || "").trim().replace(/\/+$/, "");
 }
 
-function setProductsCache(cache: ProductsCache, brandId?: string) {
-  setWizardState({ products_cache: cache, wizard_sitemap_brand_id: brandId ?? getWizardState().wizard_sitemap_brand_id });
+function setProductsCache(cache: ProductsCache, brandId: string) {
+  if (!brandId) return;
+  const state = getWizardState();
+  const byBrand = (migrateLegacyCache(state) ?? state.products_cache_by_brand ?? {}) as Record<string, ProductsCache>;
+  setWizardState({ products_cache_by_brand: { ...byBrand, [brandId]: cache } });
 }
 
 export default function EmailMarketingNewProductsPage() {
@@ -58,107 +76,51 @@ export default function EmailMarketingNewProductsPage() {
   const brandId = state.brand_profile_id as string | undefined;
   const { data: brand } = useBrandProfile(brandId ?? null);
 
-  const [sitemapUrl, setSitemapUrl] = useState(() => (state.sitemap_url as string) || "");
-  const [sitemapType, setSitemapType] = useState(() => (state.sitemap_type as string) || "ecommerce");
   const cacheMatchesUrl = (url: string, type: string, c: ProductsCache) =>
     normalizeSitemapUrl(c.sitemap_url) === normalizeSitemapUrl(url) && c.sitemap_type === type;
-  const [items, setItems] = useState<ProductItem[]>(() => {
-    const cache = getProductsCache();
-    const url = (state.sitemap_url as string) || "";
-    const type = (state.sitemap_type as string) || "ecommerce";
-    if (cache && cacheMatchesUrl(url, type, cache)) return cache.items;
-    return [];
-  });
-  const [totalAvailable, setTotalAvailable] = useState<number | null>(() => {
-    const cache = getProductsCache();
-    const url = (state.sitemap_url as string) || "";
-    const type = (state.sitemap_type as string) || "ecommerce";
-    if (cache && cacheMatchesUrl(url, type, cache)) return cache.totalAvailable;
-    return null;
-  });
+
+  const [sitemapUrl, setSitemapUrl] = useState("");
+  const [sitemapType, setSitemapType] = useState("ecommerce");
+  const [items, setItems] = useState<ProductItem[]>([]);
+  const [totalAvailable, setTotalAvailable] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
-  const [hasMore, setHasMore] = useState(() => {
-    const cache = getProductsCache();
-    const url = (state.sitemap_url as string) || "";
-    const type = (state.sitemap_type as string) || "ecommerce";
-    if (cache && cacheMatchesUrl(url, type, cache)) return cache.hasMore;
-    return false;
-  });
+  const [hasMore, setHasMore] = useState(false);
   const fetchProducts = useSitemapProducts();
-  const hasPrefilled = useRef<string | null>(null);
+  const hasLoadedForBrand = useRef<string | null>(null);
 
-  // When brand changes, clear sitemap/cache from a previous brand so we don't show another brand's URL/products
+  // Single source of truth: when brand (or brand data) changes, load this brand's sitemap/products from its cache or prefill from design_tokens
   useEffect(() => {
-    const state = getWizardState();
-    const cacheBrandId = state.wizard_sitemap_brand_id as string | undefined;
-    if (!brandId || !cacheBrandId || cacheBrandId === brandId) return;
-    setWizardState({
-      sitemap_url: "",
-      sitemap_type: "ecommerce",
-      products_cache: undefined,
-      wizard_sitemap_brand_id: undefined,
-    });
-    setSitemapUrl("");
-    setSitemapType("ecommerce");
-    setItems([]);
-    setTotalAvailable(null);
-    setHasMore(false);
-    setSelected(new Set());
-    hasPrefilled.current = null;
-  }, [brandId]);
-
-  // Prefill from brand tokens only when wizard has no sitemap yet (first visit); otherwise keep wizard state so cache restore works
-  useEffect(() => {
-    if (!brandId || !brand?.design_tokens || typeof brand.design_tokens !== "object") return;
-    if (hasPrefilled.current === brandId) return;
-    const state = getWizardState();
-    const cacheBrand = state.wizard_sitemap_brand_id as string | undefined;
-    if (cacheBrand != null && cacheBrand !== brandId) return;
-    const existingUrl = (state.sitemap_url as string)?.trim() || "";
-    const cache = state.products_cache as ProductsCache | undefined;
-    if (existingUrl || (cache && Array.isArray(cache.items) && cache.items.length > 0)) {
-      hasPrefilled.current = brandId;
+    if (!brandId) return;
+    const cache = getProductsCacheForBrand(brandId);
+    if (cache && cache.items.length > 0) {
+      setSitemapUrl(cache.sitemap_url || "");
+      setSitemapType(cache.sitemap_type || "ecommerce");
+      setItems(cache.items);
+      setTotalAvailable(cache.totalAvailable);
+      setHasMore(cache.hasMore);
+      setSelected(new Set());
+      hasLoadedForBrand.current = brandId;
       return;
     }
-    hasPrefilled.current = brandId;
+    if (!brand?.design_tokens || typeof brand.design_tokens !== "object") return;
+    if (hasLoadedForBrand.current === brandId) return;
     const dt = brand.design_tokens as Record<string, unknown>;
     const rawUrl =
       dt.sitemap_url ?? dt.brand_sitemap_url ?? (dt as Record<string, unknown>).email_sitemap_url;
     const rawType =
       dt.sitemap_type ?? dt.brand_sitemap_type ?? (dt as Record<string, unknown>).email_sitemap_type;
     const url = typeof rawUrl === "string" ? rawUrl : "";
-    const sitemapTypeVal = typeof rawType === "string" ? rawType : "ecommerce";
-    if (url) setSitemapUrl(url);
-    if (sitemapTypeVal) setSitemapType(sitemapTypeVal);
-    setWizardState({ wizard_sitemap_brand_id: brandId });
-  }, [brandId, brand?.design_tokens, brand?.id]);
-
-  // Restore cached products when sitemap URL/type match cache AND cache is for current brand; if we have cache but url is empty (e.g. SSR/hydration), rehydrate from cache only if same brand
-  useEffect(() => {
-    const state = getWizardState();
-    if (brandId && (state.wizard_sitemap_brand_id as string) !== brandId) return;
-    const cache = getProductsCache();
-    if (!cache || !cache.items.length) return;
-    if (cacheMatchesUrl(sitemapUrl, sitemapType, cache)) {
-      setItems(cache.items);
-      setTotalAvailable(cache.totalAvailable);
-      setHasMore(cache.hasMore);
-      return;
-    }
-    if (!sitemapUrl.trim()) {
-      setSitemapUrl(cache.sitemap_url || "");
-      setSitemapType(cache.sitemap_type || "ecommerce");
-      setItems(cache.items);
-      setTotalAvailable(cache.totalAvailable);
-      setHasMore(cache.hasMore);
-      return;
-    }
+    const typeVal = typeof rawType === "string" ? rawType : "ecommerce";
+    setSitemapUrl(url);
+    setSitemapType(typeVal);
     setItems([]);
     setTotalAvailable(null);
     setHasMore(false);
-  }, [brandId, sitemapUrl, sitemapType]);
+    setSelected(new Set());
+    hasLoadedForBrand.current = brandId;
+  }, [brandId, brand?.design_tokens, brand?.id]);
 
   const handleFetch = async (append = false) => {
     const url = sitemapUrl.trim();
@@ -182,36 +144,39 @@ export default function EmailMarketingNewProductsPage() {
       if (append) {
         const combined = [...items, ...newItems];
         setItems(combined);
-        setProductsCache({
-          items: combined,
-          totalAvailable: total ?? combined.length,
-          hasMore: more,
-          ...cachePayload,
-        }, brandId);
+        if (brandId) {
+          setProductsCache(
+            { items: combined, totalAvailable: total ?? combined.length, hasMore: more, ...cachePayload },
+            brandId
+          );
+        }
       } else {
         setItems(newItems);
         setSelected(new Set());
         setTotalAvailable(total);
-        setProductsCache({
-          items: newItems,
-          totalAvailable: total,
-          hasMore: more,
-          ...cachePayload,
-        }, brandId);
+        if (brandId) {
+          setProductsCache(
+            { items: newItems, totalAvailable: total ?? null, hasMore: more, ...cachePayload },
+            brandId
+          );
+        }
       }
       setHasMore(more);
-      setWizardState({ sitemap_url: normalizedUrl, sitemap_type: sitemapType, wizard_sitemap_brand_id: brandId ?? undefined });
+      setWizardState({ sitemap_url: normalizedUrl, sitemap_type: sitemapType });
     } catch (_e) {
-      if (!append) {
+      if (!append && brandId) {
         setItems([]);
         setTotalAvailable(null);
-        setProductsCache({
-          items: [],
-          totalAvailable: null,
-          hasMore: false,
-          sitemap_url: normalizedUrl,
-          sitemap_type: sitemapType,
-        }, brandId);
+        setProductsCache(
+          {
+            items: [],
+            totalAvailable: null,
+            hasMore: false,
+            sitemap_url: normalizedUrl,
+            sitemap_type: sitemapType,
+          },
+          brandId
+        );
       }
       setHasMore(false);
     }

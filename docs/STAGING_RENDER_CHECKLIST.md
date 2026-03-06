@@ -61,6 +61,49 @@ If you use a separate **llm-gateway** service, keep `https://llm-gateway.onrende
 
 ---
 
+## "No artifacts" even though runner uses same Supabase — verify same DB
+
+If the run **succeeds** but the Artifacts tab is empty and the message says "ensure a runner is connected to the same database as the Control Plane", the runner and Control Plane must both talk to the **exact same** database. Same Supabase project is not enough: both services must use the **same connection string** (same host, e.g. session pooler).
+
+**1. Check Control Plane DB hint**
+
+```bash
+curl -s https://ai-factory-api-staging.onrender.com/health/db
+```
+
+You should see something like:
+
+```json
+{ "status": "ok", "db": "connected", "database_hint": { "host": "aws-1-us-east-1.pooler.supabase.com", "port": "5432" } }
+```
+
+**2. Compare with runner**
+
+In Render → **ai-factory-runner-staging** → Environment → `DATABASE_URL`. The URL’s **host** (and port) must match the Control Plane’s `database_hint`. For project `anqhihkvovuhfzsyqtxu` with session pooler you expect:
+
+- Host: `aws-1-us-east-1.pooler.supabase.com`
+- Port: `5432`
+
+If the Control Plane’s `database_hint` is different (e.g. another host or port), then **ai-factory-api-staging** is using a different database. Set its `DATABASE_URL` in Render to the **same** value as the runner’s (same Supabase project, same pooler), save, and let it redeploy.
+
+**3. Optional — confirm artifact in DB**
+
+After a run that “succeeded” with no artifacts in the UI, open Supabase → SQL Editor and run:
+
+```sql
+SELECT id, run_id, artifact_type, created_at FROM artifacts WHERE run_id = '9de6dbf0-2583-4bec-8187-59b7c2c31519' ORDER BY created_at;
+```
+
+Replace the UUID with your actual run id (from the run detail URL, e.g. `/runs/9de6dbf0-...`). If you see a row, the runner wrote to this DB but the API might not be returning it. If you see no rows, the runner did not write — check Render logs for **ai-factory-runner-staging** for that run_id.
+
+To list recent runs and artifact counts (runs table has `started_at`, not `created_at`):
+
+```sql
+SELECT r.id AS run_id, r.status, r.started_at, (SELECT count(*) FROM artifacts a WHERE a.run_id = r.id) AS artifact_count FROM runs r ORDER BY r.started_at DESC NULLS LAST LIMIT 20;
+```
+
+---
+
 ## Is https://llm-gateway.onrender.com needed?
 
 - **This repo:** The blueprint defines **ai-factory-gateway-staging** (`https://ai-factory-gateway-staging.onrender.com`). That service uses LiteLLM (Dockerfile.gateway) and exposes `/health` and `/health/readiness`; use it for runner `LLM_GATEWAY_URL` and for health checks.
