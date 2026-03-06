@@ -18,6 +18,8 @@ You do **not** need to run anything on your laptop, and you do **not** need AWS.
 
 Flow: Console (Vercel) → API (Render) creates run + jobs → **Runner (Render worker)** claims jobs, runs them, writes artifacts → you see **Open preview** in the Console.
 
+**Redeploy after nav or API changes:** If you change `console/src/config/nav.ts` or `control-plane/src/api.ts`, the live app will not update until you redeploy. **Console:** Vercel → Project → Deployments → use the latest deployment from `main` (or trigger Redeploy). **Control Plane:** Render → your API service → Manual Deploy (or ensure auto-deploy from `main` is on). Until both are redeployed, you may still see old nav (e.g. Email Marketing under OTHER) or API errors (e.g. `column i.status does not exist`).
+
 So the fix when you see “No artifacts” and “A runner must be running…” is: **deploy and run the Runner on Render** (same DB as the API), with the env vars below. The Blueprint in `render.yaml` already defines `ai-factory-runner-staging`; ensure that worker exists, is running, and has `DATABASE_URL`, `CONTROL_PLANE_URL`, and `LLM_GATEWAY_URL` or `OPENAI_API_KEY` set in the Render dashboard.
 
 **Checklist — landing page flow in staging (no local, no AWS):**
