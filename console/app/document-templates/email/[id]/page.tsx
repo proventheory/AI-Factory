@@ -61,7 +61,7 @@ export default function EmailTemplateDetailPage() {
       <Stack>
         <PageHeader
           title={template.name}
-          description={`Type: ${template.type}${template.brand_profile_id ? ` · Brand: ${brandName}` : " · Global"}`}
+          description={`Email template · Style: ${template.type}${template.brand_profile_id ? ` · Brand: ${brandName}` : " · Global"}`}
           actions={
             <div className="flex gap-2">
               <Button variant="primary" asChild>
@@ -80,8 +80,8 @@ export default function EmailTemplateDetailPage() {
               <dd className="font-medium">{template.name}</dd>
             </div>
             <div>
-              <dt className="text-text-secondary">Type</dt>
-              <dd className="font-medium">{template.type}</dd>
+              <dt className="text-text-secondary">Layout style</dt>
+              <dd className="font-medium">{template.type} (email template)</dd>
             </div>
             <div>
               <dt className="text-text-secondary">Brand</dt>

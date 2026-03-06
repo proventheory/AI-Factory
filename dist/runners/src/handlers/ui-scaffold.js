@@ -1,5 +1,5 @@
 import { loadBrandContext, brandContextToDesignTokens } from "../brand-context.js";
-import { tokens } from "../../../packages/ui/src/tokens.js";
+import { tokens } from "../tokens.js";
 export async function handleUiScaffold(request) {
     const brandCtx = request.initiative_id ? await loadBrandContext(request.initiative_id) : null;
     const merged = brandCtx ? brandContextToDesignTokens(brandCtx, tokens) : tokens;

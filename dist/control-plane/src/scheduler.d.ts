@@ -15,6 +15,8 @@ export interface CreateRunParams {
     routingRuleId?: string;
     promptTemplateVersion?: string;
     adapterContractVersion?: string;
+    /** 'gateway' = use LLM_GATEWAY_URL; 'openai_direct' = use OPENAI_API_KEY on runner. Default 'gateway'. */
+    llmSource?: "gateway" | "openai_direct" | null;
 }
 export declare function createRun(db: DbClient, params: CreateRunParams): Promise<string>;
 /**

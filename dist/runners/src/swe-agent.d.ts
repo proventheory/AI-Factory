@@ -12,6 +12,7 @@ export interface SweAgentInput {
     issue_text?: string;
     repo_url?: string;
     workspace_path?: string;
+    llm_source?: "gateway" | "openai_direct";
 }
 export interface SweAgentOutput {
     patch: string;

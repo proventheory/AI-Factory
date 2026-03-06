@@ -603,9 +603,16 @@ export async function getEmailTemplate(id: string): Promise<EmailTemplateRow> {
   return res.json();
 }
 
-/** URL for HTML preview of an email template (for iframe src). */
+/** URL for HTML preview of an email template. */
 export function getEmailTemplatePreviewUrl(id: string): string {
   return `${API}/v1/email_templates/${id}/preview`;
+}
+
+/** Fetch rendered HTML for template preview (use in iframe srcdoc to avoid cross-origin issues). */
+export async function fetchEmailTemplatePreviewHtml(id: string): Promise<string> {
+  const res = await fetch(getEmailTemplatePreviewUrl(id));
+  if (!res.ok) throw new Error(await res.text());
+  return res.text();
 }
 
 // -- Brand Engine --

@@ -21,6 +21,8 @@ export interface JobContext {
     human_feedback: string | null;
     predecessor_artifact_ids: string[];
     predecessor_artifacts: PredecessorArtifact[];
+    /** 'gateway' = use LLM_GATEWAY_URL; 'openai_direct' = use OPENAI_API_KEY. Default 'gateway'. */
+    llm_source: "gateway" | "openai_direct";
     /** Optional phase/config for quality gate and other handlers. */
     config?: {
         phase?: string;

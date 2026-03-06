@@ -1,20 +1,87 @@
 import express from "express";
 import cors from "cors";
+import * as Sentry from "@sentry/node";
 import { v4 as uuid } from "uuid";
+import mjml2html from "mjml";
 import { pool, withTransaction } from "./db.js";
 import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
-import { executeRollback } from "./release-manager.js";
+import { executeRollback, routeRun } from "./release-manager.js";
+import { triggerNoArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
+import { fetchSitemapProducts } from "./sitemap-products.js";
+import { tokenizeBrandFromUrl } from "./brand-tokenize-from-url.js";
 const app = express();
-app.use(cors({ origin: process.env.CORS_ORIGIN ?? "*" }));
+// CORS: allow comma-separated origins (e.g. multiple Vercel URLs) or "*"
+const corsOrigin = process.env.CORS_ORIGIN ?? "*";
+const allowedOrigins = corsOrigin === "*" ? "*" : corsOrigin.split(",").map((s) => s.trim()).filter(Boolean);
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
-/** RBAC stub: resolve role from header or JWT. In production use Supabase Auth + custom claim. */
+/** DB enum risk_level is 'low' | 'med' | 'high'. Normalize 'medium' -> 'med' so old clients never break. */
+function normalizeRiskLevel(s) {
+    if (s === "medium")
+        return "med";
+    if (s === "low" || s === "med" || s === "high")
+        return s;
+    return "med";
+}
+/** RBAC stub: resolve role from header or JWT. In production use Supabase Auth + custom claim. Default operator so Console can compile/start without auth. */
 function getRole(_req) {
     const role = _req.headers["x-role"];
     if (role === "admin" || role === "approver" || role === "operator" || role === "viewer")
         return role;
-    return "viewer";
+    return "operator";
+}
+/** Flatten design_tokens for brand_design_tokens_flat. Returns { path, value_text, value_json, type, group }[] */
+function flattenDesignTokens(obj, prefix = "") {
+    const out = [];
+    if (obj == null)
+        return out;
+    const group = prefix ? prefix.split(".")[0] : "";
+    if (typeof obj === "string") {
+        out.push({ path: prefix, value_text: obj, value_json: null, type: "string", group });
+        return out;
+    }
+    if (typeof obj === "number" || typeof obj === "boolean") {
+        out.push({ path: prefix, value_text: String(obj), value_json: obj, type: typeof obj, group });
+        return out;
+    }
+    if (Array.isArray(obj)) {
+        out.push({ path: prefix, value_text: null, value_json: obj, type: "array", group });
+        return out;
+    }
+    if (typeof obj === "object") {
+        for (const [k, v] of Object.entries(obj)) {
+            out.push(...flattenDesignTokens(v, prefix ? `${prefix}.${k}` : k));
+        }
+    }
+    return out;
+}
+/** Sync design_tokens to brand_design_tokens_flat. No-op if table does not exist. */
+async function syncDesignTokensFlat(brandId, designTokens) {
+    const flat = flattenDesignTokens(designTokens);
+    if (flat.length === 0)
+        return;
+    try {
+        await pool.query("DELETE FROM brand_design_tokens_flat WHERE brand_id = $1", [brandId]);
+        for (const row of flat) {
+            await pool.query(`INSERT INTO brand_design_tokens_flat (brand_id, path, value, value_json, type, "group", updated_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, now())
+         ON CONFLICT (brand_id, path) DO UPDATE SET value = $3, value_json = $4::jsonb, type = $5, "group" = $6, updated_at = now()`, [
+                brandId,
+                row.path,
+                row.value_text,
+                row.value_json != null ? JSON.stringify(row.value_json) : null,
+                row.type,
+                row.group || "root",
+            ]);
+        }
+    }
+    catch (e) {
+        if (e.code !== "42P01")
+            throw e;
+        // 42P01 = undefined_table; ignore if migration not run
+    }
 }
 /** GET /health */
 app.get("/health", (_req, res) => {
@@ -84,6 +151,169 @@ app.get("/v1/initiatives/:id", async (req, res) => {
         res.status(500).json({ error: String(e.message) });
     }
 });
+/** GET /v1/email_campaigns — list initiatives with intent_type = email_campaign + metadata */
+app.get("/v1/email_campaigns", async (req, res) => {
+    try {
+        const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+        const offset = Number(req.query.offset) || 0;
+        const r = await pool.query(`SELECT i.id, i.title, i.intent_type, i.risk_level, i.created_at,
+              m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.audience_segment_ref, m.updated_at AS metadata_updated_at
+       FROM initiatives i
+       LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
+       WHERE i.intent_type = 'email_campaign'
+       ORDER BY i.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+        res.json({ items: r.rows, limit, offset });
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** GET /v1/email_campaigns/:id — single email campaign (initiative + metadata) */
+app.get("/v1/email_campaigns/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        const fullSelect = `SELECT i.id, i.title, i.created_at, i.brand_profile_id, i.template_id, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
+       FROM initiatives i
+       LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
+       WHERE i.id = $1 AND i.intent_type = 'email_campaign'`;
+        const minimalSelect = `SELECT i.id, i.title, i.created_at, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
+       FROM initiatives i
+       LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
+       WHERE i.id = $1 AND i.intent_type = 'email_campaign'`;
+        let r;
+        try {
+            r = await pool.query(fullSelect, [id]);
+        }
+        catch (e) {
+            if (e.code === "42703" || String(e.message).includes("brand_profile_id")) {
+                r = await pool.query(minimalSelect, [id]);
+                if (r.rows.length > 0) {
+                    const row = r.rows[0];
+                    row.brand_profile_id = null;
+                    row.template_id = null;
+                }
+            }
+            else
+                throw e;
+        }
+        if (r.rows.length === 0)
+            return res.status(404).json({ error: "Not found" });
+        res.json(r.rows[0]);
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** POST /v1/email_campaigns — create initiative (email_campaign) + optional metadata */
+app.post("/v1/email_campaigns", async (req, res) => {
+    try {
+        const role = getRole(req);
+        if (role === "viewer")
+            return res.status(403).json({ error: "Forbidden" });
+        const body = req.body;
+        const id = uuid();
+        const err = (e) => e.code === "42703" || String(e.message).includes("brand_profile_id");
+        try {
+            await pool.query(`INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, 'med', $3, $4)`, [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null]);
+        }
+        catch (e) {
+            if (err(e)) {
+                await pool.query(`INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, 'med')`, [id, body.title ?? "New email campaign"]);
+            }
+            else
+                throw e;
+        }
+        await pool.query(`INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email, template_artifact_id, metadata_json) VALUES ($1, $2, $3, $4, $5, $6::jsonb)`, [
+            id,
+            body.subject_line ?? null,
+            body.from_name ?? null,
+            body.from_email ?? null,
+            body.template_artifact_id ?? null,
+            body.metadata_json != null ? JSON.stringify(body.metadata_json) : null,
+        ]);
+        const r = await pool.query(`SELECT i.id, i.title, i.created_at, m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.metadata_json
+       FROM initiatives i LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id WHERE i.id = $1`, [id]);
+        const row = r.rows[0];
+        res.status(201).json({ ...row, brand_profile_id: body.brand_profile_id ?? null, template_id: body.template_id ?? null });
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** PATCH /v1/email_campaigns/:id — update campaign metadata (upsert) */
+app.patch("/v1/email_campaigns/:id", async (req, res) => {
+    try {
+        const role = getRole(req);
+        if (role === "viewer")
+            return res.status(403).json({ error: "Forbidden" });
+        const id = req.params.id;
+        const exists = await pool.query("SELECT id FROM initiatives WHERE id = $1 AND intent_type = 'email_campaign'", [id]);
+        if (exists.rows.length === 0)
+            return res.status(404).json({ error: "Not found" });
+        const body = req.body;
+        const allowed = [
+            "subject_line",
+            "from_name",
+            "from_email",
+            "reply_to",
+            "audience_segment_ref",
+            "template_artifact_id",
+            "metadata_json",
+        ];
+        const updates = [];
+        const params = [id];
+        let i = 2;
+        for (const field of allowed) {
+            if (body[field] !== undefined) {
+                if (field === "metadata_json") {
+                    updates.push(`metadata_json = $${i++}::jsonb`);
+                }
+                else {
+                    updates.push(`${field} = $${i++}`);
+                }
+                params.push(field === "metadata_json" && body[field] != null ? JSON.stringify(body[field]) : body[field]);
+            }
+        }
+        updates.push("updated_at = now()");
+        const r = await pool.query(`INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email)
+       VALUES ($1, null, null, null)
+       ON CONFLICT (initiative_id) DO UPDATE SET ${updates.join(", ")}
+       RETURNING *`, params);
+        res.json(r.rows[0]);
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** POST /v1/sitemap/products — fetch products from sitemap URL (port from email-marketing-factory campaigns route) */
+app.post("/v1/sitemap/products", async (req, res) => {
+    try {
+        const body = req.body;
+        const sitemap_url = body.sitemap_url;
+        const sitemap_type = body.sitemap_type;
+        if (!sitemap_url || !sitemap_type) {
+            return res.status(400).json({ error: "sitemap_url and sitemap_type are required" });
+        }
+        const allowedTypes = ["drupal", "ecommerce", "bigcommerce", "shopify"];
+        if (!allowedTypes.includes(sitemap_type)) {
+            return res.status(400).json({
+                error: `sitemap_type must be one of: ${allowedTypes.join(", ")}`,
+            });
+        }
+        const page = Math.max(1, Number(body.page) || 1);
+        const limit = Math.min(100, Math.max(1, Number(body.limit) || 20));
+        const result = await fetchSitemapProducts({
+            sitemap_url,
+            sitemap_type,
+            page,
+            limit,
+        });
+        res.json(result);
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
 /** PATCH /v1/initiatives/:id — update initiative (Operator+) */
 app.patch("/v1/initiatives/:id", async (req, res) => {
     try {
@@ -91,7 +321,7 @@ app.patch("/v1/initiatives/:id", async (req, res) => {
         if (role === "viewer")
             return res.status(403).json({ error: "Forbidden" });
         const body = req.body;
-        const allowed = ["intent_type", "title", "risk_level", "goal_state", "source_ref", "template_id", "priority"];
+        const allowed = ["intent_type", "title", "risk_level", "goal_state", "source_ref", "template_id", "priority", "brand_profile_id"];
         const sets = [];
         const params = [];
         let i = 1;
@@ -99,11 +329,12 @@ app.patch("/v1/initiatives/:id", async (req, res) => {
             if (body[field] !== undefined) {
                 if (field === "risk_level") {
                     sets.push(`${field} = $${i++}::risk_level`);
+                    params.push(normalizeRiskLevel(body[field]));
                 }
                 else {
                     sets.push(`${field} = $${i++}`);
+                    params.push(body[field]);
                 }
-                params.push(body[field]);
             }
         }
         if (sets.length === 0)
@@ -122,20 +353,21 @@ app.patch("/v1/initiatives/:id", async (req, res) => {
 app.post("/v1/initiatives", async (req, res) => {
     try {
         const body = req.body;
-        const { intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority } = body;
+        const { intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority, brand_profile_id } = body;
         if (!intent_type || !risk_level)
             return res.status(400).json({ error: "intent_type and risk_level required" });
-        const r = await pool.query(`INSERT INTO initiatives (intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority)
-       VALUES ($1,$2,$3::risk_level,$4,$5,$6::jsonb,$7,$8,$9) RETURNING *`, [
-            intent_type, title ?? null, risk_level, created_by ?? null,
-            goal_state ?? null, goal_metadata ? JSON.stringify(goal_metadata) : null, source_ref ?? null, template_id ?? null, priority ?? 0,
+        const rl = normalizeRiskLevel(risk_level);
+        const r = await pool.query(`INSERT INTO initiatives (intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority, brand_profile_id)
+       VALUES ($1,$2,$3::risk_level,$4,$5,$6::jsonb,$7,$8,$9,$10) RETURNING *`, [
+            intent_type, title ?? null, rl, created_by ?? null,
+            goal_state ?? null, goal_metadata ? JSON.stringify(goal_metadata) : null, source_ref ?? null, template_id ?? null, priority ?? 0, brand_profile_id ?? null,
         ]);
         res.status(201).json(r.rows[0]);
     }
     catch (e) {
         const err = e;
         if (err.code === "42703") {
-            return pool.query(`INSERT INTO initiatives (intent_type, title, risk_level, created_by) VALUES ($1,$2,$3::risk_level,$4) RETURNING *`, [req.body.intent_type, req.body.title ?? null, req.body.risk_level, req.body.created_by ?? null]).then(r => res.status(201).json(r.rows[0])).catch(e2 => res.status(500).json({ error: String(e2.message) }));
+            return pool.query(`INSERT INTO initiatives (intent_type, title, risk_level, created_by) VALUES ($1,$2,$3::risk_level,$4) RETURNING *`, [req.body.intent_type, req.body.title ?? null, normalizeRiskLevel(req.body.risk_level), req.body.created_by ?? null]).then(r => res.status(201).json(r.rows[0])).catch(e2 => res.status(500).json({ error: String(e2.message) }));
         }
         res.status(500).json({ error: String(e.message) });
     }
@@ -199,18 +431,28 @@ app.get("/v1/runs", async (req, res) => {
             conditions.push(`r.cohort = $${i++}`);
             params.push(cohort);
         }
+        const intent_type = req.query.intent_type;
+        if (intent_type) {
+            conditions.push(`i.intent_type = $${i++}`);
+            params.push(intent_type);
+        }
         params.push(limit, offset);
+        const limitIdx = params.length - 1;
+        const offsetIdx = params.length;
         const q = `
       WITH fail AS (
         SELECT run_id, max(error_signature) FILTER (WHERE status = 'failed') AS top_error_signature,
                count(*) FILTER (WHERE status = 'failed')::int AS failures_count
         FROM job_runs GROUP BY run_id
       )
-      SELECT r.*, f.top_error_signature, f.failures_count
-      FROM runs r LEFT JOIN fail f ON f.run_id = r.id
+      SELECT r.*, f.top_error_signature, f.failures_count, i.intent_type, i.title AS initiative_title, i.id AS initiative_id
+      FROM runs r
+      LEFT JOIN fail f ON f.run_id = r.id
+      LEFT JOIN plans p ON p.id = r.plan_id
+      LEFT JOIN initiatives i ON i.id = p.initiative_id
       WHERE ${conditions.join(" AND ")}
       ORDER BY r.started_at DESC NULLS LAST
-      LIMIT $${i} OFFSET $${i + 1}
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `;
         const r = await pool.query(q, params);
         res.json({ items: r.rows, limit, offset });
@@ -219,21 +461,22 @@ app.get("/v1/runs", async (req, res) => {
         res.status(500).json({ error: String(e.message) });
     }
 });
-/** GET /v1/runs/:id — full flight recorder (run + plan + node_progress + job_runs + tool_calls + events) */
+/** GET /v1/runs/:id — full flight recorder (run + plan + node_progress + job_runs + artifacts + events) */
 app.get("/v1/runs/:id", async (req, res) => {
     try {
         const runId = req.params.id;
-        const [run, planNodes, planEdges, nodeProgress, jobRuns, runEvents] = await Promise.all([
+        const [run, planNodes, planEdges, nodeProgress, jobRuns, runArtifacts, runEvents] = await Promise.all([
             pool.query("SELECT * FROM runs WHERE id = $1", [runId]).then(r => r.rows[0]),
             pool.query("SELECT pn.* FROM plans p JOIN plan_nodes pn ON pn.plan_id = p.id WHERE p.id = (SELECT plan_id FROM runs WHERE id = $1)", [runId]).then(r => r.rows),
             pool.query("SELECT pe.* FROM plans p JOIN plan_edges pe ON pe.plan_id = p.id WHERE p.id = (SELECT plan_id FROM runs WHERE id = $1)", [runId]).then(r => r.rows),
             pool.query("SELECT * FROM node_progress WHERE run_id = $1", [runId]).then(r => r.rows),
             pool.query("SELECT jr.* FROM job_runs jr WHERE jr.run_id = $1 ORDER BY plan_node_id, attempt DESC", [runId]).then(r => r.rows),
+            pool.query("SELECT * FROM artifacts WHERE run_id = $1 ORDER BY created_at", [runId]).then(r => r.rows),
             pool.query("SELECT * FROM run_events WHERE run_id = $1 ORDER BY created_at", [runId]).then(r => r.rows),
         ]);
         if (!run)
             return res.status(404).json({ error: "Run not found" });
-        res.json({ run, plan_nodes: planNodes, plan_edges: planEdges, node_progress: nodeProgress, job_runs: jobRuns, run_events: runEvents });
+        res.json({ run, plan_nodes: planNodes, plan_edges: planEdges, node_progress: nodeProgress, job_runs: jobRuns, artifacts: runArtifacts, run_events: runEvents });
     }
     catch (e) {
         res.status(500).json({ error: String(e.message) });
@@ -247,6 +490,8 @@ app.get("/v1/runs/:id/artifacts", async (req, res) => {
         if (exists.rows.length === 0)
             return res.status(404).json({ error: "Run not found" });
         const r = await pool.query("SELECT * FROM artifacts WHERE run_id = $1 ORDER BY created_at", [runId]);
+        if (r.rows.length === 0)
+            setImmediate(() => triggerNoArtifactsRemediationForRun(runId));
         res.json({ items: r.rows });
     }
     catch (e) {
@@ -295,7 +540,7 @@ app.post("/v1/initiatives/:id/plan", async (req, res) => {
         const initiativeId = req.params.id;
         const body = req.body ?? {};
         const { compilePlan } = await import("./plan-compiler.js");
-        const compiled = await compilePlan(pool, initiativeId, { seed: body.seed, force: body.force });
+        const compiled = await withTransaction((client) => compilePlan(client, initiativeId, { seed: body.seed, force: body.force }));
         const nodeCount = compiled.nodeIds.size;
         res.status(201).json({ id: compiled.planId, initiative_id: initiativeId, status: "draft", nodes: nodeCount, plan_hash: compiled.planHash });
     }
@@ -306,6 +551,51 @@ app.post("/v1/initiatives/:id/plan", async (req, res) => {
         res.status(500).json({ error: msg });
     }
 });
+/** POST /v1/plans/:id/start — create a run for this plan (get or create release, then createRun). Body: { environment?: "sandbox"|"staging"|"prod", llm_source?: "gateway"|"openai_direct" }. */
+app.post("/v1/plans/:id/start", async (req, res) => {
+    try {
+        const role = getRole(req);
+        if (role === "viewer")
+            return res.status(403).json({ error: "Forbidden" });
+        const planId = req.params.id;
+        const body = req.body;
+        const environment = body?.environment ?? "sandbox";
+        const llmSource = body?.llm_source === "openai_direct" ? "openai_direct" : "gateway";
+        if (!["sandbox", "staging", "prod"].includes(environment)) {
+            return res.status(400).json({ error: "environment must be sandbox, staging, or prod" });
+        }
+        const planRow = await pool.query("SELECT id FROM plans WHERE id = $1", [planId]);
+        if (planRow.rows.length === 0)
+            return res.status(404).json({ error: "Plan not found" });
+        let releaseId;
+        try {
+            const route = await routeRun(pool, environment);
+            releaseId = route.releaseId;
+        }
+        catch (routeErr) {
+            const msg = routeErr.message;
+            if (!msg.includes("No promoted release"))
+                throw routeErr;
+            const ins = await pool.query(`INSERT INTO releases (id, status, percent_rollout, policy_version) VALUES ($1, 'promoted', 100, 'latest') RETURNING id`, [uuid()]);
+            releaseId = ins.rows[0].id;
+        }
+        const runId = await withTransaction(async (client) => {
+            return createRun(client, {
+                planId,
+                releaseId,
+                policyVersion: "latest",
+                environment: environment,
+                cohort: "control",
+                rootIdempotencyKey: `console:${planId}:${Date.now()}`,
+                llmSource,
+            });
+        });
+        res.status(201).json({ id: runId });
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
 /** POST /v1/runs/:id/rerun — create a new run with the same plan (Operator+) */
 app.post("/v1/runs/:id/rerun", async (req, res) => {
     try {
@@ -313,10 +603,14 @@ app.post("/v1/runs/:id/rerun", async (req, res) => {
         if (role === "viewer")
             return res.status(403).json({ error: "Forbidden" });
         const runId = req.params.id;
-        const r = await pool.query("SELECT plan_id, release_id, policy_version, environment, cohort FROM runs WHERE id = $1", [runId]);
-        if (r.rows.length === 0)
-            return res.status(404).json({ error: "Run not found" });
+        let r = await pool.query("SELECT plan_id, release_id, policy_version, environment, cohort, llm_source FROM runs WHERE id = $1", [runId]).catch(() => null);
+        if (!r || r.rows.length === 0) {
+            r = await pool.query("SELECT plan_id, release_id, policy_version, environment, cohort FROM runs WHERE id = $1", [runId]);
+            if (r.rows.length === 0)
+                return res.status(404).json({ error: "Run not found" });
+        }
         const row = r.rows[0];
+        const llmSource = row.llm_source === "openai_direct" ? "openai_direct" : "gateway";
         const newRunId = await withTransaction(async (client) => {
             return createRun(client, {
                 planId: row.plan_id,
@@ -325,6 +619,7 @@ app.post("/v1/runs/:id/rerun", async (req, res) => {
                 environment: row.environment,
                 cohort: row.cohort,
                 rootIdempotencyKey: `rerun:${runId}:${Date.now()}`,
+                llmSource,
             });
         });
         res.status(201).json({ id: newRunId });
@@ -435,16 +730,20 @@ app.post("/v1/approvals", async (req, res) => {
             await pool.query("DELETE FROM approval_requests WHERE run_id = $1 AND plan_node_id = $2", [run_id, plan_node_id]).catch(() => { });
             if (actionVal === "approved") {
                 const client = await pool.connect();
+                let committed = false;
                 try {
                     await client.query("BEGIN");
                     await completeApprovalAndAdvance(client, run_id, plan_node_id);
                     await client.query("COMMIT");
+                    committed = true;
                 }
                 catch (e) {
-                    await client.query("ROLLBACK");
+                    await client.query("ROLLBACK").catch(() => { });
                     throw e;
                 }
                 finally {
+                    if (!committed)
+                        await client.query("ROLLBACK").catch(() => { });
                     client.release();
                 }
             }
@@ -471,42 +770,6 @@ app.post("/v1/job_runs/:id/retry", async (req, res) => {
         await pool.query(`INSERT INTO job_runs (id, run_id, plan_node_id, attempt, status, idempotency_key)
        VALUES ($1, $2, $3, $4, 'queued', $5)`, [newJobRunId, row.run_id, row.plan_node_id, newAttempt, `retry:${jobRunId}:${newAttempt}`]);
         res.status(201).json({ id: newJobRunId, run_id: row.run_id, attempt: newAttempt });
-    }
-    catch (e) {
-        res.status(500).json({ error: String(e.message) });
-    }
-});
-/** GET /v1/plans — list with pagination (optional initiative_id filter) */
-app.get("/v1/plans", async (req, res) => {
-    try {
-        const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
-        const offset = Number(req.query.offset) || 0;
-        const initiative_id = req.query.initiative_id;
-        let q = "SELECT p.*, i.title AS initiative_title, i.intent_type FROM plans p JOIN initiatives i ON i.id = p.initiative_id ORDER BY p.created_at DESC LIMIT $1 OFFSET $2";
-        const params = [limit, offset];
-        if (initiative_id) {
-            q = "SELECT p.*, i.title AS initiative_title, i.intent_type FROM plans p JOIN initiatives i ON i.id = p.initiative_id WHERE p.initiative_id = $1 ORDER BY p.created_at DESC LIMIT $2 OFFSET $3";
-            params.unshift(initiative_id);
-        }
-        const r = await pool.query(q, params);
-        res.json({ items: r.rows, limit, offset });
-    }
-    catch (e) {
-        res.status(500).json({ error: String(e.message) });
-    }
-});
-/** GET /v1/plans/:id — plan with nodes and edges (for DAG) */
-app.get("/v1/plans/:id", async (req, res) => {
-    try {
-        const planId = req.params.id;
-        const [plan, nodes, edges] = await Promise.all([
-            pool.query("SELECT p.*, i.title AS initiative_title, i.intent_type FROM plans p JOIN initiatives i ON i.id = p.initiative_id WHERE p.id = $1", [planId]).then(r => r.rows[0]),
-            pool.query("SELECT * FROM plan_nodes WHERE plan_id = $1 ORDER BY node_key", [planId]).then(r => r.rows),
-            pool.query("SELECT * FROM plan_edges WHERE plan_id = $1", [planId]).then(r => r.rows),
-        ]);
-        if (!plan)
-            return res.status(404).json({ error: "Plan not found" });
-        res.json({ plan, nodes, edges });
     }
     catch (e) {
         res.status(500).json({ error: String(e.message) });
@@ -657,6 +920,32 @@ app.get("/v1/artifacts/:id", async (req, res) => {
     }
     catch (e) {
         res.status(500).json({ error: String(e.message) });
+    }
+});
+/** GET /v1/artifacts/:id/content — artifact body for preview (e.g. landing page HTML). Use as view URL. */
+app.get("/v1/artifacts/:id/content", async (req, res) => {
+    try {
+        const r = await pool.query("SELECT id, artifact_type, metadata_json, uri FROM artifacts WHERE id = $1", [req.params.id]);
+        if (r.rows.length === 0)
+            return res.status(404).send("Artifact not found");
+        const row = r.rows[0];
+        let content = row.metadata_json?.content ?? null;
+        if (content == null && row.uri?.startsWith("supabase-storage://")) {
+            try {
+                const { downloadArtifact } = await import("../../runners/src/artifact-storage.js");
+                content = await downloadArtifact(row.uri);
+            }
+            catch { /* storage not configured */ }
+        }
+        if (content == null)
+            return res.status(404).send("Artifact content not available");
+        const isHtml = row.artifact_type === "landing_page";
+        res.setHeader("Content-Type", isHtml ? "text/html; charset=utf-8" : "text/plain; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=60");
+        res.send(content);
+    }
+    catch (e) {
+        res.status(500).send(String(e.message));
     }
 });
 /** GET /v1/artifacts — list with pagination and filters */
@@ -986,6 +1275,62 @@ app.get("/v1/health", async (_req, res) => {
         res.status(500).json({ error: String(e.message) });
     }
 });
+/** GET /v1/webhook_outbox — list outbox rows (status, limit, offset) */
+app.get("/v1/webhook_outbox", async (req, res) => {
+    try {
+        const status = req.query.status;
+        const limit = Math.min(Number(req.query.limit) || 50, 200);
+        const offset = Number(req.query.offset) || 0;
+        const conditions = status ? ["status = $1"] : ["1=1"];
+        const params = status ? [status, limit, offset] : [limit, offset];
+        const limitIdx = params.length - 1;
+        const offsetIdx = params.length;
+        const r = await pool.query(`SELECT * FROM webhook_outbox WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`, params);
+        res.json({ items: r.rows, limit, offset });
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** PATCH /v1/webhook_outbox/:id — update status after send attempt */
+app.patch("/v1/webhook_outbox/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        const body = req.body;
+        const sets = [];
+        const params = [];
+        let i = 1;
+        if (body.status !== undefined) {
+            sets.push(`status = $${i++}`);
+            params.push(body.status);
+        }
+        if (body.attempt_count !== undefined) {
+            sets.push(`attempt_count = $${i++}`);
+            params.push(body.attempt_count);
+        }
+        if (body.last_error !== undefined) {
+            sets.push(`last_error = $${i++}`);
+            params.push(body.last_error);
+        }
+        if (body.next_retry_at !== undefined) {
+            sets.push(`next_retry_at = $${i++}`);
+            params.push(body.next_retry_at);
+        }
+        if (body.sent_at !== undefined) {
+            sets.push(`sent_at = $${i++}`);
+            params.push(body.sent_at);
+        }
+        sets.push("updated_at = now()");
+        params.push(id);
+        const r = await pool.query(`UPDATE webhook_outbox SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`, params);
+        if (r.rows.length === 0)
+            return res.status(404).json({ error: "Not found" });
+        res.json(r.rows[0]);
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
 /** POST /v1/webhooks/github — create initiative from GitHub events; self-healing on fix-me label */
 app.post("/v1/webhooks/github", async (req, res) => {
     try {
@@ -1016,7 +1361,7 @@ app.post("/v1/webhooks/github", async (req, res) => {
             if (initId) {
                 try {
                     const { compilePlan } = await import("./plan-compiler.js");
-                    await compilePlan(pool, initId, { force: true });
+                    await withTransaction((client) => compilePlan(client, initId, { force: true }));
                 }
                 catch { /* plan compilation is best-effort on webhook */ }
             }
@@ -1056,7 +1401,7 @@ app.post("/v1/initiatives/:id/replan", async (req, res) => {
             return res.status(403).json({ error: "Forbidden" });
         const initiativeId = req.params.id;
         const { compilePlan } = await import("./plan-compiler.js");
-        const compiled = await compilePlan(pool, initiativeId, { force: true });
+        const compiled = await withTransaction((client) => compilePlan(client, initiativeId, { force: true }));
         res.status(201).json({ id: compiled.planId, initiative_id: initiativeId, status: "draft", nodes: compiled.nodeIds.size, plan_hash: compiled.planHash });
     }
     catch (e) {
@@ -1108,6 +1453,77 @@ app.get("/v1/usage/by_model", async (req, res) => {
       GROUP BY model_id, model_tier ORDER BY calls DESC
     `, [from, to]);
         res.json({ items: r.rows, from, to });
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** GET /v1/analytics — run activity heatmap, cost tree, artifact breakdown (real data) */
+app.get("/v1/analytics", async (req, res) => {
+    try {
+        const from = req.query.from ?? new Date(Date.now() - 30 * 86_400_000).toISOString();
+        const to = req.query.to ?? new Date().toISOString();
+        const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const HOURS = ["00", "02", "04", "06", "08", "10", "12", "14", "16", "18", "20", "22"];
+        const [heatmapRows, byJobType, byModel, artifactRows] = await Promise.all([
+            pool.query(`SELECT extract(dow from started_at)::int AS dow, extract(hour from started_at)::int AS hour, count(*)::int AS c
+         FROM runs WHERE started_at IS NOT NULL AND started_at BETWEEN $1 AND $2
+         GROUP BY 1, 2 ORDER BY 1, 2`, [from, to]).then(r => r.rows),
+            pool.query(`
+        SELECT pn.job_type, lc.model_tier,
+               count(*)::int AS calls,
+               (coalesce(sum(lc.tokens_in), 0) + coalesce(sum(lc.tokens_out), 0))::bigint AS tokens
+        FROM llm_calls lc
+        JOIN job_runs jr ON jr.id = lc.job_run_id
+        JOIN plan_nodes pn ON pn.id = jr.plan_node_id
+        WHERE lc.created_at BETWEEN $1 AND $2
+        GROUP BY pn.job_type, lc.model_tier ORDER BY calls DESC
+      `, [from, to]).then(r => r.rows),
+            pool.query(`
+        SELECT model_tier, model_id, count(*)::int AS calls,
+               (coalesce(sum(tokens_in), 0) + coalesce(sum(tokens_out), 0))::bigint AS tokens
+        FROM llm_calls WHERE created_at BETWEEN $1 AND $2
+        GROUP BY model_tier, model_id ORDER BY calls DESC
+      `, [from, to]).then(r => r.rows),
+            pool.query(`SELECT artifact_type, count(*)::int AS c FROM artifacts WHERE created_at BETWEEN $1 AND $2 GROUP BY artifact_type ORDER BY c DESC`, [from, to]).then(r => r.rows),
+        ]);
+        const heatmapByKey = {};
+        DAYS.forEach(d => { heatmapByKey[d] = {}; for (let h = 0; h < 24; h += 2)
+            heatmapByKey[d][h] = 0; });
+        for (const row of heatmapRows) {
+            const day = DAYS[row.dow];
+            const hourBucket = row.hour - (row.hour % 2);
+            if (day != null && hourBucket >= 0 && hourBucket < 24)
+                (heatmapByKey[day] ??= {})[hourBucket] = (heatmapByKey[day][hourBucket] ?? 0) + row.c;
+        }
+        const run_activity_heatmap = DAYS.map(day => ({
+            id: day,
+            data: HOURS.map((h, i) => ({ x: h, y: heatmapByKey[day]?.[i * 2] ?? 0 })),
+        }));
+        const tierToJob = {};
+        for (const row of byJobType) {
+            const tier = row.model_tier || "default";
+            if (!tierToJob[tier])
+                tierToJob[tier] = {};
+            tierToJob[tier][row.job_type] = (tierToJob[tier][row.job_type] || 0) + Number(row.tokens);
+        }
+        const cost_treemap = {
+            name: "Costs",
+            children: Object.entries(tierToJob).map(([tier, jobs]) => ({
+                name: tier,
+                children: Object.entries(jobs).map(([job, value]) => ({ name: job, value: Math.max(1, Number(value)) })),
+            })).filter(t => t.children.length > 0),
+        };
+        if (cost_treemap.children.length === 0) {
+            cost_treemap.children = [{ name: "No LLM usage", children: [{ name: "—", value: 1 }] }];
+        }
+        const artifact_breakdown = {
+            name: "Artifacts",
+            children: artifactRows.length
+                ? artifactRows.map(row => ({ name: row.artifact_type || "unknown", value: row.c }))
+                : [{ name: "No artifacts", value: 1 }],
+        };
+        res.json({ run_activity_heatmap, cost_treemap, artifact_breakdown, from, to });
     }
     catch (e) {
         res.status(500).json({ error: String(e.message) });
@@ -1470,25 +1886,46 @@ app.get("/v1/brand_profiles/:id", async (req, res) => {
         res.status(500).json({ error: String(e.message) });
     }
 });
+/** POST /v1/brand_profiles/prefill_from_url — fetch live site and extract tokens (colors, fonts, logo, sitemap). */
+app.post("/v1/brand_profiles/prefill_from_url", async (req, res) => {
+    try {
+        const body = req.body;
+        const url = typeof body?.url === "string" ? body.url.trim() : "";
+        if (!url)
+            return res.status(400).json({ error: "url is required" });
+        const result = await tokenizeBrandFromUrl(url);
+        res.json(result);
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
 /** POST /v1/brand_profiles */
 app.post("/v1/brand_profiles", async (req, res) => {
     try {
         const body = req.body;
         if (!body.name)
             return res.status(400).json({ error: "name required" });
-        const slug = body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const slug = (typeof body.slug === "string" && body.slug.trim())
+            ? body.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+            : body.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
         const r = await pool.query(`INSERT INTO brand_profiles (name, slug, identity, tone, visual_style, copy_style, design_tokens, deck_theme, report_theme)
        VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb) RETURNING *`, [
-            body.name, slug,
-            body.identity ? JSON.stringify(body.identity) : null,
-            body.tone ? JSON.stringify(body.tone) : null,
-            body.visual_style ? JSON.stringify(body.visual_style) : null,
-            body.copy_style ? JSON.stringify(body.copy_style) : null,
-            body.design_tokens ? JSON.stringify(body.design_tokens) : null,
-            body.deck_theme ? JSON.stringify(body.deck_theme) : null,
-            body.report_theme ? JSON.stringify(body.report_theme) : null,
+            body.name,
+            slug,
+            JSON.stringify(body.identity ?? {}),
+            JSON.stringify(body.tone ?? {}),
+            JSON.stringify(body.visual_style ?? {}),
+            JSON.stringify(body.copy_style ?? {}),
+            JSON.stringify(body.design_tokens ?? {}),
+            JSON.stringify(body.deck_theme ?? {}),
+            JSON.stringify(body.report_theme ?? {}),
         ]);
-        res.status(201).json(r.rows[0]);
+        const inserted = r.rows[0];
+        if (body.design_tokens && inserted?.id) {
+            await syncDesignTokensFlat(inserted.id, body.design_tokens);
+        }
+        res.status(201).json(inserted);
     }
     catch (e) {
         res.status(500).json({ error: String(e.message) });
@@ -1525,7 +1962,11 @@ app.put("/v1/brand_profiles/:id", async (req, res) => {
         const r = await pool.query(`UPDATE brand_profiles bp SET ${sets.join(", ")} WHERE bp.id = $${i} RETURNING *`, params);
         if (r.rows.length === 0)
             return res.status(404).json({ error: "Not found" });
-        res.json(r.rows[0]);
+        const updated = r.rows[0];
+        if (body.design_tokens !== undefined && updated.design_tokens) {
+            await syncDesignTokensFlat(id, updated.design_tokens);
+        }
+        res.json(updated);
     }
     catch (e) {
         res.status(500).json({ error: String(e.message) });
@@ -1853,7 +2294,151 @@ app.delete("/v1/document_templates/:id/components/:cid", async (req, res) => {
         res.status(500).json({ error: String(e.message) });
     }
 });
+// =====================================================================
+// Email Templates CRUD (Email Marketing Factory)
+// =====================================================================
+/** GET /v1/email_templates */
+app.get("/v1/email_templates", async (req, res) => {
+    try {
+        const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+        const offset = Number(req.query.offset) || 0;
+        const type = req.query.type;
+        const brand_profile_id = req.query.brand_profile_id;
+        const conditions = ["1=1"];
+        const params = [];
+        let i = 1;
+        if (type) {
+            conditions.push(`type = $${i++}`);
+            params.push(type);
+        }
+        if (brand_profile_id && isValidUuid(brand_profile_id)) {
+            conditions.push(`(brand_profile_id = $${i++} OR brand_profile_id IS NULL)`);
+            params.push(brand_profile_id);
+        }
+        params.push(limit, offset);
+        const q = `SELECT * FROM email_templates WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
+        const countQ = `SELECT count(*)::int AS total FROM email_templates WHERE ${conditions.join(" AND ")}`;
+        const [itemsResult, totalResult] = await Promise.all([
+            pool.query(q, params),
+            pool.query(countQ, params.slice(0, -2)),
+        ]);
+        res.json({ items: itemsResult.rows, total: totalResult.rows[0]?.total ?? 0 });
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** GET /v1/email_templates/:id/preview — render template MJML to HTML for preview */
+app.get("/v1/email_templates/:id/preview", async (req, res) => {
+    try {
+        const id = req.params.id;
+        const r = await pool.query("SELECT mjml FROM email_templates WHERE id = $1", [id]);
+        if (r.rows.length === 0)
+            return res.status(404).send("Not found");
+        const mjml = r.rows[0].mjml;
+        if (!mjml || typeof mjml !== "string") {
+            return res.status(422).send("Template has no MJML content");
+        }
+        const { html } = mjml2html(mjml, { validationLevel: "skip" });
+        res.type("text/html").send(html);
+    }
+    catch (e) {
+        res.status(500).send(String(e.message));
+    }
+});
+/** GET /v1/email_templates/:id */
+app.get("/v1/email_templates/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        const r = await pool.query("SELECT * FROM email_templates WHERE id = $1", [id]);
+        if (r.rows.length === 0)
+            return res.status(404).json({ error: "Not found" });
+        res.json(r.rows[0]);
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** POST /v1/email_templates */
+app.post("/v1/email_templates", async (req, res) => {
+    try {
+        const role = getRole(req);
+        if (role === "viewer")
+            return res.status(403).json({ error: "Forbidden" });
+        const body = req.body;
+        const r = await pool.query(`INSERT INTO email_templates (type, name, image_url, mjml, template_json, sections_json, img_count, brand_profile_id)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8) RETURNING *`, [
+            body.type ?? "newsletter",
+            body.name ?? "Untitled",
+            body.image_url ?? null,
+            body.mjml ?? null,
+            body.template_json ?? null,
+            body.sections_json ?? null,
+            body.img_count ?? 0,
+            body.brand_profile_id ?? null,
+        ]);
+        res.status(201).json(r.rows[0]);
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** PATCH /v1/email_templates/:id */
+app.patch("/v1/email_templates/:id", async (req, res) => {
+    try {
+        const role = getRole(req);
+        if (role === "viewer")
+            return res.status(403).json({ error: "Forbidden" });
+        const id = req.params.id;
+        const body = req.body;
+        const allowed = ["type", "name", "image_url", "mjml", "template_json", "sections_json", "img_count", "brand_profile_id"];
+        const sets = [];
+        const params = [];
+        let i = 1;
+        for (const field of allowed) {
+            if (body[field] !== undefined) {
+                if (field === "template_json" || field === "sections_json") {
+                    sets.push(`${field} = $${i++}::jsonb`);
+                }
+                else {
+                    sets.push(`${field} = $${i++}`);
+                }
+                params.push(body[field]);
+            }
+        }
+        if (sets.length === 0)
+            return res.status(400).json({ error: "No fields to update" });
+        sets.push("updated_at = now()");
+        params.push(id);
+        const r = await pool.query(`UPDATE email_templates SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`, params);
+        if (r.rows.length === 0)
+            return res.status(404).json({ error: "Not found" });
+        res.json(r.rows[0]);
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
+/** DELETE /v1/email_templates/:id */
+app.delete("/v1/email_templates/:id", async (req, res) => {
+    try {
+        const role = getRole(req);
+        if (role === "viewer")
+            return res.status(403).json({ error: "Forbidden" });
+        const id = req.params.id;
+        const r = await pool.query("DELETE FROM email_templates WHERE id = $1 RETURNING id", [id]);
+        if (r.rows.length === 0)
+            return res.status(404).json({ error: "Not found" });
+        res.status(200).json({ deleted: true, id });
+    }
+    catch (e) {
+        res.status(500).json({ error: String(e.message) });
+    }
+});
 export function startApi(port = Number(process.env.PORT) || 3001) {
+    if (process.env.SENTRY_DSN?.trim()) {
+        Sentry.setupExpressErrorHandler(app);
+    }
     app.listen(port, () => console.log(`[api] Listening on port ${port}`));
 }
 //# sourceMappingURL=api.js.map

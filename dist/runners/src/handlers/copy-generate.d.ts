@@ -3,6 +3,7 @@ export declare function handleCopyGenerate(request: {
     job_run_id: string;
     job_type: string;
     initiative_id?: string;
+    llm_source?: "gateway" | "openai_direct";
     input?: {
         topic?: string;
         content_type?: string;

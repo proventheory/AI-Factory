@@ -1,5 +1,5 @@
 import type pg from "pg";
-import type { Adapter } from "@adapters/adapter-interface.js";
+import type { Adapter } from "../../adapters/src/adapter-interface.js";
 /**
  * Tool-call framework (Sections 5.8, 5A, 6, 12C.10).
  *
@@ -24,6 +24,8 @@ export declare function computeRequestHash(request: Record<string, unknown>): st
 /**
  * Execute a tool call with full idempotency + dedupe.
  * Returns the tool_call id.
+ * When passing pool, a unique violation (23505) on insert is resolved by checking
+ * the existing row on a separate connection so the caller's transaction is not left aborted.
  */
-export declare function executeToolCall(client: pg.PoolClient, params: ToolCallParams, adapter: Adapter, environment: string, releaseId: string): Promise<string>;
+export declare function executeToolCall(client: pg.PoolClient, params: ToolCallParams, adapter: Adapter, environment: string, releaseId: string, pool?: pg.Pool): Promise<string>;
 //# sourceMappingURL=tool-calls.d.ts.map

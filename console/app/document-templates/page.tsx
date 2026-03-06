@@ -80,10 +80,15 @@ export default function DocumentTemplatesPage() {
     { key: "name", header: "Name" },
     {
       key: "template_type",
-      header: "Type",
-      render: (row) => (
-        <Badge variant={typeVariant(row.template_type)}>{row.template_type}</Badge>
-      ),
+      header: "Kind",
+      render: (row) =>
+        row.source === "email" ? (
+          <span className="text-body-small">
+            Email template <span className="text-fg-muted">({row.template_type})</span>
+          </span>
+        ) : (
+          <Badge variant={typeVariant(row.template_type)}>{row.template_type}</Badge>
+        ),
     },
     {
       key: "brand",

@@ -19,6 +19,7 @@ export interface ResolverInput {
     issue_body?: string;
     repo_url?: string;
     workspace_path?: string;
+    llm_source?: "gateway" | "openai_direct";
 }
 export interface ResolverOutput {
     patch: string;

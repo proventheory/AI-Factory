@@ -1,6 +1,6 @@
 import { chat } from "../llm-client.js";
 import { loadBrandContext, brandContextToSystemPrompt, brandContextToDesignTokens } from "../brand-context.js";
-import { tokens } from "../../../packages/ui/src/tokens.js";
+import { tokens } from "../tokens.js";
 export async function handleEmailGenerate(request) {
     const brandCtx = request.initiative_id ? await loadBrandContext(request.initiative_id) : null;
     const brandPrompt = brandCtx ? brandContextToSystemPrompt(brandCtx) : "";
@@ -15,6 +15,7 @@ export async function handleEmailGenerate(request) {
         messages,
         context: { run_id: request.run_id, job_run_id: request.job_run_id, job_type: request.job_type, initiative_id: request.initiative_id },
         brandContext: brandCtx ? { id: brandCtx.id, name: brandCtx.name, systemPrompt: brandPrompt } : undefined,
+        useGateway: request.llm_source !== "openai_direct",
     });
     return {
         artifact_type: "email_template",

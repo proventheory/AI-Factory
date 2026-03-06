@@ -25,6 +25,8 @@ export interface LLMChatOptions {
         name: string;
         systemPrompt?: string;
     };
+    /** When false, use OPENAI_API_KEY directly even if LLM_GATEWAY_URL is set (run-level choice from Console). */
+    useGateway?: boolean;
 }
 export interface LLMChatResult {
     content: string;
@@ -34,6 +36,10 @@ export interface LLMChatResult {
     latency_ms?: number;
 }
 export declare function isSafeToCache(jobType: string): boolean;
+/** Default tier by job type when no routing policy exists. */
+export declare function pickTier(jobType: string): ModelTier;
+/** Resolve model tier for a job type: routing_policies from Control Plane, else pickTier. */
+export declare function resolveTier(jobType: string): Promise<ModelTier>;
 export declare function chat(options: LLMChatOptions): Promise<LLMChatResult>;
 export declare function isGatewayConfigured(): boolean;
 export interface ChatLocalOptions {

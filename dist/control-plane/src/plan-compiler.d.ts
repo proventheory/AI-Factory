@@ -18,6 +18,7 @@ export interface PlanTemplateEdge {
     to_key: string;
     condition?: string;
 }
+/** Load initiative; uses core columns so it works with or without multi_framework (000005) ALTERs. */
 export declare function loadInitiative(db: DbClient, initiativeId: string): Promise<Initiative | null>;
 export declare function loadPRDArtifact(_db: DbClient, _initiativeId: string): Promise<string | null>;
 export declare function computePlanHash(initiativeId: string, intentType: string, prdHashOrSeed: string): string;

@@ -20,6 +20,13 @@ app.use(express.json());
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
+/** DB enum risk_level is 'low' | 'med' | 'high'. Normalize 'medium' -> 'med' so old clients never break. */
+function normalizeRiskLevel(s: string | undefined): "low" | "med" | "high" {
+  if (s === "medium") return "med";
+  if (s === "low" || s === "med" || s === "high") return s;
+  return "med";
+}
+
 /** RBAC stub: resolve role from header or JWT. In production use Supabase Auth + custom claim. Default operator so Console can compile/start without auth. */
 function getRole(_req: express.Request): "viewer" | "operator" | "approver" | "admin" {
   const role = _req.headers["x-role"] as string | undefined;
@@ -342,9 +349,13 @@ app.patch("/v1/initiatives/:id", async (req, res) => {
     let i = 1;
     for (const field of allowed) {
       if (body[field] !== undefined) {
-        if (field === "risk_level") { sets.push(`${field} = $${i++}::risk_level`); }
-        else { sets.push(`${field} = $${i++}`); }
-        params.push(body[field]);
+        if (field === "risk_level") {
+          sets.push(`${field} = $${i++}::risk_level`);
+          params.push(normalizeRiskLevel(body[field] as string));
+        } else {
+          sets.push(`${field} = $${i++}`);
+          params.push(body[field]);
+        }
       }
     }
     if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
@@ -369,11 +380,12 @@ app.post("/v1/initiatives", async (req, res) => {
     };
     const { intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority, brand_profile_id } = body;
     if (!intent_type || !risk_level) return res.status(400).json({ error: "intent_type and risk_level required" });
+    const rl = normalizeRiskLevel(risk_level);
     const r = await pool.query(
       `INSERT INTO initiatives (intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority, brand_profile_id)
        VALUES ($1,$2,$3::risk_level,$4,$5,$6::jsonb,$7,$8,$9,$10) RETURNING *`,
       [
-        intent_type, title ?? null, risk_level, created_by ?? null,
+        intent_type, title ?? null, rl, created_by ?? null,
         goal_state ?? null, goal_metadata ? JSON.stringify(goal_metadata) : null, source_ref ?? null, template_id ?? null, priority ?? 0, brand_profile_id ?? null,
       ]
     );
@@ -382,8 +394,8 @@ app.post("/v1/initiatives", async (req, res) => {
     const err = e as { code?: string };
     if (err.code === "42703") {
       return pool.query(
-        `INSERT INTO initiatives (intent_type, title, risk_level, created_by) VALUES ($1,$2,$3::risk_level,$4) RETURNING *`,
-        [(req.body as { intent_type: string }).intent_type, (req.body as { title?: string }).title ?? null, (req.body as { risk_level: string }).risk_level, (req.body as { created_by?: string }).created_by ?? null]
+`INSERT INTO initiatives (intent_type, title, risk_level, created_by) VALUES ($1,$2,$3::risk_level,$4) RETURNING *`,
+      [(req.body as { intent_type: string }).intent_type, (req.body as { title?: string }).title ?? null, normalizeRiskLevel((req.body as { risk_level: string }).risk_level), (req.body as { created_by?: string }).created_by ?? null]
       ).then(r => res.status(201).json(r.rows[0])).catch(e2 => res.status(500).json({ error: String((e2 as Error).message) }));
     }
     res.status(500).json({ error: String((e as Error).message) });

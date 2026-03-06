@@ -1,5 +1,5 @@
 import type pg from "pg";
-import type { JobRun, JobClaim } from "@control-plane/types.js";
+import type { JobRun, JobClaim } from "../../control-plane/src/types.js";
 export interface RunnerConfig {
     workerId: string;
     runnerVersion: string;

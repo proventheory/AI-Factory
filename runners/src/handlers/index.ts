@@ -381,7 +381,7 @@ export function registerAllHandlers(): void {
       job_type: context.job_type,
       initiative_id: context.initiative_id ?? undefined,
       llm_source: context.llm_source,
-      input: (context.config as { template_id?: string; products?: unknown[]; campaign_prompt?: string }) ?? {},
+      input: (context.config as { template_id?: string; products?: Array<{ src?: string; title?: string; product_url?: string }>; campaign_prompt?: string }) ?? {},
     };
     const out = await handleEmailGenerateMjml(request);
     if (out?.content != null) {

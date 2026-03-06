@@ -106,6 +106,35 @@ const TEMPLATE_SWE_AGENT = {
         { from_key: "review", to_key: "submit", condition: "success" },
     ],
 };
+/** Marketing: brand → copy → deck (campaign deliverables). */
+const TEMPLATE_MARKETING = {
+    nodes: [
+        { node_key: "brand", job_type: "brand_compile", agent_role: "product_manager", node_type: "job" },
+        { node_key: "copy", job_type: "copy_generate", agent_role: "product_manager", node_type: "job", consumes_artifact_types: ["tokens_json", "css_vars"] },
+        { node_key: "deck", job_type: "deck_generate", agent_role: "product_manager", node_type: "job", consumes_artifact_types: ["copy"] },
+    ],
+    edges: [
+        { from_key: "brand", to_key: "copy", condition: "success" },
+        { from_key: "copy", to_key: "deck", condition: "success" },
+    ],
+};
+/** Landing: copy (hero/CTA) → landing page artifact (stub or full generator). */
+const TEMPLATE_LANDING = {
+    nodes: [
+        { node_key: "copy", job_type: "copy_generate", agent_role: "product_manager", node_type: "job" },
+        { node_key: "landing", job_type: "landing_page_generate", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["copy"] },
+    ],
+    edges: [
+        { from_key: "copy", to_key: "landing", condition: "success" },
+    ],
+};
+/** Email campaign: single node to generate MJML email from template + products + brand (Focuz flow). */
+const TEMPLATE_EMAIL_CAMPAIGN = {
+    nodes: [
+        { node_key: "email_mjml", job_type: "email_generate_mjml", agent_role: "product_manager", node_type: "job" },
+    ],
+    edges: [],
+};
 const TEMPLATES = {
     software: TEMPLATE_SOFTWARE,
     issue_fix: TEMPLATE_ISSUE_FIX,
@@ -115,9 +144,13 @@ const TEMPLATES = {
     crew: TEMPLATE_CREW,
     self_heal: TEMPLATE_SELF_HEAL,
     swe_agent: TEMPLATE_SWE_AGENT,
+    marketing: TEMPLATE_MARKETING,
+    landing: TEMPLATE_LANDING,
+    email_campaign: TEMPLATE_EMAIL_CAMPAIGN,
 };
+/** Load initiative; uses core columns so it works with or without multi_framework (000005) ALTERs. */
 export async function loadInitiative(db, initiativeId) {
-    const r = await db.query("SELECT id, intent_type, title, risk_level, created_by, created_at, goal_state, goal_metadata, source_ref, template_id, priority, metadata FROM initiatives WHERE id = $1", [initiativeId]);
+    const r = await db.query("SELECT id, intent_type, title, risk_level, created_by, created_at FROM initiatives WHERE id = $1", [initiativeId]);
     return r.rows[0] ?? null;
 }
 export async function loadPRDArtifact(_db, _initiativeId) {

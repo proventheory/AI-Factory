@@ -1,3 +1,12 @@
+import "dotenv/config";
+import * as Sentry from "@sentry/node";
+if (process.env.SENTRY_DSN?.trim()) {
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        environment: process.env.ENVIRONMENT ?? "sandbox",
+        tracesSampleRate: 0.1,
+    });
+}
 import pg from "pg";
 import { registerWorker, claimJob, startHeartbeatLoop, completeJobSuccess, completeJobFailure } from "./runner.js";
 import { getJobContext } from "./job-context.js";
@@ -6,9 +15,16 @@ import { getExecutor, run as runExecutor, jobRequestFromContext, persistJobResul
 import { advanceSuccessors, checkRunCompletion } from "../../control-plane/src/scheduler.js";
 registerAllHandlers();
 const POLL_INTERVAL_MS = 2_000;
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl?.trim()) {
+    console.error("[runner] DATABASE_URL is not set. Set it in .env (same as Control Plane) so the runner can claim jobs.");
+    process.exit(1);
+}
+const poolSize = Math.max(1, Math.min(20, Number(process.env.DATABASE_POOL_MAX) || 5));
 const pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: 10,
+    connectionString: databaseUrl,
+    max: poolSize,
+    idleTimeoutMillis: 30_000,
 });
 const config = {
     workerId: process.env.WORKER_ID ?? `worker-${process.pid}`,
@@ -16,6 +32,15 @@ const config = {
     environment: process.env.ENVIRONMENT ?? "sandbox",
     maxConcurrency: Number(process.env.MAX_CONCURRENCY ?? "5"),
 };
+if (process.env.LLM_GATEWAY_URL?.trim()) {
+    console.log("[runner] LLM_GATEWAY_URL is set — using gateway for LLM calls.");
+}
+else if (process.env.OPENAI_API_KEY?.trim()) {
+    console.log("[runner] Using OPENAI_API_KEY for direct OpenAI (no gateway).");
+}
+else {
+    console.warn("[runner] Neither LLM_GATEWAY_URL nor OPENAI_API_KEY set. Set one in .env so LLM handlers (copy_generate, landing_page_generate, etc.) can run.");
+}
 let activeJobs = 0;
 async function pollAndExecute() {
     if (activeJobs >= config.maxConcurrency)
@@ -24,6 +49,16 @@ async function pollAndExecute() {
     try {
         await client.query("BEGIN");
         const claimed = await claimJob(client, config.workerId);
+        // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+        if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+            if (!claimed) {
+                fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:claim", message: "claimJob returned null", data: {}, timestamp: Date.now(), hypothesisId: "H1" }) }).catch(() => { });
+            }
+            else {
+                fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:claimed", message: "job claimed", data: { jobRunId: claimed.jobRun.id, runId: claimed.jobRun.run_id, planNodeId: claimed.jobRun.plan_node_id }, timestamp: Date.now(), hypothesisId: "H2" }) }).catch(() => { });
+            }
+        }
+        // #endregion
         if (!claimed) {
             await client.query("ROLLBACK");
             return;
@@ -60,7 +95,7 @@ async function pollAndExecute() {
                     await txClient.query("COMMIT");
                 }
                 catch (err) {
-                    await txClient.query("ROLLBACK");
+                    await txClient.query("ROLLBACK").catch(() => { });
                     throw err;
                 }
                 finally {
@@ -76,9 +111,14 @@ async function pollAndExecute() {
                     await txClient.query("BEGIN");
                     await handler(txClient, jobContext, { runId: jobRun.run_id, jobRunId: jobRun.id, planNodeId: jobRun.plan_node_id });
                     await txClient.query("COMMIT");
+                    // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+                    if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+                        fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:handler_done", message: "handler completed", data: { job_type: jobContext.job_type, runId: jobRun.run_id }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => { });
+                    }
+                    // #endregion
                 }
                 catch (err) {
-                    await txClient.query("ROLLBACK");
+                    await txClient.query("ROLLBACK").catch(() => { });
                     throw err;
                 }
                 finally {
@@ -86,6 +126,11 @@ async function pollAndExecute() {
                 }
             }
             else {
+                // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+                if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+                    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:no_executor_handler", message: "no executor or handler", data: { job_type: jobContext?.job_type }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => { });
+                }
+                // #endregion
                 await new Promise((resolve) => setTimeout(resolve, 100));
             }
             const txClient = await pool.connect();
@@ -99,7 +144,7 @@ async function pollAndExecute() {
                 await txClient.query("COMMIT");
             }
             catch (err) {
-                await txClient.query("ROLLBACK");
+                await txClient.query("ROLLBACK").catch(() => { });
                 throw err;
             }
             finally {
@@ -108,6 +153,19 @@ async function pollAndExecute() {
         }
         catch (err) {
             const errorSig = err.message?.slice(0, 200) ?? "unknown";
+            if (process.env.SENTRY_DSN?.trim()) {
+                Sentry.withScope((scope) => {
+                    scope.setTag("job_type", jobContext?.job_type ?? "unknown");
+                    scope.setTag("run_id", jobRun.run_id);
+                    scope.setTag("job_run_id", jobRun.id);
+                    Sentry.captureException(err);
+                });
+            }
+            // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+            if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+                fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:catch", message: "job failed", data: { job_type: jobContext?.job_type, error: errorSig }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => { });
+            }
+            // #endregion
             const txClient = await pool.connect();
             try {
                 await txClient.query("BEGIN");
@@ -115,7 +173,7 @@ async function pollAndExecute() {
                 await txClient.query("COMMIT");
             }
             catch {
-                await txClient.query("ROLLBACK");
+                await txClient.query("ROLLBACK").catch(() => { });
             }
             finally {
                 txClient.release();
@@ -126,8 +184,9 @@ async function pollAndExecute() {
             activeJobs--;
         }
     }
-    catch {
-        await client.query("ROLLBACK");
+    catch (err) {
+        await client.query("ROLLBACK").catch(() => { });
+        console.error("[runner] Poll error:", err);
     }
     finally {
         client.release();
@@ -136,6 +195,8 @@ async function pollAndExecute() {
 async function main() {
     console.log(`[runner] Starting worker ${config.workerId} (v${config.runnerVersion})`);
     await registerWorker(pool, config);
+    const q = await pool.query("SELECT count(*)::int AS c FROM job_runs WHERE status = 'queued'");
+    console.log(`[runner] DB check: ${q.rows[0]?.c ?? 0} queued job(s) visible`);
     setInterval(async () => {
         try {
             await pollAndExecute();
@@ -147,7 +208,13 @@ async function main() {
     console.log("[runner] Polling for jobs...");
 }
 main().catch((err) => {
-    console.error("[runner] Fatal:", err);
-    process.exit(1);
+    if (process.env.SENTRY_DSN?.trim()) {
+        Sentry.captureException(err);
+        void Sentry.close(2000).then(() => process.exit(1));
+    }
+    else {
+        console.error("[runner] Fatal:", err);
+        process.exit(1);
+    }
 });
 //# sourceMappingURL=index.js.map

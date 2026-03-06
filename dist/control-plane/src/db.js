@@ -1,7 +1,8 @@
 import pg from "pg";
+const poolSize = Math.max(1, Math.min(50, Number(process.env.DATABASE_POOL_MAX) || 5));
 const pool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 20,
+    max: poolSize,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
 });
@@ -14,7 +15,7 @@ export async function withTransaction(fn) {
         return result;
     }
     catch (err) {
-        await client.query("ROLLBACK");
+        await client.query("ROLLBACK").catch(() => { });
         throw err;
     }
     finally {

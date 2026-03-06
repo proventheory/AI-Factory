@@ -99,6 +99,7 @@ export async function runSweAgent(input) {
             { role: "user", content: `Issue: ${input.issue_text ?? input.issue_url ?? "No issue provided"}\n\nRepo: ${input.repo_url ?? input.workspace_path ?? "unknown"}` },
         ],
         context: { run_id: "swe-agent", job_run_id: "swe-agent", job_type: "swe_agent" },
+        useGateway: input.llm_source !== "openai_direct",
     });
     return {
         patch: result.content,

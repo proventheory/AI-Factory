@@ -27,6 +27,7 @@ const HEX_RE = /#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b/g;
 const RGB_RE = /rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/g;
 const CSS_VAR_COLOR_RE = /--[\w-]*(?:color|primary|brand|accent|bg)[\w-]*\s*:\s*([^;}+]+)/g;
 const FONT_FAMILY_RE = /font-family\s*:\s*([^;}+]+)(?:\s*;|\s*})/g;
+const GOOGLE_FONT_FAMILY_RE = /family=([^&:]+)(?::|&|$)/g;
 
 function normalizeUrl(input: string): string {
   const trimmed = input.trim();
@@ -83,6 +84,15 @@ function parseFontsFromCss(css: string): string[] {
   return out;
 }
 
+function parseFontsFromGoogleLinks(html: string): string[] {
+  const out: string[] = [];
+  for (const m of html.matchAll(GOOGLE_FONT_FAMILY_RE)) {
+    const name = decodeURIComponent(m[1].trim().replace(/\+/g, " "));
+    if (name && !/^\d+$/.test(name)) out.push(name);
+  }
+  return out;
+}
+
 function isLikelyNeutral(hex: string): boolean {
   const h = hex.replace(/^#/, "");
   if (h.length === 3) return false;
@@ -107,12 +117,25 @@ function pickPrimarySecondary(hexes: string[]): { primary: string | null; second
   };
 }
 
-function inferSitemapType(sitemapUrl: string | null): string {
-  if (!sitemapUrl) return "ecommerce";
-  const lower = sitemapUrl.toLowerCase();
-  if (lower.includes("shopify")) return "shopify";
-  if (lower.includes("bigcommerce")) return "bigcommerce";
-  if (lower.includes("drupal")) return "drupal";
+/** Detect platform from sitemap URL path and/or page HTML (e.g. Shopify uses sitemap_products_1.xml). */
+function inferSitemapType(sitemapUrl: string | null, htmlSnapshot: string): string {
+  const htmlLower = htmlSnapshot.toLowerCase();
+  const isShopify =
+    htmlLower.includes("shopify") ||
+    htmlLower.includes("cdn.shopify.com") ||
+    htmlLower.includes("shopify.com/s/files");
+  if (isShopify) return "shopify";
+  if (sitemapUrl) {
+    const lower = sitemapUrl.toLowerCase();
+    try {
+      const path = new URL(sitemapUrl).pathname.toLowerCase();
+      if (path.includes("sitemap_products") || path.includes("shopify")) return "shopify";
+    } catch {
+      if (lower.includes("shopify")) return "shopify";
+    }
+    if (lower.includes("bigcommerce")) return "bigcommerce";
+    if (lower.includes("drupal")) return "drupal";
+  }
   return "ecommerce";
 }
 
@@ -158,6 +181,10 @@ export async function tokenizeBrandFromUrl(inputUrl: string): Promise<TokenizeFr
   if (!logoUrl && $('link[rel="apple-touch-icon"]').length) {
     logoUrl = resolve($('link[rel="apple-touch-icon"]').attr("href"));
   }
+  if (!logoUrl) {
+    const ogImage = $('meta[property="og:image"]').attr("content");
+    if (ogImage && /logo|brand|icon/i.test(ogImage)) logoUrl = resolve(ogImage);
+  }
 
   // Collect all CSS for color/font extraction
   let allCss = "";
@@ -170,10 +197,12 @@ export async function tokenizeBrandFromUrl(inputUrl: string): Promise<TokenizeFr
     if (s) allCss += ` .x{${s}}`;
   });
   const rawColors = parseColorsFromCss(allCss);
-  const rawFonts = parseFontsFromCss(allCss);
+  const fontsFromCss = parseFontsFromCss(allCss);
+  const fontsFromGoogle = parseFontsFromGoogleLinks(html);
+  const rawFonts = [...new Set([...fontsFromCss, ...fontsFromGoogle])];
   const { primary: primary_color, secondary: secondary_color } = pickPrimarySecondary(rawColors);
-  const font_body = rawFonts[0] ?? null;
-  const font_headings = rawFonts[1] ?? rawFonts[0] ?? null;
+  const font_headings = rawFonts[0] ?? null;
+  const font_body = rawFonts[1] ?? rawFonts[0] ?? null;
 
   // Meta description
   const meta_description =
@@ -181,11 +210,13 @@ export async function tokenizeBrandFromUrl(inputUrl: string): Promise<TokenizeFr
     $('meta[property="og:description"]').attr("content")?.trim() ??
     null;
 
-  // Sitemap: link rel="sitemap" or try common paths
+  // Sitemap: link rel="sitemap" or try common paths (including Shopify sitemap_products_1.xml)
   let sitemap_url: string | null = resolve($('link[rel="sitemap"]').attr("href"));
   if (!sitemap_url) {
     const candidates = [
       `${origin}/sitemap.xml`,
+      `${origin}/sitemap_products_1.xml`,
+      `${origin}/sitemap_products.xml`,
       `${origin}/sitemap_index.xml`,
       `${origin}/sitemap-index.xml`,
       `${origin}/sitemap_index.xml.gz`,
@@ -217,7 +248,7 @@ export async function tokenizeBrandFromUrl(inputUrl: string): Promise<TokenizeFr
       }
     }
   }
-  const sitemap_type = inferSitemapType(sitemap_url ?? "");
+  const sitemap_type = inferSitemapType(sitemap_url ?? "", html);
 
   return {
     name,

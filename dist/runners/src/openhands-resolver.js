@@ -105,6 +105,7 @@ export async function runOpenHandsResolver(input) {
             { role: "user", content: `Issue: ${input.issue_title ?? "Unknown"}\n\n${input.issue_body ?? ""}\n\nRepo: ${input.repo_url ?? input.workspace_path ?? "unknown"}` },
         ],
         context: { run_id: "resolver", job_run_id: "resolver", job_type: "openhands_resolver" },
+        useGateway: input.llm_source !== "openai_direct",
     });
     return {
         patch: result.content,

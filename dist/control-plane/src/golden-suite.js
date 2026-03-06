@@ -61,7 +61,12 @@ export async function runGoldenSuite(pool, runId) {
             }
         }
     }
+    catch (e) {
+        await client.query("ROLLBACK").catch(() => { });
+        throw e;
+    }
     finally {
+        await client.query("ROLLBACK").catch(() => { });
         client.release();
     }
     return {

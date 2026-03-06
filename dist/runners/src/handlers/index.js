@@ -2,7 +2,8 @@
  * Node handler registry: job_type → handler.
  * Handlers receive JobContext and return success; they write artifacts with producer_plan_node_id.
  */
-import { chat, isGatewayConfigured, isSafeToCache } from "../llm-client.js";
+import { chat, isGatewayConfigured, resolveTier } from "../llm-client.js";
+import { getBudgetsForJob, recordUsage } from "../llm-budgets.js";
 const registry = new Map();
 export function registerHandler(jobType, handler) {
     registry.set(jobType, handler);
@@ -10,28 +11,29 @@ export function registerHandler(jobType, handler) {
 export function getHandler(jobType) {
     return registry.get(jobType);
 }
-function pickTier(jobType) {
-    const maxTypes = new Set(["codegen", "write_patch", "design", "openhands_resolver"]);
-    if (maxTypes.has(jobType))
-        return "max/chat";
-    if (isSafeToCache(jobType))
-        return "fast/chat";
-    return "auto/chat";
-}
 async function writeArtifact(client, context, params, artifactType, content, artifactClass = "docs") {
     const uri = `mem://${artifactType}/${context.run_id}/${context.plan_node_id}`;
-    await client.query(`INSERT INTO artifacts (id, run_id, job_run_id, producer_plan_node_id, artifact_type, artifact_class, uri, metadata_json)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7::jsonb)`, [params.runId, params.jobRunId, params.planNodeId, artifactType, artifactClass, uri, JSON.stringify({ content: content.slice(0, 10000) })]).catch(() => client.query(`INSERT INTO artifacts (run_id, job_run_id, artifact_type, artifact_class, uri, metadata_json)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`, [params.runId, params.jobRunId, artifactType, artifactClass, uri, JSON.stringify({ content: content.slice(0, 10000) })]));
+    const maxContent = artifactType === "landing_page" ? 2_000_000 : 10_000;
+    const payload = JSON.stringify({ content: content.slice(0, maxContent) });
+    // Use minimal columns (no producer_plan_node_id) so INSERT never fails on core schema and never aborts the transaction.
+    await client.query(`INSERT INTO artifacts (id, run_id, job_run_id, artifact_type, artifact_class, uri, metadata_json)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::jsonb)`, [params.runId, params.jobRunId, artifactType, artifactClass, uri, payload]);
 }
 async function recordLlmCall(client, runId, jobRunId, tier, modelId, tokensIn, tokensOut, latencyMs) {
     await client.query(`INSERT INTO llm_calls (run_id, job_run_id, model_tier, model_id, tokens_in, tokens_out, latency_ms)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`, [runId, jobRunId, tier, modelId, tokensIn ?? null, tokensOut ?? null, latencyMs ?? null]).catch(() => { });
 }
 async function callLlmAndRecord(client, context, params, systemPrompt, userPrompt, tier) {
-    const model = tier ?? pickTier(context.job_type);
+    const model = tier ?? (await resolveTier(context.job_type));
     if (!isGatewayConfigured())
         return `[stub] LLM not configured. System: ${systemPrompt.slice(0, 100)}`;
+    const budgets = await getBudgetsForJob(client, context.job_type, context.initiative_id ?? null);
+    for (const b of budgets) {
+        const usage = Number(b.current_usage ?? 0);
+        if (b.budget_tokens != null && usage >= b.budget_tokens) {
+            throw new Error(`llm_budget exceeded: ${b.scope_type}=${b.scope_value} (${usage} >= ${b.budget_tokens} tokens)`);
+        }
+    }
     const result = await chat({
         model,
         messages: [
@@ -39,8 +41,13 @@ async function callLlmAndRecord(client, context, params, systemPrompt, userPromp
             { role: "user", content: userPrompt },
         ],
         context: { run_id: context.run_id, job_run_id: params.jobRunId, job_type: context.job_type, initiative_id: context.initiative_id },
+        useGateway: context.llm_source === "gateway",
     });
     await recordLlmCall(client, params.runId, params.jobRunId, model, result.model_id, result.tokens_in, result.tokens_out, result.latency_ms);
+    const tokensUsed = (result.tokens_in ?? 0) + (result.tokens_out ?? 0);
+    for (const b of budgets) {
+        await recordUsage(client, b.scope_type, b.scope_value, tokensUsed);
+    }
     return result.content;
 }
 /** Approval: no-op (scheduler handles) */
@@ -149,6 +156,7 @@ export function registerOpenHandsResolverHandler() {
             issue_title: context.human_feedback ?? undefined,
             issue_body: context.human_feedback ?? undefined,
             workspace_path: context.workspace_path ?? undefined,
+            llm_source: context.llm_source,
         });
         await recordLlmCall(client, params.runId, params.jobRunId, "max/chat", result.model_used, undefined, undefined, undefined);
         await writeArtifact(client, context, params, "resolver_patch", result.patch);
@@ -164,6 +172,7 @@ export function registerSweAgentHandler() {
             issue_url: issueUrl ?? undefined,
             issue_text: context.human_feedback ?? undefined,
             workspace_path: context.workspace_path ?? undefined,
+            llm_source: context.llm_source,
         });
         await recordLlmCall(client, params.runId, params.jobRunId, "max/chat", result.model_used, undefined, undefined, undefined);
         await writeArtifact(client, context, params, "swe_agent_patch", result.patch);
@@ -199,6 +208,130 @@ export function registerAllHandlers() {
     registry.set("optimizer", async (client, context, params) => {
         const { handleOptimizer } = await import("./optimizer.js");
         await handleOptimizer(client, context, params);
+    });
+    // Marketing / brand handlers (enable marketing + landing pipelines)
+    registry.set("copy_generate", async (client, context, params) => {
+        const { handleCopyGenerate } = await import("./copy-generate.js");
+        const request = {
+            run_id: context.run_id,
+            job_run_id: params.jobRunId,
+            job_type: context.job_type,
+            initiative_id: context.initiative_id ?? undefined,
+            llm_source: context.llm_source,
+            input: context.config,
+        };
+        const out = await handleCopyGenerate(request);
+        if (out?.content != null) {
+            await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "docs");
+        }
+    });
+    registry.set("deck_generate", async (client, context, params) => {
+        const { handleDeckGenerate } = await import("./deck-generate.js");
+        const brandCtx = context.initiative_id ? await (await import("../brand-context.js")).loadBrandContext(context.initiative_id) : null;
+        const request = {
+            run_id: context.run_id,
+            job_run_id: params.jobRunId,
+            job_type: context.job_type,
+            initiative_id: context.initiative_id ?? undefined,
+            input: {
+                template: context.config?.template,
+                brand_context: brandCtx ? { id: brandCtx.id, name: brandCtx.name } : undefined,
+            },
+        };
+        const out = await handleDeckGenerate(request);
+        if (out?.content != null) {
+            await writeArtifact(client, context, params, out.artifact_type, out.content, "docs");
+        }
+    });
+    registry.set("report_generate", async (client, context, params) => {
+        const { handleReportGenerate } = await import("./report-generate.js");
+        const brandCtx = context.initiative_id ? await (await import("../brand-context.js")).loadBrandContext(context.initiative_id) : null;
+        const request = {
+            run_id: context.run_id,
+            job_run_id: params.jobRunId,
+            job_type: context.job_type,
+            initiative_id: context.initiative_id ?? undefined,
+            input: {
+                template: context.config?.template,
+                brand_context: brandCtx ? { id: brandCtx.id, name: brandCtx.name } : undefined,
+            },
+        };
+        const out = await handleReportGenerate(request);
+        if (out?.content != null) {
+            await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "docs");
+        }
+    });
+    registry.set("email_generate", async (client, context, params) => {
+        const { handleEmailGenerate } = await import("./email-generate.js");
+        const request = {
+            run_id: context.run_id,
+            job_run_id: params.jobRunId,
+            job_type: context.job_type,
+            initiative_id: context.initiative_id ?? undefined,
+            llm_source: context.llm_source,
+            input: context.config ?? {},
+        };
+        const out = await handleEmailGenerate(request);
+        if (out?.content != null) {
+            await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "docs");
+        }
+    });
+    registry.set("email_generate_mjml", async (client, context, params) => {
+        const { handleEmailGenerateMjml } = await import("./email-generate-mjml.js");
+        const request = {
+            run_id: context.run_id,
+            job_run_id: params.jobRunId,
+            job_type: context.job_type,
+            initiative_id: context.initiative_id ?? undefined,
+            llm_source: context.llm_source,
+            input: context.config ?? {},
+        };
+        const out = await handleEmailGenerateMjml(request);
+        if (out?.content != null) {
+            await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template");
+        }
+    });
+    registry.set("brand_compile", async (client, context, params) => {
+        const { loadBrandContext } = await import("../brand-context.js");
+        const { readFileSync, existsSync } = await import("fs");
+        const { handleBrandCompile } = await import("./brand-compile.js");
+        const brandCtx = context.initiative_id ? await loadBrandContext(context.initiative_id) : null;
+        if (!brandCtx) {
+            throw new Error("brand_compile requires an initiative with a brand profile");
+        }
+        const request = {
+            run_id: context.run_id,
+            job_run_id: params.jobRunId,
+            job_type: context.job_type,
+            initiative_id: context.initiative_id ?? undefined,
+            input: { brand_profile: brandCtx },
+        };
+        const out = await handleBrandCompile(request);
+        if (out.error) {
+            throw new Error(out.error);
+        }
+        const artifacts = out.artifacts ?? [];
+        for (const a of artifacts) {
+            const content = existsSync(a.uri) ? readFileSync(a.uri, "utf8") : "";
+            await writeArtifact(client, context, params, a.artifact_type, content, a.artifact_class ?? "docs");
+        }
+    });
+    registry.set("ui_scaffold", async (client, context, params) => {
+        const { handleUiScaffold } = await import("./ui-scaffold.js");
+        const request = {
+            run_id: context.run_id,
+            job_run_id: params.jobRunId,
+            job_type: context.job_type,
+            initiative_id: context.initiative_id ?? undefined,
+        };
+        const out = await handleUiScaffold(request);
+        if (out?.content != null) {
+            await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "docs");
+        }
+    });
+    registry.set("landing_page_generate", async (client, context, params) => {
+        const { handleLandingPageGenerate } = await import("./landing-page-generate.js");
+        await handleLandingPageGenerate({ client, context, params, writeArtifact });
     });
 }
 //# sourceMappingURL=index.js.map

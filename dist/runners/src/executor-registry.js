@@ -43,6 +43,7 @@ export function jobRequestFromContext(context) {
         node_key: context.node_key,
         agent_role: context.agent_role,
         workspace_path: context.workspace_path,
+        llm_source: context.llm_source,
         input: {
             predecessor_artifact_refs: context.predecessor_artifact_ids,
             options: {
@@ -89,36 +90,19 @@ export async function recordArtifact(client, record, params) {
     const id = uuid();
     const artifactClass = (record.artifact_class ?? "docs");
     const metadataJson = record.metadata ? JSON.stringify(record.metadata) : null;
-    try {
-        await client.query(`INSERT INTO artifacts (
-         id, run_id, job_run_id, producer_plan_node_id,
-         artifact_type, artifact_class, uri, sha256, metadata_json
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, [
-            id,
-            params.runId,
-            params.jobRunId,
-            params.producerPlanNodeId,
-            record.artifact_type,
-            artifactClass,
-            record.uri,
-            record.sha256 ?? null,
-            metadataJson,
-        ]);
-    }
-    catch {
-        await client.query(`INSERT INTO artifacts (
-         id, run_id, job_run_id, artifact_type, artifact_class, uri, sha256, metadata_json
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
-            id,
-            params.runId,
-            params.jobRunId,
-            record.artifact_type,
-            artifactClass,
-            record.uri,
-            record.sha256 ?? null,
-            metadataJson,
-        ]);
-    }
+    // Use minimal columns (no producer_plan_node_id) so INSERT never fails on core schema and never aborts the transaction.
+    await client.query(`INSERT INTO artifacts (
+       id, run_id, job_run_id, artifact_type, artifact_class, uri, sha256, metadata_json
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
+        id,
+        params.runId,
+        params.jobRunId,
+        record.artifact_type,
+        artifactClass,
+        record.uri,
+        record.sha256 ?? null,
+        metadataJson,
+    ]);
     return id;
 }
 /**

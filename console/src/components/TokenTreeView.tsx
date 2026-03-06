@@ -4,6 +4,13 @@ import { useState, useMemo } from "react";
 
 type TokenEntry = { path: string; value: unknown };
 
+/** Human-friendly labels for common design token paths (e.g. products used by email, decks, reports). */
+const PATH_LABELS: Record<string, string> = { products: "Products" };
+
+function pathDisplay(path: string): string {
+  return PATH_LABELS[path] ?? path;
+}
+
 function flattenTokens(obj: unknown, prefix = ""): TokenEntry[] {
   const out: TokenEntry[] = [];
   if (obj == null) return out;
@@ -66,7 +73,7 @@ export function TokenTreeView({
           <tbody>
             {entries.map(({ path, value }) => (
               <tr key={path} className="border-t border-slate-200">
-                <td className="p-2 font-mono text-xs text-slate-700 break-all">{path}</td>
+                <td className="p-2 font-mono text-xs text-slate-700 break-all">{pathDisplay(path)}</td>
                 <td className="p-2 text-slate-900 break-all">
                   {typeof value === "string" && value.startsWith("#") ? (
                     <span className="inline-flex items-center gap-1">

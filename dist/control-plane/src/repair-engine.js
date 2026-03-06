@@ -92,7 +92,12 @@ export async function executeRepairLoop(pool, jobRunId, runId, planNodeId, error
         }
         return { repaired: false, halted: false };
     }
+    catch (e) {
+        await client.query("ROLLBACK").catch(() => { });
+        throw e;
+    }
     finally {
+        await client.query("ROLLBACK").catch(() => { });
         client.release();
     }
 }

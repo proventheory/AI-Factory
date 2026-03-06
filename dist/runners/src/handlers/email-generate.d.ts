@@ -3,6 +3,7 @@ export declare function handleEmailGenerate(request: {
     job_run_id: string;
     job_type: string;
     initiative_id?: string;
+    llm_source?: "gateway" | "openai_direct";
     input?: {
         subject_hint?: string;
         audience?: string;

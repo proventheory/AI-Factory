@@ -1,15 +1,35 @@
 import { v4 as uuid } from "uuid";
 export async function createRun(db, params) {
     const runId = uuid();
-    await db.query(`INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
-       status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
-       prompt_template_version, adapter_contract_version)
-     VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11)`, [
-        runId, params.planId, params.releaseId, params.policyVersion,
-        params.environment, params.cohort, params.rootIdempotencyKey,
-        params.routingReason ?? null, params.routingRuleId ?? null,
-        params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
-    ]);
+    const llmSource = params.llmSource === "openai_direct" ? "openai_direct" : "gateway";
+    try {
+        await db.query(`INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
+         status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
+         prompt_template_version, adapter_contract_version, llm_source)
+       VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11,$12)`, [
+            runId, params.planId, params.releaseId, params.policyVersion,
+            params.environment, params.cohort, params.rootIdempotencyKey,
+            params.routingReason ?? null, params.routingRuleId ?? null,
+            params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
+            llmSource,
+        ]);
+    }
+    catch (err) {
+        if (err.code === "42703") {
+            await db.query(`INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
+           status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
+           prompt_template_version, adapter_contract_version)
+         VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11)`, [
+                runId, params.planId, params.releaseId, params.policyVersion,
+                params.environment, params.cohort, params.rootIdempotencyKey,
+                params.routingReason ?? null, params.routingRuleId ?? null,
+                params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
+            ]);
+        }
+        else {
+            throw err;
+        }
+    }
     await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'queued')`, [runId]);
     const nodes = await db.query(`SELECT * FROM plan_nodes WHERE plan_id = $1`, [params.planId]);
     const edges = await db.query(`SELECT * FROM plan_edges WHERE plan_id = $1`, [params.planId]);
@@ -51,6 +71,15 @@ export async function createRun(db, params) {
         await db.query(`UPDATE runs SET status = 'running' WHERE id = $1`, [runId]);
         await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'started')`, [runId]).catch(() => { });
     }
+    // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+    if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+        const rootJobCount = nodes.rows.filter((n) => (inDegree.get(n.id) ?? 0) === 0 && n.node_type !== "approval").length;
+        try {
+            fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "control-plane/src/scheduler.ts:createRun", message: "createRun done", data: { runId, planId: params.planId, rootJobCount, nodeCount: nodes.rows.length }, timestamp: Date.now(), hypothesisId: "H2" }) }).catch(() => { });
+        }
+        catch { /* ignore */ }
+    }
+    // #endregion
     return runId;
 }
 /**
@@ -86,6 +115,15 @@ export async function advanceSuccessors(db, runId, completedNodeId, winningJobRu
                 const idempotencyKey = `${runId}:${to_node_id}`;
                 await db.query(`INSERT INTO job_runs (id, run_id, plan_node_id, attempt, status, idempotency_key)
            VALUES ($1, $2, $3, 1, 'queued', $4)`, [jobRunId, runId, to_node_id, idempotencyKey]);
+                // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
+                if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+                    try {
+                        const nodeJob = await db.query("SELECT job_type FROM plan_nodes WHERE id = $1", [to_node_id]);
+                        fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "control-plane/src/scheduler.ts:advanceSuccessors", message: "job_run enqueued", data: { runId, to_node_id, job_type: nodeJob.rows[0]?.job_type }, timestamp: Date.now(), hypothesisId: "H2" }) }).catch(() => { });
+                    }
+                    catch { /* ignore */ }
+                }
+                // #endregion
             }
         }
     }
