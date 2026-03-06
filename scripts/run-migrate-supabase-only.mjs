@@ -29,6 +29,7 @@ const migrations = [
     skipIfErrorCode: "42P01",
     skipMessage: "brand_profiles not found (run Supabase migration 20250303000007_brand_engine.sql first)",
   },
+  { path: "supabase/migrations/20250306120000_email_campaign_schema_ensure.sql", name: "email_campaign_schema_ensure" },
 ];
 
 async function run() {

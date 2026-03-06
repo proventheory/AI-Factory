@@ -511,12 +511,13 @@ app.get("/v1/runs", async (req, res) => {
   }
 });
 
-/** GET /v1/runs/:id — full flight recorder (run + plan + node_progress + job_runs + artifacts + events) */
+/** GET /v1/runs/:id — full flight recorder (run + plan + node_progress + job_runs + artifacts + events). Includes initiative_id from plan for runner fallback. */
 app.get("/v1/runs/:id", async (req, res) => {
   try {
     const runId = req.params.id;
-    const [run, planNodes, planEdges, nodeProgress, jobRuns, runArtifacts, runEvents] = await Promise.all([
+    const [run, planRow, planNodes, planEdges, nodeProgress, jobRuns, runArtifacts, runEvents] = await Promise.all([
       pool.query("SELECT * FROM runs WHERE id = $1", [runId]).then(r => r.rows[0]),
+      pool.query("SELECT p.initiative_id FROM plans p JOIN runs r ON r.plan_id = p.id WHERE r.id = $1", [runId]).then(r => r.rows[0] ?? null),
       pool.query("SELECT pn.* FROM plans p JOIN plan_nodes pn ON pn.plan_id = p.id WHERE p.id = (SELECT plan_id FROM runs WHERE id = $1)", [runId]).then(r => r.rows),
       pool.query("SELECT pe.* FROM plans p JOIN plan_edges pe ON pe.plan_id = p.id WHERE p.id = (SELECT plan_id FROM runs WHERE id = $1)", [runId]).then(r => r.rows),
       pool.query("SELECT * FROM node_progress WHERE run_id = $1", [runId]).then(r => r.rows),
@@ -525,7 +526,8 @@ app.get("/v1/runs/:id", async (req, res) => {
       pool.query("SELECT * FROM run_events WHERE run_id = $1 ORDER BY created_at", [runId]).then(r => r.rows),
     ]);
     if (!run) return res.status(404).json({ error: "Run not found" });
-    res.json({ run, plan_nodes: planNodes, plan_edges: planEdges, node_progress: nodeProgress, job_runs: jobRuns, artifacts: runArtifacts, run_events: runEvents });
+    const initiative_id = (planRow as { initiative_id?: string } | null)?.initiative_id ?? null;
+    res.json({ run: { ...run, initiative_id }, initiative_id, plan_nodes: planNodes, plan_edges: planEdges, node_progress: nodeProgress, job_runs: jobRuns, artifacts: runArtifacts, run_events: runEvents });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }

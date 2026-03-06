@@ -43,6 +43,18 @@ BEGIN
     CREATE INDEX IF NOT EXISTS idx_email_templates_brand_profile_id ON email_templates (brand_profile_id) WHERE brand_profile_id IS NOT NULL;
   END IF;
 END $$;
+-- Email campaign flow: ensure initiatives.template_id and email_campaign_metadata.metadata_json exist (idempotent).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'initiatives') THEN
+    ALTER TABLE initiatives ADD COLUMN IF NOT EXISTS template_id text;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'email_campaign_metadata') THEN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'email_campaign_metadata' AND column_name = 'metadata_json') THEN
+      ALTER TABLE email_campaign_metadata ADD COLUMN metadata_json jsonb;
+    END IF;
+  END IF;
+END $$;
 `;
 
 async function main() {

@@ -27,7 +27,23 @@ export async function handleEmailGenerateMjml(request: {
   /** When set, record LLM usage to llm_calls (for AI Calls / run detail). */
   recordLlmCall?: (tier: string, modelId: string, tokensIn?: number, tokensOut?: number, latencyMs?: number) => Promise<void>;
 }) {
-  const brandCtx = request.initiative_id ? await loadBrandContext(request.initiative_id) : null;
+  // Self-heal: resolve initiative_id from control-plane when missing (e.g. runner DB != control-plane DB).
+  let initiativeId = request.initiative_id;
+  if (!initiativeId && request.run_id) {
+    try {
+      const runRes = await fetch(`${CONTROL_PLANE_URL}/v1/runs/${request.run_id}`);
+      if (runRes.ok) {
+        const runPayload = (await runRes.json()) as { initiative_id?: string; run?: { initiative_id?: string } };
+        initiativeId = runPayload.initiative_id ?? runPayload.run?.initiative_id ?? undefined;
+        if (initiativeId) console.log("[MJML] initiative_id from run fallback", { run_id: request.run_id, initiative_id: initiativeId });
+      }
+    } catch (_e) {
+      console.log("[MJML] run fallback failed", { run_id: request.run_id, err: String((_e as Error).message).slice(0, 60) });
+    }
+  }
+  if (!initiativeId) console.log("[MJML] no initiative_id", { run_id: request.run_id });
+
+  const brandCtx = initiativeId ? await loadBrandContext(initiativeId) : null;
   const brandPrompt = brandCtx ? brandContextToSystemPrompt(brandCtx) : "";
   const mergedTokens = brandCtx ? brandContextToDesignTokens(brandCtx, tokens as unknown as Record<string, unknown>) : tokens;
   const brandColor = (mergedTokens as Record<string, unknown>)?.color && typeof (mergedTokens as Record<string, unknown>).color === "object"
@@ -35,9 +51,9 @@ export async function handleEmailGenerateMjml(request: {
     : "#3b82f6";
 
   let input: EmailGenerateMjmlInput = request.input ?? {};
-  if (request.initiative_id) {
+  if (initiativeId) {
     try {
-      const campRes = await fetch(`${CONTROL_PLANE_URL}/v1/email_campaigns/${request.initiative_id}`);
+      const campRes = await fetch(`${CONTROL_PLANE_URL}/v1/email_campaigns/${initiativeId}`);
       if (campRes.ok) {
         const camp = (await campRes.json()) as { template_id?: string; metadata_json?: { template_id?: string; products?: unknown[]; campaign_prompt?: string } };
         const templateIdFromCamp = camp.template_id ?? (camp.metadata_json && typeof camp.metadata_json === "object" ? (camp.metadata_json as { template_id?: string }).template_id : undefined);
@@ -47,10 +63,25 @@ export async function handleEmailGenerateMjml(request: {
           if (meta.products && !input.products?.length) input.products = meta.products as EmailGenerateMjmlInput["products"];
           if (meta.campaign_prompt) input.campaign_prompt = input.campaign_prompt ?? meta.campaign_prompt;
         }
-        console.log("[MJML] campaign fetch", { initiative_id: request.initiative_id, template_id: input.template_id, products: (input.products ?? []).length, campaign_prompt: (input.campaign_prompt ?? "").slice(0, 60) });
+        console.log("[MJML] campaign fetch", { initiative_id: initiativeId, template_id: input.template_id, products: (input.products ?? []).length, campaign_prompt: (input.campaign_prompt ?? "").slice(0, 60) });
       }
     } catch (_e) {
-      console.log("[MJML] campaign fetch failed", { initiative_id: request.initiative_id, err: String((_e as Error).message).slice(0, 80) });
+      console.log("[MJML] campaign fetch failed", { initiative_id: initiativeId, err: String((_e as Error).message).slice(0, 80) });
+    }
+    // Fallback: if campaign didn't provide template_id, try initiative row (e.g. older campaigns).
+    if (!input.template_id) {
+      try {
+        const initRes = await fetch(`${CONTROL_PLANE_URL}/v1/initiatives/${initiativeId}`);
+        if (initRes.ok) {
+          const init = (await initRes.json()) as { template_id?: string };
+          if (init.template_id) {
+            input.template_id = init.template_id;
+            console.log("[MJML] template_id from initiative fallback", { template_id: init.template_id });
+          }
+        }
+      } catch (_e2) {
+        console.log("[MJML] initiative fallback failed", { initiative_id: initiativeId, err: String((_e2 as Error).message).slice(0, 60) });
+      }
     }
   }
 
@@ -137,7 +168,7 @@ export async function handleEmailGenerateMjml(request: {
       run_id: request.run_id,
       job_run_id: request.job_run_id,
       job_type: request.job_type,
-      initiative_id: request.initiative_id,
+      initiative_id: initiativeId,
     },
     brandContext: brandCtx ? { id: brandCtx.id, name: brandCtx.name, systemPrompt: brandPrompt } : undefined,
     useGateway: request.llm_source !== "openai_direct",
