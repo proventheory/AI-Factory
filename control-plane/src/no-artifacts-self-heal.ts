@@ -123,7 +123,7 @@ export async function scanAndRemediateNoArtifactsRuns(): Promise<void> {
   const runs = await pool.query<{ id: string }>(
     `SELECT r.id
      FROM runs r
-     WHERE r.status = ANY($1::text[])
+     WHERE r.status::text = ANY($1::text[])
        AND (SELECT count(*)::int FROM job_runs jr WHERE jr.run_id = r.id) > 0
        AND (SELECT count(*)::int FROM artifacts a WHERE a.run_id = r.id) = 0
      ORDER BY r.ended_at DESC NULLS LAST
@@ -203,7 +203,7 @@ export async function scanAndRemediateBadArtifactRuns(): Promise<void> {
   try {
     const r = await pool.query<{ id: string }>(
       `SELECT r.id FROM runs r
-       WHERE r.status = ANY($1::text[])
+       WHERE r.status::text = ANY($1::text[])
          AND (SELECT count(*)::int FROM job_runs jr WHERE jr.run_id = r.id) > 0
          AND (SELECT count(*)::int FROM artifacts a WHERE a.run_id = r.id AND a.artifact_type = 'email_template') > 0
        ORDER BY r.ended_at DESC NULLS LAST
