@@ -130,7 +130,9 @@ async function pollAndExecute(): Promise<void> {
           await txClient.query("BEGIN");
           await handler(txClient, jobContext, { runId: jobRun.run_id, jobRunId: jobRun.id, planNodeId: jobRun.plan_node_id });
           await txClient.query("COMMIT");
-          console.log("[runner] handler transaction committed (artifacts persisted)", { run_id: jobRun.run_id, job_type: jobContext.job_type });
+          const countResult = await txClient.query<{ c: number }>("SELECT count(*)::int AS c FROM artifacts WHERE run_id = $1", [jobRun.run_id]);
+          const artifactCount = countResult.rows[0]?.c ?? 0;
+          console.log("[runner] handler transaction committed (artifacts persisted)", { run_id: jobRun.run_id, job_type: jobContext.job_type, artifact_count: artifactCount });
           // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
           if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
             fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:handler_done", message: "handler completed", data: { job_type: jobContext.job_type, runId: jobRun.run_id }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});

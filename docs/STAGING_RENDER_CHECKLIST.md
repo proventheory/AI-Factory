@@ -98,7 +98,7 @@ After a run that “succeeded” with no artifacts in the UI, open Supabase → 
 SELECT id, run_id, artifact_type, created_at FROM artifacts WHERE run_id = '9de6dbf0-2583-4bec-8187-59b7c2c31519' ORDER BY created_at;
 ```
 
-Replace the UUID with your actual run id (from the run detail URL, e.g. `/runs/9de6dbf0-...`). If you see a row, the runner wrote to this DB but the API might not be returning it. If you see **no rows** but the runner logs show `[runner] handler transaction committed (artifacts persisted)` for that run_id, the runner is writing to a **different database** — fix `DATABASE_URL` on the runner (and/or Control Plane) so both use the same Supabase connection.
+Replace the UUID with your actual run id (from the run detail URL, e.g. `/runs/9de6dbf0-...`). If you see a row, the runner wrote to this DB but the API might not be returning it. If you see **no rows** but the runner logs show `[runner] handler transaction committed (artifacts persisted)` with `artifact_count: 1` for that run_id, you are likely querying a **different database** (e.g. wrong Supabase project in the dashboard, or SQL Editor on a read replica). Confirm the Supabase project is **anqhihkvovuhfzsyqtxu** and run `SELECT id, status FROM runs WHERE id = 'YOUR_RUN_ID'` — if the run exists here, you're in the right DB; then re-check the artifacts query.
 
 To list recent runs and artifact counts (runs table has `started_at`, not `created_at`):
 
