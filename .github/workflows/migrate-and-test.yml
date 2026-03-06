@@ -13,6 +13,19 @@ jobs:
       CONTROL_PLANE_URL: ${{ vars.CONTROL_PLANE_URL_STAGING }}
       CONSOLE_URL: ${{ vars.CONSOLE_URL_STAGING }}
     steps:
+      - name: Check deploy env
+        run: |
+          missing=""
+          [ -z "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ] && missing="$missing SUPABASE_ACCESS_TOKEN"
+          [ -z "${{ secrets.SUPABASE_PROJECT_REF_STAGING }}" ] && missing="$missing SUPABASE_PROJECT_REF_STAGING"
+          [ -z "${{ secrets.SUPABASE_DB_PASSWORD_STAGING }}" ] && missing="$missing SUPABASE_DB_PASSWORD_STAGING"
+          [ -z "${{ vars.CONTROL_PLANE_URL_STAGING }}" ] && missing="$missing CONTROL_PLANE_URL_STAGING"
+          [ -z "${{ vars.CONSOLE_URL_STAGING }}" ] && missing="$missing CONSOLE_URL_STAGING"
+          if [ -n "$missing" ]; then
+            echo "::error::Add these in GitHub → Settings → Secrets and variables → Actions:${missing}"
+            echo "See docs/DEPLOY_PHASE3_CHECKLIST.md"
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
@@ -64,6 +77,19 @@ jobs:
       CONTROL_PLANE_URL: ${{ vars.CONTROL_PLANE_URL_PROD }}
       CONSOLE_URL: ${{ vars.CONSOLE_URL_PROD }}
     steps:
+      - name: Check deploy env
+        run: |
+          missing=""
+          [ -z "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ] && missing="$missing SUPABASE_ACCESS_TOKEN"
+          [ -z "${{ secrets.SUPABASE_PROJECT_REF_PROD }}" ] && missing="$missing SUPABASE_PROJECT_REF_PROD"
+          [ -z "${{ secrets.SUPABASE_DB_PASSWORD_PROD }}" ] && missing="$missing SUPABASE_DB_PASSWORD_PROD"
+          [ -z "${{ vars.CONTROL_PLANE_URL_PROD }}" ] && missing="$missing CONTROL_PLANE_URL_PROD"
+          [ -z "${{ vars.CONSOLE_URL_PROD }}" ] && missing="$missing CONSOLE_URL_PROD"
+          if [ -n "$missing" ]; then
+            echo "::error::Add these in GitHub → Settings → Secrets and variables → Actions:${missing}"
+            echo "See docs/DEPLOY_PHASE3_CHECKLIST.md"
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:

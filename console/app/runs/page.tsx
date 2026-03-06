@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton, Badge } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { useRuns } from "@/hooks/use-api";
 import { formatApiError } from "@/lib/api";
+import { INTENT_TYPES } from "@/config/intent-types";
 
 type RunRow = {
   id: string;
@@ -16,6 +18,9 @@ type RunRow = {
   finished_at?: string | null;
   top_error_signature?: string | null;
   failures_count?: number | null;
+  intent_type?: string | null;
+  initiative_title?: string | null;
+  initiative_id?: string | null;
 };
 
 function statusVariant(status: string): "success" | "warning" | "error" | "neutral" {
@@ -26,7 +31,8 @@ function statusVariant(status: string): "success" | "warning" | "error" | "neutr
 }
 
 export default function RunsPage() {
-  const { data, isLoading, error } = useRuns({ limit: 50 });
+  const [intentFilter, setIntentFilter] = useState<string>("");
+  const { data, isLoading, error } = useRuns({ limit: 50, intent_type: intentFilter || undefined });
   const items = (data?.items ?? []) as RunRow[];
 
   const columns: Column<RunRow>[] = [
@@ -38,6 +44,14 @@ export default function RunsPage() {
           {row.id.slice(0, 8)}…
         </Link>
       ),
+    },
+    {
+      key: "intent_type",
+      header: "Pipeline",
+      render: (row) => {
+        const label = INTENT_TYPES.find((t) => t.value === row.intent_type)?.label ?? row.intent_type ?? "—";
+        return <Badge variant="neutral">{label}</Badge>;
+      },
     },
     { key: "environment", header: "Env" },
     { key: "cohort", header: "Cohort", render: (row) => row.cohort ?? "—" },
@@ -94,8 +108,22 @@ export default function RunsPage() {
       <Stack>
         <PageHeader
           title="Pipeline Runs"
-          description="Orchestration run history. Create an initiative and run a plan to see runs here."
+          description="Orchestration run history. Filter by pipeline type (dev vs marketing)."
         />
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <label htmlFor="intent-filter" className="text-body-small text-text-muted">Pipeline</label>
+          <select
+            id="intent-filter"
+            value={intentFilter}
+            onChange={(e) => setIntentFilter(e.target.value)}
+            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-body-small text-text-primary shadow-sm"
+          >
+            <option value="">All</option>
+            {INTENT_TYPES.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </div>
         <CardSection>
           {items.length === 0 ? (
             <EmptyState

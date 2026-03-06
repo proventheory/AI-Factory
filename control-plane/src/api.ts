@@ -348,18 +348,25 @@ app.get("/v1/runs", async (req, res) => {
     if (environment) { conditions.push(`r.environment = $${i++}`); params.push(environment); }
     if (status) { conditions.push(`r.status = $${i++}`); params.push(status); }
     if (cohort) { conditions.push(`r.cohort = $${i++}`); params.push(cohort); }
+    const intent_type = req.query.intent_type as string | undefined;
+    if (intent_type) { conditions.push(`i.intent_type = $${i++}`); params.push(intent_type); }
     params.push(limit, offset);
+    const limitIdx = params.length - 1;
+    const offsetIdx = params.length;
     const q = `
       WITH fail AS (
         SELECT run_id, max(error_signature) FILTER (WHERE status = 'failed') AS top_error_signature,
                count(*) FILTER (WHERE status = 'failed')::int AS failures_count
         FROM job_runs GROUP BY run_id
       )
-      SELECT r.*, f.top_error_signature, f.failures_count
-      FROM runs r LEFT JOIN fail f ON f.run_id = r.id
+      SELECT r.*, f.top_error_signature, f.failures_count, i.intent_type, i.title AS initiative_title, i.id AS initiative_id
+      FROM runs r
+      LEFT JOIN fail f ON f.run_id = r.id
+      LEFT JOIN plans p ON p.id = r.plan_id
+      LEFT JOIN initiatives i ON i.id = p.initiative_id
       WHERE ${conditions.join(" AND ")}
       ORDER BY r.started_at DESC NULLS LAST
-      LIMIT $${i} OFFSET $${i + 1}
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `;
     const r = await pool.query(q, params);
     res.json({ items: r.rows, limit, offset });

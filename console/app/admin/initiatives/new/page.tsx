@@ -1,26 +1,37 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PageHeader, Card, CardContent, Button, Input, Select } from "@/components/ui";
-import { useCreateInitiative } from "@/hooks/use-api";
+import { useCreateInitiative, useBrandProfiles } from "@/hooks/use-api";
 import { getResource } from "@/lib/admin-registry";
 import { INTENT_TYPES } from "@/config/intent-types";
 
 const resource = getResource("initiatives")!;
 
-export default function AdminInitiativesNewPage() {
+function NewInitiativeForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [intent_type, setIntentType] = useState("");
   const [intent_type_other, setIntentTypeOther] = useState("");
   const [title, setTitle] = useState("");
   const [risk_level, setRiskLevel] = useState<"low" | "med" | "high">("low");
   const [source_ref, setSourceRef] = useState("");
+  const [brand_profile_id, setBrandProfileId] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const it = searchParams.get("intent_type");
+    const brand = searchParams.get("brand_profile_id");
+    if (it) setIntentType(it);
+    if (brand) setBrandProfileId(brand);
+  }, [searchParams]);
 
   const resolvedIntent = intent_type === "other" ? intent_type_other.trim() : intent_type;
   const createMutation = useCreateInitiative();
+  const { data: brandsData } = useBrandProfiles({ limit: 200 });
+  const brands = brandsData?.items ?? [];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +46,7 @@ export default function AdminInitiativesNewPage() {
         title: title.trim() || null,
         risk_level,
         source_ref: source_ref.trim() || undefined,
+        brand_profile_id: brand_profile_id.trim() || null,
       },
       {
         onSuccess: (data) => {
@@ -104,6 +116,19 @@ export default function AdminInitiativesNewPage() {
               </Select>
             </div>
             <div>
+              <label className="mb-1 block text-body-small font-medium text-text-primary">Brand (optional)</label>
+              <Select
+                value={brand_profile_id}
+                onChange={(e) => setBrandProfileId(e.target.value)}
+                className="w-full"
+              >
+                <option value="">No brand</option>
+                {brands.map((b: { id: string; name: string }) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </Select>
+            </div>
+            <div>
               <label className="mb-1 block text-body-small font-medium text-text-primary">Source ref</label>
               <Input
                 value={source_ref}
@@ -124,5 +149,13 @@ export default function AdminInitiativesNewPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function AdminInitiativesNewPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-text-muted">Loading…</div>}>
+      <NewInitiativeForm />
+    </Suspense>
   );
 }

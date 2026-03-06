@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { DataTable } from "@/components/ui";
-import { EmptyState } from "@/components/ui";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
@@ -36,26 +35,52 @@ export default function IncidentsPage() {
     { key: "last_seen", header: "Last seen", render: (r) => r.last_seen ? new Date(r.last_seen).toLocaleString() : "—" },
   ];
 
-  if (error) return <p className="text-state-danger">Error: {error}</p>;
+  if (error) {
+    return (
+      <PageFrame>
+        <Stack>
+          <PageHeader title="Incidents" description="Error signatures from failed job runs." />
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            Error: {error}
+          </div>
+        </Stack>
+      </PageFrame>
+    );
+  }
 
   return (
-    <div>
-      <h1 className="text-heading-2 font-bold text-text-primary mb-6">Incidents</h1>
-      <div className="flex gap-4 mb-4">
-        <select value={envFilter} onChange={(e) => setEnvFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-lg text-body-small">
-          <option value="">All environments</option>
-          <option value="sandbox">sandbox</option>
-          <option value="staging">staging</option>
-          <option value="prod">prod</option>
-        </select>
-      </div>
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        {loading ? <p className="p-6 text-text-muted">Loading...</p> : items.length === 0 ? (
-          <EmptyState title="No incidents" description="No failed job runs with error signatures yet." />
-        ) : (
-          <DataTable columns={columns} data={items} keyExtractor={(r) => r.error_signature} />
-        )}
-      </div>
-    </div>
+    <PageFrame>
+      <Stack>
+        <PageHeader
+          title="Incidents"
+          description="Clustered by error signature. Click a signature to see affected runs."
+        />
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <label htmlFor="incidents-env" className="text-body-small text-text-muted">Environment</label>
+          <select
+            id="incidents-env"
+            value={envFilter}
+            onChange={(e) => setEnvFilter(e.target.value)}
+            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-body-small text-text-primary shadow-sm"
+          >
+            <option value="">All</option>
+            <option value="sandbox">sandbox</option>
+            <option value="staging">staging</option>
+            <option value="prod">prod</option>
+          </select>
+        </div>
+        <CardSection>
+          {loading ? (
+            <p className="p-6 text-text-muted">Loading...</p>
+          ) : items.length === 0 ? (
+            <EmptyState title="No incidents" description="No failed job runs with error signatures yet." />
+          ) : (
+            <TableFrame>
+              <DataTable columns={columns} data={items} keyExtractor={(r) => `${r.error_signature}:${r.environment}`} />
+            </TableFrame>
+          )}
+        </CardSection>
+      </Stack>
+    </PageFrame>
   );
 }

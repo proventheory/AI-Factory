@@ -84,10 +84,11 @@ export type ToolCallRow = {
   ended_at?: string | null;
 };
 
-export async function getRuns(params?: { status?: string; limit?: number }): Promise<{ items: RunRow[] }> {
+export async function getRuns(params?: { status?: string; intent_type?: string; limit?: number }): Promise<{ items: RunRow[] }> {
   const searchParams = new URLSearchParams();
   if (params?.status) searchParams.set("status", params.status);
-  if (params?.limit) searchParams.set("limit", String(params.limit));
+  if (params?.intent_type) searchParams.set("intent_type", params.intent_type);
+  if (params?.limit) searchParams.set("limit", String(params.limit ?? 50));
   const res = await fetch(`${API}/v1/runs?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -125,7 +126,7 @@ export async function updateInitiative(id: string, body: Partial<{ intent_type: 
   return res.json();
 }
 
-export async function createInitiative(body: { intent_type: string; title?: string | null; risk_level: string; source_ref?: string }): Promise<InitiativeRow> {
+export async function createInitiative(body: { intent_type: string; title?: string | null; risk_level: string; source_ref?: string; brand_profile_id?: string | null }): Promise<InitiativeRow> {
   const res = await fetch(`${API}/v1/initiatives`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

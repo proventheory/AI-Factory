@@ -1,6 +1,7 @@
 /**
  * Build design_tokens for API payloads: canonical paths first + legacy write-through.
- * See docs/BRAND_TOKENS_MIGRATION_MAPPING.md.
+ * See docs/BRAND_TOKENS_MIGRATION_MAPPING.md and docs/BRAND_TOKENS_AND_PACKAGES.md.
+ * For merge/validate/derive use packages/tokens TokenService.
  */
 
 export interface DesignTokensInput {

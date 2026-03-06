@@ -3,9 +3,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/lib/api";
 
-export function useRuns(params?: { status?: string; limit?: number }) {
+export function useRuns(params?: { status?: string; intent_type?: string; limit?: number }) {
   return useQuery({
-    queryKey: ["runs", params?.status, params?.limit],
+    queryKey: ["runs", params?.status, params?.intent_type, params?.limit],
     queryFn: () => api.getRuns(params),
   });
 }
@@ -36,7 +36,7 @@ export function useInitiative(id: string | null) {
 export function useCreateInitiative() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { intent_type: string; title?: string | null; risk_level: string; source_ref?: string }) => api.createInitiative(body),
+    mutationFn: (body: { intent_type: string; title?: string | null; risk_level: string; source_ref?: string; brand_profile_id?: string | null }) => api.createInitiative(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["initiatives"] });
     },

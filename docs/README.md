@@ -27,7 +27,9 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 | **[SLOP_GUARD_AND_QUALITY_GATES.md](SLOP_GUARD_AND_QUALITY_GATES.md)** | Quality Factory Line (phase-based gates, dimensions) and Adversarial Slop Guard (L0 deterministic + L1 semantic). |
 | **[CONTINUOUS_IMPROVEMENT_JOB_SPEC.md](CONTINUOUS_IMPROVEMENT_JOB_SPEC.md)** | Nightly optimizer run: scan metrics, suggest improvements, open PRs. Phase 5 of LLM Gateway plan. |
 | **[DEPLOYMENT_PLAN_WITH_MCP.md](DEPLOYMENT_PLAN_WITH_MCP.md)** | Steps to put the factory on the web: Supabase, Control Plane (Fly/Render), Console (Vercel), LLM Gateway, MCP connections, Email Marketing Factory. |
+| **[DEPLOY_PHASE3_CHECKLIST.md](DEPLOY_PHASE3_CHECKLIST.md)** | One-time Phase 3 checklist: GitHub Actions secrets/variables and optional branch protection; workflow env check. |
 | **[EMAIL_MARKETING_FACTORY_INTEGRATION.md](EMAIL_MARKETING_FACTORY_INTEGRATION.md)** | Email Marketing Factory app in `email-marketing-factory/`, base path `/email-marketing`, proxy from Console, schema alignment. |
+| **[BRAND_TOKENS_AND_PACKAGES.md](BRAND_TOKENS_AND_PACKAGES.md)** | Brand tokens: Console write-through, packages/tokens (TokenService, export CSS/email), and upgrade plan alignment. |
 
 ## Checklists and plans (reference)
 

@@ -24,6 +24,8 @@ Compared to the branch-based, deploy-on-push plan. **Phase 3 (GitHub Actions)** 
 
 ## Phase 3 — Confirm these (then you’re done)
 
+**One-page checklist:** [DEPLOY_PHASE3_CHECKLIST.md](DEPLOY_PHASE3_CHECKLIST.md). The workflow now has a **Check deploy env** step that fails with a clear message if any secret or variable is missing.
+
 ### 1. GitHub Actions secrets / variables
 
 Add in **GitHub → Repo → Settings → Secrets and variables → Actions**:
