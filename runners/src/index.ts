@@ -1,4 +1,14 @@
 import "dotenv/config";
+import * as Sentry from "@sentry/node";
+
+if (process.env.SENTRY_DSN?.trim()) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.ENVIRONMENT ?? "sandbox",
+    tracesSampleRate: 0.1,
+  });
+}
+
 import pg from "pg";
 import { registerWorker, claimJob, startHeartbeatLoop, completeJobSuccess, completeJobFailure } from "./runner.js";
 import { getJobContext } from "./job-context.js";
@@ -150,6 +160,14 @@ async function pollAndExecute(): Promise<void> {
       }
     } catch (err) {
       const errorSig = (err as Error).message?.slice(0, 200) ?? "unknown";
+      if (process.env.SENTRY_DSN?.trim()) {
+        Sentry.withScope((scope) => {
+          scope.setTag("job_type", jobContext?.job_type ?? "unknown");
+          scope.setTag("run_id", jobRun.run_id);
+          scope.setTag("job_run_id", jobRun.id);
+          Sentry.captureException(err);
+        });
+      }
       // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
       if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
         fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:catch", message: "job failed", data: { job_type: jobContext?.job_type, error: errorSig }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
@@ -194,6 +212,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("[runner] Fatal:", err);
-  process.exit(1);
+  if (process.env.SENTRY_DSN?.trim()) {
+    Sentry.captureException(err);
+    void Sentry.close(2000).then(() => process.exit(1));
+  } else {
+    console.error("[runner] Fatal:", err);
+    process.exit(1);
+  }
 });

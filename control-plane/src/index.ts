@@ -1,4 +1,15 @@
 import "dotenv/config";
+import * as Sentry from "@sentry/node";
+
+if (process.env.SENTRY_DSN?.trim()) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.ENVIRONMENT ?? "development",
+    tracesSampleRate: 0.1,
+    integrations: [Sentry.expressIntegration()],
+  });
+}
+
 import { pool } from "./db.js";
 import { startApi } from "./api.js";
 import { reapStaleLeases } from "./reaper.js";
@@ -69,6 +80,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("[control-plane] Fatal:", err);
-  process.exit(1);
+  if (process.env.SENTRY_DSN?.trim()) {
+    Sentry.captureException(err);
+    void Sentry.close(2000).then(() => process.exit(1));
+  } else {
+    console.error("[control-plane] Fatal:", err);
+    process.exit(1);
+  }
 });

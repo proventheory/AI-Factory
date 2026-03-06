@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import * as Sentry from "@sentry/node";
 import { v4 as uuid } from "uuid";
 import { pool, withTransaction } from "./db.js";
 import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
@@ -2189,5 +2190,8 @@ app.delete("/v1/document_templates/:id/components/:cid", async (req, res) => {
 });
 
 export function startApi(port: number = Number(process.env.PORT) || 3001): void {
+  if (process.env.SENTRY_DSN?.trim()) {
+    Sentry.setupExpressErrorHandler(app);
+  }
   app.listen(port, () => console.log(`[api] Listening on port ${port}`));
 }

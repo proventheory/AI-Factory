@@ -29,6 +29,7 @@
     "preview-landing": "npx tsx scripts/preview-landing.ts"
   },
   "dependencies": {
+    "@sentry/node": "^8.49.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "pg": "^8.13.1",

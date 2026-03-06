@@ -33,6 +33,7 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 
 | Document | Purpose |
 |----------|---------|
+| **[REFERENCE_REPOS_DISCUSSED.md](REFERENCE_REPOS_DISCUSSED.md)** | Full list of GitHub repos we discussed (AI orchestration, workflow engines, schema/vector/UI/observability). Priority subset for AI Factory + ProfessorX; gaps vs current stack. |
 | **[TODO_MULTI_FRAMEWORK_PLAN.md](TODO_MULTI_FRAMEWORK_PLAN.md)** | Multi-framework implementation checklist (agent_role, plan compiler, approvals, scheduler, runner context, etc.); status 100% complete. |
 | **[PLATFORM_UI_REVAMP_CHECKLIST.md](PLATFORM_UI_REVAMP_CHECKLIST.md)** | Platform UI revamp with shadcn and unified design system — checklist. |
 | **[UI_DEBUGGING_LAYOUT_CHECKLIST.md](UI_DEBUGGING_LAYOUT_CHECKLIST.md)** | UI debugging tools and layout system — granular checklist. |

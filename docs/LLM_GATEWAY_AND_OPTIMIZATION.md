@@ -57,6 +57,10 @@ Gateway config exposes these as **model names** (e.g. `auto/chat`, `fast/chat`, 
 - `NEXT_PUBLIC_LANGFUSE_URL` — Link to Langfuse project for cost/telemetry UI.
 - Or use Helicone dashboard link; Cost/Usage page can read from Control Plane API that aggregates `llm_calls` if you prefer not to expose Langfuse.
 
+**Error reporting (Sentry) — wired:**
+
+- `SENTRY_DSN` — Optional. When set, Control Plane, Runner, and Console (Next.js) report errors to Sentry. Set in repo root `.env` for Control Plane and Runner; set in Vercel env for Console (or `NEXT_PUBLIC_SENTRY_DSN` for client-side). See [REFERENCE_REPOS_DISCUSSED.md](REFERENCE_REPOS_DISCUSSED.md) (Observability).
+
 ---
 
 ## OSS we use and what we borrow
