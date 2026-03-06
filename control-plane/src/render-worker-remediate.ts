@@ -4,11 +4,11 @@
  * so jobs get claimed and artifacts are produced. No human in the loop.
  *
  * Requires: ENABLE_SELF_HEAL=true, RENDER_API_KEY set.
- * Worker service name: ai-factory-runner-staging (from render.yaml).
+ * Worker service: set RENDER_WORKER_SERVICE_NAME to the exact name/slug in Render (default: ai-factory-runner-staging).
  */
 
 const RENDER_API_BASE = "https://api.render.com/v1";
-const WORKER_SERVICE_NAME = "ai-factory-runner-staging";
+const WORKER_SERVICE_NAME = process.env.RENDER_WORKER_SERVICE_NAME?.trim() || "ai-factory-runner-staging";
 
 export interface SyncResult {
   ok: boolean;

@@ -13,6 +13,8 @@ Use this after checking Environment for **ai-factory-api-staging**, **ai-factory
 | PORT | Yes | ✓ (10000) | — |
 | NODE_ENV | No | ✓ (production) | Fine. |
 
+If you see **"operator does not exist: run_status = text"** in logs (no-artifacts scan), the fix is in `main` (cast `r.status::text`). Redeploy the Control Plane from the latest `main`; if the error persists, use **Clear build cache & deploy** in Render so the bundle is rebuilt from source.
+
 **Optional (for self‑heal to sync worker env):**
 
 - **ENABLE_SELF_HEAL** = `true`
@@ -60,6 +62,8 @@ Use **Session pooler** (port **5432**) or **Direct connection** — not Transact
 If you use a separate **llm-gateway** service, keep `https://llm-gateway.onrender.com`.
 
 **Done when:** Runner has `LLM_GATEWAY_URL` = `https://ai-factory-gateway-staging.onrender.com`. You do not need `llm-gateway.onrender.com` for the runner unless you use that as a separate gateway.
+
+**Self-heal (optional):** If you see "Worker service 'ai-factory-runner-staging' not found in Render", set `RENDER_WORKER_SERVICE_NAME` on the Control Plane to the exact service name/slug in your Render dashboard (default: `ai-factory-runner-staging`). The API key must be from the same Render account that owns the services.
 
 **Verdict:** Confirm CONTROL_PLANE_URL is `ai-factory` (not `a1-factory`). Confirm LLM_GATEWAY_URL points to the gateway service that’s actually deployed and healthy.
 
