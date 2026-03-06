@@ -19,6 +19,75 @@ const MIN_HTML_LENGTH = 15_000;
 /** Handlebars placeholder regex: {{name}} */
 const PLACEHOLDER_REGEX = /\{\{(\w+)\}\}/g;
 
+/** Bracket placeholder regex: [placeholder] (e.g. [logo], [product A title], [product M src]) */
+const BRACKET_PLACEHOLDER_REGEX = /\[([^\]]+)\]/g;
+
+/** 1x1 transparent GIF data URI – used when logo URL is missing so img doesn’t show broken icon. */
+const EMPTY_IMAGE_DATA_URI = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+/**
+ * Resolve a single bracket placeholder (e.g. "product A title", "logo", "product M src")
+ * to the value from sectionJson. Template uses [placeholder] not {{placeholder}}.
+ */
+function getBracketPlaceholderValue(
+  bracketKey: string,
+  sectionJson: Record<string, unknown>,
+): string {
+  const k = bracketKey.trim();
+  if (k === "logo") {
+    const logo = String(sectionJson.logoUrl ?? sectionJson.logo ?? "");
+    return logo.trim() || EMPTY_IMAGE_DATA_URI;
+  }
+  if (k === "siteUrl" || k === "site_url") return String(sectionJson.siteUrl ?? sectionJson.site_url ?? "#");
+  // product M = main/hero = product 1
+  const productMMatch = /^product\s+M\s+(.+)$/i.exec(k);
+  if (productMMatch) {
+    const field = productMMatch[1].trim().toLowerCase().replace(/\s+/g, "_");
+    const key = field === "src" ? "product_1_image" : field === "producturl" ? "product_1_url" : `product_1_${field}`;
+    return String((sectionJson as Record<string, unknown>)[key] ?? "");
+  }
+  // product A title, product B src, product E productUrl, etc.
+  const productLetterMatch = /^product\s+([A-Ea-e])\s+(.+)$/i.exec(k);
+  if (productLetterMatch) {
+    const letter = productLetterMatch[1].toUpperCase();
+    const field = productLetterMatch[2].trim().toLowerCase().replace(/\s+/g, "_");
+    const key = field === "src" ? `product${letter}_image` : field === "producturl" ? `product${letter}_url` : `product${letter}_${field}`;
+    return String((sectionJson as Record<string, unknown>)[key] ?? "");
+  }
+  // product productUrl (footer) -> siteUrl
+  if (/^product\s+producturl$/i.test(k)) return String(sectionJson.siteUrl ?? sectionJson.site_url ?? "#");
+  // direct key (e.g. brandName, footerRights)
+  const direct = (sectionJson as Record<string, unknown>)[k];
+  if (direct !== undefined && direct !== null) return String(direct);
+  // Token Registry path (e.g. colors.brand.500, typography.fonts.body, email.containerWidth)
+  const tokens = sectionJson.tokens as Record<string, unknown> | undefined;
+  if (tokens && (k.includes(".") || /^(colors|typography|spacing|layout|email|voice|motion|radius|border)\b/i.test(k))) {
+    const tokenValue = getByPath(tokens, k);
+    if (tokenValue !== undefined && tokenValue !== null && typeof tokenValue !== "object") return String(tokenValue);
+  }
+  return "";
+}
+
+/** Get a value by dot path (e.g. "colors.brand.500") from an object. */
+function getByPath(obj: unknown, path: string): unknown {
+  if (obj == null) return undefined;
+  const parts = path.split(".");
+  let current: unknown = obj;
+  for (const p of parts) {
+    if (current == null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[p];
+  }
+  return current;
+}
+
+/** Replace all [placeholder] tokens in HTML with values from sectionJson. */
+function replaceBracketPlaceholders(html: string, sectionJson: Record<string, unknown>): string {
+  return html.replace(BRACKET_PLACEHOLDER_REGEX, (match, key) => {
+    const value = getBracketPlaceholderValue(key, sectionJson);
+    return value || match;
+  });
+}
+
 /** Map concept key -> list of placeholder names that should receive that value (template–payload contract). */
 const PLACEHOLDER_ALIASES: Record<string, string[]> = {
   logo: ["logoUrl", "logo_url", "logo", "brandLogo", "brand_logo", "logo_src", "logoSrc"],
@@ -95,6 +164,22 @@ export async function handleEmailGenerateMjml(request: {
       }
     } catch (_e) {
       console.log("[MJML] brand assets fetch failed", { brandId: brandCtx.id, err: String((_e as Error).message).slice(0, 60) });
+    }
+    // Fallback: logo URL from brand identity or design_tokens (e.g. from prefill or profile edit when not in brand_assets)
+    if (!logoUrl?.trim() && brandCtx) {
+      const fromIdentity = (brandCtx.identity as Record<string, unknown>)?.logo_url;
+      const fromTokens = brandCtx.design_tokens && typeof brandCtx.design_tokens === "object"
+        ? ((brandCtx.design_tokens as Record<string, unknown>).logo ?? (brandCtx.design_tokens as Record<string, unknown>).logo_url)
+        : undefined;
+      const fallback = typeof fromIdentity === "string" && fromIdentity.trim()
+        ? fromIdentity.trim()
+        : typeof fromTokens === "string" && fromTokens.trim()
+          ? fromTokens.trim()
+          : null;
+      if (fallback) {
+        logoUrl = fallback;
+        console.log("[MJML] logo from brand identity/design_tokens fallback", { brandId: brandCtx.id, snippet: fallback.slice(0, 50) });
+      }
     }
   }
   // #region agent log
@@ -231,12 +316,14 @@ export async function handleEmailGenerateMjml(request: {
     try {
       const logo = logoUrl ?? "";
       const heroImage = (logo || productList[0]?.image) ?? "";
+      const siteUrl = (brandCtx?.identity as { website?: string } | undefined)?.website ?? "#";
       const sectionJson: Record<string, unknown> = {
         ...(templateJson ?? {}),
         products: productList,
         ...numberedProducts,
         ...productObjects,
         images: imagesArray,
+        tokens: mergedTokens as Record<string, unknown>,
         fontFamily,
         fonts: fontFamily,
         brandColor,
@@ -250,6 +337,8 @@ export async function handleEmailGenerateMjml(request: {
         brand_logo: logo,
         logo_src: logo,
         logoSrc: logo,
+        siteUrl,
+        site_url: siteUrl,
         imageUrl: heroImage,
         image_url: heroImage,
         image_src: heroImage,
@@ -359,7 +448,8 @@ export async function handleEmailGenerateMjml(request: {
         bgReplaced = true;
         return prefix + brandColor;
       });
-      const { html } = mjml2html(mjmlOut, { minify: true });
+      const { html: rawHtml } = mjml2html(mjmlOut, { minify: true });
+      const html = replaceBracketPlaceholders(rawHtml ?? "", sectionJson as Record<string, unknown>);
       // #region agent log
       console.log("[MJML] compile success (H9)", { run_id: runId, htmlLen: html?.length ?? 0, campaignPromptSnippet: campaignPrompt.slice(0, 40) });
       fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:compile success", message: "MJML compile success", data: { run_id: runId, htmlLen: html?.length ?? 0 }, timestamp: Date.now(), hypothesisId: "H9" }) }).catch(() => {});

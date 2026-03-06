@@ -171,4 +171,19 @@ Implement a service (e.g. in `packages/tokens` or `control-plane/src/services/To
 - **Runners:** [runners/src/brand-context.ts](runners/src/brand-context.ts) — fetches brand profile from Control Plane; uses for report/email/deck generation.
 - **Shared UI tokens:** [packages/ui/src/tokens.ts](packages/ui/src/tokens.ts) — current static tokens (color, typography, etc.); brand-specific tokens will live in brand_profiles.design_tokens and be merged/applied per brand.
 
+---
+
+## Email rendering and Token Registry
+
+The **Token Registry** (platform defaults + per-brand overrides) is available to email generation. The runner merges platform tokens with `brand_profiles.design_tokens` and injects the result as `sectionJson.tokens` when rendering MJML/HTML.
+
+**In templates you can use:**
+
+- **Handlebars:** `{{tokens.colors.brand.500}}`, `{{tokens.email.containerWidth}}`, `{{tokens.typography.fonts.body}}`, etc. Any dot path into the merged token set works.
+- **Bracket placeholders:** `[colors.text.primary]`, `[email.containerWidth]`, `[typography.fonts.heading]` are resolved by dot path from `tokens`. Use these for inline styles or attributes (e.g. `width="[email.containerWidth]"`).
+
+So whatever appears in the Token Registry (Console → Token Registry, including "By brand" overrides) is what the email can render. Existing placeholders like `[logo]`, `[product A title]`, `[siteUrl]` continue to work; add token paths to drive layout, colors, and typography from the registry. See [runners/src/handlers/email-generate-mjml.ts](runners/src/handlers/email-generate-mjml.ts) (sectionJson.tokens, replaceBracketPlaceholders, getByPath).
+
+---
+
 This document is the Cursor-ready spec for the brand tokenization upgrade. Implement in-repo with minimal churn, clean diffs, and clear comments.
