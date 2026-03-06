@@ -182,13 +182,26 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
 
 /** Load initiative; includes template_id when present for email_campaign and other template-driven flows. */
 export async function loadInitiative(db: DbClient, initiativeId: string): Promise<Initiative | null> {
-  const r = await db.query(
-    "SELECT id, intent_type, title, risk_level, created_at, template_id FROM initiatives WHERE id = $1",
-    [initiativeId]
-  ).catch(() => db.query(
-    "SELECT id, intent_type, title, risk_level, created_at FROM initiatives WHERE id = $1",
-    [initiativeId]
-  ));
+  const fullSelect = "SELECT id, intent_type, title, risk_level, created_at, template_id FROM initiatives WHERE id = $1";
+  const minimalSelect = "SELECT id, intent_type, title, risk_level, created_at FROM initiatives WHERE id = $1";
+  const params = [initiativeId];
+
+  await db.query("SAVEPOINT before_load_initiative");
+  let r: { rows: Record<string, unknown>[] };
+  try {
+    r = await db.query(fullSelect, params);
+  } catch (err: unknown) {
+    if ((err as { code?: string }).code === "42703") {
+      await db.query("ROLLBACK TO SAVEPOINT before_load_initiative");
+      r = await db.query(minimalSelect, params);
+    } else {
+      await db.query("ROLLBACK TO SAVEPOINT before_load_initiative").catch(() => {});
+      throw err;
+    }
+  } finally {
+    await db.query("RELEASE SAVEPOINT before_load_initiative").catch(() => {});
+  }
+
   const row = r.rows[0] as Record<string, unknown> | undefined;
   if (!row) return null;
   return {
