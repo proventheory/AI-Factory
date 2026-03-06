@@ -27,6 +27,11 @@ export async function handleEmailGenerateMjml(request: {
   /** When set, record LLM usage to llm_calls (for AI Calls / run detail). */
   recordLlmCall?: (tier: string, modelId: string, tokensIn?: number, tokensOut?: number, latencyMs?: number) => Promise<void>;
 }) {
+  const runId = request.run_id ?? "";
+  const jobRunId = request.job_run_id ?? "";
+  // #region agent log
+  console.log("[MJML] entry (H10)", { run_id: runId, job_run_id: jobRunId, initiative_id: request.initiative_id ?? "(none)", input_keys: Object.keys(request.input ?? {}), template_id: request.input?.template_id ?? "(none)" });
+  // #endregion
   // Self-heal: resolve initiative_id from control-plane when missing (e.g. runner DB != control-plane DB).
   let initiativeId = request.initiative_id;
   if (!initiativeId && request.run_id) {
@@ -35,13 +40,13 @@ export async function handleEmailGenerateMjml(request: {
       if (runRes.ok) {
         const runPayload = (await runRes.json()) as { initiative_id?: string; run?: { initiative_id?: string } };
         initiativeId = runPayload.initiative_id ?? runPayload.run?.initiative_id ?? undefined;
-        if (initiativeId) console.log("[MJML] initiative_id from run fallback", { run_id: request.run_id, initiative_id: initiativeId });
+        if (initiativeId) console.log("[MJML] initiative_id from run fallback (H2)", { run_id: runId, initiative_id: initiativeId });
       }
     } catch (_e) {
-      console.log("[MJML] run fallback failed", { run_id: request.run_id, err: String((_e as Error).message).slice(0, 60) });
+      console.log("[MJML] run fallback failed (H3)", { run_id: runId, err: String((_e as Error).message).slice(0, 60) });
     }
   }
-  if (!initiativeId) console.log("[MJML] no initiative_id", { run_id: request.run_id });
+  if (!initiativeId) console.log("[MJML] no initiative_id (H2)", { run_id: runId, job_run_id: jobRunId, input_keys: Object.keys(request.input ?? {}) });
 
   const brandCtx = initiativeId ? await loadBrandContext(initiativeId) : null;
   const brandPrompt = brandCtx ? brandContextToSystemPrompt(brandCtx) : "";
@@ -63,23 +68,18 @@ export async function handleEmailGenerateMjml(request: {
     }
   }
   // #region agent log
-  console.log("[MJML] brand + logo", {
-    hypothesisId: "H1",
-    hasBrandCtx: !!brandCtx,
-    brandId: brandCtx?.id,
-    brandName: brandCtx?.name?.slice(0, 30),
-    hasDesignTokens: !!(brandCtx?.design_tokens && Object.keys(brandCtx.design_tokens).length > 0),
-    brandColor,
-    logoUrl: logoUrl ?? "(none)",
-  });
+  console.log("[MJML] brand + logo (H1/H7)", { run_id: runId, job_run_id: jobRunId, hasBrandCtx: !!brandCtx, brandId: brandCtx?.id, brandName: brandCtx?.name?.slice(0, 30), hasDesignTokens: !!(brandCtx?.design_tokens && Object.keys(brandCtx.design_tokens).length > 0), brandColor, logoUrl: logoUrl ?? "(none)" });
+  fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:brand+logo", message: "MJML brand + logo", data: { run_id: runId, hasBrandCtx: !!brandCtx, brandId: brandCtx?.id, hasLogo: !!logoUrl }, timestamp: Date.now(), hypothesisId: "H1" }) }).catch(() => {});
   // #endregion
 
   let input: EmailGenerateMjmlInput = request.input ?? {};
+  let subjectLine: string | undefined = undefined;
   if (initiativeId) {
     try {
       const campRes = await fetch(`${CONTROL_PLANE_URL}/v1/email_campaigns/${initiativeId}`);
       if (campRes.ok) {
-        const camp = (await campRes.json()) as { template_id?: string; metadata_json?: { template_id?: string; products?: unknown[]; campaign_prompt?: string } };
+        const camp = (await campRes.json()) as { template_id?: string; subject_line?: string; metadata_json?: { template_id?: string; products?: unknown[]; campaign_prompt?: string } };
+        subjectLine = camp.subject_line;
         const templateIdFromCamp = camp.template_id ?? (camp.metadata_json && typeof camp.metadata_json === "object" ? (camp.metadata_json as { template_id?: string }).template_id : undefined);
         if (templateIdFromCamp) input.template_id = input.template_id ?? templateIdFromCamp;
         if (camp.metadata_json && typeof camp.metadata_json === "object") {
@@ -88,17 +88,12 @@ export async function handleEmailGenerateMjml(request: {
           if (meta.campaign_prompt) input.campaign_prompt = input.campaign_prompt ?? meta.campaign_prompt;
         }
         // #region agent log
-        console.log("[MJML] campaign fetch", {
-          initiative_id: initiativeId,
-          template_id: input.template_id,
-          productsCount: (input.products ?? []).length,
-          campaign_prompt: (input.campaign_prompt ?? "").slice(0, 60),
-          firstProductKeys: (input.products ?? [])[0] ? Object.keys((input.products ?? [])[0]) : [],
-        });
+        console.log("[MJML] campaign fetch (H3/H4)", { run_id: runId, initiative_id: initiativeId, template_id: input.template_id, productsCount: (input.products ?? []).length, campaign_promptLen: (input.campaign_prompt ?? "").length, subject_line: subjectLine?.slice(0, 50) });
+        fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:campaign fetch", message: "MJML campaign fetch", data: { run_id: runId, initiative_id: initiativeId, template_id: input.template_id, productsCount: (input.products ?? []).length, hasSubjectLine: !!subjectLine }, timestamp: Date.now(), hypothesisId: "H4" }) }).catch(() => {});
         // #endregion
       }
     } catch (_e) {
-      console.log("[MJML] campaign fetch failed", { initiative_id: initiativeId, err: String((_e as Error).message).slice(0, 80) });
+      console.log("[MJML] campaign fetch failed (H3)", { run_id: runId, initiative_id: initiativeId, err: String((_e as Error).message).slice(0, 80) });
     }
     // Fallback: if campaign didn't provide template_id, try initiative row (e.g. older campaigns).
     if (!input.template_id) {
@@ -119,29 +114,31 @@ export async function handleEmailGenerateMjml(request: {
 
   let templateMjml: string | null = null;
   let templateJson: Record<string, unknown> | null = null;
+  let sectionsJsonMerged = false;
 
   if (input.template_id) {
     try {
       const res = await fetch(`${CONTROL_PLANE_URL}/v1/email_templates/${input.template_id}`);
       if (res.ok) {
-        const t = (await res.json()) as { mjml?: string; template_json?: unknown };
+        const t = (await res.json()) as { mjml?: string; template_json?: unknown; sections_json?: unknown };
         templateMjml = t.mjml ?? null;
         templateJson = (t.template_json as Record<string, unknown>) ?? null;
+        if (t.sections_json != null && typeof t.sections_json === "object") {
+          templateJson = { ...(templateJson ?? {}), ...(t.sections_json as Record<string, unknown>) };
+          sectionsJsonMerged = true;
+        }
         // #region agent log
-        console.log("[MJML] template fetch ok", {
-          template_id: input.template_id,
-          mjml_len: templateMjml?.length ?? 0,
-          template_jsonKeys: templateJson ? Object.keys(templateJson) : [],
-        });
+        console.log("[MJML] template fetch ok (H6)", { run_id: runId, template_id: input.template_id, mjml_len: templateMjml?.length ?? 0, template_jsonKeys: Object.keys(templateJson ?? {}), hasSectionsJson: !!t.sections_json, sectionsJsonMerged });
+        fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:template fetch", message: "MJML template fetch", data: { run_id: runId, template_id: input.template_id, mjml_len: templateMjml?.length ?? 0, hasSectionsJson: !!t.sections_json }, timestamp: Date.now(), hypothesisId: "H6" }) }).catch(() => {});
         // #endregion
       } else {
-        console.log("[MJML] template fetch not ok", { template_id: input.template_id, status: res.status });
+        console.log("[MJML] template fetch not ok (H5)", { run_id: runId, template_id: input.template_id, status: res.status });
       }
     } catch (_e) {
-      console.log("[MJML] template fetch failed", { template_id: input.template_id, err: String((_e as Error).message).slice(0, 80) });
+      console.log("[MJML] template fetch failed (H3/H5)", { run_id: runId, template_id: input.template_id, err: String((_e as Error).message).slice(0, 80) });
     }
   } else {
-    console.log("[MJML] no template_id", { input_keys: Object.keys(input) });
+    console.log("[MJML] no template_id (H4)", { run_id: runId, input_keys: Object.keys(input), template_id: input.template_id });
   }
 
   const products = input.products ?? [];
@@ -156,13 +153,22 @@ export async function handleEmailGenerateMjml(request: {
   }));
 
   const numberedProducts: Record<string, string> = {};
+  const productObjects: Record<string, { title: string; description: string; image: string; link: string; buttonText: string }> = {};
   productList.forEach((p, i) => {
     const n = i + 1;
     numberedProducts[`product_${n}_image`] = p.image;
     numberedProducts[`product_${n}_title`] = p.title;
     numberedProducts[`product_${n}_url`] = p.link;
     numberedProducts[`product_${n}_description`] = p.description;
+    productObjects[`product${n}`] = { title: p.title, description: p.description, image: p.image, link: p.link, buttonText: "Learn more" };
   });
+  const imagesArray = productList.map((p) => ({ title: p.title, description: p.description, buttonText: "Learn more" }));
+
+  const typo = mergedTokens && typeof mergedTokens === "object" ? (mergedTokens as Record<string, unknown>).typography : undefined;
+  const fontFamilyObj = typo && typeof typo === "object" ? (typo as Record<string, unknown>).fontFamily : undefined;
+  const fontFamily = fontFamilyObj && typeof fontFamilyObj === "object"
+    ? ((fontFamilyObj as Record<string, string>).sans ?? (fontFamilyObj as Record<string, string>).body ?? "system-ui, sans-serif")
+    : "system-ui, sans-serif";
 
   // Use preselected MJML template with brand tokens whenever we have template + fetch succeeded (products optional).
   if (templateMjml) {
@@ -171,6 +177,10 @@ export async function handleEmailGenerateMjml(request: {
         ...(templateJson ?? {}),
         products: productList,
         ...numberedProducts,
+        ...productObjects,
+        images: imagesArray,
+        fontFamily,
+        fonts: fontFamily,
         brandColor,
         color: brandColor,
         primaryColor: brandColor,
@@ -202,18 +212,13 @@ export async function handleEmailGenerateMjml(request: {
         cta_link: "#",
         footer: `© ${new Date().getFullYear()} ${brandCtx?.name ?? ""}. All rights reserved.`,
         hero_image: logoUrl ?? productList[0]?.image ?? "",
+        emailTitle: subjectLine ?? campaignPrompt,
+        subject_line: subjectLine ?? campaignPrompt,
       };
       // #region agent log
-      console.log("[MJML] template payload", {
-        hypothesisId: "template",
-        template_id: input.template_id,
-        templateJsonKeys: templateJson ? Object.keys(templateJson) : [],
-        sectionJsonKeys: Object.keys(sectionJson),
-        productsCount: productList.length,
-        hasLogo: !!logoUrl,
-        brandName: brandCtx?.name?.slice(0, 20),
-        campaignPromptLen: campaignPrompt.length,
-      });
+      const productObjectKeys = Object.keys(productObjects);
+      console.log("[MJML] template payload (H6/H7)", { run_id: runId, template_id: input.template_id, sectionJsonKeys: Object.keys(sectionJson), productsCount: productList.length, productObjectKeys, imagesCount: imagesArray.length, hasLogo: !!logoUrl, logoUrlSnippet: (logoUrl ?? "").slice(0, 60), campaignPromptLen: campaignPrompt.length, sectionsJsonMerged });
+      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:sectionJson", message: "MJML sectionJson", data: { run_id: runId, sectionJsonKeys: Object.keys(sectionJson), productsCount: productList.length, hasLogo: !!logoUrl, campaignPromptLen: campaignPrompt.length }, timestamp: Date.now(), hypothesisId: "H7" }) }).catch(() => {});
       // #endregion
       const compile = Handlebars.compile(templateMjml);
       let mjmlOut = compile(sectionJson);
@@ -239,7 +244,8 @@ export async function handleEmailGenerateMjml(request: {
       });
       const { html } = mjml2html(mjmlOut, { minify: true });
       // #region agent log
-      console.log("[MJML] compile success", { htmlLen: html?.length ?? 0, campaignPrompt: campaignPrompt.slice(0, 40) });
+      console.log("[MJML] compile success (H9)", { run_id: runId, htmlLen: html?.length ?? 0, campaignPromptSnippet: campaignPrompt.slice(0, 40) });
+      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:compile success", message: "MJML compile success", data: { run_id: runId, htmlLen: html?.length ?? 0 }, timestamp: Date.now(), hypothesisId: "H9" }) }).catch(() => {});
       // #endregion
       return {
         artifact_type: "email_template",
@@ -249,12 +255,15 @@ export async function handleEmailGenerateMjml(request: {
       };
     } catch (_e) {
       // #region agent log
-      console.log("[MJML] template compile/render failed", { err: String((_e as Error).message).slice(0, 120), template_id: input.template_id });
+      const errMsg = String((_e as Error).message).slice(0, 120);
+      console.log("[MJML] template compile/render failed (H8)", { run_id: runId, err: errMsg, template_id: input.template_id });
+      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:compile failed", message: "MJML compile failed", data: { run_id: runId, err: errMsg }, timestamp: Date.now(), hypothesisId: "H8" }) }).catch(() => {});
       // #endregion
     }
   }
 
-  console.log("[MJML] using LLM path", { hasTemplate: !!templateMjml, campaignPrompt: campaignPrompt.slice(0, 60) });
+  console.log("[MJML] using LLM path (H8/H9)", { run_id: runId, hasTemplate: !!templateMjml, campaignPromptSnippet: campaignPrompt.slice(0, 60) });
+  fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:LLM path", message: "MJML using LLM path", data: { run_id: runId, hasTemplate: !!templateMjml }, timestamp: Date.now(), hypothesisId: "H9" }) }).catch(() => {});
   const messages: LLMChatOptions["messages"] = [];
   if (brandPrompt) {
     messages.push({

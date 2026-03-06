@@ -1,24 +1,4 @@
-#!/usr/bin/env node
-/**
- * Create email_templates table (and optional brand_profile_id) on the DB pointed by DATABASE_URL.
- * Use this when the Control Plane DB (e.g. Render DATABASE_URL) has not had Supabase migrations applied.
- *
- * Usage:
- *   DATABASE_URL="postgresql://..." node scripts/run-email-templates-migration.mjs
- *   node scripts/run-email-templates-migration.mjs --print-sql   # print SQL only (Neon MCP / Supabase SQL Editor)
- */
-import "dotenv/config";
-import pg from "pg";
 
-const { Client } = pg;
-const printSql = process.argv.includes("--print-sql");
-const url = process.env.DATABASE_URL;
-if (!printSql && !url) {
-  console.error("Set DATABASE_URL or use --print-sql to output SQL only.");
-  process.exit(1);
-}
-
-const sql = `
 -- Email Marketing: email_templates table for MJML templates (Focuz/Cultura parity).
 CREATE TABLE IF NOT EXISTS email_templates (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -62,24 +42,3 @@ BEGIN
     END IF;
   END IF;
 END $$;
-`;
-
-async function main() {
-  if (printSql) {
-    process.stdout.write(sql);
-    return;
-  }
-  const client = new Client({ connectionString: url });
-  await client.connect();
-  try {
-    await client.query(sql);
-    console.log("email_templates table (and optional brand_profile_id) created or already present.");
-  } finally {
-    await client.end();
-  }
-}
-
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
