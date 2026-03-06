@@ -34,7 +34,7 @@ async function writeArtifact(
   artifactClass: string = "docs",
 ): Promise<void> {
   const uri = `mem://${artifactType}/${context.run_id}/${context.plan_node_id}`;
-  const maxContent = artifactType === "landing_page" ? 2_000_000 : 10_000;
+  const maxContent = artifactType === "landing_page" || artifactType === "email_template" ? 2_000_000 : 10_000;
   const payload = JSON.stringify({ content: content.slice(0, maxContent) });
   // Use minimal columns (no producer_plan_node_id) so INSERT never fails on core schema and never aborts the transaction.
   await client.query(
@@ -387,6 +387,8 @@ export function registerAllHandlers(): void {
     };
     const out = await handleEmailGenerateMjml(request);
     if (out?.content != null) {
+      const len = out.content.length;
+      if (len > 10_000) console.log("[runner] email_template content length exceeds 10KB, storing full length", { run_id: context.run_id, contentLen: len });
       await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template");
     }
   });
