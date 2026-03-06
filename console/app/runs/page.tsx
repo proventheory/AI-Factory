@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton, Badge, Button, AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel } from "@/components/ui";
@@ -33,7 +33,20 @@ function statusVariant(status: string): "success" | "warning" | "error" | "neutr
 
 const RUNS_POLL_MS = 10_000; // poll so status updates (cancel, reaper) show up
 
-export default function RunsPage() {
+function RunsPageSkeleton() {
+  return (
+    <PageFrame>
+      <Stack>
+        <PageHeader title="Pipeline Runs" description="Orchestration run history." />
+        <CardSection>
+          <LoadingSkeleton className="h-64 w-full rounded-md" />
+        </CardSection>
+      </Stack>
+    </PageFrame>
+  );
+}
+
+function RunsPageContent() {
   const searchParams = useSearchParams();
   const intentFromUrl = searchParams.get("intent_type") ?? "";
   const [intentFilter, setIntentFilter] = useState<string>(intentFromUrl);
@@ -211,5 +224,13 @@ export default function RunsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </PageFrame>
+  );
+}
+
+export default function RunsPage() {
+  return (
+    <Suspense fallback={<RunsPageSkeleton />}>
+      <RunsPageContent />
+    </Suspense>
   );
 }
