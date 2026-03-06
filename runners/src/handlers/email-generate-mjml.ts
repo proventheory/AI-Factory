@@ -381,17 +381,23 @@ export async function handleEmailGenerateMjml(request: {
       if (campaignPrompt.trim().length > 0) {
         const snippet = campaignPrompt.trim().slice(0, 20).replace(/[<>]/g, "");
         if (snippet.length >= 3 && !(html ?? "").includes(snippet)) {
-          const msg = `[MJML] pre-write check failed: campaign copy not found in HTML (snippet: ${snippet.slice(0, 15)}...)`;
-          console.log(msg, { run_id: runId, job_run_id: jobRunId, template_id: input.template_id });
-          throw new Error(msg);
+          console.log("[MJML] pre-write optional: campaign copy snippet not found in HTML (template may use a different placeholder); continuing", {
+            run_id: runId,
+            job_run_id: jobRunId,
+            template_id: input.template_id,
+            snippet: snippet.slice(0, 15),
+          });
         }
       }
       if (logoUrl && logoUrl.length > 0) {
         const logoInHtml = (html ?? "").includes(logoUrl) || (html ?? "").includes(logoUrl.slice(0, 60));
         if (!logoInHtml) {
-          const msg = "[MJML] pre-write check failed: brand has logo but logo URL not found in compiled HTML";
-          console.log(msg, { run_id: runId, job_run_id: jobRunId, template_id: input.template_id, logoUrlSnippet: logoUrl.slice(0, 50) });
-          throw new Error(msg);
+          console.log("[MJML] pre-write optional: brand has logo but logo URL not found in compiled HTML (template may not use {{logoUrl}}); continuing", {
+            run_id: runId,
+            job_run_id: jobRunId,
+            template_id: input.template_id,
+            logoUrlSnippet: logoUrl.slice(0, 50),
+          });
         }
       }
       if (fontFamily && (mjmlOut.includes("</mj-head>") || (html ?? "").includes("font-family"))) {
