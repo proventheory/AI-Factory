@@ -437,6 +437,7 @@ export function registerAllHandlers(): void {
           ).catch(() => {});
         }
       }
+      }
     }
   });
   registry.set("brand_compile", async (client, context, params) => {
