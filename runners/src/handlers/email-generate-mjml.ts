@@ -13,7 +13,7 @@ const CONTROL_PLANE_URL = (process.env.CONTROL_PLANE_URL ?? "http://localhost:30
 
 export interface EmailGenerateMjmlInput {
   template_id?: string;
-  products?: Array<{ src?: string; title?: string; product_url?: string }>;
+  products?: Array<{ src?: string; title?: string; product_url?: string; description?: string }>;
   campaign_prompt?: string;
 }
 
@@ -50,6 +50,30 @@ export async function handleEmailGenerateMjml(request: {
     ? ((mergedTokens as Record<string, unknown>).color as Record<string, Record<string, string>>)?.brand?.["500"] ?? "#3b82f6"
     : "#3b82f6";
 
+  let logoUrl: string | null = null;
+  if (brandCtx?.id) {
+    try {
+      const assetsRes = await fetch(`${CONTROL_PLANE_URL}/v1/brand_profiles/${brandCtx.id}/assets?asset_type=logo`);
+      if (assetsRes.ok) {
+        const assets = (await assetsRes.json()) as { items?: Array<{ uri?: string }> };
+        logoUrl = assets.items?.[0]?.uri ?? null;
+      }
+    } catch (_e) {
+      console.log("[MJML] brand assets fetch failed", { brandId: brandCtx.id, err: String((_e as Error).message).slice(0, 60) });
+    }
+  }
+  // #region agent log
+  console.log("[MJML] brand + logo", {
+    hypothesisId: "H1",
+    hasBrandCtx: !!brandCtx,
+    brandId: brandCtx?.id,
+    brandName: brandCtx?.name?.slice(0, 30),
+    hasDesignTokens: !!(brandCtx?.design_tokens && Object.keys(brandCtx.design_tokens).length > 0),
+    brandColor,
+    logoUrl: logoUrl ?? "(none)",
+  });
+  // #endregion
+
   let input: EmailGenerateMjmlInput = request.input ?? {};
   if (initiativeId) {
     try {
@@ -63,7 +87,15 @@ export async function handleEmailGenerateMjml(request: {
           if (meta.products && !input.products?.length) input.products = meta.products as EmailGenerateMjmlInput["products"];
           if (meta.campaign_prompt) input.campaign_prompt = input.campaign_prompt ?? meta.campaign_prompt;
         }
-        console.log("[MJML] campaign fetch", { initiative_id: initiativeId, template_id: input.template_id, products: (input.products ?? []).length, campaign_prompt: (input.campaign_prompt ?? "").slice(0, 60) });
+        // #region agent log
+        console.log("[MJML] campaign fetch", {
+          initiative_id: initiativeId,
+          template_id: input.template_id,
+          productsCount: (input.products ?? []).length,
+          campaign_prompt: (input.campaign_prompt ?? "").slice(0, 60),
+          firstProductKeys: (input.products ?? [])[0] ? Object.keys((input.products ?? [])[0]) : [],
+        });
+        // #endregion
       }
     } catch (_e) {
       console.log("[MJML] campaign fetch failed", { initiative_id: initiativeId, err: String((_e as Error).message).slice(0, 80) });
@@ -95,7 +127,13 @@ export async function handleEmailGenerateMjml(request: {
         const t = (await res.json()) as { mjml?: string; template_json?: unknown };
         templateMjml = t.mjml ?? null;
         templateJson = (t.template_json as Record<string, unknown>) ?? null;
-        console.log("[MJML] template fetch ok", { template_id: input.template_id, mjml_len: templateMjml?.length ?? 0 });
+        // #region agent log
+        console.log("[MJML] template fetch ok", {
+          template_id: input.template_id,
+          mjml_len: templateMjml?.length ?? 0,
+          template_jsonKeys: templateJson ? Object.keys(templateJson) : [],
+        });
+        // #endregion
       } else {
         console.log("[MJML] template fetch not ok", { template_id: input.template_id, status: res.status });
       }
@@ -109,31 +147,100 @@ export async function handleEmailGenerateMjml(request: {
   const products = input.products ?? [];
   const campaignPrompt = input.campaign_prompt ?? "newsletter";
 
+  const productList = products.map((p) => ({
+    name: p.title ?? "Product",
+    title: p.title ?? "Product",
+    link: p.product_url ?? p.src ?? "#",
+    image: p.src ?? "",
+    description: p.description ?? "",
+  }));
+
+  const numberedProducts: Record<string, string> = {};
+  productList.forEach((p, i) => {
+    const n = i + 1;
+    numberedProducts[`product_${n}_image`] = p.image;
+    numberedProducts[`product_${n}_title`] = p.title;
+    numberedProducts[`product_${n}_url`] = p.link;
+    numberedProducts[`product_${n}_description`] = p.description;
+  });
+
   // Use preselected MJML template with brand tokens whenever we have template + fetch succeeded (products optional).
   if (templateMjml) {
     try {
       const sectionJson: Record<string, unknown> = {
         ...(templateJson ?? {}),
-        products: products.map((p) => ({
-          name: p.title ?? "Product",
-          link: p.product_url ?? p.src ?? "#",
-          image: p.src ?? "",
-        })),
+        products: productList,
+        ...numberedProducts,
         brandColor,
+        color: brandColor,
+        primaryColor: brandColor,
+        brand_color: brandColor,
+        logoUrl: logoUrl ?? "",
+        logo_url: logoUrl ?? "",
+        brandName: brandCtx?.name ?? "",
+        brand_name: brandCtx?.name ?? "",
+        tagline: (brandCtx?.identity as { tagline?: string } | undefined)?.tagline ?? "",
         voicetone: brandCtx?.tone?.voice_descriptors?.[0] ?? "friendly",
         footerRights: `© ${new Date().getFullYear()}`,
-        contactInfo: "",
+        contactInfo: (brandCtx?.identity as { contact_email?: string } | undefined)?.contact_email ?? "",
         socialMedia: [],
         campaignPrompt,
         headline: campaignPrompt,
         title: campaignPrompt,
         offerText: campaignPrompt,
         offer: campaignPrompt,
+        header: campaignPrompt,
+        subhead: campaignPrompt,
+        body: campaignPrompt,
+        message: campaignPrompt,
+        description: campaignPrompt,
+        prehead: campaignPrompt,
+        eyebrow: campaignPrompt,
+        cta_text: "Learn more",
+        cta_label: "Learn more",
+        cta_url: "#",
+        cta_link: "#",
+        footer: `© ${new Date().getFullYear()} ${brandCtx?.name ?? ""}. All rights reserved.`,
+        hero_image: logoUrl ?? productList[0]?.image ?? "",
       };
+      // #region agent log
+      console.log("[MJML] template payload", {
+        hypothesisId: "template",
+        template_id: input.template_id,
+        templateJsonKeys: templateJson ? Object.keys(templateJson) : [],
+        sectionJsonKeys: Object.keys(sectionJson),
+        productsCount: productList.length,
+        hasLogo: !!logoUrl,
+        brandName: brandCtx?.name?.slice(0, 20),
+        campaignPromptLen: campaignPrompt.length,
+      });
+      // #endregion
       const compile = Handlebars.compile(templateMjml);
-      const mjmlOut = compile(sectionJson);
+      let mjmlOut = compile(sectionJson);
+      // Apply brand color only in style blocks that look like headings (font-size >= 20px or font-weight bold) so body copy stays black.
+      const headingLike = /font-size:\s*(?:2\d|3\d|4\d|5\d)px|font-weight:\s*bold/i;
+      mjmlOut = mjmlOut.replace(/style="([^"]*)"/g, (_match, content) => {
+        if (headingLike.test(content) && (/\bcolor:\s*#000000\b/.test(content) || /\bcolor:\s*#000\b/.test(content))) {
+          const out = content.replace(/\bcolor:\s*#000000\b/gi, `color:${brandColor}`).replace(/\bcolor:\s*#000\b/gi, `color:${brandColor}`);
+          return `style="${out}"`;
+        }
+        return _match;
+      });
+      // If no heading-like black was found, replace only the first occurrence of black text so main heading gets brand.
+      if (!mjmlOut.includes(brandColor)) {
+        mjmlOut = mjmlOut.replace(/\bcolor:\s*#000000\b/i, `color:${brandColor}`).replace(/\bcolor:\s*#000\b/i, `color:${brandColor}`);
+      }
+      // First occurrence of black background only (e.g. header bar) so we don't recolor every black block.
+      let bgReplaced = false;
+      mjmlOut = mjmlOut.replace(/\b(background-color:\s*)(#000000|#000)\b/gi, (full, prefix: string) => {
+        if (bgReplaced) return full;
+        bgReplaced = true;
+        return prefix + brandColor;
+      });
       const { html } = mjml2html(mjmlOut, { minify: true });
-      console.log("[MJML] using template path", { campaignPrompt: campaignPrompt.slice(0, 60) });
+      // #region agent log
+      console.log("[MJML] compile success", { htmlLen: html?.length ?? 0, campaignPrompt: campaignPrompt.slice(0, 40) });
+      // #endregion
       return {
         artifact_type: "email_template",
         artifact_class: "email_template",
@@ -141,7 +248,9 @@ export async function handleEmailGenerateMjml(request: {
         metadata: { brand_profile_id: brandCtx?.id, brand_color: brandColor, mjml: mjmlOut },
       };
     } catch (_e) {
-      console.log("[MJML] template compile/render failed, falling back to LLM", { err: String((_e as Error).message).slice(0, 120) });
+      // #region agent log
+      console.log("[MJML] template compile/render failed", { err: String((_e as Error).message).slice(0, 120), template_id: input.template_id });
+      // #endregion
     }
   }
 
