@@ -85,7 +85,7 @@ export default function EmailMarketingPage() {
           />
         ) : (
           <>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 flex-wrap">
               <Button variant="primary" asChild>
                 <Link href="/email-marketing/new">New campaign (wizard)</Link>
               </Button>
@@ -95,6 +95,9 @@ export default function EmailMarketingPage() {
                 onClick={handleCreate}
               >
                 {creating || createCampaign.isPending ? "Creating…" : "Quick create"}
+              </Button>
+              <Button variant="secondary" asChild>
+                <Link href="/runs?intent_type=email_campaign">View pipeline runs</Link>
               </Button>
             </div>
             <TableFrame>

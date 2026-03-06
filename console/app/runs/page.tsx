@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton, Badge, Button, AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { useRuns, useCancelRun } from "@/hooks/use-api";
@@ -33,9 +34,14 @@ function statusVariant(status: string): "success" | "warning" | "error" | "neutr
 const RUNS_POLL_MS = 10_000; // poll so status updates (cancel, reaper) show up
 
 export default function RunsPage() {
-  const [intentFilter, setIntentFilter] = useState<string>("");
+  const searchParams = useSearchParams();
+  const intentFromUrl = searchParams.get("intent_type") ?? "";
+  const [intentFilter, setIntentFilter] = useState<string>(intentFromUrl);
   const [confirmingRunId, setConfirmingRunId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  useEffect(() => {
+    if (intentFromUrl && intentFilter !== intentFromUrl) setIntentFilter(intentFromUrl);
+  }, [intentFromUrl]);
   const { data, isLoading, error } = useRuns(
     { limit: 50, intent_type: intentFilter || undefined },
     { refetchInterval: RUNS_POLL_MS }
@@ -147,7 +153,7 @@ export default function RunsPage() {
       <Stack>
         <PageHeader
           title="Pipeline Runs"
-          description="Orchestration run history. Filter by pipeline type (dev vs marketing)."
+          description="Orchestration run history. Filter by pipeline type (dev vs marketing). Runs are created when you start a plan; failed runs appear here once the run has started."
         />
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <label htmlFor="intent-filter" className="text-body-small text-text-muted">Pipeline</label>
@@ -166,8 +172,12 @@ export default function RunsPage() {
         <CardSection>
           {items.length === 0 ? (
             <EmptyState
-              title="No runs yet"
-              description="Create an initiative and run a plan to see runs here."
+              title={intentFilter === "email_campaign" ? "No email campaign runs yet" : "No runs yet"}
+              description={
+                intentFilter === "email_campaign"
+                  ? "Email campaign runs appear here after you use Email Marketing → New campaign (wizard) → Generate and the run starts. If you clicked Generate but see no run, the flow may have failed before starting (e.g. plan compile); fix any error on the Generate page and try again."
+                  : "Create an initiative and run a plan to see runs here."
+              }
             />
           ) : (
             <TableFrame>

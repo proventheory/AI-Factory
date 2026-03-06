@@ -225,20 +225,48 @@ export async function compilePlan(
   initiativeId: string,
   options?: { seed?: string; force?: boolean }
 ): Promise<CompiledPlan> {
-  const initiative = await loadInitiative(db, initiativeId);
+  await db.query("SAVEPOINT before_load");
+  let initiative: Initiative | null = null;
+  try {
+    initiative = await loadInitiative(db, initiativeId);
+  } catch (err) {
+    await db.query("ROLLBACK TO SAVEPOINT before_load");
+    throw err;
+  } finally {
+    await db.query("RELEASE SAVEPOINT before_load").catch(() => {});
+  }
   if (!initiative) throw new Error("Initiative not found");
 
   const prdHash = await loadPRDArtifact(db, initiativeId).then(c => (c ? createHash("sha256").update(c).digest("hex") : ""));
   const seed = options?.seed ?? `${initiative.created_at?.getTime() ?? Date.now()}`;
   const planHash = computePlanHash(initiativeId, initiative.intent_type, `${prdHash}:${seed}`);
 
-  const existing = await db.query(
-    "SELECT id FROM plans WHERE initiative_id = $1 AND plan_hash = $2",
-    [initiativeId, planHash]
-  );
+  await db.query("SAVEPOINT before_existing");
+  let existing: { rows: { id: string }[] };
+  try {
+    existing = await db.query(
+      "SELECT id FROM plans WHERE initiative_id = $1 AND plan_hash = $2",
+      [initiativeId, planHash]
+    );
+  } catch (err) {
+    await db.query("ROLLBACK TO SAVEPOINT before_existing");
+    throw err;
+  } finally {
+    await db.query("RELEASE SAVEPOINT before_existing").catch(() => {});
+  }
   if (existing.rows.length > 0 && !options?.force) {
     const planId = existing.rows[0].id as string;
-    const nodes = await db.query<{ id: string; node_key: string }>("SELECT id, node_key FROM plan_nodes WHERE plan_id = $1", [planId]);
+    let nodes: { rows: { id: string; node_key: string }[] };
+    await db.query("SAVEPOINT before_existing_nodes");
+    try {
+      nodes = await db.query<{ id: string; node_key: string }>("SELECT id, node_key FROM plan_nodes WHERE plan_id = $1", [planId]);
+    } catch {
+      await db.query("ROLLBACK TO SAVEPOINT before_existing_nodes");
+      const minimal = await db.query<{ id: string }>("SELECT id FROM plan_nodes WHERE plan_id = $1", [planId]);
+      nodes = { rows: minimal.rows.map((r, i) => ({ ...r, node_key: `node_${i}` })) };
+    } finally {
+      await db.query("RELEASE SAVEPOINT before_existing_nodes").catch(() => {});
+    }
     const nodeIds = new Map<string, string>();
     for (const n of nodes.rows) nodeIds.set(n.node_key, n.id);
     return { planId, nodeIds, planHash };
@@ -312,10 +340,26 @@ export async function compilePlan(
     const fromId = nodeIds.get(e.from_key);
     const toId = nodeIds.get(e.to_key);
     if (!fromId || !toId) continue;
-    await db.query(
-      "INSERT INTO plan_edges (id, plan_id, from_node_id, to_node_id, condition) VALUES ($1, $2, $3, $4, $5)",
-      [uuid(), planId, fromId, toId, e.condition ?? "success"]
-    );
+    const edgeSp = `before_edge_${e.from_key}_${e.to_key}`;
+    try {
+      await db.query(`SAVEPOINT ${edgeSp}`);
+      try {
+        await db.query(
+          "INSERT INTO plan_edges (id, plan_id, from_node_id, to_node_id, condition) VALUES ($1, $2, $3, $4, $5)",
+          [uuid(), planId, fromId, toId, e.condition ?? "success"]
+        );
+      } catch (err: unknown) {
+        if ((err as { code?: string }).code === "42703") {
+          await db.query(`ROLLBACK TO SAVEPOINT ${edgeSp}`);
+          await db.query(
+            "INSERT INTO plan_edges (id, plan_id, from_node_id, to_node_id) VALUES ($1, $2, $3, $4)",
+            [uuid(), planId, fromId, toId]
+          );
+        } else throw err;
+      }
+    } finally {
+      await db.query(`RELEASE SAVEPOINT ${edgeSp}`).catch(() => {});
+    }
   }
 
   return { planId, nodeIds, planHash };
