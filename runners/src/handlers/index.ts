@@ -373,6 +373,21 @@ export function registerAllHandlers(): void {
       await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "docs");
     }
   });
+  registry.set("email_generate_mjml", async (client, context, params) => {
+    const { handleEmailGenerateMjml } = await import("./email-generate-mjml.js");
+    const request = {
+      run_id: context.run_id,
+      job_run_id: params.jobRunId,
+      job_type: context.job_type,
+      initiative_id: context.initiative_id ?? undefined,
+      llm_source: context.llm_source,
+      input: (context.config as { template_id?: string; products?: unknown[]; campaign_prompt?: string }) ?? {},
+    };
+    const out = await handleEmailGenerateMjml(request);
+    if (out?.content != null) {
+      await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template");
+    }
+  });
   registry.set("brand_compile", async (client, context, params) => {
     const { loadBrandContext } = await import("../brand-context.js");
     const { readFileSync, existsSync } = await import("fs");

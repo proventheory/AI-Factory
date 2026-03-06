@@ -158,6 +158,14 @@ const TEMPLATE_LANDING: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] }
   ],
 };
 
+/** Email campaign: single node to generate MJML email from template + products + brand (Focuz flow). */
+const TEMPLATE_EMAIL_CAMPAIGN: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
+  nodes: [
+    { node_key: "email_mjml", job_type: "email_generate_mjml", agent_role: "product_manager", node_type: "job" },
+  ],
+  edges: [],
+};
+
 const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] }> = {
   software: TEMPLATE_SOFTWARE,
   issue_fix: TEMPLATE_ISSUE_FIX,
@@ -169,6 +177,7 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   swe_agent: TEMPLATE_SWE_AGENT,
   marketing: TEMPLATE_MARKETING,
   landing: TEMPLATE_LANDING,
+  email_campaign: TEMPLATE_EMAIL_CAMPAIGN,
 };
 
 /** Load initiative; uses core columns so it works with or without multi_framework (000005) ALTERs. */

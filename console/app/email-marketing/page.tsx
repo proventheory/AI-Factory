@@ -43,9 +43,14 @@ export default function EmailMarketingPage() {
       key: "id",
       header: "Actions",
       render: (r) => (
-        <Link href={`/initiatives/${r.id}`} className="text-body-small text-brand-600 hover:underline">
-          Open initiative
-        </Link>
+        <>
+            <Link href={`/email-marketing/campaigns/${r.id}/edit`} className="text-body-small text-brand-600 hover:underline mr-3">
+              Edit
+            </Link>
+            <Link href={`/initiatives/${r.id}`} className="text-body-small text-brand-600 hover:underline">
+              Open initiative
+            </Link>
+          </>
       ),
     },
   ];
@@ -64,24 +69,32 @@ export default function EmailMarketingPage() {
             title="No email campaigns yet"
             description="Create a campaign to link an initiative to email metadata (subject, from, template). Then use Initiatives to compile a plan and run pipeline jobs (e.g. copy_generate, email_generate)."
             action={
-              <Button
-                variant="primary"
-                disabled={creating || createCampaign.isPending}
-                onClick={handleCreate}
-              >
-                {creating || createCampaign.isPending ? "Creating…" : "New campaign"}
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="primary" asChild>
+                  <Link href="/email-marketing/new">New campaign (wizard)</Link>
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={creating || createCampaign.isPending}
+                  onClick={handleCreate}
+                >
+                  {creating || createCampaign.isPending ? "Creating…" : "Quick create"}
+                </Button>
+              </div>
             }
           />
         ) : (
           <>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <Button variant="primary" asChild>
+                <Link href="/email-marketing/new">New campaign (wizard)</Link>
+              </Button>
               <Button
-                variant="primary"
+                variant="secondary"
                 disabled={creating || createCampaign.isPending}
                 onClick={handleCreate}
               >
-                {creating || createCampaign.isPending ? "Creating…" : "New campaign"}
+                {creating || createCampaign.isPending ? "Creating…" : "Quick create"}
               </Button>
             </div>
             <TableFrame>
