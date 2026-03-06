@@ -12,7 +12,7 @@ if (process.env.SENTRY_DSN?.trim()) {
 
 import { pool } from "./db.js";
 import { startApi } from "./api.js";
-import { reapStaleLeases } from "./reaper.js";
+import { reapStaleLeases, reconcileRunStatuses } from "./reaper.js";
 import { computeDrift, executeRollback, routeRun } from "./release-manager.js";
 import { scanAndRemediateNoArtifactsRuns } from "./no-artifacts-self-heal.js";
 
@@ -21,10 +21,18 @@ const DRIFT_CHECK_INTERVAL_MS = 60_000;
 const NO_ARTIFACTS_SCAN_INTERVAL_MS = 3 * 60_000; // 3 minutes
 
 async function startReaperLoop(): Promise<void> {
+  try {
+    const reconciled = await reconcileRunStatuses(pool);
+    if (reconciled > 0) console.log(`[reaper] Startup: reconciled ${reconciled} run(s) to succeeded`);
+  } catch (err) {
+    console.error("[reaper] Startup reconcile error:", err);
+  }
   setInterval(async () => {
     try {
       const reaped = await reapStaleLeases(pool);
       if (reaped > 0) console.log(`[reaper] Reclaimed ${reaped} stale leases`);
+      const reconciled = await reconcileRunStatuses(pool);
+      if (reconciled > 0) console.log(`[reaper] Reconciled ${reconciled} run(s) to succeeded`);
     } catch (err) {
       console.error("[reaper] Error:", err);
     }

@@ -83,3 +83,35 @@ export async function reapStaleLeases(pool: pg.Pool, maxAttemptsPerNode: number 
 
   return reaped;
 }
+
+/**
+ * Reconcile run status: runs that are still "running" but have all node_progress
+ * succeeded (e.g. runner died or errored before calling checkRunCompletion) get
+ * marked "succeeded" so the UI shows the correct state.
+ */
+export async function reconcileRunStatuses(pool: pg.Pool): Promise<number> {
+  const runs = await pool.query<{ id: string }>(
+    `SELECT r.id
+     FROM runs r
+     WHERE r.status = 'running'
+       AND (SELECT count(*) FROM node_progress np WHERE np.run_id = r.id) > 0
+       AND (SELECT count(*) FROM node_progress np WHERE np.run_id = r.id AND np.status = 'succeeded')
+           = (SELECT count(*) FROM node_progress np WHERE np.run_id = r.id)
+     LIMIT 200`,
+  );
+  let reconciled = 0;
+  for (const row of runs.rows) {
+    const r = await pool.query(
+      `UPDATE runs SET status = 'succeeded', ended_at = now() WHERE id = $1 AND status = 'running' RETURNING id`,
+      [row.id],
+    );
+    if (r.rowCount && r.rowCount > 0) {
+      await pool.query(
+        `INSERT INTO run_events (run_id, event_type) VALUES ($1, 'succeeded')`,
+        [row.id],
+      ).catch(() => {});
+      reconciled++;
+    }
+  }
+  return reconciled;
+}

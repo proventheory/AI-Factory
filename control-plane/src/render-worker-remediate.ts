@@ -67,8 +67,27 @@ export async function updateServiceEnvVars(
 }
 
 /**
- * Sync worker service env from Control Plane process env (DATABASE_URL, CONTROL_PLANE_URL, LLM_GATEWAY_URL).
+ * Restart a Render service so it picks up new env vars.
+ * Render API: POST /services/:id/restart. See https://api-docs.render.com/reference/restart-service
+ */
+export async function restartRenderService(apiKey: string, serviceId: string): Promise<void> {
+  const res = await fetch(`${RENDER_API_BASE}/services/${serviceId}/restart`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Render API restart service failed: ${res.status} ${text}`);
+  }
+}
+
+/**
+ * Sync worker service env from Control Plane process env (DATABASE_URL, CONTROL_PLANE_URL, LLM_GATEWAY_URL, optional OPENAI_API_KEY).
  * Control Plane runs on Render with these set; worker must have the same to claim jobs and produce artifacts.
+ * After updating env vars we restart the worker so it picks up the new values.
  */
 export async function syncWorkerEnvFromControlPlane(): Promise<SyncResult> {
   const apiKey = process.env.RENDER_API_KEY;
@@ -79,6 +98,7 @@ export async function syncWorkerEnvFromControlPlane(): Promise<SyncResult> {
   const databaseUrl = process.env.DATABASE_URL;
   const controlPlaneUrl = process.env.CONTROL_PLANE_URL;
   const llmGatewayUrl = process.env.LLM_GATEWAY_URL;
+  const openaiApiKey = process.env.OPENAI_API_KEY;
 
   if (!databaseUrl?.trim()) {
     return { ok: false, message: "DATABASE_URL not set on Control Plane" };
@@ -103,11 +123,19 @@ export async function syncWorkerEnvFromControlPlane(): Promise<SyncResult> {
   if (llmGatewayUrl?.trim()) {
     envVars.push({ key: "LLM_GATEWAY_URL", value: llmGatewayUrl.trim() });
   }
+  if (openaiApiKey?.trim()) {
+    envVars.push({ key: "OPENAI_API_KEY", value: openaiApiKey.trim() });
+  }
 
   await updateServiceEnvVars(apiKey, worker.id, envVars, false);
+  try {
+    await restartRenderService(apiKey, worker.id);
+  } catch (err) {
+    console.warn("[render-worker-remediate] Env synced but restart failed:", (err as Error).message);
+  }
   return {
     ok: true,
-    message: "Worker env synced",
+    message: "Worker env synced and restarted",
     workerServiceId: worker.id,
     updated: envVars.map((e) => e.key),
   };

@@ -30,9 +30,11 @@ if (!databaseUrl?.trim()) {
   console.error("[runner] DATABASE_URL is not set. Set it in .env (same as Control Plane) so the runner can claim jobs.");
   process.exit(1);
 }
+const poolSize = Math.max(1, Math.min(20, Number(process.env.DATABASE_POOL_MAX) || 5));
 const pool = new pg.Pool({
   connectionString: databaseUrl,
-  max: 10,
+  max: poolSize,
+  idleTimeoutMillis: 30_000,
 });
 
 const config = {

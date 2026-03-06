@@ -93,7 +93,6 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/brands", label: "Brands", branchId: "studio" },
       { href: "/document-templates", label: "Document Templates", branchId: "studio" },
-      { href: "/brand-themes", label: "Brand Themes", branchId: "studio" },
     ],
   },
   {
@@ -163,7 +162,6 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "mcp-servers": "MCP Servers",
   brands: "Brands",
   "document-templates": "Document Templates",
-  "brand-themes": "Brand Themes",
   analytics: "Analytics",
   incidents: "Incidents",
   audit: "Audit",

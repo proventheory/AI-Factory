@@ -47,7 +47,8 @@ See `runners/src/runner.ts` (claim/heartbeat) and `runners/src/index.ts` (poll l
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | Same Postgres as the Control Plane. Runner reads `job_runs`, `node_progress`, `plan_nodes`, etc., and writes artifacts, `job_events`, `node_progress`. |
+| `DATABASE_URL` | Yes | Same Postgres as the Control Plane. **Neon:** use the **pooled** connection string (host with `-pooler`) to avoid "MaxClientsInSessionMode / max clients reached". |
+| `DATABASE_POOL_MAX` | No | Max connections in the runner's pool (default **5**). Lower this (e.g. 3) if you hit Neon pool limits; Control Plane default is 5. |
 | `CONTROL_PLANE_URL` | For brand/routing | Base URL of the Control Plane API (e.g. `https://ai-factory-api-staging.onrender.com`). Used to load brand context (initiative → brand_profile) and **routing_policies** (model tier per job type). |
 | `LLM_GATEWAY_URL` | For LLM jobs (or use keys below) | LiteLLM Proxy or gateway URL. If unset, runner can use **direct OpenAI** when `OPENAI_API_KEY` is set. |
 | `OPENAI_API_KEY` | For LLM jobs (if no gateway) | When `LLM_GATEWAY_URL` is not set, runner calls OpenAI directly with this key. Set on Render worker so deployed runs can run copy_generate, landing_page_generate, etc. |

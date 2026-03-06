@@ -41,12 +41,25 @@ export async function runNoArtifactsRemediation(runId: string): Promise<void> {
     noArtifactsRemediatedRunIds.add(runId);
     console.log("[self-heal] No-artifacts remediation: worker env synced for run", runId, syncResult.updated);
 
-    const r = await pool.query(
-      "SELECT plan_id, release_id, policy_version, environment, cohort FROM runs WHERE id = $1",
-      [runId]
-    );
+    let r: { rows: { plan_id: string; release_id: string; policy_version: string | null; environment: string; cohort: string | null; llm_source?: string }[] };
+    try {
+      r = await pool.query(
+        "SELECT plan_id, release_id, policy_version, environment, cohort, llm_source FROM runs WHERE id = $1",
+        [runId]
+      );
+    } catch (e: unknown) {
+      if ((e as { code?: string }).code === "42703") {
+        r = await pool.query(
+          "SELECT plan_id, release_id, policy_version, environment, cohort FROM runs WHERE id = $1",
+          [runId]
+        );
+      } else {
+        throw e;
+      }
+    }
     if (r.rows.length === 0) return;
-    const row = r.rows[0];
+    const row = r.rows[0] as { plan_id: string; release_id: string; policy_version: string | null; environment: string; cohort: string | null; llm_source?: string };
+    const llmSource = row.llm_source === "openai_direct" ? ("openai_direct" as const) : ("gateway" as const);
     await withTransaction(async (client) => {
       return createRun(client, {
         planId: row.plan_id,
@@ -55,6 +68,7 @@ export async function runNoArtifactsRemediation(runId: string): Promise<void> {
         environment: row.environment,
         cohort: row.cohort,
         rootIdempotencyKey: `self-heal:${runId}:${Date.now()}`,
+        llmSource,
       });
     });
   } catch (err) {
