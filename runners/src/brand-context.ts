@@ -12,6 +12,9 @@ export interface BrandIdentity {
   target_audience?: string;
   competitive_position?: string;
   personality_traits?: string[];
+  website?: string;
+  contact_email?: string;
+  location?: string;
 }
 
 export interface BrandTone {

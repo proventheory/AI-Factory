@@ -1,8 +1,8 @@
 "use client";
 
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Button,
   Badge,
   PageFrame,
   Stack,
@@ -14,8 +14,19 @@ import {
   EmptyState,
 } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
-import { useDocumentTemplates, useBrandProfiles } from "@/hooks/use-api";
-import type { DocumentTemplateRow } from "@/lib/api";
+import { useDocumentTemplates, useEmailTemplates, useBrandProfiles } from "@/hooks/use-api";
+import type { DocumentTemplateRow, EmailTemplateRow } from "@/lib/api";
+
+/** Unified row for document + email templates so both render in one table. */
+type TemplateListRow = {
+  id: string;
+  name: string;
+  template_type: string;
+  brand_profile_id?: string | null;
+  status: string;
+  created_at: string;
+  source: "document" | "email";
+};
 
 function statusVariant(status: string): "success" | "warning" | "neutral" {
   if (status === "active") return "success";
@@ -24,23 +35,48 @@ function statusVariant(status: string): "success" | "warning" | "neutral" {
 }
 
 function typeVariant(t: string): "info" | "success" | "warning" | "neutral" {
-  if (t === "deck") return "info";
-  if (t === "report") return "success";
-  if (t === "email") return "warning";
+  if (t === "deck" || t?.includes("deck")) return "info";
+  if (t === "report" || t?.includes("report")) return "success";
+  if (t === "email" || t === "newsletter" || t === "promo") return "warning";
   return "neutral";
 }
 
 export default function DocumentTemplatesPage() {
   const router = useRouter();
-  const { data, isLoading, error } = useDocumentTemplates();
+  const { data: docData, isLoading: docLoading, error } = useDocumentTemplates();
+  const { data: emailData, isLoading: emailLoading } = useEmailTemplates({ limit: 500 });
   const { data: brandsData } = useBrandProfiles();
 
-  const items = data?.items ?? [];
-  const brandsMap = new Map(
-    (brandsData?.items ?? []).map((b) => [b.id, b.name]),
+  const brandsMap = useMemo(
+    () => new Map((brandsData?.items ?? []).map((b) => [b.id, b.name])),
+    [brandsData?.items],
   );
 
-  const columns: Column<DocumentTemplateRow>[] = [
+  const items: TemplateListRow[] = useMemo(() => {
+    const docs: TemplateListRow[] = (docData?.items ?? []).map((row: DocumentTemplateRow) => ({
+      id: row.id,
+      name: row.name,
+      template_type: row.template_type,
+      brand_profile_id: row.brand_profile_id ?? null,
+      status: row.status,
+      created_at: row.created_at,
+      source: "document" as const,
+    }));
+    const emails: TemplateListRow[] = (emailData?.items ?? []).map((row: EmailTemplateRow) => ({
+      id: row.id,
+      name: row.name,
+      template_type: row.type ?? "email",
+      brand_profile_id: row.brand_profile_id ?? null,
+      status: "active",
+      created_at: row.created_at,
+      source: "email" as const,
+    }));
+    return [...docs, ...emails].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+  }, [docData?.items, emailData?.items]);
+
+  const columns: Column<TemplateListRow>[] = [
     { key: "name", header: "Name" },
     {
       key: "template_type",
@@ -53,7 +89,9 @@ export default function DocumentTemplatesPage() {
       key: "brand",
       header: "Brand",
       render: (row) =>
-        row.brand_profile_id ? brandsMap.get(row.brand_profile_id) ?? row.brand_profile_id.slice(0, 8) : "—",
+        row.brand_profile_id
+          ? brandsMap.get(row.brand_profile_id) ?? row.brand_profile_id.slice(0, 8)
+          : "—",
     },
     {
       key: "status",
@@ -66,6 +104,8 @@ export default function DocumentTemplatesPage() {
       render: (row) => new Date(row.created_at).toLocaleDateString(),
     },
   ];
+
+  const isLoading = docLoading || emailLoading;
 
   if (error) {
     return (
@@ -85,7 +125,7 @@ export default function DocumentTemplatesPage() {
       <Stack>
         <PageHeader
           title="Document Templates"
-          description="Manage deck, report, and email templates linked to brand profiles."
+          description="Deck, report, and email templates. Email templates from the email marketing wizard appear here; link templates to brands for dedicated use."
         />
         <CardSection>
           {isLoading ? (
@@ -97,16 +137,20 @@ export default function DocumentTemplatesPage() {
             </div>
           ) : items.length === 0 ? (
             <EmptyState
-              title="No document templates"
-              description="Templates will appear here once created via the API."
+              title="No templates"
+              description="Create email templates via the email marketing wizard (seed script or API), or create deck/report templates via the API. They will appear here."
             />
           ) : (
             <TableFrame>
               <DataTable
                 columns={columns}
                 data={items}
-                keyExtractor={(row) => row.id}
-                onRowClick={(row) => router.push(`/document-templates/${row.id}`)}
+                keyExtractor={(row) => `${row.source}-${row.id}`}
+                onRowClick={(row) =>
+                  row.source === "email"
+                    ? router.push(`/document-templates/email/${row.id}`)
+                    : router.push(`/document-templates/${row.id}`)
+                }
               />
             </TableFrame>
           )}

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button, LoadingSkeleton } from "@/components/ui";
-import { useSitemapProducts } from "@/hooks/use-api";
+import { useSitemapProducts, useBrandProfile } from "@/hooks/use-api";
+import { updateBrandProfile } from "@/lib/api";
 
 const WIZARD_KEY = "email_marketing_wizard";
 
@@ -29,11 +30,29 @@ type ProductItem = { src: string; title: string; product_url: string };
 
 export default function EmailMarketingNewProductsPage() {
   const router = useRouter();
+  const state = getWizardState();
+  const brandId = state.brand_profile_id as string | undefined;
+  const { data: brand } = useBrandProfile(brandId ?? null);
+
   const [sitemapUrl, setSitemapUrl] = useState("");
   const [sitemapType, setSitemapType] = useState("ecommerce");
   const [items, setItems] = useState<ProductItem[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [saving, setSaving] = useState(false);
   const fetchProducts = useSitemapProducts();
+  const hasPrefilled = useRef<string | null>(null);
+
+  // Prefill from brand tokens: canonical sitemap_url/type or email_* (wizard) (once per brand)
+  useEffect(() => {
+    if (!brandId || !brand?.design_tokens || typeof brand.design_tokens !== "object") return;
+    if (hasPrefilled.current === brandId) return;
+    hasPrefilled.current = brandId;
+    const dt = brand.design_tokens as Record<string, unknown>;
+    const url = typeof dt.sitemap_url === "string" ? dt.sitemap_url : (typeof dt.email_sitemap_url === "string" ? dt.email_sitemap_url : "");
+    const type = typeof dt.sitemap_type === "string" ? dt.sitemap_type : (typeof dt.email_sitemap_type === "string" ? dt.email_sitemap_type : "ecommerce");
+    if (url) setSitemapUrl(url);
+    if (type) setSitemapType(type);
+  }, [brandId, brand?.design_tokens, brand?.id]);
 
   const handleFetch = async () => {
     if (!sitemapUrl.trim()) return;
@@ -58,13 +77,31 @@ export default function EmailMarketingNewProductsPage() {
     setSelected(next);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const products = Array.from(selected).map((i) => items[i]);
     setWizardState({
       sitemap_url: sitemapUrl,
       sitemap_type: sitemapType,
       products,
     });
+    if (brandId) {
+      setSaving(true);
+      try {
+        await updateBrandProfile(brandId, {
+          design_tokens: {
+            sitemap_url: sitemapUrl,
+            sitemap_type: sitemapType,
+            email_sitemap_url: sitemapUrl,
+            email_sitemap_type: sitemapType,
+            email_products: products,
+          },
+        } as Record<string, unknown>);
+      } catch (_e) {
+        // non-blocking: wizard state is already saved
+      } finally {
+        setSaving(false);
+      }
+    }
     router.push("/email-marketing/new/template");
   };
 
@@ -120,8 +157,8 @@ export default function EmailMarketingNewProductsPage() {
           </div>
         )}
         <div className="flex flex-wrap gap-3">
-          <Button variant="primary" onClick={handleNext} disabled={items.length === 0}>
-            Next: Template
+          <Button variant="primary" onClick={handleNext} disabled={items.length === 0 || saving}>
+            {saving ? "Saving…" : "Next: Template"}
           </Button>
           <Button variant="secondary" asChild>
             <Link href="/email-marketing/new/brand">Back</Link>

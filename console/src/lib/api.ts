@@ -581,13 +581,15 @@ export type EmailTemplateRow = {
   template_json: unknown;
   sections_json: unknown;
   img_count: number;
+  brand_profile_id?: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export async function getEmailTemplates(params?: { type?: string; limit?: number; offset?: number }): Promise<{ items: EmailTemplateRow[]; total: number }> {
+export async function getEmailTemplates(params?: { type?: string; brand_profile_id?: string; limit?: number; offset?: number }): Promise<{ items: EmailTemplateRow[]; total: number }> {
   const searchParams = new URLSearchParams();
   if (params?.type) searchParams.set("type", params.type);
+  if (params?.brand_profile_id) searchParams.set("brand_profile_id", params.brand_profile_id);
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
   const res = await fetch(`${API}/v1/email_templates?${searchParams}`);
@@ -677,6 +679,33 @@ export async function getBrandProfiles(params?: { status?: string; search?: stri
 
 export async function getBrandProfile(id: string): Promise<BrandProfileRow> {
   const res = await fetch(`${API}/v1/brand_profiles/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** Prefill brand form from live URL: fetches site and extracts colors, fonts, logo, sitemap. */
+export type BrandPrefillFromUrlResult = {
+  name: string;
+  website: string;
+  logo_url: string | null;
+  primary_color: string | null;
+  secondary_color: string | null;
+  font_headings: string | null;
+  font_body: string | null;
+  sitemap_url: string | null;
+  sitemap_type: string;
+  title: string | null;
+  meta_description: string | null;
+  raw_colors: string[];
+  raw_fonts: string[];
+};
+
+export async function prefillBrandFromUrl(url: string): Promise<BrandPrefillFromUrlResult> {
+  const res = await fetch(`${API}/v1/brand_profiles/prefill_from_url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: url.trim() }),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

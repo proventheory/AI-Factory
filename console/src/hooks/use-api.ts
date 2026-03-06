@@ -259,9 +259,9 @@ export function useSitemapProducts() {
   });
 }
 
-export function useEmailTemplates(params?: { type?: string; limit?: number; offset?: number }) {
+export function useEmailTemplates(params?: { type?: string; brand_profile_id?: string; limit?: number; offset?: number }) {
   return useQuery({
-    queryKey: ["email_templates", params?.type, params?.limit, params?.offset],
+    queryKey: ["email_templates", params?.type, params?.brand_profile_id, params?.limit, params?.offset],
     queryFn: () => api.getEmailTemplates(params),
   });
 }

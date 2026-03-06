@@ -41,28 +41,29 @@ export async function listRenderServices(apiKey: string): Promise<{ id: string; 
 }
 
 /**
- * Update environment variables for a Render service.
- * Render API: PATCH /services/:id with body { envVars: [{ key, value }], replace: false }.
- * See https://api-docs.render.com/reference/update-env-vars-for-service
+ * Add or update one environment variable for a Render service.
+ * Render API: PUT /services/:id/env-vars/:key with body { value }.
+ * Does not remove other env vars.
  */
-export async function updateServiceEnvVars(
+export async function setServiceEnvVar(
   apiKey: string,
   serviceId: string,
-  envVars: { key: string; value: string }[],
-  replace: boolean = false
+  key: string,
+  value: string
 ): Promise<void> {
-  const res = await fetch(`${RENDER_API_BASE}/services/${serviceId}`, {
-    method: "PATCH",
+  const encodedKey = encodeURIComponent(key);
+  const res = await fetch(`${RENDER_API_BASE}/services/${serviceId}/env-vars/${encodedKey}`, {
+    method: "PUT",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ envVars, replace }),
+    body: JSON.stringify({ value }),
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Render API update env vars failed: ${res.status} ${text}`);
+    throw new Error(`Render API set env var ${key} failed: ${res.status} ${text}`);
   }
 }
 
@@ -85,8 +86,8 @@ export async function restartRenderService(apiKey: string, serviceId: string): P
 }
 
 /**
- * Sync worker service env from Control Plane process env (DATABASE_URL, CONTROL_PLANE_URL, LLM_GATEWAY_URL, optional OPENAI_API_KEY).
- * Control Plane runs on Render with these set; worker must have the same to claim jobs and produce artifacts.
+ * Sync worker service env from Control Plane process env (DATABASE_URL, CONTROL_PLANE_URL, LLM_GATEWAY_URL).
+ * Worker must have the same to claim jobs and produce artifacts. API keys stay in gateway only.
  * After updating env vars we restart the worker so it picks up the new values.
  */
 export async function syncWorkerEnvFromControlPlane(): Promise<SyncResult> {
@@ -96,9 +97,8 @@ export async function syncWorkerEnvFromControlPlane(): Promise<SyncResult> {
   }
 
   const databaseUrl = process.env.DATABASE_URL;
-  const controlPlaneUrl = process.env.CONTROL_PLANE_URL;
-  const llmGatewayUrl = process.env.LLM_GATEWAY_URL;
-  const openaiApiKey = process.env.OPENAI_API_KEY;
+  let controlPlaneUrl = process.env.CONTROL_PLANE_URL?.trim();
+  const llmGatewayUrl = process.env.LLM_GATEWAY_URL?.trim();
 
   if (!databaseUrl?.trim()) {
     return { ok: false, message: "DATABASE_URL not set on Control Plane" };
@@ -114,20 +114,30 @@ export async function syncWorkerEnvFromControlPlane(): Promise<SyncResult> {
     return { ok: false, message: `Worker service '${WORKER_SERVICE_NAME}' not found in Render` };
   }
 
+  if (!controlPlaneUrl) {
+    const apiService = services.find(
+      (s) =>
+        (s.name && /ai-factory-api-(staging|prod)/i.test(s.name)) ||
+        (s.slug && /ai-factory-api-(staging|prod)/i.test(s.slug))
+    );
+    if (apiService?.slug) {
+      controlPlaneUrl = `https://${apiService.slug}.onrender.com`;
+    }
+  }
+
   const envVars: { key: string; value: string }[] = [
     { key: "DATABASE_URL", value: databaseUrl },
   ];
-  if (controlPlaneUrl?.trim()) {
-    envVars.push({ key: "CONTROL_PLANE_URL", value: controlPlaneUrl.trim() });
+  if (controlPlaneUrl) {
+    envVars.push({ key: "CONTROL_PLANE_URL", value: controlPlaneUrl });
   }
-  if (llmGatewayUrl?.trim()) {
-    envVars.push({ key: "LLM_GATEWAY_URL", value: llmGatewayUrl.trim() });
-  }
-  if (openaiApiKey?.trim()) {
-    envVars.push({ key: "OPENAI_API_KEY", value: openaiApiKey.trim() });
+  if (llmGatewayUrl) {
+    envVars.push({ key: "LLM_GATEWAY_URL", value: llmGatewayUrl });
   }
 
-  await updateServiceEnvVars(apiKey, worker.id, envVars, false);
+  for (const { key, value } of envVars) {
+    await setServiceEnvVar(apiKey, worker.id, key, value);
+  }
   try {
     await restartRenderService(apiKey, worker.id);
   } catch (err) {

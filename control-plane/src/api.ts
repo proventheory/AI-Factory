@@ -7,6 +7,7 @@ import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
 import { executeRollback, routeRun } from "./release-manager.js";
 import { triggerNoArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
 import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
+import { tokenizeBrandFromUrl } from "./brand-tokenize-from-url.js";
 
 const app = express();
 // CORS: allow comma-separated origins (e.g. multiple Vercel URLs) or "*"
@@ -1832,6 +1833,19 @@ app.get("/v1/brand_profiles/:id", async (req, res) => {
   }
 });
 
+/** POST /v1/brand_profiles/prefill_from_url — fetch live site and extract tokens (colors, fonts, logo, sitemap). */
+app.post("/v1/brand_profiles/prefill_from_url", async (req, res) => {
+  try {
+    const body = req.body as { url?: string };
+    const url = typeof body?.url === "string" ? body.url.trim() : "";
+    if (!url) return res.status(400).json({ error: "url is required" });
+    const result = await tokenizeBrandFromUrl(url);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** POST /v1/brand_profiles */
 app.post("/v1/brand_profiles", async (req, res) => {
   try {
@@ -2240,12 +2254,17 @@ app.get("/v1/email_templates", async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
     const offset = Number(req.query.offset) || 0;
     const type = req.query.type as string | undefined;
+    const brand_profile_id = req.query.brand_profile_id as string | undefined;
     const conditions: string[] = ["1=1"];
     const params: unknown[] = [];
     let i = 1;
     if (type) {
       conditions.push(`type = $${i++}`);
       params.push(type);
+    }
+    if (brand_profile_id && isValidUuid(brand_profile_id)) {
+      conditions.push(`(brand_profile_id = $${i++} OR brand_profile_id IS NULL)`);
+      params.push(brand_profile_id);
     }
     params.push(limit, offset);
     const q = `SELECT * FROM email_templates WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
@@ -2285,10 +2304,11 @@ app.post("/v1/email_templates", async (req, res) => {
       template_json?: unknown;
       sections_json?: unknown;
       img_count?: number;
+      brand_profile_id?: string | null;
     };
     const r = await pool.query(
-      `INSERT INTO email_templates (type, name, image_url, mjml, template_json, sections_json, img_count)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7) RETURNING *`,
+      `INSERT INTO email_templates (type, name, image_url, mjml, template_json, sections_json, img_count, brand_profile_id)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8) RETURNING *`,
       [
         body.type ?? "newsletter",
         body.name ?? "Untitled",
@@ -2297,6 +2317,7 @@ app.post("/v1/email_templates", async (req, res) => {
         body.template_json ?? null,
         body.sections_json ?? null,
         body.img_count ?? 0,
+        body.brand_profile_id ?? null,
       ]
     );
     res.status(201).json(r.rows[0]);
@@ -2312,7 +2333,7 @@ app.patch("/v1/email_templates/:id", async (req, res) => {
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const id = req.params.id;
     const body = req.body as Record<string, unknown>;
-    const allowed = ["type", "name", "image_url", "mjml", "template_json", "sections_json", "img_count"];
+    const allowed = ["type", "name", "image_url", "mjml", "template_json", "sections_json", "img_count", "brand_profile_id"];
     const sets: string[] = [];
     const params: unknown[] = [];
     let i = 1;

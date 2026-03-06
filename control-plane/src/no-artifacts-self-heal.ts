@@ -15,6 +15,7 @@
 import { pool, withTransaction } from "./db.js";
 import { createRun } from "./scheduler.js";
 import { syncWorkerEnvFromControlPlane } from "./render-worker-remediate.js";
+import type { Environment, Cohort } from "./types.js";
 
 /** Run IDs we already remediated (avoid loop). Cleared on process restart. */
 export const noArtifactsRemediatedRunIds = new Set<string>();
@@ -65,8 +66,8 @@ export async function runNoArtifactsRemediation(runId: string): Promise<void> {
         planId: row.plan_id,
         releaseId: row.release_id,
         policyVersion: row.policy_version ?? "latest",
-        environment: row.environment,
-        cohort: row.cohort,
+        environment: row.environment as Environment,
+        cohort: row.cohort as Cohort | null,
         rootIdempotencyKey: `self-heal:${runId}:${Date.now()}`,
         llmSource,
       });

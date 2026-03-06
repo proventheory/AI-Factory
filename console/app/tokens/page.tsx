@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { PageFrame, Stack, PageHeader } from "@/components/ui";
 import { TokenTreeView } from "@/components/TokenTreeView";
-import { useBrandProfiles, useBrandProfile } from "@/hooks/use-api";
+import { useBrandProfiles, useBrandProfile, useDocumentTemplates, useEmailTemplates } from "@/hooks/use-api";
 
 // Platform-level defaults (aligned with packages/tokens defaults.json and BRAND_DESIGN_TOKENS_UPGRADE_PLAN.md)
 const PLATFORM_TOKEN_DEFAULTS: Record<string, unknown> = {
@@ -38,6 +38,13 @@ export default function TokenRegistryPage() {
   const { data: brandsData } = useBrandProfiles({ status: "active", limit: 200 });
   const { data: selectedBrand } = useBrandProfile(selectedBrandId || null);
   const brands = brandsData?.items ?? [];
+  const { data: docTemplatesData } = useDocumentTemplates(selectedBrandId ? { brand_profile_id: selectedBrandId } : undefined);
+  const { data: emailTemplatesData } = useEmailTemplates({
+    limit: 100,
+    ...(selectedBrandId ? { brand_profile_id: selectedBrandId } : {}),
+  });
+  const docTemplates = docTemplatesData?.items ?? [];
+  const emailTemplates = emailTemplatesData?.items ?? [];
 
   return (
     <PageFrame>
@@ -77,17 +84,50 @@ export default function TokenRegistryPage() {
             )}
           </div>
           {selectedBrandId && selectedBrand && (
-            <div className="mt-3">
-              <p className="mb-2 text-body-small font-medium text-slate-700">
-                <Link href={`/brands/${selectedBrand.id}`} className="text-brand-600 hover:underline">{selectedBrand.name}</Link>
-                {" — design tokens"}
-              </p>
-              <TokenTreeView
-                tokens={(selectedBrand.design_tokens ?? {}) as Record<string, unknown>}
-                className="mt-2"
-              />
+            <div className="mt-3 space-y-4">
+              <div>
+                <p className="mb-2 text-body-small font-medium text-slate-700">
+                  <Link href={`/brands/${selectedBrand.id}`} className="text-brand-600 hover:underline">{selectedBrand.name}</Link>
+                  {" — design tokens"}
+                </p>
+                <TokenTreeView
+                  tokens={(selectedBrand.design_tokens ?? {}) as Record<string, unknown>}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <p className="mb-2 text-body-small font-medium text-slate-700">Templates for this brand</p>
+                <p className="mb-2 text-body-small text-text-muted">
+                  Deck/report and email templates linked to this brand. <Link href="/document-templates" className="text-brand-600 hover:underline">View all templates</Link>.
+                </p>
+                {(docTemplates.length === 0 && emailTemplates.length === 0) ? (
+                  <p className="text-body-small text-text-muted">No templates linked to this brand yet.</p>
+                ) : (
+                  <ul className="list-inside list-disc text-body-small">
+                    {docTemplates.map((t) => (
+                      <li key={t.id}>
+                        <Link href={`/document-templates/${t.id}`} className="text-brand-600 hover:underline">{t.name}</Link>
+                        <span className="text-text-muted"> ({t.template_type})</span>
+                      </li>
+                    ))}
+                    {emailTemplates.map((t) => (
+                      <li key={t.id}>
+                        <Link href={`/document-templates/email/${t.id}`} className="text-brand-600 hover:underline">{t.name}</Link>
+                        <span className="text-text-muted"> (email · {t.type})</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           )}
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="mb-2 text-body font-semibold text-slate-900">Templates</h2>
+          <p className="mb-3 text-body-small text-text-muted">
+            All document and email templates appear in <Link href="/document-templates" className="text-brand-600 hover:underline">Document Templates</Link>. Select a brand above to see templates dedicated to that brand. Email templates from the email marketing wizard show there and can be linked to brands.
+          </p>
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4">

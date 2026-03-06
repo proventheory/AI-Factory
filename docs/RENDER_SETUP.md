@@ -69,6 +69,7 @@ So: **one-time in Dashboard** = New → Blueprint, connect repo. **Rest** (env v
 - [ ] In Render Dashboard: **New → Blueprint** → connect AI Factory repo.
 - [ ] After Terraform apply: get **staging** and **prod** Supabase **Settings → Database** connection strings.
 - [ ] In Cursor (via MCP): set Render workspace, then update env vars for **ai-factory-api-staging** (DATABASE_URL, optional CORS_ORIGIN) and **ai-factory-api-prod** (same).
+- [ ] For **no-artifacts self-heal** (automatic worker env sync + new run when runs have no artifacts): on the **Control Plane** service set `ENABLE_SELF_HEAL=true` and `RENDER_API_KEY` (same key as in MCP). Optionally set `CONTROL_PLANE_URL` and `LLM_GATEWAY_URL` so they are pushed to the worker; if unset, CONTROL_PLANE_URL is derived from the API service URL.
 - [ ] In Vercel (or Terraform): set **NEXT_PUBLIC_CONTROL_PLANE_API** for Preview and Production to the two Render service URLs.
 
 ---

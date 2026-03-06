@@ -12,6 +12,7 @@ import {
   CardSection,
 } from "@/components/ui";
 import { useCreateBrandProfile } from "@/hooks/use-api";
+import { prefillBrandFromUrl } from "@/lib/api";
 import { buildDesignTokens } from "../token-helpers";
 
 export default function NewBrandPage() {
@@ -37,7 +38,36 @@ export default function NewBrandPage() {
   const [wordmarkLight, setWordmarkLight] = useState("");
   const [fontHeadings, setFontHeadings] = useState("Inter");
   const [fontBody, setFontBody] = useState("Inter");
+  const [website, setWebsite] = useState("");
+  const [sitemapUrl, setSitemapUrl] = useState("");
+  const [sitemapType, setSitemapType] = useState("ecommerce");
+  const [prefillUrl, setPrefillUrl] = useState("");
+  const [prefillLoading, setPrefillLoading] = useState(false);
+  const [prefillError, setPrefillError] = useState<string | null>(null);
   const [error, setError] = useState("");
+
+  const handlePrefillFromUrl = async () => {
+    if (!prefillUrl.trim()) return;
+    setPrefillError(null);
+    setPrefillLoading(true);
+    try {
+      const data = await prefillBrandFromUrl(prefillUrl);
+      setName(data.name || name);
+      setWebsite(data.website || "");
+      setLogoUrl(data.logo_url || "");
+      if (data.primary_color) setPrimaryColor(data.primary_color);
+      if (data.secondary_color) setSecondaryColor(data.secondary_color);
+      if (data.font_headings) setFontHeadings(data.font_headings);
+      if (data.font_body) setFontBody(data.font_body);
+      setSitemapUrl(data.sitemap_url || "");
+      setSitemapType(data.sitemap_type || "ecommerce");
+      if (data.meta_description && !mission) setMission(data.meta_description);
+    } catch (err: unknown) {
+      setPrefillError(err instanceof Error ? err.message : "Failed to fetch brand data");
+    } finally {
+      setPrefillLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +84,7 @@ export default function NewBrandPage() {
           industry: industry || undefined,
           tagline: tagline || undefined,
           mission: mission || undefined,
+          website: website.trim() || undefined,
         },
         tone: {
           voice_descriptors: voiceDesc
@@ -80,6 +111,8 @@ export default function NewBrandPage() {
           logoUrl,
           wordmarkBold,
           wordmarkLight,
+          sitemapUrl,
+          sitemapType,
         }),
       });
       router.push(`/brands/${result.id}`);
@@ -113,6 +146,37 @@ export default function NewBrandPage() {
             </div>
           )}
 
+          <CardSection title="Prefill from URL">
+            <p className="mb-3 text-body-small text-text-secondary">
+              Enter the brand&apos;s website URL (e.g. stickygreenflower.com). We&apos;ll fetch the live site and extract colors, fonts, logo, and sitemap so the form is filled with real data—not placeholders.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[200px] flex-1">
+                <label className={labelCls}>Website URL</label>
+                <Input
+                  type="url"
+                  placeholder="https://stickygreenflower.com"
+                  value={prefillUrl}
+                  onChange={(e) => setPrefillUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handlePrefillFromUrl())}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="primary"
+                disabled={prefillLoading || !prefillUrl.trim()}
+                onClick={handlePrefillFromUrl}
+              >
+                {prefillLoading ? "Fetching…" : "Prefill from URL"}
+              </Button>
+            </div>
+            {prefillError && (
+              <div className="mt-2 rounded border border-state-dangerMuted bg-state-dangerMuted/20 px-3 py-2 text-body-small text-state-danger">
+                {prefillError}
+              </div>
+            )}
+          </CardSection>
+
           <CardSection title="Basic Info">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -132,6 +196,33 @@ export default function NewBrandPage() {
                   onChange={(e) => setLogoUrl(e.target.value)}
                   placeholder="https://… or /logo.svg"
                 />
+              </div>
+              <div>
+                <label className={labelCls}>Website</label>
+                <Input
+                  type="url"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="https://example.com"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Sitemap URL</label>
+                <Input
+                  type="url"
+                  value={sitemapUrl}
+                  onChange={(e) => setSitemapUrl(e.target.value)}
+                  placeholder="https://example.com/sitemap.xml"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Sitemap type</label>
+                <Select value={sitemapType} onChange={(e) => setSitemapType(e.target.value)}>
+                  <option value="drupal">Drupal</option>
+                  <option value="ecommerce">ecommerce / WooCommerce</option>
+                  <option value="bigcommerce">BigCommerce</option>
+                  <option value="shopify">Shopify</option>
+                </Select>
               </div>
               <div>
                 <label className={labelCls}>Wordmark (bold part)</label>

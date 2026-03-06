@@ -70,6 +70,7 @@ export default function BrandDetailPage() {
   const cs = (brand.copy_style ?? {}) as Record<string, any>;
   const dt = (brand.design_tokens ?? {}) as Record<string, any>;
   const brandColors: Record<string, string> = dt?.color?.brand ?? {};
+  const logoUrl = dt?.logo?.url ?? dt?.logo_url ?? "";
 
   return (
     <PageFrame>
@@ -95,6 +96,26 @@ export default function BrandDetailPage() {
             </div>
           }
         />
+
+        {logoUrl && (
+          <CardSection title="Logo">
+            <div className="flex flex-wrap items-center gap-4">
+              <img
+                src={logoUrl}
+                alt={`${brand.name} logo`}
+                className="h-20 w-auto max-w-[200px] object-contain rounded border border-border bg-bg-muted"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+              <div className="text-body-small text-text-secondary">
+                <a href={logoUrl} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline break-all">
+                  {logoUrl}
+                </a>
+              </div>
+            </div>
+          </CardSection>
+        )}
 
         <CardSection title="Brand Identity">
           <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
@@ -124,6 +145,28 @@ export default function BrandDetailPage() {
                     <Badge key={v}>{v}</Badge>
                   ))}
                 </div>
+              </div>
+            )}
+            {(identity.website || identity.contact_email || identity.location) && (
+              <div className="col-span-2 md:col-span-4 flex flex-wrap gap-4">
+                {identity.website && (
+                  <div>
+                    <span className="text-text-secondary">Website</span>
+                    <p className="font-medium"><a href={identity.website} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{identity.website}</a></p>
+                  </div>
+                )}
+                {identity.contact_email && (
+                  <div>
+                    <span className="text-text-secondary">Contact email</span>
+                    <p className="font-medium">{identity.contact_email}</p>
+                  </div>
+                )}
+                {identity.location && (
+                  <div>
+                    <span className="text-text-secondary">Location</span>
+                    <p className="font-medium">{identity.location}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -227,6 +270,58 @@ export default function BrandDetailPage() {
             )}
           </div>
         </CardSection>
+
+        {((dt.sitemap_url ?? dt.email_sitemap_url) || (dt.social_media?.length > 0) || (dt.contact_info?.length > 0) || (dt.asset_urls?.length > 0)) && (
+          <CardSection title="Sitemap & links">
+            <div className="grid gap-3 text-sm">
+              {(dt.sitemap_url ?? dt.email_sitemap_url) && (
+                <div>
+                  <span className="text-text-secondary">Sitemap</span>
+                  <p className="font-medium">
+                    <a href={dt.sitemap_url ?? dt.email_sitemap_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
+                      {dt.sitemap_url ?? dt.email_sitemap_url}
+                    </a>
+                    {dt.sitemap_type ?? dt.email_sitemap_type ? ` (${dt.sitemap_type ?? dt.email_sitemap_type})` : ""}
+                  </p>
+                </div>
+              )}
+              {Array.isArray(dt.social_media) && dt.social_media.length > 0 && (
+                <div>
+                  <span className="text-text-secondary">Social</span>
+                  <ul className="mt-1 list-disc list-inside">
+                    {dt.social_media.map((s: { name?: string; url?: string }, i: number) => (
+                      <li key={i}>
+                        {s.name && <span>{s.name}: </span>}
+                        <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{s.url}</a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {Array.isArray(dt.contact_info) && dt.contact_info.length > 0 && (
+                <div>
+                  <span className="text-text-secondary">Contact</span>
+                  <ul className="mt-1 list-disc list-inside">
+                    {dt.contact_info.map((c: { type?: string; value?: string }, i: number) => (
+                      <li key={i}>{c.type}: {c.value}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {Array.isArray(dt.asset_urls) && dt.asset_urls.length > 0 && (
+                <div>
+                  <span className="text-text-secondary">Asset URLs</span>
+                  <ul className="mt-1 list-disc list-inside break-all">
+                    {dt.asset_urls.slice(0, 5).map((u: string, i: number) => (
+                      <li key={i}><a href={u} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{u}</a></li>
+                    ))}
+                    {dt.asset_urls.length > 5 && <li className="text-text-secondary">+{dt.asset_urls.length - 5} more</li>}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </CardSection>
+        )}
 
         <CardSection title="Design Tokens — Color Palette">
           <div className="flex flex-wrap gap-2">

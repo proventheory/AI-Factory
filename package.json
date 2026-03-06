@@ -26,7 +26,8 @@
     "self-heal:verbose": "npx tsx scripts/self-heal.ts --verbose",
     "self-heal:openhands": "npx tsx scripts/self-heal.ts --agent openhands",
     "self-heal:swe": "npx tsx scripts/self-heal.ts --agent swe-agent",
-    "preview-landing": "npx tsx scripts/preview-landing.ts"
+    "preview-landing": "npx tsx scripts/preview-landing.ts",
+    "seed:brand-sticky-green": "node scripts/seed-brand-sticky-green.mjs"
   },
   "dependencies": {
     "@sentry/node": "^8.49.0",

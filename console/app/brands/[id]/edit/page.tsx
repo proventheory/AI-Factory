@@ -14,7 +14,12 @@ import {
 } from "@/components/ui";
 import { TokenTreeView } from "@/components/TokenTreeView";
 import { useBrandProfile, useUpdateBrandProfile } from "@/hooks/use-api";
-import { buildDesignTokens, readDesignTokensFromBrand } from "../../token-helpers";
+import {
+  buildDesignTokens,
+  readDesignTokensFromBrand,
+  type SocialLink,
+  type ContactItem,
+} from "../../token-helpers";
 
 export default function EditBrandPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +46,15 @@ export default function EditBrandPage() {
   const [wordmarkLight, setWordmarkLight] = useState("");
   const [fontHeadings, setFontHeadings] = useState("Inter");
   const [fontBody, setFontBody] = useState("Inter");
+  const [website, setWebsite] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [location, setLocation] = useState("");
+  const [sitemapUrl, setSitemapUrl] = useState("");
+  const [sitemapType, setSitemapType] = useState("ecommerce");
+  const [socialMedia, setSocialMedia] = useState<SocialLink[]>([]);
+  const [contactInfo, setContactInfo] = useState<ContactItem[]>([]);
+  const [assetUrls, setAssetUrls] = useState<string[]>([]);
+  const [assetUrlsText, setAssetUrlsText] = useState("");
   const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
@@ -56,6 +70,9 @@ export default function EditBrandPage() {
     setIndustry(identity.industry ?? "");
     setTagline(identity.tagline ?? "");
     setMission(identity.mission ?? "");
+    setWebsite(identity.website ?? "");
+    setContactEmail(identity.contact_email ?? "");
+    setLocation(identity.location ?? "");
     setVoiceDesc((tone.voice_descriptors ?? []).join(", "));
     setReadingLevel(tone.reading_level ?? "grade_9");
     setFormality(tone.formality ?? "neutral");
@@ -72,6 +89,12 @@ export default function EditBrandPage() {
     setWordmarkLight(tokens.wordmarkLight);
     setFontHeadings(tokens.fontHeadings);
     setFontBody(tokens.fontBody);
+    setSitemapUrl(tokens.sitemapUrl);
+    setSitemapType(tokens.sitemapType);
+    setSocialMedia(tokens.socialMedia);
+    setContactInfo(tokens.contactInfo);
+    setAssetUrls(tokens.assetUrls);
+    setAssetUrlsText(tokens.assetUrls.join("\n"));
   }, [brand]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -90,6 +113,9 @@ export default function EditBrandPage() {
           industry: industry || undefined,
           tagline: tagline || undefined,
           mission: mission || undefined,
+          website: website.trim() || undefined,
+          contact_email: contactEmail.trim() || undefined,
+          location: location.trim() || undefined,
         },
         tone: {
           voice_descriptors: voiceDesc
@@ -116,6 +142,11 @@ export default function EditBrandPage() {
           logoUrl,
           wordmarkBold,
           wordmarkLight,
+          sitemapUrl,
+          sitemapType,
+          socialMedia,
+          contactInfo,
+          assetUrls: assetUrlsText.split("\n").map((u) => u.trim()).filter(Boolean),
         }),
       });
       router.push(`/brands/${id}`);
@@ -300,7 +331,165 @@ export default function EditBrandPage() {
                   placeholder="Brand mission statement"
                 />
               </div>
+              <div>
+                <label className={labelCls}>Website</label>
+                <Input
+                  type="url"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="https://example.com"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Contact email</label>
+                <Input
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  placeholder="brand@example.com"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Location</label>
+                <Input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="e.g. San Francisco, CA"
+                />
+              </div>
             </div>
+          </CardSection>
+
+          <CardSection title="Sitemap & products">
+            <p className="text-body-small text-text-secondary mb-3">
+              Product sitemap URL and type (used by email marketing wizard and initiatives).
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className={labelCls}>Sitemap type</label>
+                <Select
+                  value={sitemapType}
+                  onChange={(e) => setSitemapType(e.target.value)}
+                >
+                  <option value="drupal">Drupal</option>
+                  <option value="ecommerce">WooCommerce / ecommerce</option>
+                  <option value="bigcommerce">BigCommerce</option>
+                  <option value="shopify">Shopify</option>
+                </Select>
+              </div>
+              <div className="md:col-span-2">
+                <label className={labelCls}>Sitemap URL</label>
+                <Input
+                  type="url"
+                  value={sitemapUrl}
+                  onChange={(e) => setSitemapUrl(e.target.value)}
+                  placeholder="https://example.com/sitemap_products.xml"
+                />
+              </div>
+            </div>
+          </CardSection>
+
+          <CardSection title="Social & contact">
+            <p className="text-body-small text-text-secondary mb-3">
+              Social links (name + URL) and contact entries (type + value), e.g. phone, email.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className={labelCls}>Social links</label>
+                {socialMedia.map((s, i) => (
+                  <div key={i} className="flex gap-2 mb-2">
+                    <Input
+                      placeholder="Name (e.g. Facebook)"
+                      value={s.name}
+                      onChange={(e) => {
+                        const next = [...socialMedia];
+                        next[i] = { ...next[i], name: e.target.value };
+                        setSocialMedia(next);
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="URL"
+                      value={s.url}
+                      onChange={(e) => {
+                        const next = [...socialMedia];
+                        next[i] = { ...next[i], url: e.target.value };
+                        setSocialMedia(next);
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setSocialMedia(socialMedia.filter((_, j) => j !== i))}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setSocialMedia([...socialMedia, { name: "", url: "" }])}
+                >
+                  Add social link
+                </Button>
+              </div>
+              <div>
+                <label className={labelCls}>Contact info</label>
+                {contactInfo.map((c, i) => (
+                  <div key={i} className="flex gap-2 mb-2">
+                    <Input
+                      placeholder="Type (e.g. email, phone)"
+                      value={c.type}
+                      onChange={(e) => {
+                        const next = [...contactInfo];
+                        next[i] = { ...next[i], type: e.target.value };
+                        setContactInfo(next);
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Value"
+                      value={c.value}
+                      onChange={(e) => {
+                        const next = [...contactInfo];
+                        next[i] = { ...next[i], value: e.target.value };
+                        setContactInfo(next);
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => setContactInfo(contactInfo.filter((_, j) => j !== i))}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setContactInfo([...contactInfo, { type: "", value: "" }])}
+                >
+                  Add contact
+                </Button>
+              </div>
+            </div>
+          </CardSection>
+
+          <CardSection title="Asset URLs">
+            <p className="text-body-small text-text-secondary mb-3">
+              Image or asset URLs for this brand (one per line). Used by initiatives and email.
+            </p>
+            <textarea
+              className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono text-body-small"
+              rows={4}
+              value={assetUrlsText}
+              onChange={(e) => setAssetUrlsText(e.target.value)}
+              placeholder="https://example.com/hero.jpg&#10;https://example.com/logo.png"
+            />
           </CardSection>
 
           <CardSection title="Tone & Voice">
