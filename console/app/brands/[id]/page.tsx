@@ -271,17 +271,17 @@ export default function BrandDetailPage() {
           </div>
         </CardSection>
 
-        {((dt.sitemap_url ?? dt.email_sitemap_url) || (dt.social_media?.length > 0) || (dt.contact_info?.length > 0) || (dt.asset_urls?.length > 0)) && (
-          <CardSection title="Sitemap & links">
+        {((dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) || (dt.social_media?.length > 0) || (dt.contact_info?.length > 0) || (dt.asset_urls?.length > 0)) && (
+          <CardSection title="Brand sitemap & links">
             <div className="grid gap-3 text-sm">
-              {(dt.sitemap_url ?? dt.email_sitemap_url) && (
+              {(dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) && (
                 <div>
-                  <span className="text-text-secondary">Sitemap</span>
+                  <span className="text-text-secondary">Brand sitemap</span>
                   <p className="font-medium">
-                    <a href={dt.sitemap_url ?? dt.email_sitemap_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
-                      {dt.sitemap_url ?? dt.email_sitemap_url}
+                    <a href={dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
+                      {dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url}
                     </a>
-                    {dt.sitemap_type ?? dt.email_sitemap_type ? ` (${dt.sitemap_type ?? dt.email_sitemap_type})` : ""}
+                    {(dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type) ? ` (${dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type})` : ""}
                   </p>
                 </div>
               )}

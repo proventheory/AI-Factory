@@ -38,6 +38,7 @@ export default function EmailMarketingNewProductsPage() {
   const [sitemapUrl, setSitemapUrl] = useState("");
   const [sitemapType, setSitemapType] = useState("ecommerce");
   const [items, setItems] = useState<ProductItem[]>([]);
+  const [totalAvailable, setTotalAvailable] = useState<number | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -51,8 +52,8 @@ export default function EmailMarketingNewProductsPage() {
     if (hasPrefilled.current === brandId) return;
     hasPrefilled.current = brandId;
     const dt = brand.design_tokens as Record<string, unknown>;
-    const url = typeof dt.sitemap_url === "string" ? dt.sitemap_url : (typeof dt.email_sitemap_url === "string" ? dt.email_sitemap_url : "");
-    const type = typeof dt.sitemap_type === "string" ? dt.sitemap_type : (typeof dt.email_sitemap_type === "string" ? dt.email_sitemap_type : "ecommerce");
+    const url = (typeof dt.sitemap_url === "string" ? dt.sitemap_url : null) ?? (typeof dt.brand_sitemap_url === "string" ? dt.brand_sitemap_url : null) ?? (typeof (dt as Record<string, unknown>).email_sitemap_url === "string" ? (dt as Record<string, unknown>).email_sitemap_url : "") ?? "";
+    const type = (typeof dt.sitemap_type === "string" ? dt.sitemap_type : null) ?? (typeof dt.brand_sitemap_type === "string" ? dt.brand_sitemap_type : null) ?? (typeof (dt as Record<string, unknown>).email_sitemap_type === "string" ? (dt as Record<string, unknown>).email_sitemap_type : "") ?? "ecommerce";
     if (url) setSitemapUrl(url);
     if (type) setSitemapType(type);
   }, [brandId, brand?.design_tokens, brand?.id]);
@@ -73,10 +74,14 @@ export default function EmailMarketingNewProductsPage() {
       } else {
         setItems(newItems);
         setSelected(new Set());
+        setTotalAvailable(typeof res.total === "number" ? res.total : null);
       }
       setHasMore(!!res.has_more || newItems.length >= PAGE_SIZE);
     } catch (_e) {
-      if (!append) setItems([]);
+      if (!append) {
+        setItems([]);
+        setTotalAvailable(null);
+      }
       setHasMore(false);
     }
   };
@@ -120,8 +125,8 @@ export default function EmailMarketingNewProductsPage() {
           design_tokens: {
             sitemap_url: sitemapUrl,
             sitemap_type: sitemapType,
-            email_sitemap_url: sitemapUrl,
-            email_sitemap_type: sitemapType,
+            brand_sitemap_url: sitemapUrl,
+            brand_sitemap_type: sitemapType,
             products,
           },
         } as Record<string, unknown>);
@@ -192,7 +197,11 @@ export default function EmailMarketingNewProductsPage() {
                 Clear selection
               </Button>
               <span className="text-body-small text-fg-muted">
-                {selected.size} selected
+                {totalAvailable != null
+                  ? `${totalAvailable} product${totalAvailable === 1 ? "" : "s"} available`
+                  : `${items.length} loaded`}
+                {totalAvailable != null && ` · ${items.length} on this page`}
+                {` · ${selected.size} selected`}
                 {search.trim() && ` (${filteredIndices.length} match)`}
               </span>
             </div>

@@ -132,7 +132,13 @@ app.get("/v1/initiatives", async (req, res) => {
     const params: unknown[] = [];
     let i = 1;
     if (intent_type) { conditions.push(`intent_type = $${i++}`); params.push(intent_type); }
-    if (risk_level) { conditions.push(`risk_level = $${i++}`); params.push(risk_level); }
+    if (risk_level) {
+      const normalized = normalizeRiskLevel(risk_level);
+      // #region agent log
+      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H3", location: "api.ts:GET initiatives", message: "risk_level filter", data: { raw: risk_level, normalized }, timestamp: Date.now() }) }).catch(() => {});
+      // #endregion
+      conditions.push(`risk_level = $${i++}`); params.push(normalized);
+    }
     params.push(limit, offset);
     const q = `SELECT * FROM initiatives WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
     const r = await pool.query(q, params);
@@ -219,19 +225,30 @@ app.post("/v1/email_campaigns", async (req, res) => {
       template_id?: string;
       template_artifact_id?: string;
       metadata_json?: unknown;
+      risk_level?: string; // normalized; DB enum is low|med|high only
     };
     const id = uuid();
+    // #region agent log
+    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H1", location: "api.ts:POST email_campaigns", message: "body.risk_level and resolved riskLevel", data: { body_risk_level: body.risk_level, has_risk_level: "risk_level" in body }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
+    const riskLevel = normalizeRiskLevel(body.risk_level) ?? "med"; // always normalize so "medium" -> "med" if client sends it
+    // #region agent log
+    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H5", location: "api.ts:INSERT initiatives", message: "riskLevel passed to DB", data: { riskLevel, paramOrder: "id,title,brand_profile_id,template_id,riskLevel" }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
     const err = (e: unknown) => (e as { code?: string; message?: string }).code === "42703" || String((e as Error).message).includes("brand_profile_id");
     try {
       await pool.query(
-        `INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, 'med', $3, $4)`,
-        [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null]
+        `INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, $5, $3, $4)`,
+        [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null, riskLevel]
       );
     } catch (e) {
+      // #region agent log
+      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H4", location: "api.ts:POST email_campaigns catch", message: "INSERT error", data: { error: String((e as Error).message) }, timestamp: Date.now() }) }).catch(() => {});
+      // #endregion
       if (err(e)) {
         await pool.query(
-          `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, 'med')`,
-          [id, body.title ?? "New email campaign"]
+          `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, $3)`,
+          [id, body.title ?? "New email campaign", riskLevel]
         );
       } else throw e;
     }

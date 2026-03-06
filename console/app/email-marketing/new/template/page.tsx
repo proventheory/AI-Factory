@@ -76,8 +76,8 @@ export default function EmailMarketingNewTemplatePage() {
         {isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />
         ) : (
-          <ScrollArea className="rounded-lg border border-border bg-card" style={{ maxHeight: "65vh" }}>
-            <ul className="grid gap-4 p-4 sm:grid-cols-2 md:grid-cols-3">
+          <ScrollArea className="h-[65vh] min-h-[420px] rounded-lg border border-border bg-card">
+            <ul className="grid min-h-0 gap-4 p-4 sm:grid-cols-2 md:grid-cols-3">
               {templates.map((t) => (
                 <li key={t.id} className="flex">
                   <div

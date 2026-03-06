@@ -180,13 +180,23 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   email_campaign: TEMPLATE_EMAIL_CAMPAIGN,
 };
 
-/** Load initiative; uses core columns so it works with or without multi_framework (000005) ALTERs. */
+/** Load initiative; uses minimal columns so it works with core schema (no created_by/template_id). */
 export async function loadInitiative(db: DbClient, initiativeId: string): Promise<Initiative | null> {
   const r = await db.query(
-    "SELECT id, intent_type, title, risk_level, created_by, created_at FROM initiatives WHERE id = $1",
+    "SELECT id, intent_type, title, risk_level, created_at FROM initiatives WHERE id = $1",
     [initiativeId]
   );
-  return (r.rows[0] as Initiative) ?? null;
+  const row = r.rows[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    intent_type: row.intent_type as string,
+    title: (row.title as string | null) ?? null,
+    risk_level: row.risk_level as Initiative["risk_level"],
+    created_by: (row.created_by as string | null) ?? null,
+    created_at: row.created_at as Date,
+    template_id: (row.template_id as string | null) ?? null,
+  };
 }
 
 export async function loadPRDArtifact(_db: DbClient, _initiativeId: string): Promise<string | null> {
@@ -239,24 +249,35 @@ export async function compilePlan(
   const planId = uuid();
   let version = 1;
   try {
-    const versionResult = await db.query(
-      "SELECT coalesce(max(version), 0) + 1 AS v FROM plans WHERE initiative_id = $1",
-      [initiativeId]
-    );
-    version = (versionResult.rows[0]?.v as number) ?? 1;
-  } catch {
-    // plans.version column may not exist
+    await db.query("SAVEPOINT before_version_select");
+    try {
+      const versionResult = await db.query(
+        "SELECT coalesce(max(version), 0) + 1 AS v FROM plans WHERE initiative_id = $1",
+        [initiativeId]
+      );
+      version = (versionResult.rows[0]?.v as number) ?? 1;
+    } catch {
+      await db.query("ROLLBACK TO SAVEPOINT before_version_select");
+    }
+  } finally {
+    await db.query("RELEASE SAVEPOINT before_version_select").catch(() => {});
   }
 
   try {
-    await db.query(
-      "INSERT INTO plans (id, initiative_id, plan_hash, name, version) VALUES ($1, $2, $3, $4, $5)",
-      [planId, initiativeId, planHash, initiative.title ?? null, version]
-    );
-  } catch (err: unknown) {
-    if ((err as { code?: string }).code === "42703") {
-      await db.query("INSERT INTO plans (id, initiative_id, plan_hash) VALUES ($1, $2, $3)", [planId, initiativeId, planHash]);
-    } else throw err;
+    await db.query("SAVEPOINT before_plans_insert");
+    try {
+      await db.query(
+        "INSERT INTO plans (id, initiative_id, plan_hash, name, version) VALUES ($1, $2, $3, $4, $5)",
+        [planId, initiativeId, planHash, initiative.title ?? null, version]
+      );
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === "42703") {
+        await db.query("ROLLBACK TO SAVEPOINT before_plans_insert");
+        await db.query("INSERT INTO plans (id, initiative_id, plan_hash) VALUES ($1, $2, $3)", [planId, initiativeId, planHash]);
+      } else throw err;
+    }
+  } finally {
+    await db.query("RELEASE SAVEPOINT before_plans_insert").catch(() => {});
   }
 
   const nodeIds = new Map<string, string>();
@@ -264,19 +285,26 @@ export async function compilePlan(
     const tn = templateNodes[i];
     const nodeId = uuid();
     nodeIds.set(tn.node_key, nodeId);
+    const sp = `before_node_${i}`;
     try {
-      await db.query(
-        `INSERT INTO plan_nodes (id, plan_id, node_key, job_type, node_type, agent_role, consumes_artifact_types, sequence)
-         VALUES ($1, $2, $3, $4, $5::node_type, $6, $7, $8)`,
-        [nodeId, planId, tn.node_key, tn.job_type, tn.node_type, tn.agent_role, tn.consumes_artifact_types ?? null, i + 1]
-      );
-    } catch (err: unknown) {
-      if ((err as { code?: string }).code === "42703") {
+      await db.query(`SAVEPOINT ${sp}`);
+      try {
         await db.query(
-          "INSERT INTO plan_nodes (id, plan_id, node_key, job_type, node_type) VALUES ($1, $2, $3, $4, $5::node_type)",
-          [nodeId, planId, tn.node_key, tn.job_type, tn.node_type]
+          `INSERT INTO plan_nodes (id, plan_id, node_key, job_type, node_type, agent_role, consumes_artifact_types, sequence)
+           VALUES ($1, $2, $3, $4, $5::node_type, $6, $7, $8)`,
+          [nodeId, planId, tn.node_key, tn.job_type, tn.node_type, tn.agent_role, tn.consumes_artifact_types ?? null, i + 1]
         );
-      } else throw err;
+      } catch (err: unknown) {
+        if ((err as { code?: string }).code === "42703") {
+          await db.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+          await db.query(
+            "INSERT INTO plan_nodes (id, plan_id, node_key, job_type, node_type) VALUES ($1, $2, $3, $4, $5::node_type)",
+            [nodeId, planId, tn.node_key, tn.job_type, tn.node_type]
+          );
+        } else throw err;
+      }
+    } finally {
+      await db.query(`RELEASE SAVEPOINT ${sp}`).catch(() => {});
     }
   }
 

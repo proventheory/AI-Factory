@@ -4,8 +4,16 @@ import { useState, useMemo } from "react";
 
 type TokenEntry = { path: string; value: unknown };
 
-/** Human-friendly labels for common design token paths (e.g. products used by email, decks, reports). */
-const PATH_LABELS: Record<string, string> = { products: "Products" };
+/** Human-friendly labels for common design token paths (products, brand sitemap used by email, decks, reports). */
+const PATH_LABELS: Record<string, string> = {
+  products: "Products",
+  sitemap_url: "Brand sitemap URL",
+  sitemap_type: "Brand sitemap type",
+  brand_sitemap_url: "Brand sitemap URL",
+  brand_sitemap_type: "Brand sitemap type",
+  email_sitemap_url: "Brand sitemap URL",
+  email_sitemap_type: "Brand sitemap type",
+};
 
 function pathDisplay(path: string): string {
   return PATH_LABELS[path] ?? path;

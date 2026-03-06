@@ -59,7 +59,7 @@ function isValidUrl(s: string): boolean {
  */
 export async function fetchSitemapProducts(
   options: FetchSitemapProductsOptions
-): Promise<{ items: SitemapProduct[]; has_more: boolean }> {
+): Promise<{ items: SitemapProduct[]; has_more: boolean; total?: number }> {
   const { sitemap_url, sitemap_type, page = 1, limit = DEFAULT_LIMIT } = options;
   if (!sitemap_url || !sitemap_type) {
     throw new Error("sitemap_url and sitemap_type are required");
@@ -85,8 +85,9 @@ export async function fetchSitemapProducts(
 
   const urlList = jsonData?.urlset?.url;
   if (!urlList || !Array.isArray(urlList)) {
-    return { items: [], has_more: false };
+    return { items: [], has_more: false, total: 0 };
   }
+  const total = urlList.length;
 
   const updateLimit = sitemap_type === "shopify" ? 100 : safeLimit;
   const start = (safePage - 1) * updateLimit;
@@ -142,7 +143,7 @@ export async function fetchSitemapProducts(
     const productData = await Promise.all(productDataPromises);
     const productList = productData.filter((item): item is SitemapProduct => item !== null);
     const combined = productList.concat(others).length ? productList.concat(others) : [];
-    return { items: combined, has_more };
+    return { items: combined, has_more, total };
   }
 
   if (sitemap_type === "bigcommerce") {
@@ -170,25 +171,45 @@ export async function fetchSitemapProducts(
     });
     const productData = await Promise.all(productDataPromises);
     const productList = productData.filter((item): item is SitemapProduct => item !== null);
-    return { items: productList, has_more };
+    return { items: productList, has_more, total };
   }
 
   if (sitemap_type === "shopify") {
+    const slugToTitle = (productUrl: string): string => {
+      const match = productUrl.match(/\/products\/?([^?#]*)/i);
+      const slug = match?.[1]?.replace(/\/$/, "") ?? "";
+      return slug.replace(/-/g, " ").replace(/\//g, " ").trim() || "Product";
+    };
     const productDataPromises = paginated.map(async (url: Record<string, unknown>) => {
       const loc = getLoc(url as { loc?: string[] });
-      if (!loc || loc.search("product") <= -1) return null;
+      if (!loc || !/\/products\//i.test(loc)) return null;
       const imageLocs = getImageLoc(url);
       if (imageLocs.length === 0) return null;
+      let title = slugToTitle(loc);
+      try {
+        const productResponse = await axios.get(loc, { timeout: 10000 });
+        if (productResponse?.data) {
+          const $ = cheerio.load(productResponse.data);
+          const ogTitle = $('meta[property="og:title"]').attr("content")?.trim();
+          if (ogTitle) title = ogTitle;
+          else {
+            const h1 = $("h1").first().text().trim();
+            if (h1) title = h1;
+          }
+        }
+      } catch {
+        // keep slug-derived title
+      }
       return {
         src: imageLocs[0],
-        title: loc.split("product")[1]?.replaceAll("-", " ").replaceAll("/", "") ?? "",
+        title,
         product_url: loc,
       };
     });
     const productData = await Promise.all(productDataPromises);
     const productList = productData.filter((item): item is SitemapProduct => item !== null);
-    return { items: productList, has_more };
+    return { items: productList, has_more, total };
   }
 
-  return { items: [], has_more: false };
+  return { items: [], has_more: false, total: 0 };
 }

@@ -360,13 +360,13 @@ export default function EditBrandPage() {
             </div>
           </CardSection>
 
-          <CardSection title="Sitemap & products">
+          <CardSection title="Brand sitemap & products">
             <p className="text-body-small text-text-secondary mb-3">
-              Product sitemap URL and type (used by email marketing wizard and initiatives).
+              Brand sitemap URL and type (used by email wizard, decks, reports, and initiatives).
             </p>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className={labelCls}>Sitemap type</label>
+                <label className={labelCls}>Brand sitemap type</label>
                 <Select
                   value={sitemapType}
                   onChange={(e) => setSitemapType(e.target.value)}
@@ -378,7 +378,7 @@ export default function EditBrandPage() {
                 </Select>
               </div>
               <div className="md:col-span-2">
-                <label className={labelCls}>Sitemap URL</label>
+                <label className={labelCls}>Brand sitemap URL</label>
                 <Input
                   type="url"
                   value={sitemapUrl}
