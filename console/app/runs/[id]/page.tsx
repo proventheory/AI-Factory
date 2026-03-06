@@ -43,18 +43,32 @@ export default function RunDetailPage() {
 
   const refetch = useCallback(() => {
     if (!id) return;
+    setError(null);
     fetch(`${API}/v1/runs/${id}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch((e) => setError(e.message));
+      .then((r) => {
+        if (!r.ok) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Failed to load run"); });
+        return r.json();
+      })
+      .then((d: RunDetail) => {
+        if (!d?.run) throw new Error("Invalid run response");
+        setData(d);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load run"));
   }, [id]);
 
   useEffect(() => {
     if (!id) return;
+    setError(null);
     fetch(`${API}/v1/runs/${id}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch((e) => setError(e.message));
+      .then((r) => {
+        if (!r.ok) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Failed to load run"); });
+        return r.json();
+      })
+      .then((d: RunDetail) => {
+        if (!d?.run) throw new Error("Invalid run response");
+        setData(d);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load run"));
   }, [id]);
 
   useEffect(() => {
@@ -243,10 +257,10 @@ export default function RunDetailPage() {
               </CardSection>
               <CardSection title="Node progress">
                 <ul className="text-sm space-y-1">
-                  {data.node_progress.map((np: Record<string, unknown>, i: number) => (
+                  {(data.node_progress ?? []).map((np: Record<string, unknown>, i: number) => (
                     <li key={i}>Node {String(np.plan_node_id).slice(0, 8)}… — {String(np.status)}</li>
                   ))}
-                  {data.node_progress.length === 0 && <li className="text-slate-500">None</li>}
+                  {(data.node_progress ?? []).length === 0 && <li className="text-slate-500">None</li>}
                 </ul>
               </CardSection>
             </div>
@@ -321,10 +335,10 @@ export default function RunDetailPage() {
           <TabsContent value="events" className="pt-4">
             <CardSection title="Run events">
               <ul className="text-sm space-y-1">
-                {data.run_events.map((ev: Record<string, unknown>, i: number) => (
+                {(data.run_events ?? []).map((ev: Record<string, unknown>, i: number) => (
                   <li key={i}>{String(ev.event_type)} at {ev.created_at ? new Date(String(ev.created_at)).toISOString() : ""}</li>
                 ))}
-                {data.run_events.length === 0 && <li className="text-slate-500">None</li>}
+                {(data.run_events ?? []).length === 0 && <li className="text-slate-500">None</li>}
               </ul>
             </CardSection>
           </TabsContent>
