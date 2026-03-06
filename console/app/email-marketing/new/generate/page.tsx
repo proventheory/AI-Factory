@@ -41,6 +41,11 @@ export default function EmailMarketingNewGeneratePage() {
     const templateId = state.template_id as string | undefined;
     const products = (state.products as Array<{ src?: string; title?: string; product_url?: string }>) ?? [];
 
+    if (!templateId?.trim()) {
+      setError("Please select a template first (go back to the Template step).");
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
@@ -116,6 +121,9 @@ export default function EmailMarketingNewGeneratePage() {
           title="Generate"
           description="Create campaign and run the email generation pipeline."
         />
+        {!getWizardState().template_id && (
+          <p className="text-state-warning text-body-small mb-2">Select a template in the Template step first, then return here.</p>
+        )}
         <div>
           <label className="block text-body-small font-medium mb-1">Campaign prompt (optional)</label>
           <textarea
@@ -132,7 +140,7 @@ export default function EmailMarketingNewGeneratePage() {
           <Button
             variant="primary"
             onClick={handleGenerate}
-            disabled={busy || createCampaign.isPending}
+            disabled={busy || createCampaign.isPending || !getWizardState().template_id}
           >
             {busy || createCampaign.isPending ? "Generating…" : "Create campaign and generate"}
           </Button>

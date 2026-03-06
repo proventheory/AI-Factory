@@ -173,6 +173,8 @@ export async function handleEmailGenerateMjml(request: {
   // Use preselected MJML template with brand tokens whenever we have template + fetch succeeded (products optional).
   if (templateMjml) {
     try {
+      const logo = logoUrl ?? "";
+      const heroImage = logo || productList[0]?.image ?? "";
       const sectionJson: Record<string, unknown> = {
         ...(templateJson ?? {}),
         products: productList,
@@ -185,8 +187,12 @@ export async function handleEmailGenerateMjml(request: {
         color: brandColor,
         primaryColor: brandColor,
         brand_color: brandColor,
-        logoUrl: logoUrl ?? "",
-        logo_url: logoUrl ?? "",
+        logoUrl: logo,
+        logo_url: logo,
+        logo: logo,
+        brandLogo: logo,
+        brand_logo: logo,
+        imageUrl: heroImage,
         brandName: brandCtx?.name ?? "",
         brand_name: brandCtx?.name ?? "",
         tagline: (brandCtx?.identity as { tagline?: string } | undefined)?.tagline ?? "",
@@ -194,27 +200,21 @@ export async function handleEmailGenerateMjml(request: {
         footerRights: `© ${new Date().getFullYear()}`,
         contactInfo: (brandCtx?.identity as { contact_email?: string } | undefined)?.contact_email ?? "",
         socialMedia: [],
-        campaignPrompt,
-        headline: campaignPrompt,
-        title: campaignPrompt,
-        offerText: campaignPrompt,
-        offer: campaignPrompt,
-        header: campaignPrompt,
-        subhead: campaignPrompt,
-        body: campaignPrompt,
-        message: campaignPrompt,
-        description: campaignPrompt,
-        prehead: campaignPrompt,
-        eyebrow: campaignPrompt,
         cta_text: "Learn more",
         cta_label: "Learn more",
         cta_url: "#",
         cta_link: "#",
         footer: `© ${new Date().getFullYear()} ${brandCtx?.name ?? ""}. All rights reserved.`,
-        hero_image: logoUrl ?? productList[0]?.image ?? "",
+        hero_image: heroImage,
         emailTitle: subjectLine ?? campaignPrompt,
         subject_line: subjectLine ?? campaignPrompt,
       };
+      // Campaign copy: set after templateJson so our prompt overrides any template defaults (header, body, etc.)
+      const copyKeys = [
+        "campaignPrompt", "headline", "title", "header", "subhead", "body", "message", "description",
+        "prehead", "eyebrow", "offerText", "offer", "content", "main_message", "mainMessage", "theme", "intro", "copy", "promo_text",
+      ];
+      for (const k of copyKeys) (sectionJson as Record<string, unknown>)[k] = campaignPrompt;
       // #region agent log
       const productObjectKeys = Object.keys(productObjects);
       console.log("[MJML] template payload (H6/H7)", { run_id: runId, template_id: input.template_id, sectionJsonKeys: Object.keys(sectionJson), productsCount: productList.length, productObjectKeys, imagesCount: imagesArray.length, hasLogo: !!logoUrl, logoUrlSnippet: (logoUrl ?? "").slice(0, 60), campaignPromptLen: campaignPrompt.length, sectionsJsonMerged });
@@ -222,6 +222,12 @@ export async function handleEmailGenerateMjml(request: {
       // #endregion
       const compile = Handlebars.compile(templateMjml);
       let mjmlOut = compile(sectionJson);
+      // Inject brand font into head so it applies even if template has no {{fontFamily}} placeholder
+      if (fontFamily && mjmlOut.includes("</mj-head>")) {
+        const safe = fontFamily.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/</g, "&lt;");
+        const fontStyle = `<mj-style>.body, .mj-body, [class*="mj-"] { font-family: '${safe}'; }</mj-style>\n`;
+        mjmlOut = mjmlOut.replace("</mj-head>", fontStyle + "</mj-head>");
+      }
       // Apply brand color only in style blocks that look like headings (font-size >= 20px or font-weight bold) so body copy stays black.
       const headingLike = /font-size:\s*(?:2\d|3\d|4\d|5\d)px|font-weight:\s*bold/i;
       mjmlOut = mjmlOut.replace(/style="([^"]*)"/g, (_match, content) => {
@@ -251,7 +257,13 @@ export async function handleEmailGenerateMjml(request: {
         artifact_type: "email_template",
         artifact_class: "email_template",
         content: html,
-        metadata: { brand_profile_id: brandCtx?.id, brand_color: brandColor, mjml: mjmlOut },
+        metadata: {
+          brand_profile_id: brandCtx?.id,
+          brand_color: brandColor,
+          mjml: mjmlOut,
+          email_generation_path: "template",
+          mjml_template_id: input.template_id ?? null,
+        },
       };
     } catch (_e) {
       // #region agent log
@@ -309,6 +321,11 @@ export async function handleEmailGenerateMjml(request: {
     artifact_type: "email_template",
     artifact_class: "email_template",
     content: html,
-    metadata: { brand_profile_id: brandCtx?.id, brand_color: brandColor },
+    metadata: {
+      brand_profile_id: brandCtx?.id,
+      brand_color: brandColor,
+      email_generation_path: "llm",
+      mjml_template_id: null,
+    },
   };
 }
