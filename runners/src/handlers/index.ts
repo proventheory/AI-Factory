@@ -414,15 +414,15 @@ export function registerAllHandlers(): void {
         const generatedLen = out.content.length;
         const postWritePassed = generatedLen === 0 || storedLen >= generatedLen * 0.95;
         if (!postWritePassed) {
-          const msg = `[runner] post-write check failed: stored artifact truncated (generated=${generatedLen}, stored=${storedLen})`;
-          console.error(msg, { run_id: context.run_id, job_run_id: params.jobRunId });
+          const msg = `[runner] post-write check: stored length less than 95% of generated (generated=${generatedLen}, stored=${storedLen}); artifact kept`;
+          console.warn(msg, { run_id: context.run_id, job_run_id: params.jobRunId });
           await client.query(
             `INSERT INTO artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
              VALUES ($1, $2, $3, 'post_write', false, $4::jsonb)`,
             [artifactId, context.run_id, params.jobRunId, JSON.stringify({ generated_len: generatedLen, stored_len: storedLen })]
           ).catch(() => {});
-          throw new Error(msg);
-        }
+          // Do not throw: keep the artifact so the user can see the preview; verification is recorded as failed
+        } else {
         await client.query(
           `INSERT INTO artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
            VALUES ($1, $2, $3, 'post_write', true, $4::jsonb)`,
