@@ -123,7 +123,7 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
   }
 
   if (hasQueuedJob) {
-    await db.query(`UPDATE runs SET status = 'running' WHERE id = $1`, [runId]);
+    await db.query(`UPDATE runs SET status = 'running', started_at = COALESCE(started_at, now()) WHERE id = $1`, [runId]);
     await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'started')`, [runId]).catch(() => {});
   }
 
@@ -234,7 +234,7 @@ export async function completeApprovalAndAdvance(
     [runId, planNodeId],
   );
   await db.query(
-    `UPDATE runs SET status = 'running' WHERE id = $1 AND status = 'queued'`,
+    `UPDATE runs SET status = 'running', started_at = COALESCE(started_at, now()) WHERE id = $1 AND status = 'queued'`,
     [runId],
   );
   await advanceSuccessors(db, runId, planNodeId, jobRunId);

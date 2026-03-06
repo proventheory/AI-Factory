@@ -95,6 +95,18 @@ node scripts/sync-email-templates-from-cultura.mjs
 
 Only rows that have MJML are synced. See `.env.example` for the variable names.
 
+### Pipeline runs: Top error column (lease_expired, LLM_GATEWAY_URL, transaction aborted, 404)
+The **Top error** column on Pipeline Runs shows the main failure reason for that run. Common values and what to do:
+
+| Top error | Cause | Fix |
+|-----------|--------|-----|
+| **lease_expired** | Runner stopped or lost heartbeat before the job finished; reaper marked the job failed. | Ensure the Runner (Render worker) is **Running** and has no crashes. Check Render worker logs; increase heartbeat interval or fix the job so it doesn’t run too long. |
+| **LLM_GATEWAY_URL is not set** / **Neither LLM_GATEWAY_URL nor OPENAI_API_KEY** | The Runner needs an LLM endpoint to run copy_generate, email_generate, etc. | On the **Render worker** (e.g. `ai-factory-runner-staging`), set **Environment**: either `LLM_GATEWAY_URL` = your gateway URL (e.g. LiteLLM) or `OPENAI_API_KEY` = your OpenAI key. Alternatively set `LLM_GATEWAY_URL` on the **Control Plane** and use self-heal (see [SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md)) so the worker is synced and restarted. See [RUNNERS_DEPLOYMENT.md](RUNNERS_DEPLOYMENT.md). |
+| **LLM gateway error 404** | The gateway URL is wrong or the gateway is down. | Check `LLM_GATEWAY_URL` on the worker; open the URL in a browser or `curl <url>/health`. Fix the URL or bring the gateway up. |
+| **current transaction is aborted** | A DB statement failed and a later statement ran in the same transaction (bug, now fixed with savepoints). | Ensure Control Plane and Runner are on the **latest deploy** from `main` (plan-compiler and scheduler use savepoints). Redeploy the Control Plane on Render if needed. Old runs will still show this until new runs are created. |
+
+After fixing env or redeploying, start a **new run** (or use Re-run on a failed run) to verify.
+
 ### Runner not claiming jobs
 1. **Same DB as Control Plane:** Start both from the same repo root so they load the same `.env` and `DATABASE_URL`. If the Runner uses a different DB, it will never see queued jobs.
 2. Check Runner logs for errors (and for “Executing job” when work exists).

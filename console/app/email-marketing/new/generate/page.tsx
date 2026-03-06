@@ -96,7 +96,8 @@ export default function EmailMarketingNewGeneratePage() {
           return;
         }
         if (status.status === "failed") {
-          throw new Error("Run failed");
+          router.push(`/runs/${runId}`);
+          return;
         }
       }
       throw new Error("Run timed out");

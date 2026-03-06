@@ -485,7 +485,7 @@ app.get("/v1/runs", async (req, res) => {
       LEFT JOIN plans p ON p.id = r.plan_id
       LEFT JOIN initiatives i ON i.id = p.initiative_id
       WHERE ${conditions.join(" AND ")}
-      ORDER BY r.started_at DESC NULLS LAST
+      ORDER BY r.routed_at DESC NULLS LAST, r.id DESC
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `;
     const r = await pool.query(q, params);

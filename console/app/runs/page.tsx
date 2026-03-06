@@ -169,13 +169,22 @@ export default function RunsPage() {
             ))}
           </select>
         </div>
+        <details className="mb-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-body-small text-text-muted">
+          <summary className="cursor-pointer font-medium text-text-primary">Common Top errors and what to do</summary>
+          <ul className="mt-2 list-inside list-disc space-y-1 text-body-small">
+            <li><strong>lease_expired</strong> — Worker stopped or lost heartbeat. Ensure the Runner (Render worker) is Running and check its logs.</li>
+            <li><strong>LLM_GATEWAY_URL is not set</strong> — Set <code>LLM_GATEWAY_URL</code> or <code>OPENAI_API_KEY</code> on the Render worker (e.g. ai-factory-runner-staging). Or set <code>LLM_GATEWAY_URL</code> on the Control Plane and use self-heal to sync to the worker.</li>
+            <li><strong>LLM gateway error 404</strong> — Check <code>LLM_GATEWAY_URL</code> on the worker and that the gateway is up (<code>/health</code>).</li>
+            <li><strong>current transaction is aborted</strong> — Redeploy Control Plane (and Runner) from <code>main</code> so savepoint fixes are live. Old runs will still show this until you start new runs.</li>
+          </ul>
+        </details>
         <CardSection>
           {items.length === 0 ? (
             <EmptyState
               title={intentFilter === "email_campaign" ? "No email campaign runs yet" : "No runs yet"}
               description={
                 intentFilter === "email_campaign"
-                  ? "Email campaign runs appear here after you use Email Marketing → New campaign (wizard) → Generate and the run starts. If you clicked Generate but see no run, the flow may have failed before starting (e.g. plan compile); fix any error on the Generate page and try again."
+                  ? "Email campaign runs appear after you finish the wizard (Generate) or click Start run on an email campaign plan. If you just ran the wizard, set Pipeline to All and check the top of the list (newest first). If you see an error on the Generate page (e.g. Start run failed), the run was not created—fix that error and try again."
                   : "Create an initiative and run a plan to see runs here."
               }
             />
