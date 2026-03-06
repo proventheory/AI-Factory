@@ -49,7 +49,11 @@ export type ArtifactRow = {
   uri: string;
   producer_plan_node_id?: string | null;
   created_at: string;
+  metadata_json?: Record<string, unknown> | null;
 };
+
+/** Body for PATCH /v1/artifacts/:id (email edit Phase 5). */
+export type UpdateArtifactPayload = { content?: string; metadata?: Record<string, unknown> };
 
 export type JobRunRow = {
   id: string;
@@ -176,6 +180,24 @@ export async function getArtifacts(params?: { limit?: number; artifact_class?: s
 
 export async function getArtifact(id: string): Promise<ArtifactRow> {
   const res = await fetch(`${API}/v1/artifacts/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/artifacts/:id/content — raw body (HTML or text) for edit/preview. */
+export async function getArtifactContent(id: string): Promise<string> {
+  const res = await fetch(`${API}/v1/artifacts/${id}/content`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.text();
+}
+
+/** PATCH /v1/artifacts/:id — update content and/or metadata (Phase 5 email edit). */
+export async function updateArtifact(id: string, payload: UpdateArtifactPayload): Promise<ArtifactRow> {
+  const res = await fetch(`${API}/v1/artifacts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify(payload),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

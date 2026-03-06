@@ -961,12 +961,50 @@ app.get("/v1/artifacts/:id/content", async (req, res) => {
       } catch { /* storage not configured */ }
     }
     if (content == null) return res.status(404).send("Artifact content not available");
-    const isHtml = row.artifact_type === "landing_page";
+    const isHtml = row.artifact_type === "landing_page" || row.artifact_type === "email_template";
     res.setHeader("Content-Type", isHtml ? "text/html; charset=utf-8" : "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=60");
     res.send(content);
   } catch (e) {
     res.status(500).send(String((e as Error).message));
+  }
+});
+
+/** PATCH /v1/artifacts/:id — update artifact metadata_json (content and/or metadata). Primary use: email_template edit (Phase 5). Operator+ only. */
+const MAX_ARTIFACT_CONTENT_BYTES = 2 * 1024 * 1024; // 2MB
+app.patch("/v1/artifacts/:id", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+
+    let body: { content?: string; metadata?: Record<string, unknown> };
+    try {
+      body = typeof req.body === "object" && req.body !== null ? req.body : {};
+    } catch {
+      return res.status(400).json({ error: "Invalid JSON body" });
+    }
+    if (body.content !== undefined && typeof body.content !== "string") return res.status(400).json({ error: "content must be a string" });
+    if (body.content !== undefined && Buffer.byteLength(body.content, "utf8") > MAX_ARTIFACT_CONTENT_BYTES) return res.status(400).json({ error: "content too large" });
+    if (body.metadata !== undefined) {
+      if (typeof body.metadata !== "object" || body.metadata === null || Array.isArray(body.metadata)) return res.status(400).json({ error: "metadata must be a plain object" });
+      if (Object.getPrototypeOf(body.metadata) !== Object.prototype) return res.status(400).json({ error: "metadata must be a plain object" });
+    }
+
+    const id = req.params.id;
+    const r = await pool.query("SELECT id, metadata_json FROM artifacts WHERE id = $1", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Artifact not found" });
+    const row = r.rows[0] as { id: string; metadata_json: Record<string, unknown> | null };
+    let nextMeta = (row.metadata_json && typeof row.metadata_json === "object" ? { ...row.metadata_json } : {}) as Record<string, unknown>;
+    if (body.content !== undefined) nextMeta = { ...nextMeta, content: body.content };
+    if (body.metadata !== undefined) nextMeta = { ...nextMeta, ...body.metadata };
+
+    await pool.query("UPDATE artifacts SET metadata_json = $1::jsonb WHERE id = $2", [JSON.stringify(nextMeta), id]);
+    const updated = await pool.query("SELECT * FROM artifacts WHERE id = $1", [id]);
+    const row = updated.rows[0] as { run_id?: string };
+    if (process.env.NODE_ENV !== "test") console.info("[PATCH artifact]", { artifact_id: id, run_id: row?.run_id });
+    res.json(updated.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
   }
 });
 

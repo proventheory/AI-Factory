@@ -88,6 +88,27 @@ export function useArtifact(id: string | null) {
   });
 }
 
+export function useArtifactContent(id: string | null) {
+  return useQuery({
+    queryKey: ["artifact-content", id],
+    queryFn: () => api.getArtifactContent(id!),
+    enabled: !!id,
+  });
+}
+
+export function useUpdateArtifact() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: api.UpdateArtifactPayload }) => api.updateArtifact(id, payload),
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["artifact", id] });
+      queryClient.invalidateQueries({ queryKey: ["artifact-content", id] });
+      queryClient.invalidateQueries({ queryKey: ["artifacts"] });
+      queryClient.invalidateQueries({ queryKey: ["run"] });
+    },
+  });
+}
+
 export function useJobRuns(params?: { status?: string; environment?: string; run_id?: string; limit?: number }) {
   return useQuery({
     queryKey: ["job_runs", params?.status, params?.environment, params?.run_id, params?.limit],
