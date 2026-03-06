@@ -188,18 +188,22 @@ export async function loadInitiative(db: DbClient, initiativeId: string): Promis
 
   await db.query("SAVEPOINT before_load_initiative");
   let r: { rows: Record<string, unknown>[] };
+  let didRollback = false;
   try {
     r = await db.query(fullSelect, params);
   } catch (err: unknown) {
     if ((err as { code?: string }).code === "42703") {
       await db.query("ROLLBACK TO SAVEPOINT before_load_initiative");
+      didRollback = true;
       r = await db.query(minimalSelect, params);
     } else {
       await db.query("ROLLBACK TO SAVEPOINT before_load_initiative").catch(() => {});
       throw err;
     }
   } finally {
-    await db.query("RELEASE SAVEPOINT before_load_initiative").catch(() => {});
+    if (!didRollback) {
+      await db.query("RELEASE SAVEPOINT before_load_initiative");
+    }
   }
 
   const row = r.rows[0] as Record<string, unknown> | undefined;
@@ -274,14 +278,16 @@ export async function compilePlan(
     const planId = existing.rows[0].id as string;
     let nodes: { rows: { id: string; node_key: string }[] };
     await db.query("SAVEPOINT before_existing_nodes");
+    let didRollbackNodes = false;
     try {
       nodes = await db.query<{ id: string; node_key: string }>("SELECT id, node_key FROM plan_nodes WHERE plan_id = $1", [planId]);
     } catch {
       await db.query("ROLLBACK TO SAVEPOINT before_existing_nodes");
+      didRollbackNodes = true;
       const minimal = await db.query<{ id: string }>("SELECT id FROM plan_nodes WHERE plan_id = $1", [planId]);
       nodes = { rows: minimal.rows.map((r, i) => ({ ...r, node_key: `node_${i}` })) };
     } finally {
-      await db.query("RELEASE SAVEPOINT before_existing_nodes").catch(() => {});
+      if (!didRollbackNodes) await db.query("RELEASE SAVEPOINT before_existing_nodes");
     }
     const nodeIds = new Map<string, string>();
     for (const n of nodes.rows) nodeIds.set(n.node_key, n.id);
@@ -292,6 +298,7 @@ export async function compilePlan(
   const { v4: uuid } = await import("uuid");
   const planId = uuid();
   let version = 1;
+  let didRollbackVersion = false;
   try {
     await db.query("SAVEPOINT before_version_select");
     try {
@@ -302,11 +309,13 @@ export async function compilePlan(
       version = (versionResult.rows[0]?.v as number) ?? 1;
     } catch {
       await db.query("ROLLBACK TO SAVEPOINT before_version_select");
+      didRollbackVersion = true;
     }
   } finally {
-    await db.query("RELEASE SAVEPOINT before_version_select").catch(() => {});
+    if (!didRollbackVersion) await db.query("RELEASE SAVEPOINT before_version_select").catch(() => {});
   }
 
+  let didRollbackPlans = false;
   try {
     await db.query("SAVEPOINT before_plans_insert");
     try {
@@ -317,11 +326,12 @@ export async function compilePlan(
     } catch (err: unknown) {
       if ((err as { code?: string }).code === "42703") {
         await db.query("ROLLBACK TO SAVEPOINT before_plans_insert");
+        didRollbackPlans = true;
         await db.query("INSERT INTO plans (id, initiative_id, plan_hash) VALUES ($1, $2, $3)", [planId, initiativeId, planHash]);
       } else throw err;
     }
   } finally {
-    await db.query("RELEASE SAVEPOINT before_plans_insert").catch(() => {});
+    if (!didRollbackPlans) await db.query("RELEASE SAVEPOINT before_plans_insert").catch(() => {});
   }
 
   const nodeIds = new Map<string, string>();
@@ -330,6 +340,7 @@ export async function compilePlan(
     const nodeId = uuid();
     nodeIds.set(tn.node_key, nodeId);
     const sp = `before_node_${i}`;
+    let didRollbackNode = false;
     try {
       await db.query(`SAVEPOINT ${sp}`);
       try {
@@ -341,6 +352,7 @@ export async function compilePlan(
       } catch (err: unknown) {
         if ((err as { code?: string }).code === "42703") {
           await db.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+          didRollbackNode = true;
           await db.query(
             "INSERT INTO plan_nodes (id, plan_id, node_key, job_type, node_type) VALUES ($1, $2, $3, $4, $5::node_type)",
             [nodeId, planId, tn.node_key, tn.job_type, tn.node_type]
@@ -348,7 +360,7 @@ export async function compilePlan(
         } else throw err;
       }
     } finally {
-      await db.query(`RELEASE SAVEPOINT ${sp}`).catch(() => {});
+      if (!didRollbackNode) await db.query(`RELEASE SAVEPOINT ${sp}`).catch(() => {});
     }
   }
 
@@ -357,6 +369,7 @@ export async function compilePlan(
     const toId = nodeIds.get(e.to_key);
     if (!fromId || !toId) continue;
     const edgeSp = `before_edge_${e.from_key}_${e.to_key}`;
+    let didRollbackEdge = false;
     try {
       await db.query(`SAVEPOINT ${edgeSp}`);
       try {
@@ -367,6 +380,7 @@ export async function compilePlan(
       } catch (err: unknown) {
         if ((err as { code?: string }).code === "42703") {
           await db.query(`ROLLBACK TO SAVEPOINT ${edgeSp}`);
+          didRollbackEdge = true;
           await db.query(
             "INSERT INTO plan_edges (id, plan_id, from_node_id, to_node_id) VALUES ($1, $2, $3, $4)",
             [uuid(), planId, fromId, toId]
@@ -374,7 +388,7 @@ export async function compilePlan(
         } else throw err;
       }
     } finally {
-      await db.query(`RELEASE SAVEPOINT ${edgeSp}`).catch(() => {});
+      if (!didRollbackEdge) await db.query(`RELEASE SAVEPOINT ${edgeSp}`).catch(() => {});
     }
   }
 
