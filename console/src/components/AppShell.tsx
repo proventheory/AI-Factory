@@ -11,14 +11,14 @@ import {
   getGroupsForBranch,
   getBranchForHref,
   getBreadcrumbs,
+  isNavItemVisible,
   type NavGroup,
   type NavItem,
   type BranchId,
 } from "@/config/nav";
 
 function filterItemsForDisplay(items: NavItem[]): NavItem[] {
-  // TODO: apply predicates (featureFlag, requiresPermission, requiresEnv) when those systems exist.
-  return items;
+  return items.filter(isNavItemVisible);
 }
 
 function NavContent({

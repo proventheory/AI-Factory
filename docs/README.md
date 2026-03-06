@@ -30,6 +30,7 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 | **[DEPLOY_PHASE3_CHECKLIST.md](DEPLOY_PHASE3_CHECKLIST.md)** | One-time Phase 3 checklist: GitHub Actions secrets/variables and optional branch protection; workflow env check. |
 | **[EMAIL_MARKETING_FACTORY_INTEGRATION.md](EMAIL_MARKETING_FACTORY_INTEGRATION.md)** | Email Marketing Factory app in `email-marketing-factory/`, base path `/email-marketing`, proxy from Console, schema alignment. |
 | **[BRAND_TOKENS_AND_PACKAGES.md](BRAND_TOKENS_AND_PACKAGES.md)** | Brand tokens: Console write-through, packages/tokens (TokenService, export CSS/email), and upgrade plan alignment. |
+| **[ENABLEMENT_ENV_VARS.md](ENABLEMENT_ENV_VARS.md)** | Env vars that enable optional features: ENABLE_SELF_HEAL, OPTIMIZER_APPLY, NEXT_PUBLIC_FEATURE_*. |
 
 ## Checklists and plans (reference)
 

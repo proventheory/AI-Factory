@@ -1,6 +1,6 @@
 # How Far We Are & What I Need From You
 
-**Note:** This doc is **historical**. The Console (ProfessorX), AppShell, Dashboard, Initiatives, Plans, Runs, Approvals, Admin pages, layout primitives, and Control Plane API are **implemented**. For current architecture and status see **[STACK_AND_DECISIONS.md](STACK_AND_DECISIONS.md)** and **[docs/README.md](README.md)**.
+**Status:** This doc is **historical**. The Console (ProfessorX), AppShell, Dashboard, Initiatives, Plans, Runs, Approvals, Admin, Incidents, Campaign flow, and Control Plane API are **implemented**. For current architecture and status see **[STACK_AND_DECISIONS.md](STACK_AND_DECISIONS.md)**, **[docs/README.md](README.md)**, and **[ENABLEMENT_PLAN_FULL_VISION.md](ENABLEMENT_PLAN_FULL_VISION.md)**. For env vars that enable optional features see **[ENABLEMENT_ENV_VARS.md](ENABLEMENT_ENV_VARS.md)**.
 
 **Decisions are locked.** See **STACK_AND_DECISIONS.md** for: Console (Next.js + shadcn + Supabase + Vercel), DB (Supabase Postgres), Control Plane (containerized), Runner Fleet, env vars, build order, and operating mode.
 

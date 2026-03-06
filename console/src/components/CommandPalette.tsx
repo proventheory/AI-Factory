@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Command as CmdkCommand } from "cmdk";
 import { cn } from "@/lib/utils";
-import { getAllNavItems } from "@/config/nav";
+import { getAllVisibleNavItems } from "@/config/nav";
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -64,7 +64,7 @@ export function CommandPalette() {
                 No results found.
               </CmdkCommand.Empty>
               <CmdkCommand.Group className="px-2 py-1.5">
-                {getAllNavItems().map((item) => (
+                {getAllVisibleNavItems().map((item) => (
                   <CmdkCommand.Item
                     key={item.href}
                     value={`${item.label} ${item.href}`}

@@ -24,6 +24,18 @@ export type NavItem = {
   predicates?: NavItemPredicates;
 };
 
+/** True if item should be shown. Feature flags: NEXT_PUBLIC_FEATURE_<FLAG>; hide only when explicitly "false". Default = show (enable all). */
+export function isNavItemVisible(item: NavItem): boolean {
+  const p = item.predicates;
+  if (!p) return true;
+  if (p.featureFlag) {
+    const key = `NEXT_PUBLIC_FEATURE_${p.featureFlag.toUpperCase().replace(/-/g, "_")}` as keyof typeof process.env;
+    if (process.env[key] === "false") return false;
+  }
+  // requiresPermission / requiresEnv: not yet implemented; treat as visible
+  return true;
+}
+
 export type NavGroup = { title: string; items: NavItem[] };
 
 export type BranchDef = {
@@ -167,6 +179,11 @@ export const SEGMENT_LABELS: Record<string, string> = {
 
 export function getAllNavItems(): NavItem[] {
   return NAV_GROUPS.flatMap((g) => g.items);
+}
+
+/** All nav items that pass visibility predicates (feature flags, etc.). Use for CommandPalette and any filtered list. */
+export function getAllVisibleNavItems(): NavItem[] {
+  return getAllNavItems().filter(isNavItemVisible);
 }
 
 export function getGroupsForBranch(branchId: BranchId): NavGroup[] {
