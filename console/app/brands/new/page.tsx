@@ -62,6 +62,8 @@ export default function NewBrandPage() {
       setSitemapUrl(data.sitemap_url || "");
       setSitemapType(data.sitemap_type || "ecommerce");
       if (data.meta_description && !mission) setMission(data.meta_description);
+      if (data.tagline) setTagline(data.tagline);
+      if (data.industry) setIndustry(data.industry);
     } catch (err: unknown) {
       setPrefillError(err instanceof Error ? err.message : "Failed to fetch brand data");
     } finally {

@@ -535,7 +535,16 @@ export async function createEmailCampaign(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (j?.error && typeof j.error === "string") throw new Error(j.error);
+    } catch (e) {
+      if (e instanceof Error && e.message !== text) throw e;
+    }
+    throw new Error(text || `HTTP ${res.status}`);
+  }
   return res.json();
 }
 
@@ -562,7 +571,7 @@ export async function fetchSitemapProducts(params: {
   sitemap_type: string;
   page?: number;
   limit?: number;
-}): Promise<{ items: Array<{ src: string; title: string; product_url: string }>; has_more: boolean }> {
+}): Promise<{ items: Array<{ src: string; title: string; product_url: string }>; has_more: boolean; total?: number }> {
   const res = await fetch(`${API}/v1/sitemap/products`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -695,7 +704,7 @@ export async function getBrandProfile(id: string): Promise<BrandProfileRow> {
   return res.json();
 }
 
-/** Prefill brand form from live URL: fetches site and extracts colors, fonts, logo, sitemap. */
+/** Prefill brand form from live URL: fetches site and extracts colors, fonts, logo, sitemap, tagline, industry. */
 export type BrandPrefillFromUrlResult = {
   name: string;
   website: string;
@@ -708,6 +717,8 @@ export type BrandPrefillFromUrlResult = {
   sitemap_type: string;
   title: string | null;
   meta_description: string | null;
+  tagline: string | null;
+  industry: string | null;
   raw_colors: string[];
   raw_fonts: string[];
 };

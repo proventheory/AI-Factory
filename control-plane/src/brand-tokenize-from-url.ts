@@ -19,6 +19,8 @@ export interface TokenizeFromUrlResult {
   sitemap_type: string;
   title: string | null;
   meta_description: string | null;
+  tagline: string | null;
+  industry: string | null;
   raw_colors: string[];
   raw_fonts: string[];
 }
@@ -186,7 +188,7 @@ export async function tokenizeBrandFromUrl(inputUrl: string): Promise<TokenizeFr
     if (ogImage && /logo|brand|icon/i.test(ogImage)) logoUrl = resolve(ogImage);
   }
 
-  // Collect all CSS for color/font extraction
+  // Collect all CSS for color/font extraction (inline + same-origin stylesheets)
   let allCss = "";
   $("style").each((_, el) => {
     const text = $(el).html();
@@ -196,6 +198,33 @@ export async function tokenizeBrandFromUrl(inputUrl: string): Promise<TokenizeFr
     const s = $(el).attr("style");
     if (s) allCss += ` .x{${s}}`;
   });
+  const stylesheetUrls = $('link[rel="stylesheet"]')
+    .map((_, el) => $(el).attr("href"))
+    .get()
+    .filter((href): href is string => typeof href === "string" && href.trim().length > 0)
+    .map((href) => resolve(href))
+    .filter((u): u is string => {
+      if (!u) return false;
+      try {
+        const o = new URL(u).origin;
+        return o === origin || u.startsWith(origin + "/") || u.startsWith(origin + "?");
+      } catch {
+        return false;
+      }
+    });
+  for (const cssUrl of [...new Set(stylesheetUrls)].slice(0, 12)) {
+    try {
+      const cssRes = await axios.get(cssUrl, {
+        timeout: 6000,
+        maxRedirects: 2,
+        validateStatus: (s) => s === 200,
+        responseType: "text",
+      });
+      if (typeof cssRes.data === "string") allCss += "\n" + cssRes.data;
+    } catch {
+      // skip failed stylesheet
+    }
+  }
   const rawColors = parseColorsFromCss(allCss);
   const fontsFromCss = parseFontsFromCss(allCss);
   const fontsFromGoogle = parseFontsFromGoogleLinks(html);
@@ -209,6 +238,46 @@ export async function tokenizeBrandFromUrl(inputUrl: string): Promise<TokenizeFr
     $('meta[name="description"]').attr("content")?.trim() ??
     $('meta[property="og:description"]').attr("content")?.trim() ??
     null;
+
+  // Tagline: og:title (without site suffix), or first h1, or first sentence of meta_description
+  let tagline: string | null =
+    $('meta[property="og:title"]').attr("content")?.trim() ?? null;
+  if (tagline) {
+    const withoutSuffix = tagline.replace(/\s*[–—|]\s*[^–—|]+$/, "").trim();
+    if (withoutSuffix.length >= 3 && withoutSuffix.length <= 120) tagline = withoutSuffix;
+    else if (tagline.length > 80) tagline = tagline.slice(0, 77).trim() + "...";
+  }
+  if (!tagline || tagline.length < 3) {
+    const h1 = $("h1").first().text().trim();
+    if (h1 && h1.length <= 120) tagline = h1;
+  }
+  if (!tagline && meta_description) {
+    const first = meta_description.split(/[.!?]/)[0]?.trim();
+    if (first && first.length <= 100) tagline = first;
+  }
+
+  // Industry: schema.org JSON-LD Organization, or meta keywords
+  let industry: string | null = null;
+  $('script[type="application/ld+json"]').each((_, el) => {
+    if (industry) return;
+    try {
+      const json = JSON.parse($(el).html() ?? "{}") as { "@type"?: string; industry?: string; description?: string };
+      const obj = Array.isArray(json) ? json.find((i) => i?.["@type"] === "Organization") : json["@type"] === "Organization" ? json : null;
+      if (obj && typeof obj === "object") {
+        industry = (obj as { industry?: string }).industry ?? (obj as { description?: string }).description ?? null;
+        if (industry && industry.length > 80) industry = industry.slice(0, 77) + "...";
+      }
+    } catch {
+      // ignore invalid JSON-LD
+    }
+  });
+  if (!industry) {
+    const keywords = $('meta[name="keywords"]').attr("content")?.trim();
+    if (keywords) {
+      const first = keywords.split(",")[0]?.trim();
+      if (first && first.length <= 60) industry = first;
+    }
+  }
 
   // Sitemap: link rel="sitemap" or try common paths (including Shopify sitemap_products_1.xml)
   let sitemap_url: string | null = resolve($('link[rel="sitemap"]').attr("href"));
@@ -262,6 +331,8 @@ export async function tokenizeBrandFromUrl(inputUrl: string): Promise<TokenizeFr
     sitemap_type,
     title: titleEl || null,
     meta_description,
+    tagline: tagline || null,
+    industry: industry || null,
     raw_colors: [...new Set(rawColors)].slice(0, 20),
     raw_fonts: [...new Set(rawFonts)].slice(0, 10),
   };

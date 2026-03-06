@@ -128,7 +128,7 @@ app.get("/v1/initiatives", async (req, res) => {
         }
         if (risk_level) {
             conditions.push(`risk_level = $${i++}`);
-            params.push(risk_level);
+            params.push(normalizeRiskLevel(risk_level));
         }
         params.push(limit, offset);
         const q = `SELECT * FROM initiatives WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
@@ -212,13 +212,14 @@ app.post("/v1/email_campaigns", async (req, res) => {
             return res.status(403).json({ error: "Forbidden" });
         const body = req.body;
         const id = uuid();
+        const riskLevel = "med"; // never use body.risk_level (e.g. "medium") — DB enum has no "medium"
         const err = (e) => e.code === "42703" || String(e.message).includes("brand_profile_id");
         try {
-            await pool.query(`INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, 'med', $3, $4)`, [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null]);
+            await pool.query(`INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, $5, $3, $4)`, [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null, riskLevel]);
         }
         catch (e) {
             if (err(e)) {
-                await pool.query(`INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, 'med')`, [id, body.title ?? "New email campaign"]);
+                await pool.query(`INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, $3)`, [id, body.title ?? "New email campaign", riskLevel]);
             }
             else
                 throw e;
