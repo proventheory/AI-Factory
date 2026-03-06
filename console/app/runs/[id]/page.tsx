@@ -383,7 +383,10 @@ export default function RunDetailPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirmDialogAction}>
+            <AlertDialogAction
+              onClick={onConfirmDialogAction}
+              className={confirmAction === "cancel" ? "bg-red-600 hover:bg-red-700 text-white focus-visible:ring-red-500" : undefined}
+            >
               {confirmAction === "cancel" ? "Cancel run" : confirmAction === "rollback" ? "Rollback" : "Confirm"}
             </AlertDialogAction>
           </AlertDialogFooter>

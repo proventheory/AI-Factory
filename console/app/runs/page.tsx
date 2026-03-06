@@ -217,7 +217,7 @@ function RunsPageContent() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep running</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmCancelRun} className="bg-red-600 hover:bg-red-700">
+            <AlertDialogAction onClick={confirmCancelRun} className="bg-red-600 hover:bg-red-700 text-white focus-visible:ring-red-500">
               Cancel run
             </AlertDialogAction>
           </AlertDialogFooter>
