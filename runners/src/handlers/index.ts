@@ -403,42 +403,48 @@ export function registerAllHandlers(): void {
       const len = out.content.length;
       if (len > 10_000) console.log("[runner] email_template content length exceeds 10KB, storing full length", { run_id: context.run_id, contentLen: len });
       const artifactId = await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template", out.metadata);
-      // Post-write verification: re-read and confirm stored length matches generated (no truncation)
+      // Post-write verification and optional artifact_verifications: never throw so the artifact commit is not rolled back
       if (artifactId) {
-        const r = await client.query<{ metadata_json: { content?: string } | null }>(
-          "SELECT metadata_json FROM public.artifacts WHERE id = $1",
-          [artifactId]
-        );
-        const storedContent = r.rows[0]?.metadata_json?.content;
-        const storedLen = typeof storedContent === "string" ? storedContent.length : 0;
-        const generatedLen = out.content.length;
-        const postWritePassed = generatedLen === 0 || storedLen >= generatedLen * 0.95;
-        if (!postWritePassed) {
-          const msg = `[runner] post-write check: stored length less than 95% of generated (generated=${generatedLen}, stored=${storedLen}); artifact kept`;
-          console.warn(msg, { run_id: context.run_id, job_run_id: params.jobRunId });
-          await client.query(
-            `INSERT INTO artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
-             VALUES ($1, $2, $3, 'post_write', false, $4::jsonb)`,
-            [artifactId, context.run_id, params.jobRunId, JSON.stringify({ generated_len: generatedLen, stored_len: storedLen })]
-          ).catch(() => {});
-          // Do not throw: keep the artifact so the user can see the preview; verification is recorded as failed
-        } else {
-        await client.query(
-          `INSERT INTO artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
-           VALUES ($1, $2, $3, 'post_write', true, $4::jsonb)`,
-          [artifactId, context.run_id, params.jobRunId, JSON.stringify({ generated_len: generatedLen, stored_len: storedLen })]
-        ).catch(() => {});
-        const preWrite = (out.metadata as Record<string, unknown> | undefined)?.pre_write_verification as { passed: boolean; details?: unknown } | undefined;
-        if (preWrite?.passed && preWrite.details != null) {
-          await client.query(
-            `INSERT INTO artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
-             VALUES ($1, $2, $3, 'pre_write', true, $4::jsonb)`,
-            [artifactId, context.run_id, params.jobRunId, JSON.stringify(preWrite.details)]
-          ).catch(() => {});
+        try {
+          const r = await client.query<{ metadata_json: { content?: string } | null }>(
+            "SELECT metadata_json FROM public.artifacts WHERE id = $1",
+            [artifactId]
+          );
+          const storedContent = r.rows[0]?.metadata_json?.content;
+          const storedLen = typeof storedContent === "string" ? storedContent.length : 0;
+          const generatedLen = out.content.length;
+          const postWritePassed = generatedLen === 0 || storedLen >= generatedLen * 0.95;
+          if (!postWritePassed) {
+            console.warn("[runner] post-write check: stored length less than 95% of generated; artifact kept", {
+              run_id: context.run_id,
+              generated_len: generatedLen,
+              stored_len: storedLen,
+            });
+            await client.query(
+              `INSERT INTO public.artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
+               VALUES ($1, $2, $3, 'post_write', false, $4::jsonb)`,
+              [artifactId, context.run_id, params.jobRunId, JSON.stringify({ generated_len: generatedLen, stored_len: storedLen })]
+            ).catch(() => {});
+          } else {
+            await client.query(
+              `INSERT INTO public.artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
+               VALUES ($1, $2, $3, 'post_write', true, $4::jsonb)`,
+              [artifactId, context.run_id, params.jobRunId, JSON.stringify({ generated_len: generatedLen, stored_len: storedLen })]
+            ).catch(() => {});
+            const preWrite = (out.metadata as Record<string, unknown> | undefined)?.pre_write_verification as { passed: boolean; details?: unknown } | undefined;
+            if (preWrite?.passed && preWrite.details != null) {
+              await client.query(
+                `INSERT INTO public.artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
+                 VALUES ($1, $2, $3, 'pre_write', true, $4::jsonb)`,
+                [artifactId, context.run_id, params.jobRunId, JSON.stringify(preWrite.details)]
+              ).catch(() => {});
+            }
+          }
+          const preCommitCount = await client.query<{ c: number }>("SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1", [context.run_id]);
+          console.log("[runner] email_generate_mjml pre-commit artifact count", { run_id: context.run_id, count: preCommitCount.rows[0]?.c ?? 0 });
+        } catch (err) {
+          console.warn("[runner] post-write verification failed (artifact will still be committed)", { run_id: context.run_id, error: (err as Error).message });
         }
-        }
-        const preCommitCount = await client.query<{ c: number }>("SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1", [context.run_id]);
-        console.log("[runner] email_generate_mjml pre-commit artifact count", { run_id: context.run_id, count: preCommitCount.rows[0]?.c ?? 0 });
       }
     }
   });
