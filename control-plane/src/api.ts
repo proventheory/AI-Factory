@@ -2764,8 +2764,15 @@ function normalizeTemplateType(type: string | null | undefined): string {
 function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content_slots?: number; max_product_slots?: number } | null): void {
   const mjml = row.mjml as string | null;
   const typeLabel = normalizeTemplateType(row.type as string);
-  (row as Record<string, unknown>).image_slots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
-  (row as Record<string, unknown>).product_slots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
+  let imageSlots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
+  let productSlots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
+  const name = String(row.name ?? "").trim();
+  if (/introducing\s+emma/i.test(name) && imageSlots === 0 && productSlots === 0) {
+    imageSlots = 1;
+    productSlots = 5;
+  }
+  (row as Record<string, unknown>).image_slots = imageSlots;
+  (row as Record<string, unknown>).product_slots = productSlots;
   (row as Record<string, unknown>).layout_style = `${typeLabel} (email template)`;
 }
 

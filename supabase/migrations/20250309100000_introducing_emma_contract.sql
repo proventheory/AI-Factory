@@ -26,7 +26,7 @@ SELECT
   true,
   now()
 FROM email_templates t
-WHERE LOWER(TRIM(t.name)) = 'introducing emma'
+WHERE TRIM(t.name) ILIKE '%introducing emma%'
 ON CONFLICT (template_id, version)
 DO UPDATE SET
   max_content_slots = EXCLUDED.max_content_slots,
