@@ -8,15 +8,19 @@ This document defines how brand-edit UI fields map to storage and to the email r
 |--------------------|-----------|--------------------------|--------|
 | **Basic info** | | | |
 | Name | `brand_profiles.name` | `brandName`, `brand_name` | Mapped. |
-| Logo URL | `design_tokens.logo.url`, `design_tokens.logo_url` | `logoUrl`, `logo_url`, etc. (assets → dt → mergedTokens) | Mapped. |
-| Primary / secondary color | `design_tokens.colors.brand["500"]` / `["600"]` | `brandColor`, `color`, `primaryColor` via mergedTokens | Mapped. |
-| Font (Headline/Body) | `design_tokens.typography.fonts` | `fontFamily`, `fonts` from mergedTokens | Mapped. |
+| Logo URL | `design_tokens.logo.url`, `design_tokens.logo_url` | `logoUrl`, `logo_url`, `logo`, `brandLogo`, etc. | Mapped. |
+| Wordmark (bold/light) | `design_tokens.logo.wordmark_bold`, `wordmark_light` | `wordmark_bold`, `wordmark_light` | Mapped. |
+| Asset URLs | `design_tokens.asset_urls` | `asset_urls`, `assetUrls` (comma-separated string) | Mapped. |
+| Primary / secondary color | `design_tokens.colors.brand["500"]` / `["600"]` | `brandColor`, `primaryColor`, `secondaryColor`, `brand_secondary` | Mapped. |
+| Font (Headline/Body) | `design_tokens.typography.fonts` | `fontFamily`, `fonts`, `font_headings`, `font_body` (from typography) | Mapped. |
 | **Identity** | | | |
-| Industry, tagline, mission, website, contact email, location | `identity` (JSONB) | `siteUrl` ← identity.website; `tagline`; `contactInfo` (identity.contact_email or design_tokens.contact_info); footer `address` ← identity.location | contact_info and social_media from design_tokens used when present. |
+| Industry, tagline, mission, website, contact email, location | `identity` (JSONB) | `tagline`, `mission`, `website`/`siteUrl`/`site_url`, `contact_email`/`contactEmail`, `contactInfo` (merged), `location`, `address`, `archetype`, `industry` | **Contact:** Email only in `identity.contact_email`. Other contact in `design_tokens.contact_info`; runner merges into `contactInfo`. |
 | **Brand sitemap & products** | | | |
-| Brand sitemap type / URL | `design_tokens.sitemap_url`, `sitemap_type` | Campaign `metadata_json.sitemap_url` / `sitemap_type`; runner calls `POST /v1/sitemap/products` or `POST /v1/products/from_url` when no products | XML sitemap or JSON URL (e.g. shopify_json) supported. |
+| Brand sitemap type / URL | `design_tokens.sitemap_url`, `sitemap_type` | `sitemap_url`, `sitemap_type` in sectionJson; campaign uses for product fetch | XML sitemap or JSON URL (e.g. shopify_json) supported. |
 | **Social & contact** | | | |
-| Social links, contact info (type + value) | `design_tokens.social_media`, `contact_info` | `sectionJson.socialMedia`, `sectionJson.contactInfo` from design_tokens when present | Mapped. |
+| Social links | `design_tokens.social_media` | `sectionJson.socialMedia` | Mapped. |
+| Contact email (single field) | `identity.contact_email` | `sectionJson.contactInfo` (merged), `sectionJson.contact_email`, `sectionJson.contactEmail` | Single source of truth; no duplicate in contact_info. |
+| Other contact (phone, address, etc.) | `design_tokens.contact_info` | `sectionJson.contactInfo` (merged with email above) | No email entries; email lives in identity only. |
 | **CTA/Button content + CTA link** | `design_tokens.cta_text`, `cta_link` | `cta_text`, `cta_label`, `cta_url`, `cta_link` from mergedTokens as fallback; LLM can override | Mapped. |
 
 ## 2. Product payload contract
@@ -72,6 +76,7 @@ Templates can use **Handlebars** `{{key}}` or **bracket** `[key]` placeholders. 
 - **Value blocks (hero / value props):** `[A title]`, `[A description]` → headline/body (LLM copy); `[B title]`, `[B description]` → product 1; `[C title]`, `[C description]` → product 2.
 - **Social:** `[social media link]`, `[social media icon]` (first entry); `[social media 2 link]`, `[social media 2 icon]`, etc.
 - **Copy / direct keys:** `[headline]`, `[body]`, `[brandName]`, `[footerRights]`, etc. (from sectionJson).
+- **Contact:** `[contactInfo]` (merged string: e.g. "email: x@y.com, phone: (210) 593-8426"); Handlebars `{{contact_email}}` or `{{contactEmail}}` for the raw email only.
 
 For **LLM-generated copy and logo** to appear, the template must use placeholders (e.g. `[headline]`, `[body]`, `[logo]`) in the hero/header; static text in the MJML will not be replaced.
 
@@ -82,3 +87,37 @@ For **LLM-generated copy and logo** to appear, the template must use placeholder
 - Use `[product X src]`, `[product X productUrl]` (with brackets) in `href` and `src`; broken links like `href="product productUrl"` (no brackets) are fixed by the runner when possible, but templates should use `[product productUrl]` or `[product P productUrl]`.
 - Footer: use `[footerRights]`, `[siteUrl]`, and `***unsubscribe***` or design_tokens for legal/copyright.
 - Social: use `[social media link]` and `[social media icon]` (or numbered variants); ensure design_tokens include `social_media` with `url` (and optional `icon`) per entry.
+
+## 6. Full token reference (sectionJson keys)
+
+Every key below is set by the runner and available to Handlebars `{{key}}` and bracket `[key]` placeholders.
+
+| sectionJson key | Source | Notes |
+|-----------------|--------|--------|
+| **Identity (brand_profiles.identity)** | | |
+| `brandName`, `brand_name` | `brand_profiles.name` | Brand display name. |
+| `tagline` | `identity.tagline` | |
+| `mission` | `identity.mission` | |
+| `website`, `siteUrl`, `site_url` | `identity.website` | Main site URL. |
+| `location`, `address` | `identity.location` | Footer/location; `address` used in brandFooter. |
+| `archetype` | `identity.archetype` | |
+| `industry` | `identity.industry` | |
+| `contact_email`, `contactEmail` | `identity.contact_email` | Single canonical email. |
+| `contactInfo` | Merged | `"email: x@y.com, phone: ..."` from identity.contact_email + design_tokens.contact_info. |
+| **Design tokens (design_tokens)** | | |
+| `logoUrl`, `logo_url`, `logo`, `brandLogo`, `brand_logo`, `logo_src`, `logoSrc` | `design_tokens.logo.url` / `logo_url` | Logo image URL. |
+| `brandColor`, `color`, `primaryColor`, `brand_color` | `design_tokens.color.brand["500"]` | Primary brand color. |
+| `secondaryColor`, `brand_secondary` | `design_tokens.color.brand["600"]` | Secondary color. |
+| `fontFamily`, `fonts` | `design_tokens.typography.fonts.heading` or `font_headings` | Resolved to a single font string. |
+| `font_headings`, `font_body` | `design_tokens.typography.fonts` | Heading and body font names. |
+| `wordmark_bold`, `wordmark_light` | `design_tokens.logo` | Wordmark text parts. |
+| `sitemap_url`, `sitemap_type` | `design_tokens` | Product sitemap URL and type. |
+| `socialMedia` | `design_tokens.social_media` | Array; also `social_media_1_link`, `social_media_1_icon`, etc. |
+| `cta_text`, `cta_label`, `cta_url`, `cta_link` | `design_tokens.cta_text`, `cta_link` | CTA button; LLM can override. |
+| `asset_urls`, `assetUrls` | `design_tokens.asset_urls` | Comma-separated string in sectionJson. |
+| **Computed / campaign** | | |
+| `tokens` | `mergedTokens` | Full merged design_tokens for dot paths (e.g. `[colors.brand.500]`). |
+| `voicetone` | `tone.voice_descriptors[0]` | First voice descriptor. |
+| `footerRights`, `footer` | Computed | Year and brand name. |
+| `imageUrl`, `hero_image`, `hero_image_url`, etc. | Hero/campaign | Hero image or logo fallback. |
+| `headline`, `body`, `campaignPrompt`, etc. | LLM or campaign | Copy keys; LLM can override. |

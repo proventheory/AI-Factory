@@ -26,6 +26,11 @@ type TemplateListRow = {
   status: string;
   created_at: string;
   source: "document" | "email";
+  /** Email only: from contract or MJML */
+  image_slots?: number;
+  product_slots?: number;
+  layout_style?: string;
+  image_url?: string | null;
 };
 
 function statusVariant(status: string): "success" | "warning" | "neutral" {
@@ -70,6 +75,10 @@ export default function DocumentTemplatesPage() {
       status: "active",
       created_at: row.created_at,
       source: "email" as const,
+      image_slots: row.image_slots,
+      product_slots: row.product_slots,
+      layout_style: row.layout_style,
+      image_url: row.image_url ?? null,
     }));
     return [...docs, ...emails].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -77,17 +86,45 @@ export default function DocumentTemplatesPage() {
   }, [docData?.items, emailData?.items]);
 
   const columns: Column<TemplateListRow>[] = [
-    { key: "name", header: "Name" },
+    {
+      key: "name",
+      header: "Name",
+      render: (row) => (
+        <div className="flex items-center gap-3">
+          {row.source === "email" && row.image_url && (
+            <img
+              src={row.image_url}
+              alt=""
+              className="h-9 w-14 shrink-0 rounded border border-border object-cover"
+            />
+          )}
+          <span className="font-medium text-fg">{row.name}</span>
+        </div>
+      ),
+    },
     {
       key: "template_type",
       header: "Kind",
       render: (row) =>
         row.source === "email" ? (
-          <span className="text-body-small">
-            Email template <span className="text-fg-muted">({row.template_type})</span>
+          <span className="text-body-small break-words">
+            {row.layout_style ?? `(${row.template_type})`}
+            {(row.image_slots != null || row.product_slots != null) && (
+              <> · {row.image_slots ?? 0} img, {row.product_slots ?? 0} prod</>
+            )}
           </span>
         ) : (
           <Badge variant={typeVariant(row.template_type)}>{row.template_type}</Badge>
+        ),
+    },
+    {
+      key: "slots",
+      header: "Slots",
+      render: (row) =>
+        row.source === "email" ? (
+          "—"
+        ) : (
+          "—"
         ),
     },
     {
@@ -130,9 +167,9 @@ export default function DocumentTemplatesPage() {
       <Stack>
         <PageHeader
           title="Document Templates"
-          description="Deck, report, and email templates. Email templates from the email marketing wizard appear here; link templates to brands for dedicated use."
+          description="Deck, report, and email templates. Email templates show image and product slot capacity; use them in the email wizard to build campaigns."
         />
-        <CardSection>
+        <CardSection className="overflow-hidden rounded-lg border border-border shadow-sm">
           {isLoading ? (
             <div className="space-y-3">
               <LoadingSkeleton className="h-10 w-full" />

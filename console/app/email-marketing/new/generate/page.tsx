@@ -65,7 +65,8 @@ function GeneratePageContent() {
     const brandProfileId = state.brand_profile_id as string | undefined;
     const templateId = (wizardTemplateId ?? state.template_id) as string | undefined;
     const products = (state.products as Array<{ src?: string; title?: string; product_url?: string }>) ?? [];
-    const selectedImages = (state.selected_images as string[]) ?? [];
+    // First image = hero; order is preserved from Content step (selected list order).
+    const selectedImages = Array.isArray(state.selected_images) ? (state.selected_images as string[]).slice(0) : [];
 
     if (!templateId?.trim()) {
       setError("Please select a template first (go back to the Template step).");
@@ -83,6 +84,7 @@ function GeneratePageContent() {
         metadata_json: {
           products,
           images: selectedImages,
+          selected_images: selectedImages,
           campaign_prompt: campaignPrompt || "newsletter",
           sitemap_url: state.sitemap_url,
           sitemap_type: state.sitemap_type,

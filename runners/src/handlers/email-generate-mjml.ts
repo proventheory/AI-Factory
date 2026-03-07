@@ -649,8 +649,9 @@ export async function handleEmailGenerateMjml(request: {
         if (camp.metadata_json && typeof camp.metadata_json === "object") {
           const meta = camp.metadata_json as { products?: unknown[]; images?: string[]; selected_images?: string[]; campaign_prompt?: string; sitemap_url?: string; sitemap_type?: string };
           if (meta.products && !input.products?.length) input.products = meta.products as EmailGenerateMjmlInput["products"];
-          if (Array.isArray(meta.images)) input.images = meta.images;
-          else if (Array.isArray(meta.selected_images) && !input.images?.length) input.images = meta.selected_images;
+          if (Array.isArray(meta.images)) input.images = meta.images.slice(0);
+          else if (Array.isArray(meta.selected_images) && !input.images?.length) input.images = meta.selected_images.slice(0);
+          // Console sends images with first = hero; buildImageAssignmentV1 uses campaign[0] as hero.
           if (meta.campaign_prompt) input.campaign_prompt = input.campaign_prompt ?? meta.campaign_prompt;
           if (!input.products?.length && meta.sitemap_url && meta.sitemap_type) {
             try {
@@ -720,10 +721,17 @@ export async function handleEmailGenerateMjml(request: {
           templateJson = { ...(templateJson ?? {}), ...(t.sections_json as Record<string, unknown>) };
           sectionsJsonMerged = true;
         }
-        // Hero must use campaign image, not product. If "Introducing Emma" (or similar) uses {{product_1_image}} in the hero, replace first occurrence so hero shows selected image.
-        if (templateMjml && /introducing\s+emma/i.test(templateName) && /\{\{\s*product_1_image\s*\}\}/.test(templateMjml)) {
-          templateMjml = templateMjml.replace(/\{\{\s*product_1_image\s*\}\}/, "{{hero_image_url}}");
-          console.log("[MJML] Emma template: replaced first {{product_1_image}} with {{hero_image_url}} in hero", { run_id: runId, template_id: input.template_id });
+        // Hero must use campaign image, not product. Emma-style templates: replace first {{product_1_image}} only when it's in the hero (first ~2500 chars) so we don't replace the product section's placeholder.
+        const isEmmaTemplate = /emma/i.test(templateName);
+        if (templateMjml && isEmmaTemplate) {
+          const heroZone = templateMjml.slice(0, 2500);
+          const heroMatch = heroZone.match(/\{\{\s*product_1_image\s*\}\}/);
+          if (heroMatch) {
+            const placeholder = heroMatch[0];
+            const firstInHero = heroZone.indexOf(placeholder);
+            templateMjml = templateMjml.substring(0, firstInHero) + "{{hero_image_url}}" + templateMjml.substring(firstInHero + placeholder.length);
+            console.log("[MJML] Emma template: replaced {{product_1_image}} with {{hero_image_url}} in hero zone", { run_id: runId, template_id: input.template_id });
+          }
         }
         // #region agent log
         console.log("[MJML] template fetch ok (H6)", { run_id: runId, template_id: input.template_id, mjml_len: templateMjml?.length ?? 0, template_jsonKeys: Object.keys(templateJson ?? {}), hasSectionsJson: !!t.sections_json, sectionsJsonMerged });
@@ -1048,27 +1056,57 @@ export async function handleEmailGenerateMjml(request: {
         termsUrl: siteUrl && siteUrl !== "#" ? `${siteUrl.replace(/\/$/, "")}/terms` : "#",
       };
       let htmlInput = replaceBracketPlaceholders(rawHtml ?? "", sectionJson as Record<string, unknown>);
-      // Emma template: ensure product "Discover more" and title links point to product URLs (not #)
-      if (/introducing\s+emma/i.test(templateName)) {
+      // Emma template: ensure product image, title, and "Discover more" links point to product URLs (not #)
+      const isEmmaTemplate = /emma/i.test(templateName);
+      if (isEmmaTemplate) {
         const productUrls: string[] = [];
+        const productImages: string[] = [];
+        const productTitles: string[] = [];
         for (let n = 1; n <= 5; n++) {
           const u = (sectionJson as Record<string, unknown>)[`product_${n}_url`];
-          if (typeof u === "string" && u.trim()) productUrls.push(u.trim());
-          else productUrls.push("#");
+          const img = (sectionJson as Record<string, unknown>)[`product_${n}_image`];
+          const title = (sectionJson as Record<string, unknown>)[`product_${n}_title`];
+          productUrls.push(typeof u === "string" && u.trim() ? u.trim() : "#");
+          productImages.push(typeof img === "string" && img.trim() ? img.trim() : "");
+          productTitles.push(typeof title === "string" && title.trim() ? String(title).trim() : "");
         }
         if (productUrls.some((u) => u !== "#")) {
           let linkCount = 0;
-          // Replace <a href="#">...</a> for product image, title, and CTA – assign product URL (3 links per product: image + title + Discover more)
-          htmlInput = htmlInput.replace(/<a\s+href="#"\s*([^>]*)>([\s\S]*?)<\/a>/gi, (_match, attrs, content) => {
+          // Match both href="#" and href='#'
+          const linkRegex = /<a\s+href=["']#["']\s*([^>]*)>([\s\S]*?)<\/a>/gi;
+          htmlInput = htmlInput.replace(linkRegex, (_match, attrs, content) => {
             const text = content.replace(/<[^>]+>/g, "").trim();
-            const isProductImage = /<img[\s\S]*?>/i.test(content) && content.trim().length < 500;
+            const hasImg = /<img[\s\S]*?>/i.test(content) && content.trim().length < 500;
             const isDiscoverMore = /discover\s+more|learn\s+more|shop\s+now|view\s+product/i.test(text);
-            const isProductTitle = text.length > 0 && text.length < 80 && !/^(Terms|Privacy|Unsubscribe|View in browser|#)$/i.test(text);
-            if (isProductImage || isDiscoverMore || isProductTitle) {
-              const productIndex = Math.floor(linkCount / 3) % productUrls.length;
+            const isProductTitle = text.length > 0 && text.length < 120 && !/^(Terms|Privacy|Unsubscribe|View in browser|#)$/i.test(text);
+
+            let productIndex = -1;
+            if (hasImg) {
+              const srcMatch = content.match(/src=["']([^"']+)["']/i);
+              const src = srcMatch ? srcMatch[1].trim() : "";
+              if (src) {
+                for (let i = 0; i < productImages.length; i++) {
+                  if (productImages[i] && (src === productImages[i] || src.includes(productImages[i].slice(-40)) || productImages[i].includes(src.slice(-40)))) {
+                    productIndex = i;
+                    break;
+                  }
+                }
+              }
+            }
+            if (productIndex < 0 && isProductTitle && text) {
+              for (let i = 0; i < productTitles.length; i++) {
+                if (productTitles[i] && (text === productTitles[i] || text.includes(productTitles[i]) || productTitles[i].includes(text))) {
+                  productIndex = i;
+                  break;
+                }
+              }
+            }
+            if (productIndex < 0) productIndex = Math.floor(linkCount / 3) % productUrls.length;
+
+            if (hasImg || isDiscoverMore || isProductTitle) {
               linkCount++;
-              const url = productUrls[productIndex];
-              return `<a href="${url}" ${attrs}>${content}</a>`;
+              const url = productUrls[productIndex] ?? productUrls[0] ?? "#";
+              return `<a href="${url.replace(/"/g, "&quot;")}" ${attrs}>${content}</a>`;
             }
             return _match;
           });

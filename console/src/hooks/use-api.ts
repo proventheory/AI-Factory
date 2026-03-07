@@ -181,10 +181,10 @@ export function useLlmCalls(params?: { run_id?: string; model_tier?: string; lim
   });
 }
 
-export function useUsage() {
+export function useUsage(params?: { from?: string; to?: string }) {
   return useQuery({
-    queryKey: ["usage"],
-    queryFn: () => api.getUsage(),
+    queryKey: ["usage", params?.from, params?.to],
+    queryFn: () => api.getUsage(params),
   });
 }
 

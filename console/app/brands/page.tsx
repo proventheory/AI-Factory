@@ -36,6 +36,19 @@ const columns: Column<BrandProfileRow>[] = [
     render: (row) => (row.identity as Record<string, unknown>)?.industry as string ?? "—",
   },
   {
+    key: "contact_email",
+    header: "Contact email",
+    render: (row) => {
+      const identity = row.identity as Record<string, unknown> | undefined;
+      const email = identity?.contact_email as string | undefined;
+      if (email) return <a href={`mailto:${email}`} className="text-brand-600 hover:underline truncate max-w-[180px] block" onClick={(e) => e.stopPropagation()}>{email}</a>;
+      const dt = row.design_tokens as Record<string, unknown> | undefined;
+      const contactInfo = Array.isArray(dt?.contact_info) ? dt.contact_info as { type?: string; value?: string }[] : [];
+      const contactEmail = contactInfo.find((c) => (c.type ?? "").toLowerCase() === "email")?.value;
+      return contactEmail ? <a href={`mailto:${contactEmail}`} className="text-brand-600 hover:underline truncate max-w-[180px] block" onClick={(e) => e.stopPropagation()}>{contactEmail}</a> : "—";
+    },
+  },
+  {
     key: "color",
     header: "Color",
     render: (row) => {

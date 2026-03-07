@@ -60,6 +60,10 @@ export default function EditBrandPage() {
   const [assetUrlsText, setAssetUrlsText] = useState("");
   const [assetUploading, setAssetUploading] = useState(false);
   const assetFileInputRef = useRef<HTMLInputElement>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoWhiteUploading, setLogoWhiteUploading] = useState(false);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const logoWhiteFileInputRef = useRef<HTMLInputElement>(null);
   const [ctaText, setCtaText] = useState("");
   const [ctaLink, setCtaLink] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -139,6 +143,48 @@ export default function EditBrandPage() {
       setAssetUploading(false);
       e.target.value = "";
     }
+  };
+
+  const uploadLogoToStorage = async (
+    file: File,
+    setUploading: (v: boolean) => void,
+    setUrl: (v: string) => void,
+    prefix: string,
+  ) => {
+    if (!id) return;
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) {
+      setSubmitError("Upload is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to enable logo uploads.");
+      return;
+    }
+    setUploading(true);
+    setSubmitError("");
+    try {
+      const ext = file.name.split(".").pop() || "bin";
+      const path = `brands/${id}/assets/${prefix}-${crypto.randomUUID()}.${ext}`;
+      const { error } = await supabase.storage.from("upload").upload(path, file, { upsert: false });
+      if (error) throw new Error(error.message);
+      const { data } = supabase.storage.from("upload").getPublicUrl(path);
+      setUrl(data.publicUrl);
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : "Logo upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadLogoToStorage(file, setLogoUploading, setLogoUrl, "logo");
+    e.target.value = "";
+  };
+
+  const handleLogoWhiteUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadLogoToStorage(file, setLogoWhiteUploading, setLogoUrlWhite, "logo-white");
+    e.target.value = "";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -256,8 +302,8 @@ export default function EditBrandPage() {
 
   return (
     <PageFrame>
-      <form onSubmit={handleSubmit}>
-        <Stack>
+      <form onSubmit={handleSubmit} className="w-full max-w-full min-w-0 pr-14 sm:pr-0">
+        <Stack className="min-w-0">
           <PageHeader
             title={`Edit — ${brand.name}`}
             actions={
@@ -291,19 +337,57 @@ export default function EditBrandPage() {
               </div>
               <div>
                 <label className={labelCls}>Logo URL</label>
-                <Input
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  placeholder="https://… or /logo.svg"
-                />
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    value={logoUrl}
+                    onChange={(e) => setLogoUrl(e.target.value)}
+                    placeholder="https://… or upload below"
+                    className="min-w-0 flex-1 w-full sm:min-w-[200px]"
+                  />
+                  <input
+                    ref={logoFileInputRef}
+                    type="file"
+                    accept="image/*,.png,.jpg,.jpeg,.gif,.webp,.svg"
+                    className="hidden"
+                    onChange={handleLogoUpload}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="shrink-0"
+                    disabled={logoUploading || !createSupabaseBrowserClient()}
+                    onClick={() => logoFileInputRef.current?.click()}
+                  >
+                    {logoUploading ? "Uploading…" : "Upload"}
+                  </Button>
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Logo URL (white)</label>
-                <Input
-                  value={logoUrlWhite}
-                  onChange={(e) => setLogoUrlWhite(e.target.value)}
-                  placeholder="https://… white/inverted logo for dark backgrounds"
-                />
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    value={logoUrlWhite}
+                    onChange={(e) => setLogoUrlWhite(e.target.value)}
+                    placeholder="https://… or upload below (for dark backgrounds)"
+                    className="min-w-0 flex-1 w-full sm:min-w-[200px]"
+                  />
+                  <input
+                    ref={logoWhiteFileInputRef}
+                    type="file"
+                    accept="image/*,.png,.jpg,.jpeg,.gif,.webp,.svg"
+                    className="hidden"
+                    onChange={handleLogoWhiteUpload}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="shrink-0"
+                    disabled={logoWhiteUploading || !createSupabaseBrowserClient()}
+                    onClick={() => logoWhiteFileInputRef.current?.click()}
+                  >
+                    {logoWhiteUploading ? "Uploading…" : "Upload"}
+                  </Button>
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Wordmark (bold part)</label>
@@ -446,7 +530,7 @@ export default function EditBrandPage() {
                 <h4 className="text-body font-medium text-text-primary mb-3">Sitemap & links</h4>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className={labelCls}>Brand sitemap type</label>
+                    <label className={labelCls}>Product sitemap type</label>
                     <Select
                       value={sitemapType}
                       onChange={(e) => setSitemapType(e.target.value)}
@@ -459,7 +543,7 @@ export default function EditBrandPage() {
                     </Select>
                   </div>
                   <div className="md:col-span-2">
-                    <label className={labelCls}>Brand sitemap URL</label>
+                    <label className={labelCls}>Product sitemap URL</label>
                     <Input
                       type="url"
                       value={sitemapUrl}
@@ -490,7 +574,7 @@ export default function EditBrandPage() {
               <div>
                 <h4 className="text-body font-medium text-text-primary mb-3">Social</h4>
                 {socialMedia.map((s, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
+                  <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3 p-3 rounded-lg border border-border bg-card/50">
                     <Input
                       placeholder="Name (e.g. Facebook)"
                       value={s.name}
@@ -499,21 +583,23 @@ export default function EditBrandPage() {
                         next[i] = { ...next[i], name: e.target.value };
                         setSocialMedia(next);
                       }}
-                      className="flex-1"
+                      className="min-w-0 flex-1 w-full"
                     />
                     <Input
                       placeholder="URL"
+                      type="url"
                       value={s.url}
                       onChange={(e) => {
                         const next = [...socialMedia];
                         next[i] = { ...next[i], url: e.target.value };
                         setSocialMedia(next);
                       }}
-                      className="flex-1"
+                      className="min-w-0 flex-1 w-full"
                     />
                     <Button
                       type="button"
                       variant="secondary"
+                      className="shrink-0 self-start sm:self-center"
                       onClick={() => setSocialMedia(socialMedia.filter((_, j) => j !== i))}
                     >
                       Remove
@@ -533,7 +619,7 @@ export default function EditBrandPage() {
                 <h4 className="text-body font-medium text-text-primary mb-3">Other contact (phone, address, etc.)</h4>
                 <p className="text-body-small text-text-secondary mb-2">Contact email is set in Identity above (single source for templates). Add only phone, address, or other non-email contact methods here.</p>
                 {contactInfo.map((c, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
+                  <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3 p-3 rounded-lg border border-border bg-card/50">
                     <Input
                       placeholder="Type (e.g. phone, address)"
                       value={c.type}
@@ -542,7 +628,7 @@ export default function EditBrandPage() {
                         next[i] = { ...next[i], type: e.target.value };
                         setContactInfo(next);
                       }}
-                      className="flex-1"
+                      className="min-w-0 flex-1 w-full"
                     />
                     <Input
                       placeholder="Value"
@@ -552,11 +638,12 @@ export default function EditBrandPage() {
                         next[i] = { ...next[i], value: e.target.value };
                         setContactInfo(next);
                       }}
-                      className="flex-1"
+                      className="min-w-0 flex-1 w-full"
                     />
                     <Button
                       type="button"
                       variant="secondary"
+                      className="shrink-0 self-start sm:self-center"
                       onClick={() => setContactInfo(contactInfo.filter((_, j) => j !== i))}
                     >
                       Remove
@@ -601,37 +688,38 @@ export default function EditBrandPage() {
                 {assetUrls.length > 0 ? (
                   <ul className="space-y-3 mb-3">
                     {assetUrls.map((url, i) => (
-                      <li key={i} className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50/50 p-2">
-                        <div className="flex-shrink-0 w-14 h-14 rounded border border-slate-200 bg-white overflow-hidden flex items-center justify-center">
-                          {/\.(png|jpg|jpeg|gif|webp|svg)(\?|$)/i.test(url) ? (
-                            <>
-                              <img
-                                src={url}
-                                alt=""
-                                loading="lazy"
-                                className="max-w-full max-h-full object-contain"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = "none";
-                                  const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
-                                  if (fallback) fallback.hidden = false;
-                                }}
-                              />
-                              <span className="text-body-small text-fg-muted" hidden>
-                                —
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-body-small text-fg-muted">—</span>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-body-small text-brand-600 hover:underline truncate block">
+                      <li key={i} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded-md border border-slate-200 bg-slate-50/50 p-3">
+                        <div className="flex items-center gap-3 sm:flex-row min-w-0">
+                          <div className="flex-shrink-0 w-14 h-14 rounded border border-slate-200 bg-white overflow-hidden flex items-center justify-center">
+                            {/\.(png|jpg|jpeg|gif|webp|svg)(\?|$)/i.test(url) ? (
+                              <>
+                                <img
+                                  src={url}
+                                  alt=""
+                                  loading="lazy"
+                                  className="max-w-full max-h-full object-contain"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = "none";
+                                    const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                    if (fallback) fallback.hidden = false;
+                                  }}
+                                />
+                                <span className="text-body-small text-fg-muted" hidden>
+                                  —
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-body-small text-fg-muted">—</span>
+                            )}
+                          </div>
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-body-small text-brand-600 hover:underline break-all min-w-0 flex-1">
                             {url}
                           </a>
                         </div>
                         <Button
                           type="button"
                           variant="secondary"
+                          className="shrink-0 self-start sm:self-center"
                           onClick={() => {
                             const next = assetUrls.filter((_, j) => j !== i);
                             setAssetUrls(next);

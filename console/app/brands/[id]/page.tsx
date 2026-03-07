@@ -71,6 +71,9 @@ export default function BrandDetailPage() {
   const dt = (brand.design_tokens ?? {}) as Record<string, any>;
   const brandColors: Record<string, string> = dt?.color?.brand ?? {};
   const logoUrl = dt?.logo?.url ?? dt?.logo_url ?? "";
+  const contactEmailDisplay: string | undefined =
+    identity.contact_email ||
+    (Array.isArray(dt?.contact_info) ? dt.contact_info.find((c: { type?: string }) => (c.type ?? "").toLowerCase() === "email")?.value : undefined);
 
   return (
     <PageFrame>
@@ -149,7 +152,7 @@ export default function BrandDetailPage() {
                   </dd>
                 </div>
               )}
-              {(identity.website || identity.location) && (
+              {(identity.website || identity.location || identity.contact_email || (Array.isArray(dt?.contact_info) && dt.contact_info.some((c: { type?: string }) => (c.type ?? "").toLowerCase() === "email"))) && (
                 <div className="flex flex-wrap gap-6 sm:col-span-2 lg:col-span-4">
                   {identity.website && (
                     <dl className="space-y-1">
@@ -157,6 +160,16 @@ export default function BrandDetailPage() {
                       <dd>
                         <a href={identity.website} target="_blank" rel="noopener noreferrer" className="text-body font-medium text-brand-600 hover:underline break-all">
                           {identity.website}
+                        </a>
+                      </dd>
+                    </dl>
+                  )}
+                  {contactEmailDisplay && (
+                    <dl className="space-y-1">
+                      <dt className="text-xs font-medium uppercase tracking-wider text-fg-muted">Contact email</dt>
+                      <dd>
+                        <a href={`mailto:${contactEmailDisplay}`} className="text-body font-medium text-brand-600 hover:underline break-all">
+                          {contactEmailDisplay}
                         </a>
                       </dd>
                     </dl>
