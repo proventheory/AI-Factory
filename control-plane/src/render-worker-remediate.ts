@@ -105,13 +105,31 @@ export async function syncWorkerEnvFromControlPlane(): Promise<SyncResult> {
   }
 
   const services = await listRenderServices(apiKey);
-  const worker = services.find(
-    (s) =>
-      (s.name && s.name.toLowerCase() === WORKER_SERVICE_NAME.toLowerCase()) ||
-      (s.slug && s.slug.toLowerCase() === WORKER_SERVICE_NAME.toLowerCase())
-  );
+  const want = WORKER_SERVICE_NAME.toLowerCase();
+  const baseName = want.replace(/-?(staging|prod)$/i, "").trim(); // e.g. "ai-factory-runner-staging" -> "ai-factory-runner"
+  const worker =
+    services.find(
+      (s) =>
+        (s.name && s.name.toLowerCase() === want) ||
+        (s.slug && s.slug.toLowerCase() === want)
+    ) ??
+    (baseName !== want
+      ? services.find(
+          (s) =>
+            (s.name && s.name.toLowerCase() === baseName) ||
+            (s.slug && s.slug.toLowerCase() === baseName)
+        )
+      : undefined);
   if (!worker) {
-    return { ok: false, message: `Worker service '${WORKER_SERVICE_NAME}' not found in Render` };
+    const hints = services
+      .filter((s) => (s.slug ?? s.name ?? "").toLowerCase().includes("runner"))
+      .map((s) => s.slug ?? s.name ?? s.id)
+      .slice(0, 5);
+    const hint = hints.length ? ` (Render services with "runner": ${hints.join(", ")})` : "";
+    return {
+      ok: false,
+      message: `Worker service '${WORKER_SERVICE_NAME}' not found in Render${hint}. Set RENDER_WORKER_SERVICE_NAME to the exact service slug (e.g. from the service URL: <slug>.onrender.com).`,
+    };
   }
 
   if (!controlPlaneUrl) {
