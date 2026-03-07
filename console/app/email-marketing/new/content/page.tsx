@@ -92,9 +92,19 @@ type PexelsPhoto = {
 
 export default function EmailMarketingNewContentPage() {
   const router = useRouter();
+  // Wizard state is in sessionStorage; first render can be SSR where window is undefined, so we sync after mount so template/brand load and limits apply
+  const [wizardBrandId, setWizardBrandId] = useState<string | null>(null);
+  const [wizardTemplateId, setWizardTemplateId] = useState<string | null>(null);
+  useEffect(() => {
+    const s = getWizardState();
+    setWizardBrandId((s.brand_profile_id as string) ?? null);
+    setWizardTemplateId((s.template_id as string) ?? null);
+    const storedImages = s.selected_images as string[] | undefined;
+    if (Array.isArray(storedImages) && storedImages.length > 0) setSelectedUrls(storedImages);
+  }, []);
+  const brandId = wizardBrandId ?? undefined;
+  const templateId = wizardTemplateId ?? undefined;
   const state = getWizardState();
-  const brandId = state.brand_profile_id as string | undefined;
-  const templateId = state.template_id as string | undefined;
   const { data: brand } = useBrandProfile(brandId ?? null);
   const { data: template, isLoading: templateLoading } = useEmailTemplate(templateId ?? null);
   const imageSlots = template?.image_slots ?? 0;
@@ -113,9 +123,8 @@ export default function EmailMarketingNewContentPage() {
   const fetchProductsFromUrl = useProductsFromUrl();
   const hasLoadedForBrand = useRef<string | null>(null);
 
-  // Images state
-  const initialImages = (state.selected_images as string[]) ?? [];
-  const [selectedUrls, setSelectedUrls] = useState<string[]>(initialImages);
+  // Images state (initial from wizard; may be overwritten in useEffect when we sync from sessionStorage)
+  const [selectedUrls, setSelectedUrls] = useState<string[]>([]);
   const [pexelsQuery, setPexelsQuery] = useState("nature");
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
   const [pexelsLoading, setPexelsLoading] = useState(false);
