@@ -34,6 +34,8 @@ const migrations = [
     skipIfErrorCode: "42P01",
     skipMessage: "brand_profiles not found (run Supabase migration 20250303000007_brand_engine.sql first)",
   },
+  { path: "supabase/migrations/20250307100000_image_assignment_and_template_contracts.sql", name: "image_assignment_and_template_contracts" },
+  { path: "supabase/migrations/20250308100000_template_image_contracts_constraints.sql", name: "template_image_contracts_constraints" },
 ];
 
 async function run() {
