@@ -80,6 +80,8 @@ Render runs on IPv4 and often cannot reach Supabase’s **direct** DB host (`db.
 2. Open the dashboard/initiatives view. It should load initiatives (or empty list) without “Failed to fetch”.  
    - If it still fails: ensure CORS on Render is `*` or includes that exact Console origin (Render → **ai-factory-api-staging** → **Environment** → **CORS_ORIGIN**).
 
+**Save build minutes:** To test without deploying and to skip builds when only non-Console code changed, see [VERCEL_TEST_WITHOUT_DEPLOYING.md](VERCEL_TEST_WITHOUT_DEPLOYING.md).
+
 ---
 
 ## Done via API / MCP
