@@ -180,7 +180,7 @@ export default function EmailMarketingNewGeneratePage() {
             );
           })()}
           <Button variant="secondary" asChild disabled={busy}>
-            <Link href="/email-marketing/new/images">Back</Link>
+            <Link href="/email-marketing/new/content">Back</Link>
           </Button>
           <Button variant="secondary" asChild disabled={busy}>
             <Link href="/email-marketing">Cancel</Link>

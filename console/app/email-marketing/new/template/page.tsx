@@ -136,10 +136,10 @@ export default function EmailMarketingNewTemplatePage() {
           return;
         }
         setWizardState({ template_id: templateId });
-        router.push("/email-marketing/new/products");
+        router.push("/email-marketing/new/content");
       } catch (_e) {
         setWizardState({ template_id: templateId });
-        router.push("/email-marketing/new/products");
+        router.push("/email-marketing/new/content");
       } finally {
         setValidationLoading(false);
       }
@@ -151,7 +151,7 @@ export default function EmailMarketingNewTemplatePage() {
   const continueAnyway = () => {
     if (validationModal) {
       setWizardState({ template_id: validationModal.templateId });
-      router.push("/email-marketing/new/products");
+      router.push("/email-marketing/new/content");
       closeValidationModal();
     }
   };
@@ -262,8 +262,8 @@ export default function EmailMarketingNewTemplatePage() {
         )}
 
         <div className="flex flex-wrap gap-3">
-          <Button variant="primary" onClick={() => router.push("/email-marketing/new/products")}>
-            Next: Products
+          <Button variant="primary" onClick={() => router.push("/email-marketing/new/content")}>
+            Next: Products & images
           </Button>
           <Button variant="secondary" asChild>
             <Link href="/email-marketing/new/brand">Back</Link>
@@ -298,27 +298,13 @@ export default function EmailMarketingNewTemplatePage() {
               </p>
             )}
             <div className="flex flex-wrap gap-2">
-              {validationModal.kind === "need_more" && validationModal.needsImages > validationModal.hasImages && (
-                <Button variant="secondary" size="sm" asChild>
-                  <Link href="/email-marketing/new/images" onClick={closeValidationModal}>
-                    Add more images
+              {(validationModal.kind === "need_more" && (validationModal.needsImages > validationModal.hasImages || validationModal.needsProducts > validationModal.hasProducts)) || validationModal.kind === "over_selection" ? (
+                <Button variant="primary" size="sm" asChild>
+                  <Link href="/email-marketing/new/content" onClick={closeValidationModal}>
+                    Add products & images
                   </Link>
                 </Button>
-              )}
-              {validationModal.kind === "need_more" && validationModal.needsProducts > validationModal.hasProducts && (
-                <Button variant="secondary" size="sm" asChild>
-                  <Link href="/email-marketing/new/products" onClick={closeValidationModal}>
-                    Add more products
-                  </Link>
-                </Button>
-              )}
-              {validationModal.kind === "over_selection" && (
-                <Button variant="secondary" size="sm" asChild>
-                  <Link href="/email-marketing/new/images" onClick={closeValidationModal}>
-                    Change selection
-                  </Link>
-                </Button>
-              )}
+              ) : null}
               <Button variant="primary" size="sm" onClick={continueAnyway}>
                 Continue anyway
               </Button>

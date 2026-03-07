@@ -9,7 +9,7 @@ export default function EmailMarketingNewPage() {
       <Stack>
         <PageHeader
           title="New email campaign"
-          description="Create a new email campaign: choose brand, select template, pick products, select photos, then render preview."
+          description="Create a new email campaign: choose brand, select template, then pick products and images in one step and render preview."
         />
         <div className="flex flex-wrap gap-3">
           <Button variant="primary" asChild>
