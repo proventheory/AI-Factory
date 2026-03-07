@@ -10,6 +10,7 @@ import { triggerNoArtifactsRemediationForRun, triggerBadArtifactsRemediationForR
 import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
 import { productsFromUrl, type ProductsFromUrlType } from "./products-from-url.js";
 import { tokenizeBrandFromUrl } from "./brand-tokenize-from-url.js";
+import type { Contract } from "./template-image-validators.js";
 
 const app = express();
 // CORS: allow comma-separated origins (e.g. multiple Vercel URLs) or "*"
@@ -680,11 +681,16 @@ app.post("/v1/runs/:id/validate_image_assignment", async (req, res) => {
     if (!assignment || typeof assignment !== "object") return res.status(400).json({ error: "Run has no image_assignment_json" });
     const templateId = (assignment as { template_id?: string }).template_id;
     if (!templateId) return res.status(400).json({ error: "image_assignment_json missing template_id" });
-    const contractRow = await pool.query(
-      "SELECT hero_required, logo_safe_hero, product_hero_allowed, max_content_slots, max_product_slots, collapses_empty_modules FROM template_image_contracts WHERE template_id = $1 AND version = 'v1'",
-      [templateId]
-    );
-    const contract = contractRow.rows.length > 0 ? contractRow.rows[0] : null;
+    let contract: Contract | null = null;
+    try {
+      const contractRow = await pool.query(
+        "SELECT hero_required, logo_safe_hero, product_hero_allowed, max_content_slots, max_product_slots, collapses_empty_modules FROM template_image_contracts WHERE template_id = $1 AND version = 'v1'",
+        [templateId]
+      );
+      contract = contractRow.rows.length > 0 ? (contractRow.rows[0] as Contract) : null;
+    } catch (err) {
+      if (!isTemplateImageContractsMissing(err)) throw err;
+    }
     const { evaluateImageAssignmentValidations } = await import("./template-image-validators.js");
     const results = evaluateImageAssignmentValidations(assignment, contract);
     for (const v of results) {
@@ -2618,6 +2624,11 @@ app.post("/v1/campaign-images/copy", async (req, res) => {
 // Email Templates CRUD (Email Marketing Factory)
 // =====================================================================
 
+function isTemplateImageContractsMissing(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /relation\s+["']?template_image_contracts["']?\s+does not exist/i.test(msg);
+}
+
 /** GET /v1/email_templates — list with image_slots, product_slots, layout_style for picker. */
 app.get("/v1/email_templates", async (req, res) => {
   try {
@@ -2637,9 +2648,8 @@ app.get("/v1/email_templates", async (req, res) => {
       params.push(brand_profile_id);
     }
     params.push(limit, offset);
-    const q = `SELECT t.*, c.max_content_slots, c.max_product_slots
-      FROM email_templates t
-      LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1'
+    // Query email_templates only so list works when template_image_contracts migration is not yet applied.
+    const q = `SELECT t.* FROM email_templates t
       WHERE ${conditions.join(" AND ")} ORDER BY t.created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
     const countQ = `SELECT count(*)::int AS total FROM email_templates t WHERE ${conditions.join(" AND ")}`;
     const [itemsResult, totalResult] = await Promise.all([
@@ -2648,10 +2658,7 @@ app.get("/v1/email_templates", async (req, res) => {
     ]);
     const items = itemsResult.rows as Record<string, unknown>[];
     for (const row of items) {
-      const contract = row.max_content_slots != null || row.max_product_slots != null ? { max_content_slots: row.max_content_slots as number | undefined, max_product_slots: row.max_product_slots as number | undefined } : null;
-      enrichTemplateRow(row, contract);
-      delete row.max_content_slots;
-      delete row.max_product_slots;
+      enrichTemplateRow(row, null);
     }
     res.json({ items, total: totalResult.rows[0]?.total ?? 0 });
   } catch (e) {
@@ -2713,16 +2720,10 @@ function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content
 app.get("/v1/email_templates/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    const r = await pool.query(
-      "SELECT t.*, c.max_content_slots, c.max_product_slots FROM email_templates t LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1' WHERE t.id = $1",
-      [id]
-    );
+    const r = await pool.query("SELECT * FROM email_templates WHERE id = $1", [id]);
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
     const row = r.rows[0] as Record<string, unknown>;
-    const contract = row.max_content_slots != null || row.max_product_slots != null ? { max_content_slots: row.max_content_slots as number | undefined, max_product_slots: row.max_product_slots as number | undefined } : null;
-    enrichTemplateRow(row, contract);
-    delete row.max_content_slots;
-    delete row.max_product_slots;
+    enrichTemplateRow(row, null);
     res.json(row);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
@@ -2737,10 +2738,16 @@ async function runTemplateLintGate(
   db: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> },
   templateId: string,
 ): Promise<{ ok: boolean; errors: Array<{ code: string; message: string }> }> {
-  const q = await db.query(
-    "SELECT t.id, t.mjml, c.hero_required, c.logo_safe_hero, c.product_hero_allowed, c.mixed_content_and_product_pool, c.collapses_empty_modules, c.max_content_slots, c.max_product_slots, c.supports_content_images, c.supports_product_images, c.optional_modules FROM email_templates t LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1' WHERE t.id = $1",
-    [templateId],
-  );
+  let q: { rows: Record<string, unknown>[] };
+  try {
+    q = await db.query(
+      "SELECT t.id, t.mjml, c.hero_required, c.logo_safe_hero, c.product_hero_allowed, c.mixed_content_and_product_pool, c.collapses_empty_modules, c.max_content_slots, c.max_product_slots, c.supports_content_images, c.supports_product_images, c.optional_modules FROM email_templates t LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1' WHERE t.id = $1",
+      [templateId],
+    );
+  } catch (err) {
+    if (isTemplateImageContractsMissing(err)) return { ok: true, errors: [] };
+    throw err;
+  }
   if (q.rows.length === 0) return { ok: true, errors: [] };
   const row = q.rows[0];
   const contract = row.hero_required != null ? row : null;
@@ -2761,10 +2768,18 @@ async function runTemplateLintGate(
 app.get("/v1/email_templates/:id/lint", async (req, res) => {
   try {
     const id = req.params.id;
-    const q = await pool.query(
-      "SELECT t.id, t.name, t.mjml, c.hero_required, c.logo_safe_hero, c.product_hero_allowed, c.mixed_content_and_product_pool, c.collapses_empty_modules, c.max_content_slots, c.max_product_slots, c.supports_content_images, c.supports_product_images, c.optional_modules FROM email_templates t LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1' WHERE t.id = $1",
-      [id]
-    );
+    let q: { rows: Record<string, unknown>[] };
+    try {
+      q = await pool.query(
+        "SELECT t.id, t.name, t.mjml, c.hero_required, c.logo_safe_hero, c.product_hero_allowed, c.mixed_content_and_product_pool, c.collapses_empty_modules, c.max_content_slots, c.max_product_slots, c.supports_content_images, c.supports_product_images, c.optional_modules FROM email_templates t LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1' WHERE t.id = $1",
+        [id]
+      );
+    } catch (err) {
+      if (isTemplateImageContractsMissing(err)) {
+        return res.status(503).json({ error: "template_image_contracts table not present. Run migration 20250307100000_image_assignment_and_template_contracts.sql to enable lint." });
+      }
+      throw err;
+    }
     if (q.rows.length === 0) return res.status(404).json({ error: "Template not found" });
     const row = q.rows[0];
     const contract = row.hero_required != null ? row : null;
@@ -2847,10 +2862,18 @@ app.patch("/v1/email_templates/:id", async (req, res) => {
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
     const row = r.rows[0] as Record<string, unknown>;
     if (lintOnSave) {
-      const cq = await pool.query(
-        "SELECT c.hero_required, c.logo_safe_hero, c.product_hero_allowed, c.mixed_content_and_product_pool, c.collapses_empty_modules, c.max_content_slots, c.max_product_slots, c.supports_content_images, c.supports_product_images, c.optional_modules FROM template_image_contracts c WHERE c.template_id = $1 AND c.version = 'v1'",
-        [id]
-      );
+      let cq: { rows: unknown[] };
+      try {
+        cq = await pool.query(
+          "SELECT c.hero_required, c.logo_safe_hero, c.product_hero_allowed, c.mixed_content_and_product_pool, c.collapses_empty_modules, c.max_content_slots, c.max_product_slots, c.supports_content_images, c.supports_product_images, c.optional_modules FROM template_image_contracts c WHERE c.template_id = $1 AND c.version = 'v1'",
+          [id]
+        );
+      } catch (err) {
+        if (isTemplateImageContractsMissing(err)) {
+          return res.status(503).json({ error: "template_image_contracts table not present. Run migration 20250307100000_image_assignment_and_template_contracts.sql to use lint_on_save." });
+        }
+        throw err;
+      }
       const contract = cq.rows.length > 0 ? cq.rows[0] : null;
       if (!contract) {
         return res.status(400).json({ error: "lint_on_save requires a template_image_contracts row (version v1) for this template.", lint_errors: [{ code: "L004", severity: "error", message: "Missing template image contract." }] });
