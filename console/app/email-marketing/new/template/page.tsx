@@ -10,6 +10,17 @@ import { fetchEmailTemplatePreviewHtml, getEmailTemplate } from "@/lib/api";
 const WIZARD_KEY = "email_marketing_wizard";
 const CARD_HEIGHT = 320;
 
+/** Resolve API host for debugging (no secrets). */
+function getApiHost(): string {
+  if (typeof window === "undefined") return "";
+  const api = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
+  try {
+    return new URL(api).host;
+  } catch {
+    return api;
+  }
+}
+
 function getWizardState(): Record<string, unknown> {
   if (typeof window === "undefined") return {};
   try {
@@ -27,11 +38,19 @@ function setWizardState(updates: Record<string, unknown>) {
   } catch (_e) {}
 }
 
-type TemplateRow = { id: string; name: string; type: string; image_url: string | null };
+type TemplateRow = {
+  id: string;
+  name: string;
+  type: string;
+  image_url: string | null;
+  image_slots?: number;
+  product_slots?: number;
+  layout_style?: string;
+};
 
 export default function EmailMarketingNewTemplatePage() {
   const router = useRouter();
-  const { data, isLoading } = useEmailTemplates({ limit: 50 });
+  const { data, isLoading, isError, error, refetch } = useEmailTemplates({ limit: 50 });
   const templates = (data?.items ?? []) as TemplateRow[];
   const selected = getWizardState().template_id as string | undefined;
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -39,11 +58,14 @@ export default function EmailMarketingNewTemplatePage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [validationModal, setValidationModal] = useState<{
+    kind: "need_more" | "over_selection";
     templateId: string;
     needsImages: number;
     needsProducts: number;
     hasImages: number;
     hasProducts: number;
+    maxImageSlots: number;
+    maxProductSlots: number;
   } | null>(null);
   const [validationLoading, setValidationLoading] = useState(false);
 
@@ -77,20 +99,39 @@ export default function EmailMarketingNewTemplatePage() {
         const state = getWizardState();
         const products = (state.products as Array<unknown>) ?? [];
         const selectedImages = (state.selected_images as string[]) ?? [];
-        const imgCount = template.img_count ?? 0;
+        const imageSlots = template.image_slots ?? template.img_count ?? 0;
         const productSlots = template.product_slots ?? 0;
         const hasImages = selectedImages.length;
         const hasProducts = products.length;
-        const totalSlots = imgCount + productSlots;
+        const totalSlots = imageSlots + productSlots;
         const totalContent = hasImages + hasProducts;
         const needsMore = totalSlots > 0 && totalContent < totalSlots;
+        const overImages = imageSlots > 0 && hasImages > imageSlots;
+        const overProducts = productSlots > 0 && hasProducts > productSlots;
+        const overSelection = overImages || overProducts;
         if (needsMore) {
           setValidationModal({
+            kind: "need_more",
             templateId,
-            needsImages: imgCount,
+            needsImages: imageSlots,
             needsProducts: productSlots,
             hasImages,
             hasProducts,
+            maxImageSlots: imageSlots,
+            maxProductSlots: productSlots,
+          });
+          return;
+        }
+        if (overSelection) {
+          setValidationModal({
+            kind: "over_selection",
+            templateId,
+            needsImages: imageSlots,
+            needsProducts: productSlots,
+            hasImages,
+            hasProducts,
+            maxImageSlots: imageSlots,
+            maxProductSlots: productSlots,
           });
           return;
         }
@@ -123,7 +164,20 @@ export default function EmailMarketingNewTemplatePage() {
           description="Choose an email template for this campaign (optional). Preview to see desktop and mobile."
         />
 
-        {isLoading ? (
+        {isError ? (
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/20 p-4">
+            <p className="text-body font-medium text-state-danger">Could not load templates</p>
+            <p className="mt-1 text-body-small text-fg-muted">
+              {error instanceof Error ? error.message : "The Control Plane may be unreachable."}
+            </p>
+            <p className="mt-2 text-body-small text-fg-muted">
+              Request was sent to <code className="rounded bg-fg-muted/30 px-1">{getApiHost() || "—"}</code>. Check DevTools → Network for the <code className="rounded bg-fg-muted/30 px-1">email_templates</code> request to see the exact error.
+            </p>
+            <Button variant="primary" size="sm" className="mt-3" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        ) : isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />
         ) : (
           <ScrollArea className="h-[65vh] min-h-[420px] rounded-lg border border-border bg-card">
@@ -154,7 +208,14 @@ export default function EmailMarketingNewTemplatePage() {
                         <p className="truncate font-medium text-fg">
                           {t.name}
                         </p>
-                        <p className="text-body-small text-fg-muted">({t.type})</p>
+                        <p className="text-body-small text-fg-muted">
+                          {t.layout_style ?? `(${t.type})`}
+                        </p>
+                        {(t.image_slots != null || t.product_slots != null) && (
+                          <p className="text-body-small text-fg-muted mt-0.5">
+                            Image slots: {t.image_slots ?? 0} · Product slots: {t.product_slots ?? 0}
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -181,8 +242,25 @@ export default function EmailMarketingNewTemplatePage() {
           </ScrollArea>
         )}
 
-        {templates.length === 0 && !isLoading && (
-          <p className="text-body-small text-fg-muted">No email templates yet. You can still continue; the runner will generate a simple email.</p>
+        {!isLoading && !isError && (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-body-small text-fg-muted">
+              {templates.length === 0 ? (
+                <>
+                  Loaded <strong>0</strong> templates from <code className="rounded bg-fg-muted/30 px-1">{getApiHost() || "API"}</code>. Create templates under <Link href="/document-templates" className="text-brand-600 hover:underline">Document Templates</Link> (email type) or add via the Control Plane API. You can still continue; the runner will generate a simple email.
+                </>
+              ) : (
+                <>
+                  Loaded <strong>{templates.length}</strong> template{templates.length !== 1 ? "s" : ""} from <code className="rounded bg-fg-muted/30 px-1">{getApiHost() || "API"}</code>.
+                </>
+              )}
+            </p>
+            {templates.length === 0 && (
+              <Button variant="secondary" size="sm" onClick={() => refetch()}>
+                Refresh templates
+              </Button>
+            )}
+          </div>
         )}
 
         <div className="flex flex-wrap gap-3">
@@ -195,7 +273,7 @@ export default function EmailMarketingNewTemplatePage() {
         </div>
       </Stack>
 
-      {/* Template requirements validation modal */}
+      {/* Template validation modal: need more content OR over-selection warning */}
       {validationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/60" onClick={closeValidationModal} aria-hidden />
@@ -206,24 +284,40 @@ export default function EmailMarketingNewTemplatePage() {
             aria-labelledby="validation-modal-title"
           >
             <h2 id="validation-modal-title" className="text-body font-semibold text-fg mb-2">
-              Template needs more content
+              {validationModal.kind === "over_selection"
+                ? "Template supports fewer slots than selected"
+                : "Template needs more content"}
             </h2>
-            <p className="text-body-small text-fg-muted mb-4">
-              This template has room for up to <strong>{validationModal.needsImages} image slot(s)</strong> and{" "}
-              <strong>{validationModal.needsProducts} product slot(s)</strong> ({(validationModal.needsImages || 0) + (validationModal.needsProducts || 0)} total). You have {validationModal.hasImages} image(s) and {validationModal.hasProducts} product(s) ({(validationModal.hasImages || 0) + (validationModal.hasProducts || 0)} total). Images and products can fill slots interchangeably. Add more or continue anyway.
-            </p>
+            {validationModal.kind === "over_selection" ? (
+              <p className="text-body-small text-fg-muted mb-4">
+                This template has <strong>{validationModal.maxImageSlots} image slot(s)</strong> and{" "}
+                <strong>{validationModal.maxProductSlots} product slot(s)</strong>. You selected {validationModal.hasImages} image(s) and {validationModal.hasProducts} product(s). Extra content may not appear. Continue anyway or go back to reduce selection.
+              </p>
+            ) : (
+              <p className="text-body-small text-fg-muted mb-4">
+                This template has room for up to <strong>{validationModal.needsImages} image slot(s)</strong> and{" "}
+                <strong>{validationModal.needsProducts} product slot(s)</strong> ({(validationModal.needsImages || 0) + (validationModal.needsProducts || 0)} total). You have {validationModal.hasImages} image(s) and {validationModal.hasProducts} product(s). Add more or continue anyway.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
-              {validationModal.needsImages > validationModal.hasImages && (
+              {validationModal.kind === "need_more" && validationModal.needsImages > validationModal.hasImages && (
                 <Button variant="secondary" size="sm" asChild>
                   <Link href="/email-marketing/new/images" onClick={closeValidationModal}>
                     Add more images
                   </Link>
                 </Button>
               )}
-              {validationModal.needsProducts > validationModal.hasProducts && (
+              {validationModal.kind === "need_more" && validationModal.needsProducts > validationModal.hasProducts && (
                 <Button variant="secondary" size="sm" asChild>
                   <Link href="/email-marketing/new/products" onClick={closeValidationModal}>
                     Add more products
+                  </Link>
+                </Button>
+              )}
+              {validationModal.kind === "over_selection" && (
+                <Button variant="secondary" size="sm" asChild>
+                  <Link href="/email-marketing/new/images" onClick={closeValidationModal}>
+                    Change selection
                   </Link>
                 </Button>
               )}
