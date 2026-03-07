@@ -280,9 +280,33 @@ export type LlmCallRow = {
   created_at: string;
 };
 
+export type UsageByProvider = {
+  provider: string;
+  calls: number;
+  tokens_in: number;
+  tokens_out: number;
+  estimated_cost_usd: number;
+};
+
+export type UsageByModel = {
+  model_tier: string;
+  model_id: string;
+  provider: string;
+  calls: number;
+  tokens_in: number;
+  tokens_out: number;
+  estimated_cost_usd: number;
+};
+
 export type UsageAggregate = {
   by_tier: { model_tier: string; calls: number; tokens_in: number; tokens_out: number; avg_latency_ms: number }[];
-  totals: { calls: number; tokens_in: number; tokens_out: number };
+  by_provider?: UsageByProvider[];
+  by_model?: UsageByModel[];
+  totals: { calls: number; tokens_in: number; tokens_out: number; estimated_cost_usd?: number };
+  percentiles?: { p50_latency_ms: number; p95_latency_ms: number };
+  error_count?: number;
+  from?: string;
+  to?: string;
 };
 
 export async function getLlmCalls(params?: { run_id?: string; model_tier?: string; limit?: number; offset?: number }): Promise<{ items: LlmCallRow[]; limit: number; offset: number }> {
@@ -296,8 +320,11 @@ export async function getLlmCalls(params?: { run_id?: string; model_tier?: strin
   return res.json();
 }
 
-export async function getUsage(): Promise<UsageAggregate> {
-  const res = await fetch(`${API}/v1/usage`);
+export async function getUsage(params?: { from?: string; to?: string }): Promise<UsageAggregate> {
+  const searchParams = new URLSearchParams();
+  if (params?.from) searchParams.set("from", params.from);
+  if (params?.to) searchParams.set("to", params.to);
+  const res = await fetch(`${API}/v1/usage?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -628,8 +655,12 @@ export type EmailTemplateRow = {
   template_json: unknown;
   sections_json: unknown;
   img_count: number;
-  /** Computed from MJML (max product_N slot). Used by wizard to validate selection. */
+  /** Content image slots ([image 1], [image 2], …). From contract or MJML. For picker and validation. */
+  image_slots?: number;
+  /** Product slots (max product_N). From contract or MJML. Used by wizard to validate selection. */
   product_slots?: number;
+  /** e.g. "newsletter (email template)". Shown when picking templates. */
+  layout_style?: string;
   brand_profile_id?: string | null;
   created_at: string;
   updated_at: string;
