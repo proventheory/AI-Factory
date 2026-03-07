@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PageFrame, Stack, PageHeader, Button, LoadingSkeleton, ScrollArea } from "@/components/ui";
 import { useEmailTemplates } from "@/hooks/use-api";
-import { fetchEmailTemplatePreviewHtml, getEmailTemplate } from "@/lib/api";
+import { type EmailTemplateRow, fetchEmailTemplatePreviewHtml, getEmailTemplate } from "@/lib/api";
 
 const WIZARD_KEY = "email_marketing_wizard";
 const CARD_HEIGHT = 320;
@@ -95,7 +95,7 @@ export default function EmailMarketingNewTemplatePage() {
       setValidationLoading(true);
       setValidationModal(null);
       try {
-        const template = await getEmailTemplate(templateId);
+        const template = await getEmailTemplate(templateId) as EmailTemplateRow & { image_slots?: number; product_slots?: number };
         const state = getWizardState();
         const products = (state.products as Array<unknown>) ?? [];
         const selectedImages = (state.selected_images as string[]) ?? [];
