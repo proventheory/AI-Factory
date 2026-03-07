@@ -20,6 +20,8 @@ export interface DesignTokensInput {
   fontHeadings: string;
   fontBody: string;
   logoUrl: string;
+  /** White/inverted logo for dark backgrounds (e.g. email headers). */
+  logoUrlWhite: string;
   wordmarkBold: string;
   wordmarkLight: string;
   /** Canonical product sitemap URL (email/initiatives can use this). */
@@ -43,6 +45,7 @@ export function buildDesignTokens(opts: Partial<DesignTokensInput>): Record<stri
     fontHeadings,
     fontBody,
     logoUrl,
+    logoUrlWhite,
     wordmarkBold,
     wordmarkLight,
     sitemapUrl,
@@ -77,6 +80,10 @@ export function buildDesignTokens(opts: Partial<DesignTokensInput>): Record<stri
     logo.url = logoUrl;
     tokens.logo_url = logoUrl;
   }
+  if (logoUrlWhite?.trim()) {
+    logo.url_white = logoUrlWhite.trim();
+    tokens.logo_white_url = logoUrlWhite.trim();
+  }
   if (wordmarkBold?.trim() || wordmarkLight?.trim()) {
     logo.wordmark_bold = (wordmarkBold ?? "").trim();
     logo.wordmark_light = (wordmarkLight ?? "").trim();
@@ -101,6 +108,7 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
     fontHeadings: "Inter",
     fontBody: "Inter",
     logoUrl: "",
+    logoUrlWhite: "",
     wordmarkBold: "",
     wordmarkLight: "",
     sitemapUrl: "",
@@ -148,6 +156,7 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
     fontHeadings: (typeof fontHeading === "string" ? fontHeading : null) ?? empty.fontHeadings,
     fontBody: (typeof fontBodyVal === "string" ? fontBodyVal : null) ?? empty.fontBody,
     logoUrl: logo?.url ?? (typeof dt.logo_url === "string" ? dt.logo_url : null) ?? empty.logoUrl,
+    logoUrlWhite: logo?.url_white ?? (typeof dt.logo_white_url === "string" ? dt.logo_white_url : null) ?? empty.logoUrlWhite,
     wordmarkBold: logo?.wordmark_bold ?? empty.wordmarkBold,
     wordmarkLight: logo?.wordmark_light ?? empty.wordmarkLight,
     sitemapUrl: sitemapUrlVal,

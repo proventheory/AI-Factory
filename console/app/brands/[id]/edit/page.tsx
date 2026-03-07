@@ -44,6 +44,7 @@ export default function EditBrandPage() {
   const [primaryColor, setPrimaryColor] = useState("#3b82f6");
   const [secondaryColor, setSecondaryColor] = useState("#64748b");
   const [logoUrl, setLogoUrl] = useState("");
+  const [logoUrlWhite, setLogoUrlWhite] = useState("");
   const [wordmarkBold, setWordmarkBold] = useState("");
   const [wordmarkLight, setWordmarkLight] = useState("");
   const [fontHeadings, setFontHeadings] = useState("Inter");
@@ -77,7 +78,9 @@ export default function EditBrandPage() {
     setTagline(identity.tagline ?? "");
     setMission(identity.mission ?? "");
     setWebsite(identity.website ?? "");
-    setContactEmail(identity.contact_email ?? "");
+    const tokens = readDesignTokensFromBrand(dt);
+    const emailFromContact = tokens.contactInfo.find((c) => (c.type ?? "").toLowerCase() === "email");
+    setContactEmail(identity.contact_email ?? emailFromContact?.value ?? "");
     setLocation(identity.location ?? "");
     setVoiceDesc((tone.voice_descriptors ?? []).join(", "));
     setReadingLevel(tone.reading_level ?? "grade_9");
@@ -87,10 +90,10 @@ export default function EditBrandPage() {
     setCopyVoice(cs.voice ?? "");
     setBannedWords((cs.banned_words ?? []).join(", "));
 
-    const tokens = readDesignTokensFromBrand(dt);
     setPrimaryColor(tokens.primaryColor);
     setSecondaryColor(tokens.secondaryColor);
     setLogoUrl(tokens.logoUrl);
+    setLogoUrlWhite(tokens.logoUrlWhite);
     setWordmarkBold(tokens.wordmarkBold);
     setWordmarkLight(tokens.wordmarkLight);
     setFontHeadings(tokens.fontHeadings);
@@ -98,7 +101,7 @@ export default function EditBrandPage() {
     setSitemapUrl(tokens.sitemapUrl);
     setSitemapType(tokens.sitemapType);
     setSocialMedia(tokens.socialMedia);
-    setContactInfo(tokens.contactInfo);
+    setContactInfo(tokens.contactInfo.filter((c) => (c.type ?? "").toLowerCase() !== "email"));
     setAssetUrls(tokens.assetUrls);
     setAssetUrlsText(tokens.assetUrls.join("\n"));
     const t = tokens as unknown as Record<string, unknown>;
@@ -156,6 +159,16 @@ export default function EditBrandPage() {
           return;
         }
       }
+      let resolvedLogoUrlWhite = logoUrlWhite.trim();
+      if (resolvedLogoUrlWhite && !/supabase\.co\/storage\/v1\/object\/public\/upload\//.test(resolvedLogoUrlWhite)) {
+        try {
+          const { cdn_url } = await copyCampaignImageToCdn(resolvedLogoUrlWhite);
+          resolvedLogoUrlWhite = cdn_url;
+        } catch (logoErr) {
+          setSubmitError(logoErr instanceof Error ? logoErr.message : "Failed to copy white logo to CDN");
+          return;
+        }
+      }
       await update.mutateAsync({
         id,
         name: name.trim(),
@@ -191,13 +204,14 @@ export default function EditBrandPage() {
           fontHeadings,
           fontBody,
           logoUrl: resolvedLogoUrl || logoUrl,
+          logoUrlWhite: resolvedLogoUrlWhite || logoUrlWhite,
           wordmarkBold,
           wordmarkLight,
           sitemapUrl,
           sitemapType,
           socialMedia,
-          contactInfo,
-          assetUrls: assetUrlsText.split("\n").map((u) => u.trim()).filter(Boolean),
+          contactInfo: contactInfo.filter((c) => (c.type ?? "").toLowerCase() !== "email"),
+          assetUrls: assetUrls.length ? assetUrls : assetUrlsText.split("\n").map((u) => u.trim()).filter(Boolean),
           ctaText,
           ctaLink,
         }),
@@ -281,6 +295,14 @@ export default function EditBrandPage() {
                   value={logoUrl}
                   onChange={(e) => setLogoUrl(e.target.value)}
                   placeholder="https://… or /logo.svg"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Logo URL (white)</label>
+                <Input
+                  value={logoUrlWhite}
+                  onChange={(e) => setLogoUrlWhite(e.target.value)}
+                  placeholder="https://… white/inverted logo for dark backgrounds"
                 />
               </div>
               <div>
@@ -508,11 +530,12 @@ export default function EditBrandPage() {
               </div>
 
               <div>
-                <h4 className="text-body font-medium text-text-primary mb-3">Contact</h4>
+                <h4 className="text-body font-medium text-text-primary mb-3">Other contact (phone, address, etc.)</h4>
+                <p className="text-body-small text-text-secondary mb-2">Contact email is set in Identity above (single source for templates). Add only phone, address, or other non-email contact methods here.</p>
                 {contactInfo.map((c, i) => (
                   <div key={i} className="flex gap-2 mb-2">
                     <Input
-                      placeholder="Type (e.g. email, phone)"
+                      placeholder="Type (e.g. phone, address)"
                       value={c.type}
                       onChange={(e) => {
                         const next = [...contactInfo];
@@ -554,7 +577,7 @@ export default function EditBrandPage() {
                 <p className="text-body-small text-text-secondary mb-2">
                   Add image or asset URLs (one per line) or upload files. Used by initiatives and email.
                 </p>
-                <div className="flex flex-wrap items-center gap-2 mb-2">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
                   <input
                     ref={assetFileInputRef}
                     type="file"
@@ -575,15 +598,63 @@ export default function EditBrandPage() {
                     <span className="text-body-small text-text-secondary">Configure Supabase to enable uploads.</span>
                   )}
                 </div>
+                {assetUrls.length > 0 ? (
+                  <ul className="space-y-3 mb-3">
+                    {assetUrls.map((url, i) => (
+                      <li key={i} className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50/50 p-2">
+                        <div className="flex-shrink-0 w-14 h-14 rounded border border-slate-200 bg-white overflow-hidden flex items-center justify-center">
+                          {/\.(png|jpg|jpeg|gif|webp|svg)(\?|$)/i.test(url) ? (
+                            <>
+                              <img
+                                src={url}
+                                alt=""
+                                loading="lazy"
+                                className="max-w-full max-h-full object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none";
+                                  const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                  if (fallback) fallback.hidden = false;
+                                }}
+                              />
+                              <span className="text-body-small text-fg-muted" hidden>
+                                —
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-body-small text-fg-muted">—</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-body-small text-brand-600 hover:underline truncate block">
+                            {url}
+                          </a>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => {
+                            const next = assetUrls.filter((_, j) => j !== i);
+                            setAssetUrls(next);
+                            setAssetUrlsText(next.join("\n"));
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <textarea
                   className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono text-body-small"
-                  rows={4}
+                  rows={3}
                   value={assetUrlsText}
                   onChange={(e) => {
-                    setAssetUrlsText(e.target.value);
-                    setAssetUrls(e.target.value.split("\n").map((u) => u.trim()).filter(Boolean));
+                    const text = e.target.value;
+                    setAssetUrlsText(text);
+                    const lines = text.split("\n").map((u) => u.trim()).filter(Boolean);
+                    setAssetUrls(lines);
                   }}
-                  placeholder="https://example.com/hero.jpg&#10;https://example.com/logo.png"
+                  placeholder="Paste URLs (one per line): https://example.com/hero.jpg"
                 />
               </div>
             </div>

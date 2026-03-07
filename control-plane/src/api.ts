@@ -574,7 +574,7 @@ app.get("/v1/runs", async (req, res) => {
     const params: unknown[] = [];
     let i = 1;
     if (environment) { conditions.push(`r.environment = $${i++}`); params.push(environment); }
-    if (status) { conditions.push(`r.status = $${i++}`); params.push(status); }
+    if (status) { conditions.push(`r.status::text = $${i++}`); params.push(status); }
     if (cohort) { conditions.push(`r.cohort = $${i++}`); params.push(cohort); }
     const intent_type = req.query.intent_type as string | undefined;
     if (intent_type) { conditions.push(`i.intent_type = $${i++}`); params.push(intent_type); }
@@ -666,8 +666,14 @@ app.post("/v1/runs/:id/image_assignment", async (req, res) => {
     );
     if (r.rows.length === 0) return res.status(404).json({ error: "Run not found" });
     res.status(200).json({ ok: true, run_id: runId });
-  } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err.code === "42703" || (typeof err.message === "string" && err.message.includes("image_assignment_json"))) {
+      return res.status(503).json({
+        error: "runs.image_assignment_json column not present. Run migration 20250307100000_image_assignment_and_template_contracts.sql to enable.",
+      });
+    }
+    res.status(500).json({ error: String(err.message ?? e) });
   }
 });
 
@@ -675,7 +681,18 @@ app.post("/v1/runs/:id/image_assignment", async (req, res) => {
 app.post("/v1/runs/:id/validate_image_assignment", async (req, res) => {
   try {
     const runId = req.params.id;
-    const runRow = await pool.query("SELECT image_assignment_json FROM runs WHERE id = $1", [runId]);
+    let runRow: { rows: { image_assignment_json: unknown }[] };
+    try {
+      runRow = await pool.query("SELECT image_assignment_json FROM runs WHERE id = $1", [runId]);
+    } catch (e: unknown) {
+      const err = e as { code?: string; message?: string };
+      if (err.code === "42703" || (typeof err.message === "string" && err.message.includes("image_assignment_json"))) {
+        return res.status(503).json({
+          error: "runs.image_assignment_json column not present. Run migration 20250307100000_image_assignment_and_template_contracts.sql to enable.",
+        });
+      }
+      throw e;
+    }
     if (runRow.rows.length === 0) return res.status(404).json({ error: "Run not found" });
     const assignment = runRow.rows[0].image_assignment_json;
     if (!assignment || typeof assignment !== "object") return res.status(400).json({ error: "Run has no image_assignment_json" });
@@ -1008,7 +1025,7 @@ app.get("/v1/job_runs", async (req, res) => {
     const params: unknown[] = [];
     let i = 1;
     if (environment) { conditions.push(`r.environment = $${i++}`); params.push(environment); }
-    if (status) { conditions.push(`jr.status = $${i++}`); params.push(status); }
+    if (status) { conditions.push(`jr.status::text = $${i++}`); params.push(status); }
     params.push(limit, offset);
     const q = `
       SELECT jr.*, r.environment, pn.node_key, pn.job_type,
