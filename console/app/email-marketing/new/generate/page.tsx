@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button } from "@/components/ui";
 import { useCreateEmailCampaign } from "@/hooks/use-api";
 import { getRunStatus, getRunArtifacts, type ArtifactRow } from "@/lib/api";
@@ -20,6 +20,13 @@ function getWizardState(): Record<string, unknown> {
   }
 }
 
+function setWizardState(updates: Record<string, unknown>) {
+  try {
+    const next = { ...getWizardState(), ...updates };
+    sessionStorage.setItem(WIZARD_KEY, JSON.stringify(next));
+  } catch (_e) {}
+}
+
 function clearWizardState() {
   try {
     sessionStorage.removeItem(WIZARD_KEY);
@@ -28,30 +35,35 @@ function clearWizardState() {
 
 export default function EmailMarketingNewGeneratePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [campaignPrompt, setCampaignPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<string>("");
-  const [hasTemplate, setHasTemplate] = useState<boolean>(() => Boolean(getWizardState().template_id));
+  // Wizard state is in sessionStorage; sync after mount (and from URL fallback) so we don't show "Select a template" when user came from Content
+  const [wizardTemplateId, setWizardTemplateId] = useState<string | null>(null);
 
-  // Re-read wizard state when page becomes visible (e.g. user returns from Template step)
   useEffect(() => {
-    const sync = () => setHasTemplate(Boolean(getWizardState().template_id));
-    sync();
-    window.addEventListener("visibilitychange", sync);
-    window.addEventListener("focus", sync);
-    return () => {
-      window.removeEventListener("visibilitychange", sync);
-      window.removeEventListener("focus", sync);
-    };
-  }, []);
+    const s = getWizardState();
+    let tid = (s.template_id as string) ?? null;
+    const urlTid = searchParams.get("template_id");
+    const urlBid = searchParams.get("brand_profile_id");
+    if (urlTid && !tid) {
+      tid = urlTid;
+      setWizardState({ template_id: urlTid });
+    }
+    if (urlBid && !(s.brand_profile_id as string)) setWizardState({ brand_profile_id: urlBid });
+    setWizardTemplateId(tid);
+  }, [searchParams]);
+
+  const hasTemplate = Boolean(wizardTemplateId);
 
   const createCampaign = useCreateEmailCampaign();
 
   const handleGenerate = async () => {
     const state = getWizardState();
     const brandProfileId = state.brand_profile_id as string | undefined;
-    const templateId = state.template_id as string | undefined;
+    const templateId = (wizardTemplateId ?? state.template_id) as string | undefined;
     const products = (state.products as Array<{ src?: string; title?: string; product_url?: string }>) ?? [];
     const selectedImages = (state.selected_images as string[]) ?? [];
 

@@ -136,10 +136,20 @@ export default function EmailMarketingNewTemplatePage() {
           return;
         }
         setWizardState({ template_id: templateId });
-        router.push("/email-marketing/new/content");
+        const ws = getWizardState();
+        const params = new URLSearchParams();
+        params.set("template_id", templateId);
+        const bid = ws.brand_profile_id as string | undefined;
+        if (bid) params.set("brand_profile_id", bid);
+        router.push(`/email-marketing/new/content?${params.toString()}`);
       } catch (_e) {
         setWizardState({ template_id: templateId });
-        router.push("/email-marketing/new/content");
+        const ws = getWizardState();
+        const params = new URLSearchParams();
+        params.set("template_id", templateId);
+        const bid = ws.brand_profile_id as string | undefined;
+        if (bid) params.set("brand_profile_id", bid);
+        router.push(`/email-marketing/new/content?${params.toString()}`);
       } finally {
         setValidationLoading(false);
       }
@@ -151,7 +161,12 @@ export default function EmailMarketingNewTemplatePage() {
   const continueAnyway = () => {
     if (validationModal) {
       setWizardState({ template_id: validationModal.templateId });
-      router.push("/email-marketing/new/content");
+      const ws = getWizardState();
+      const params = new URLSearchParams();
+      params.set("template_id", validationModal.templateId);
+      const bid = ws.brand_profile_id as string | undefined;
+      if (bid) params.set("brand_profile_id", bid);
+      router.push(`/email-marketing/new/content?${params.toString()}`);
       closeValidationModal();
     }
   };
@@ -262,7 +277,19 @@ export default function EmailMarketingNewTemplatePage() {
         )}
 
         <div className="flex flex-wrap gap-3">
-          <Button variant="primary" onClick={() => router.push("/email-marketing/new/content")}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (selected) setWizardState({ template_id: selected });
+              const ws = getWizardState();
+              const tid = (selected ?? ws.template_id) as string | undefined;
+              const bid = ws.brand_profile_id as string | undefined;
+              const params = new URLSearchParams();
+              if (tid) params.set("template_id", tid);
+              if (bid) params.set("brand_profile_id", bid);
+              router.push(params.toString() ? `/email-marketing/new/content?${params.toString()}` : "/email-marketing/new/content");
+            }}
+          >
             Next: Products & images
           </Button>
           <Button variant="secondary" asChild>
@@ -300,7 +327,19 @@ export default function EmailMarketingNewTemplatePage() {
             <div className="flex flex-wrap gap-2">
               {(validationModal.kind === "need_more" && (validationModal.needsImages > validationModal.hasImages || validationModal.needsProducts > validationModal.hasProducts)) || validationModal.kind === "over_selection" ? (
                 <Button variant="primary" size="sm" asChild>
-                  <Link href="/email-marketing/new/content" onClick={closeValidationModal}>
+                  <Link
+                    href={(() => {
+                      if (validationModal.templateId) setWizardState({ template_id: validationModal.templateId });
+                      const ws = getWizardState();
+                      const params = new URLSearchParams();
+                      if (validationModal.templateId) params.set("template_id", validationModal.templateId);
+                      const bid = ws.brand_profile_id as string | undefined;
+                      if (bid) params.set("brand_profile_id", bid);
+                      const q = params.toString();
+                      return q ? `/email-marketing/new/content?${q}` : "/email-marketing/new/content";
+                    })()}
+                    onClick={closeValidationModal}
+                  >
                     Add products & images
                   </Link>
                 </Button>

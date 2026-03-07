@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   PageFrame,
   Stack,
@@ -92,16 +92,29 @@ type PexelsPhoto = {
 
 export default function EmailMarketingNewContentPage() {
   const router = useRouter();
-  // Wizard state is in sessionStorage; first render can be SSR where window is undefined, so we sync after mount so template/brand load and limits apply
+  const searchParams = useSearchParams();
+  // Wizard state is in sessionStorage; first render can be SSR where window is undefined, so we sync after mount so template/brand load and limits apply. URL params are used as fallback when opening in new tab or when sessionStorage is empty.
   const [wizardBrandId, setWizardBrandId] = useState<string | null>(null);
   const [wizardTemplateId, setWizardTemplateId] = useState<string | null>(null);
   useEffect(() => {
     const s = getWizardState();
-    setWizardBrandId((s.brand_profile_id as string) ?? null);
-    setWizardTemplateId((s.template_id as string) ?? null);
+    let tid = (s.template_id as string) ?? null;
+    let bid = (s.brand_profile_id as string) ?? null;
+    const urlTid = searchParams.get("template_id");
+    const urlBid = searchParams.get("brand_profile_id");
+    if (urlTid && !tid) {
+      tid = urlTid;
+      setWizardState({ template_id: urlTid });
+    }
+    if (urlBid && !bid) {
+      bid = urlBid;
+      setWizardState({ brand_profile_id: urlBid });
+    }
+    setWizardBrandId(bid);
+    setWizardTemplateId(tid);
     const storedImages = s.selected_images as string[] | undefined;
     if (Array.isArray(storedImages) && storedImages.length > 0) setSelectedUrls(storedImages);
-  }, []);
+  }, [searchParams]);
   const brandId = wizardBrandId ?? undefined;
   const templateId = wizardTemplateId ?? undefined;
   const state = getWizardState();
@@ -309,9 +322,16 @@ export default function EmailMarketingNewContentPage() {
 
     const toCopy = selectedUrls.filter((u) => !isCdnUrl(u));
     const cdnAlready = selectedUrls.filter(isCdnUrl);
+    const buildGenerateUrl = () => {
+      const params = new URLSearchParams();
+      if (templateId) params.set("template_id", templateId);
+      if (brandId) params.set("brand_profile_id", brandId);
+      const q = params.toString();
+      return q ? `/email-marketing/new/generate?${q}` : "/email-marketing/new/generate";
+    };
     if (toCopy.length === 0) {
       setWizardState({ selected_images: cdnAlready });
-      router.push("/email-marketing/new/generate");
+      router.push(buildGenerateUrl());
       return;
     }
     setNextLoading(true);
@@ -326,11 +346,11 @@ export default function EmailMarketingNewContentPage() {
       if (newCdnUrls.length < toCopy.length) {
         setNextError(`Some images could not be copied to CDN (${newCdnUrls.length}/${toCopy.length} succeeded). Your selection was saved.`);
       }
-      router.push("/email-marketing/new/generate");
+      router.push(buildGenerateUrl());
     } catch (e) {
       setWizardState({ selected_images: selectedUrls });
       setNextError(e instanceof Error ? e.message : "Failed to copy images to CDN. Your selection was saved; you can continue.");
-      router.push("/email-marketing/new/generate");
+      router.push(buildGenerateUrl());
     } finally {
       setNextLoading(false);
     }
