@@ -197,11 +197,13 @@ export default function EmailMarketingNewContentPage() {
     }
   };
 
+  const maxProducts = productSlots > 0 ? productSlots : undefined;
+
   const toggle = (i: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(i)) next.delete(i);
-      else next.add(i);
+      else if (maxProducts == null || next.size < maxProducts) next.add(i);
       return next;
     });
   };
@@ -209,7 +211,8 @@ export default function EmailMarketingNewContentPage() {
   const selectAllVisible = () => {
     setSelected((prev) => {
       const next = new Set(prev);
-      filteredIndices.forEach((i) => next.add(i));
+      const limit = maxProducts != null ? maxProducts - next.size : filteredIndices.length;
+      filteredIndices.slice(0, limit).forEach((i) => next.add(i));
       return next;
     });
   };
@@ -243,8 +246,11 @@ export default function EmailMarketingNewContentPage() {
     }
   }, [pexelsQuery]);
 
+  const maxImages = imageSlots > 0 ? imageSlots : undefined;
+
   const addSelectedImage = (url: string) => {
     if (!url.trim() || selectedUrls.includes(url)) return;
+    if (maxImages != null && selectedUrls.length >= maxImages) return;
     setSelectedUrls((prev) => [...prev, url]);
   };
 
@@ -307,7 +313,7 @@ export default function EmailMarketingNewContentPage() {
 
   const slotHint =
     imageSlots > 0 || productSlots > 0
-      ? `This template uses ${imageSlots} image${imageSlots !== 1 ? "s" : ""} and ${productSlots} product${productSlots !== 1 ? "s" : ""}. Select below, then continue.`
+      ? `This template needs ${imageSlots} image${imageSlots !== 1 ? "s" : ""} and ${productSlots} product${productSlots !== 1 ? "s" : ""}. Limits are enforced below.`
       : "Select products and images for your email. The first image is used as the hero; the rest fill content slots.";
 
   return (
@@ -320,7 +326,10 @@ export default function EmailMarketingNewContentPage() {
 
         {/* Products section */}
         <section className="rounded-xl border-2 border-border bg-card p-5">
-          <h2 className="text-body font-semibold text-fg mb-3">Products</h2>
+          <h2 className="text-body font-semibold text-fg mb-1">Products</h2>
+          {productSlots > 0 && (
+            <p className="text-body-small text-fg-muted mb-3">Select up to {productSlots} product{productSlots !== 1 ? "s" : ""} for this template.</p>
+          )}
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <input
               type="url"
@@ -361,10 +370,13 @@ export default function EmailMarketingNewContentPage() {
                   onChange={(e) => setSearch(e.target.value)}
                   className="min-w-[180px] max-w-sm rounded-md border border-border bg-bg px-3 py-2 text-sm"
                 />
-                <Button variant="secondary" size="sm" onClick={selectAllVisible}>Select all visible</Button>
+                <Button variant="secondary" size="sm" onClick={selectAllVisible} disabled={maxProducts != null && selected.size >= maxProducts}>
+                  Select all visible
+                </Button>
                 <Button variant="secondary" size="sm" onClick={clearSelection}>Clear</Button>
                 <span className="text-body-small text-fg-muted">
-                  {items.length} loaded · {selected.size} selected
+                  {items.length} loaded · {selected.size}
+                  {maxProducts != null ? ` / ${maxProducts}` : ""} selected
                 </span>
               </div>
               <ScrollArea className="h-[240px] rounded-lg border border-border">
@@ -375,10 +387,16 @@ export default function EmailMarketingNewContentPage() {
                     filteredIndices.slice(0, 50).map((idx) => {
                       const p = items[idx];
                       const isSelectedItem = selected.has(idx);
+                      const atProductLimit = maxProducts != null && selected.size >= maxProducts && !isSelectedItem;
                       return (
                         <li key={idx}>
-                          <label className={`flex cursor-pointer items-center gap-3 px-3 py-2 rounded hover:bg-fg-muted/5 ${isSelectedItem ? "bg-brand-50" : ""}`}>
-                            <Checkbox checked={isSelectedItem} onChange={() => toggle(idx)} className="shrink-0" />
+                          <label className={`flex cursor-pointer items-center gap-3 px-3 py-2 rounded hover:bg-fg-muted/5 ${isSelectedItem ? "bg-brand-50" : ""} ${atProductLimit ? "opacity-60" : ""}`}>
+                            <Checkbox
+                              checked={isSelectedItem}
+                              onChange={() => toggle(idx)}
+                              disabled={atProductLimit}
+                              className="shrink-0"
+                            />
                             <div className="h-10 w-10 shrink-0 overflow-hidden rounded border border-border bg-fg-muted/10">
                               {p.src ? <img src={p.src} alt="" className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-fg-muted text-xs">—</div>}
                             </div>
@@ -401,8 +419,15 @@ export default function EmailMarketingNewContentPage() {
 
         {/* Images section */}
         <section className="rounded-xl border-2 border-border bg-card p-5">
-          <h2 className="text-body font-semibold text-fg mb-3">Images</h2>
-          <p className="text-body-small text-fg-muted mb-3">First image = hero. Choose from Pexels or your brand gallery; they’re copied to our CDN.</p>
+          <h2 className="text-body font-semibold text-fg mb-1">Images</h2>
+          <p className="text-body-small text-fg-muted mb-3">
+            {imageSlots > 0
+              ? `Select ${imageSlots} image${imageSlots !== 1 ? "s" : ""} for this template. First = hero. Choose from Pexels or your gallery; they're copied to our CDN.`
+              : "First image = hero. Choose from Pexels or your brand gallery; they're copied to our CDN."}
+          </p>
+          {imageSlots > 0 && selectedUrls.length >= imageSlots && (
+            <p className="text-body-small text-brand-600 mb-2">Maximum reached ({selectedUrls.length} / {imageSlots}). Remove one to change selection.</p>
+          )}
           <div className="grid gap-4 lg:grid-cols-3">
             <div className="space-y-3 lg:col-span-2">
               <div className="flex gap-2">
@@ -452,7 +477,9 @@ export default function EmailMarketingNewContentPage() {
               )}
             </div>
             <div>
-              <p className="text-body-small font-medium text-fg mb-1">Selected ({selectedUrls.length})</p>
+              <p className="text-body-small font-medium text-fg mb-1">
+                Selected ({selectedUrls.length}{maxImages != null ? ` / ${maxImages}` : ""})
+              </p>
               <ScrollArea className="h-[280px] rounded-lg border border-border bg-fg-muted/5">
                 <ul className="p-2 space-y-2">
                   {selectedUrls.map((url, index) => (
