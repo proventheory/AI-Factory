@@ -31,6 +31,17 @@ function isOurCdnUrl(url: string): boolean {
   return /supabase\.co\/storage\/v1\/object\/public\/upload\//.test(url);
 }
 
+/** Map social platform name to icon URL when design_tokens don't provide icon. */
+const SOCIAL_ICON_BY_NAME: Record<string, string> = {
+  linkedin: "https://cdn-icons-png.flaticon.com/512/145/145807.png",
+  instagram: "https://cdn-icons-png.flaticon.com/512/174/174855.png",
+  facebook: "https://cdn-icons-png.flaticon.com/512/1312/1312139.png",
+  twitter: "https://cdn-icons-png.flaticon.com/512/2504/2504947.png",
+  x: "https://cdn-icons-png.flaticon.com/512/2504/2504947.png",
+  youtube: "https://cdn-icons-png.flaticon.com/512/2504/2504947.png",
+  tiktok: "https://cdn-icons-png.freepik.com/512/15789/15789316.png",
+};
+
 /** Map product letter A–Z to product index 1–11 (wraps). */
 function productLetterToIndex(letter: string): number {
   const code = letter.toUpperCase().charCodeAt(0) - 65; // A=0, Z=25
@@ -50,6 +61,12 @@ function getBracketPlaceholderValue(
   if (k === "logo") {
     const logo = String(sectionJson.logoUrl ?? sectionJson.logo ?? "");
     return logo.trim() || EMPTY_IMAGE_DATA_URI;
+  }
+  // [white logo], [footer logo], [logo white] – for dark footers
+  if (/^(white\s+logo|footer\s+logo|logo\s+white)$/i.test(k)) {
+    const white = String(sectionJson.logo_white_url ?? sectionJson.logoWhite ?? sectionJson.white_logo ?? "");
+    if (white.trim()) return white.trim();
+    return String(sectionJson.logoUrl ?? sectionJson.logo ?? "").trim() || EMPTY_IMAGE_DATA_URI;
   }
   if (k === "siteUrl" || k === "site_url") return String(sectionJson.siteUrl ?? sectionJson.site_url ?? "#");
   // product productUrl (footer) -> siteUrl (check before "product X field")
@@ -87,6 +104,12 @@ function getBracketPlaceholderValue(
     }
     if (letter === "C") {
       return String(prop === "title" ? (sectionJson.product_2_title ?? "") : (sectionJson.product_2_description && String(sectionJson.product_2_description).trim() ? sectionJson.product_2_description : "Discover more."));
+    }
+    if (letter === "D") {
+      return String(prop === "title" ? (sectionJson.product_3_title ?? "") : (sectionJson.product_3_description && String(sectionJson.product_3_description).trim() ? sectionJson.product_3_description : "Discover more."));
+    }
+    if (letter === "E") {
+      return String(prop === "title" ? (sectionJson.product_4_title ?? "") : (sectionJson.product_4_description && String(sectionJson.product_4_description).trim() ? sectionJson.product_4_description : "Discover more."));
     }
   }
   // [social media link], [social media icon], [social media 2 link], etc.
@@ -846,6 +869,7 @@ export async function handleEmailGenerateMjml(request: {
       const mt = mergedTokens as Record<string, unknown> | undefined;
       const contactInfoFromTokens = mt?.contact_info;
       const logoObj = mt?.logo as Record<string, string> | undefined;
+      const logoUrlWhite = (logoObj?.url_white ?? (typeof mt?.logo_white_url === "string" ? mt.logo_white_url : ""))?.trim() ?? "";
       const brandColors = (mt?.color ?? mt?.colors) as Record<string, Record<string, string>> | undefined;
       const brandColorObj = brandColors?.brand;
       const secondaryColor = brandColorObj?.["600"] ?? brandColorObj?.primary_dark ?? "";
@@ -892,6 +916,9 @@ export async function handleEmailGenerateMjml(request: {
         brand_logo: logo,
         logo_src: logo,
         logoSrc: logo,
+        logo_white_url: logoUrlWhite || logo,
+        logoWhite: logoUrlWhite || logo,
+        white_logo: logoUrlWhite || logo,
         siteUrl,
         site_url: siteUrl,
         website: siteUrl,
@@ -922,11 +949,13 @@ export async function handleEmailGenerateMjml(request: {
         secondaryColor,
         brand_secondary: secondaryColor,
         ...Object.fromEntries(
-          (socialMediaFromTokens as Array<{ url?: string; icon?: string }>).flatMap((s, i) => {
+          (socialMediaFromTokens as Array<{ url?: string; icon?: string; name?: string }>).flatMap((s, i) => {
             const n = i + 1;
+            const iconUrl = (s?.icon ?? "").trim();
+            const icon = iconUrl || (s?.name ? SOCIAL_ICON_BY_NAME[String(s.name).toLowerCase()] : "") || EMPTY_IMAGE_DATA_URI;
             return [
               [`social_media_${n}_link`, (s?.url ?? "").trim() || "#"],
-              [`social_media_${n}_icon`, (s?.icon ?? "").trim() || EMPTY_IMAGE_DATA_URI],
+              [`social_media_${n}_icon`, icon],
             ];
           }),
         ),
@@ -1056,61 +1085,62 @@ export async function handleEmailGenerateMjml(request: {
         termsUrl: siteUrl && siteUrl !== "#" ? `${siteUrl.replace(/\/$/, "")}/terms` : "#",
       };
       let htmlInput = replaceBracketPlaceholders(rawHtml ?? "", sectionJson as Record<string, unknown>);
-      // Emma template: ensure product image, title, and "Discover more" links point to product URLs (not #)
+      // Emma template: ensure product image, title, "Discover more", and CTA buttons point to product/cta/site URLs (not #)
       const isEmmaTemplate = /emma/i.test(templateName);
+      const sj = sectionJson as Record<string, unknown>;
+      const ctaUrl = String(sj.cta_url ?? sj.cta_link ?? siteUrl ?? "#").trim() || "#";
+      const fallbackUrl = (productList[0]?.link && productList[0].link !== "#" ? productList[0].link : ctaUrl !== "#" ? ctaUrl : siteUrl) ?? "#";
       if (isEmmaTemplate) {
         const productUrls: string[] = [];
         const productImages: string[] = [];
         const productTitles: string[] = [];
         for (let n = 1; n <= 5; n++) {
-          const u = (sectionJson as Record<string, unknown>)[`product_${n}_url`];
-          const img = (sectionJson as Record<string, unknown>)[`product_${n}_image`];
-          const title = (sectionJson as Record<string, unknown>)[`product_${n}_title`];
-          productUrls.push(typeof u === "string" && u.trim() ? u.trim() : "#");
+          const u = sj[`product_${n}_url`];
+          const img = sj[`product_${n}_image`];
+          const title = sj[`product_${n}_title`];
+          productUrls.push(typeof u === "string" && u.trim() ? u.trim() : fallbackUrl);
           productImages.push(typeof img === "string" && img.trim() ? img.trim() : "");
           productTitles.push(typeof title === "string" && title.trim() ? String(title).trim() : "");
         }
-        if (productUrls.some((u) => u !== "#")) {
-          let linkCount = 0;
-          // Match both href="#" and href='#'
-          const linkRegex = /<a\s+href=["']#["']\s*([^>]*)>([\s\S]*?)<\/a>/gi;
-          htmlInput = htmlInput.replace(linkRegex, (_match, attrs, content) => {
-            const text = content.replace(/<[^>]+>/g, "").trim();
-            const hasImg = /<img[\s\S]*?>/i.test(content) && content.trim().length < 500;
-            const isDiscoverMore = /discover\s+more|learn\s+more|shop\s+now|view\s+product/i.test(text);
-            const isProductTitle = text.length > 0 && text.length < 120 && !/^(Terms|Privacy|Unsubscribe|View in browser|#)$/i.test(text);
+        let linkCount = 0;
+        const linkRegex = /<a\s+href=["']#["']\s*([^>]*)>([\s\S]*?)<\/a>/gi;
+        htmlInput = htmlInput.replace(linkRegex, (_match, attrs, content) => {
+          const text = content.replace(/<[^>]+>/g, "").trim();
+          const hasImg = /<img[\s\S]*?>/i.test(content) && content.trim().length < 500;
+          const isDiscoverMore = /discover\s+more|learn\s+more|shop\s+now|view\s+product/i.test(text);
+          const isProductTitle = text.length > 0 && text.length < 120 && !/^(Terms|Privacy|Unsubscribe|View in browser|#)$/i.test(text);
+          const isCtaButton = /shop\s+now|save\s+\d+%|elevate|explore|buy\s+now|get\s+started|learn\s+more/i.test(text) && text.length < 80;
 
-            let productIndex = -1;
-            if (hasImg) {
-              const srcMatch = content.match(/src=["']([^"']+)["']/i);
-              const src = srcMatch ? srcMatch[1].trim() : "";
-              if (src) {
-                for (let i = 0; i < productImages.length; i++) {
-                  if (productImages[i] && (src === productImages[i] || src.includes(productImages[i].slice(-40)) || productImages[i].includes(src.slice(-40)))) {
-                    productIndex = i;
-                    break;
-                  }
-                }
-              }
-            }
-            if (productIndex < 0 && isProductTitle && text) {
-              for (let i = 0; i < productTitles.length; i++) {
-                if (productTitles[i] && (text === productTitles[i] || text.includes(productTitles[i]) || productTitles[i].includes(text))) {
+          let productIndex = -1;
+          if (hasImg) {
+            const srcMatch = content.match(/src=["']([^"']+)["']/i);
+            const src = srcMatch ? srcMatch[1].trim() : "";
+            if (src) {
+              for (let i = 0; i < productImages.length; i++) {
+                if (productImages[i] && (src === productImages[i] || src.includes(productImages[i].slice(-40)) || productImages[i].includes(src.slice(-40)))) {
                   productIndex = i;
                   break;
                 }
               }
             }
-            if (productIndex < 0) productIndex = Math.floor(linkCount / 3) % productUrls.length;
-
-            if (hasImg || isDiscoverMore || isProductTitle) {
-              linkCount++;
-              const url = productUrls[productIndex] ?? productUrls[0] ?? "#";
-              return `<a href="${url.replace(/"/g, "&quot;")}" ${attrs}>${content}</a>`;
+          }
+          if (productIndex < 0 && isProductTitle && text) {
+            for (let i = 0; i < productTitles.length; i++) {
+              if (productTitles[i] && (text === productTitles[i] || text.includes(productTitles[i]) || productTitles[i].includes(text))) {
+                productIndex = i;
+                break;
+              }
             }
-            return _match;
-          });
-        }
+          }
+          if (productIndex < 0) productIndex = Math.floor(linkCount / 3) % productUrls.length;
+
+          if (hasImg || isDiscoverMore || isProductTitle || isCtaButton) {
+            linkCount++;
+            const url = (hasImg || isDiscoverMore || isProductTitle) ? (productUrls[productIndex] ?? productUrls[0] ?? fallbackUrl) : (ctaUrl !== "#" ? ctaUrl : fallbackUrl);
+            return `<a href="${String(url).replace(/"/g, "&quot;")}" ${attrs}>${content}</a>`;
+          }
+          return _match;
+        });
       }
       const html = applyBrandColorsAndCampaignCopy(
         htmlInput,
