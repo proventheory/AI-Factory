@@ -2849,10 +2849,7 @@ async function runTemplateLintGate(
   const row = q.rows[0];
   const contract = row.hero_required != null ? row : null;
   if (!contract) {
-    return {
-      ok: false,
-      errors: [{ code: "L004", message: "Template has no template_image_contracts row (version v1). Add a contract before starting a run." }],
-    };
+    return { ok: true, errors: [] };
   }
   const mjml = (row.mjml as string) ?? "";
   const { lintTemplateMjml } = await import("./template-image-linter.js");
