@@ -120,7 +120,8 @@ function getBracketPlaceholderValue(
     const linkKey = `social_media_${n}_link`;
     const iconKey = `social_media_${n}_icon`;
     const v = (sectionJson as Record<string, unknown>)[kind === "link" ? linkKey : iconKey];
-    return String(v ?? (kind === "link" ? (sectionJson.siteUrl ?? "#") : ""));
+    if (kind === "icon") return (v && String(v).trim()) ? String(v).trim() : EMPTY_IMAGE_DATA_URI;
+    return String(v ?? (sectionJson.siteUrl ?? "#"));
   }
   const socialFirstMatch = /^social\s+media\s+(link|icon)$/i.exec(k);
   if (socialFirstMatch) {
@@ -840,6 +841,7 @@ export async function handleEmailGenerateMjml(request: {
     try {
       // Generate email copy via LLM from campaign prompt so the email shows LLM-written copy, not the raw prompt.
       let generatedCopy: GeneratedEmailCopy | null = null;
+      let llmCopyUsed = false;
       if (campaignPrompt.trim().length > 0) {
         const productTitles = productList.map((p) => (p.title ?? p.name ?? "").trim()).filter(Boolean);
         generatedCopy = await generateEmailCopyViaLlm(
@@ -851,7 +853,21 @@ export async function handleEmailGenerateMjml(request: {
           productTitles.length > 0 ? productTitles : undefined,
         );
         if (generatedCopy) {
+          llmCopyUsed = true;
           console.log("[MJML] using LLM-generated copy", { run_id: runId, headlineLen: generatedCopy.headline.length, bodyLen: generatedCopy.body.length });
+        } else {
+          // LLM failed or returned invalid JSON: avoid repeating the raw prompt in headline, body, and button.
+          const trimmed = campaignPrompt.trim();
+          const words = trimmed.split(/\s+/).filter(Boolean);
+          const headlineFallback = words.slice(0, 8).join(" ").trim() || trimmed.slice(0, 50);
+          generatedCopy = {
+            headline: headlineFallback,
+            body: trimmed,
+            ctaText: words.length > 2 ? words.slice(-2).join(" ") : "Shop now",
+            ctaSectionHeadline: words.slice(0, 5).join(" ").trim() || "Don't miss out.",
+            ctaSectionBody: trimmed.length > 80 ? trimmed.slice(0, 80).trim() + "…" : trimmed,
+          };
+          console.log("[MJML] LLM copy failed; using prompt-derived fallback", { run_id: runId });
         }
       }
 
@@ -1103,6 +1119,21 @@ export async function handleEmailGenerateMjml(request: {
           productImages.push(typeof img === "string" && img.trim() ? img.trim() : "");
           productTitles.push(typeof title === "string" && title.trim() ? String(title).trim() : "");
         }
+        // Hero must show first campaign image, not a product. Replace first product-image in body (before footer) with hero.
+        const heroUrlForReplace = String(sj.hero_image_url ?? sj.hero_image ?? "").trim();
+        if (heroUrlForReplace) {
+          const bodyEnd = htmlInput.indexOf("#292929");
+          const bodyOnly = bodyEnd !== -1 ? htmlInput.slice(0, bodyEnd) : htmlInput;
+          const firstProductImg = bodyOnly.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i);
+          if (firstProductImg) {
+            const src = firstProductImg[1];
+            const isProductSrc = productImages.some((p) => p && (src === p || src.includes(p.slice(-50)) || p.includes(src.slice(-50)))) || /cdn\.shopify\.com|shopify\.com\/files\//i.test(src);
+            if (isProductSrc) {
+              const safeHero = heroUrlForReplace.replace(/"/g, "&quot;");
+              htmlInput = htmlInput.replace(firstProductImg[0], firstProductImg[0].replace(/src=["'][^"']*["']/i, `src="${safeHero}"`));
+            }
+          }
+        }
         let linkCount = 0;
         const linkRegex = /<a\s+href=["']#["']\s*([^>]*)>([\s\S]*?)<\/a>/gi;
         htmlInput = htmlInput.replace(linkRegex, (_match, attrs, content) => {
@@ -1188,34 +1219,55 @@ export async function handleEmailGenerateMjml(request: {
             return `${openDiv}<a href="${safeUrl}" style="color:inherit;text-decoration:none;font-weight:bold;" target="_blank">${fullText}</a>${closeDiv}`;
           });
         }
-        // Emma: template has no [social media N icon] block – inject social icons into footer after logo row
-        const socialEntries: { link: string; icon: string }[] = [];
-        for (let n = 1; n <= 5; n++) {
-          const link = String(sj[`social_media_${n}_link`] ?? "").trim();
-          const icon = String(sj[`social_media_${n}_icon`] ?? "").trim();
-          if (link && link !== "#" && icon && icon !== EMPTY_IMAGE_DATA_URI) {
-            socialEntries.push({ link, icon });
+        // Emma: inject social icons only when the template footer doesn't already have a social row (avoids duplicate row).
+        const footerStartForSocial = htmlInput.indexOf("#292929");
+        const footerSectionForSocial = footerStartForSocial !== -1 ? htmlInput.slice(footerStartForSocial) : "";
+        const hasExistingSocialRow =
+          footerSectionForSocial && (footerSectionForSocial.match(/<a [^>]+target="_blank"[^>]*>[\s\S]*?<img/gi) ?? []).length >= 2;
+        if (!hasExistingSocialRow) {
+          const socialEntries: { link: string; icon: string }[] = [];
+          for (let n = 1; n <= 5; n++) {
+            const link = String(sj[`social_media_${n}_link`] ?? "").trim();
+            const icon = String(sj[`social_media_${n}_icon`] ?? "").trim();
+            if (link && link !== "#" && icon && icon !== EMPTY_IMAGE_DATA_URI) {
+              socialEntries.push({ link, icon });
+            }
           }
-        }
-        if (socialEntries.length > 0) {
-          const footerStart = htmlInput.indexOf("#292929");
-          if (footerStart !== -1) {
-            const footerSection = htmlInput.slice(footerStart);
+          if (socialEntries.length > 0 && footerStartForSocial !== -1) {
+            const footerSection = htmlInput.slice(footerStartForSocial);
             const firstTrEnd = footerSection.indexOf("</tr>");
             if (firstTrEnd !== -1) {
               const socialCells = socialEntries
                 .map(
                   (e) =>
-                    `<a href="${e.link.replace(/"/g, "&quot;")}" target="_blank" style="display:inline-block;margin:0 6px;text-decoration:none;"><img src="${e.icon.replace(/"/g, "&quot;")}" alt="" width="24" height="24" style="border:0;display:block;height:24px;width:24px;" /></a>`,
+                    `<a href="${e.link.replace(/"/g, "&quot;")}" target="_blank" style="display:inline-block;margin:0 6px;text-decoration:none;"><img src="${e.icon.replace(/"/g, "&quot;")}" alt="" width="24" height="24" style="border:0;display:block;height:24px;width:24px;filter:brightness(0) invert(1);" /></a>`,
                 )
                 .join("");
               const socialRow = `<tr><td align="center" style="font-size:0px;padding:10px 25px 8px;word-break:break-word;">${socialCells}</td></tr>`;
-              const beforeFooter = htmlInput.slice(0, footerStart);
+              const beforeFooter = htmlInput.slice(0, footerStartForSocial);
               const afterFirstTr = footerSection.slice(firstTrEnd + 5);
               htmlInput = beforeFooter + footerSection.slice(0, firstTrEnd + 5) + socialRow + afterFirstTr;
             }
           }
         }
+        // Dark footer (#292929): make 24x24 social icon imgs white for contrast (modern look).
+        if (footerStartForSocial !== -1) {
+          const beforeFooter = htmlInput.slice(0, footerStartForSocial);
+          let darkFooter = htmlInput.slice(footerStartForSocial);
+          darkFooter = darkFooter.replace(/<img(\s[^>]*?)>/gi, (match) => {
+            if (!/width=["']24["']/i.test(match) || !/height=["']24["']/i.test(match) || /filter:\s*brightness/i.test(match)) return match;
+            const whiteFilter = "filter:brightness(0) invert(1);";
+            if (/style=["']([^"']*)["']/.test(match)) {
+              return match.replace(/style=["']([^"']*)["']/i, (_, s) => `style="${s}${s.trim().endsWith(";") ? "" : " "}${whiteFilter}"`);
+            }
+            return match.replace(/<img(\s)/i, `<img$1style="${whiteFilter}" `);
+          });
+          htmlInput = beforeFooter + darkFooter;
+        }
+        // Remove any unreplaced bracket placeholders in footer (e.g. [social media 5 icon]) so no literal text shows.
+        htmlInput = htmlInput.replace(/src="\[social media \d+ (icon|link)\]"/gi, (_, kind) =>
+          kind === "icon" ? `src="${EMPTY_IMAGE_DATA_URI}"` : 'src="#"',
+        );
       }
       const html = applyBrandColorsAndCampaignCopy(
         htmlInput,
@@ -1315,6 +1367,7 @@ export async function handleEmailGenerateMjml(request: {
           brand_color: brandColor,
           mjml: mjmlOut,
           email_generation_path: "template",
+          llm_copy_used: llmCopyUsed,
           mjml_template_id: input.template_id ?? null,
           generated_html_len: html?.length ?? 0,
           template_id_used: input.template_id ?? null,

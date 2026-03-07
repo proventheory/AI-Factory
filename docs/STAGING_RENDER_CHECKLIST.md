@@ -15,6 +15,14 @@ Use this after checking Environment for **ai-factory-api-staging**, **ai-factory
 
 If you see **"operator does not exist: run_status = text"** in logs (no-artifacts scan), the fix is in `main` (cast `r.status::text`). Redeploy the Control Plane from the latest `main`; if the error persists, use **Clear build cache & deploy** in Render so the bundle is rebuilt from source.
 
+**MaxClientsInSessionMode (Supabase session pooler limit):**  
+If the API or Console shows `{"error":"MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size"}`, the **Supabase session pooler** has run out of connections. Control Plane and Runner each use a pg pool (default `max: 5` via `DATABASE_POOL_MAX`). Fix by either:
+
+1. **Reduce app-side pools** so total stays under Supabase’s pool_size: on **ai-factory-api-staging** and **ai-factory-runner-staging**, set **`DATABASE_POOL_MAX`** = `3` (or `2`). Then save env and let Render redeploy. Code respects this in [control-plane/src/db.ts](control-plane/src/db.ts) and [runners/src/index.ts](runners/src/index.ts).
+2. **Increase Supabase pool_size** (if your plan allows): Supabase Dashboard → Database → Connection pooling → Session pooler settings.
+
+Render logs show this as `[reaper] Error: error: MaxClientsInSessionMode: ...` when the lease reaper (or any background job) can’t get a connection.
+
 **Optional (for self‑heal to sync worker env):**
 
 - **ENABLE_SELF_HEAL** = `true`
@@ -133,3 +141,13 @@ SELECT r.id AS run_id, r.status, r.started_at, (SELECT count(*) FROM artifacts a
 4. **Deploy code:** Ensure the latest commit (run ordering, started_at, wizard redirect, runbook, empty-state copy) is pushed to `main`; trigger deploy on Render for **ai-factory-api-staging** and **ai-factory-runner-staging** (and gateway if you changed its code). Vercel will auto-deploy the console from `main`.
 
 After that, run the email wizard again and check Pipeline Runs (filter **All**, newest at top).
+
+---
+
+## Render MCP (Cursor) – logs and workspace
+
+To check Render logs from Cursor (e.g. for MaxClientsInSessionMode or build failures):
+
+1. **Workspace:** The Render MCP needs a workspace selected before `list_services` or `list_logs`. If you have **only one workspace**, call **`list_workspaces`** first — the MCP will auto-select it. Then `list_services` and `list_logs` work. Service IDs: **ai-factory-api-staging** = `srv-d6ka7mhaae7s73csv3fg`, **ai-factory-runner-staging** = `srv-d6l0ba7gi27c738vbqog`.
+2. **Fetch API logs:** `list_logs` with `resource: ["srv-d6ka7mhaae7s73csv3fg"]`, `type: ["app"]`, optional `text: ["MaxClients", "pool"]` to find connection errors.
+3. **Fetch runner logs:** Same with `resource: ["srv-d6l0ba7gi27c738vbqog"]`.
