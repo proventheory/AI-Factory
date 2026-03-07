@@ -12,7 +12,7 @@ if (process.env.SENTRY_DSN?.trim()) {
 
 import { pool } from "./db.js";
 import { startApi } from "./api.js";
-import { reapStaleLeases, reconcileRunStatuses, reconcileRunningRunsWithNoPendingJobs } from "./reaper.js";
+import { reapStaleLeases, reconcileRunStatuses, reconcileRunningRunsWithNoPendingJobs, reconcileRunningRunsWithStaleQueuedJobs } from "./reaper.js";
 import { computeDrift, executeRollback, routeRun } from "./release-manager.js";
 import { scanAndRemediateNoArtifactsRuns, scanAndRemediateBadArtifactRuns } from "./no-artifacts-self-heal.js";
 
@@ -28,6 +28,10 @@ async function startReaperLoop(): Promise<void> {
     if (noPending.succeeded > 0 || noPending.failed > 0) {
       console.log(`[reaper] Startup: reconciled ${noPending.succeeded} run(s) to succeeded, ${noPending.failed} to failed (no pending jobs)`);
     }
+    const staleQueued = await reconcileRunningRunsWithStaleQueuedJobs(pool);
+    if (staleQueued > 0) {
+      console.log(`[reaper] Startup: marked ${staleQueued} run(s) failed (stale queued, never claimed)`);
+    }
   } catch (err) {
     console.error("[reaper] Startup reconcile error:", err);
   }
@@ -40,6 +44,10 @@ async function startReaperLoop(): Promise<void> {
       const noPending = await reconcileRunningRunsWithNoPendingJobs(pool);
       if (noPending.succeeded > 0 || noPending.failed > 0) {
         console.log(`[reaper] Reconciled runs with no pending jobs: ${noPending.succeeded} succeeded, ${noPending.failed} failed`);
+      }
+      const staleQueued = await reconcileRunningRunsWithStaleQueuedJobs(pool);
+      if (staleQueued > 0) {
+        console.log(`[reaper] Marked ${staleQueued} run(s) failed (stale queued, never claimed)`);
       }
     } catch (err) {
       console.error("[reaper] Error:", err);
