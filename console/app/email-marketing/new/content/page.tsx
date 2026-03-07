@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { Suspense, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -90,7 +90,7 @@ type PexelsPhoto = {
   photographer: string;
 };
 
-export default function EmailMarketingNewContentPage() {
+function ContentPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Wizard state is in sessionStorage; first render can be SSR where window is undefined, so we sync after mount so template/brand load and limits apply. URL params are used as fallback when opening in new tab or when sessionStorage is empty.
@@ -563,5 +563,22 @@ export default function EmailMarketingNewContentPage() {
         </div>
       </Stack>
     </PageFrame>
+  );
+}
+
+export default function EmailMarketingNewContentPage() {
+  return (
+    <Suspense
+      fallback={
+        <PageFrame>
+          <Stack>
+            <PageHeader title="Products & images" description="Loading…" />
+            <p className="text-fg-muted text-body-small">Loading…</p>
+          </Stack>
+        </PageFrame>
+      }
+    >
+      <ContentPageInner />
+    </Suspense>
   );
 }

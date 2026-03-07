@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button } from "@/components/ui";
@@ -33,7 +33,7 @@ function clearWizardState() {
   } catch (_e) {}
 }
 
-export default function EmailMarketingNewGeneratePage() {
+function GeneratePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [campaignPrompt, setCampaignPrompt] = useState("");
@@ -200,5 +200,22 @@ export default function EmailMarketingNewGeneratePage() {
         </div>
       </Stack>
     </PageFrame>
+  );
+}
+
+export default function EmailMarketingNewGeneratePage() {
+  return (
+    <Suspense
+      fallback={
+        <PageFrame>
+          <Stack>
+            <PageHeader title="Generate" description="Create campaign and run the email generation pipeline." />
+            <p className="text-fg-muted text-body-small">Loading…</p>
+          </Stack>
+        </PageFrame>
+      }
+    >
+      <GeneratePageContent />
+    </Suspense>
   );
 }
