@@ -96,7 +96,7 @@ export default function EmailMarketingNewContentPage() {
   const brandId = state.brand_profile_id as string | undefined;
   const templateId = state.template_id as string | undefined;
   const { data: brand } = useBrandProfile(brandId ?? null);
-  const { data: template } = useEmailTemplate(templateId ?? null);
+  const { data: template, isLoading: templateLoading } = useEmailTemplate(templateId ?? null);
   const imageSlots = template?.image_slots ?? 0;
   const productSlots = template?.product_slots ?? 0;
 
@@ -128,6 +128,22 @@ export default function EmailMarketingNewContentPage() {
       ? (readDesignTokensFromBrand(brand.design_tokens as Record<string, unknown>).assetUrls as string[])
       : [];
   const galleryUrls = brandAssetUrls.filter((u) => u?.trim());
+
+  // When template loads with slot limits, trim any over-selection (e.g. user selected before template loaded)
+  useEffect(() => {
+    if (productSlots > 0) {
+      setSelected((prev) => {
+        if (prev.size <= productSlots) return prev;
+        return new Set(Array.from(prev).slice(0, productSlots));
+      });
+    }
+    if (imageSlots > 0) {
+      setSelectedUrls((prev) => {
+        if (prev.length <= imageSlots) return prev;
+        return prev.slice(0, imageSlots);
+      });
+    }
+  }, [productSlots, imageSlots]);
 
   // Load products from cache or brand
   useEffect(() => {
@@ -312,9 +328,13 @@ export default function EmailMarketingNewContentPage() {
   };
 
   const slotHint =
-    imageSlots > 0 || productSlots > 0
-      ? `This template needs ${imageSlots} image${imageSlots !== 1 ? "s" : ""} and ${productSlots} product${productSlots !== 1 ? "s" : ""}. Limits are enforced below.`
-      : "Select products and images for your email. The first image is used as the hero; the rest fill content slots.";
+    templateLoading && templateId
+      ? "Loading template… You'll see \"Select X products\" and \"Select X image(s)\" below once loaded."
+      : !templateId
+        ? "Select a template in the previous step (Template) to see how many products and images to choose. Limits will apply once a template is selected."
+        : imageSlots > 0 || productSlots > 0
+          ? `This template needs ${imageSlots} image${imageSlots !== 1 ? "s" : ""} and ${productSlots} product${productSlots !== 1 ? "s" : ""}. Select exactly that many below — limits are enforced.`
+          : "Select products and images for your email. The first image is used as the hero; the rest fill content slots.";
 
   return (
     <PageFrame>
@@ -326,9 +346,11 @@ export default function EmailMarketingNewContentPage() {
 
         {/* Products section */}
         <section className="rounded-xl border-2 border-border bg-card p-5">
-          <h2 className="text-body font-semibold text-fg mb-1">Products</h2>
+          <h2 className="text-body font-semibold text-fg mb-1">
+            {productSlots > 0 ? `Select ${productSlots} product${productSlots !== 1 ? "s" : ""}` : "Products"}
+          </h2>
           {productSlots > 0 && (
-            <p className="text-body-small text-fg-muted mb-3">Select up to {productSlots} product{productSlots !== 1 ? "s" : ""} for this template.</p>
+            <p className="text-body-small text-fg-muted mb-3">This template needs {productSlots} product{productSlots !== 1 ? "s" : ""}. You cannot select more.</p>
           )}
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <input
@@ -419,10 +441,12 @@ export default function EmailMarketingNewContentPage() {
 
         {/* Images section */}
         <section className="rounded-xl border-2 border-border bg-card p-5">
-          <h2 className="text-body font-semibold text-fg mb-1">Images</h2>
+          <h2 className="text-body font-semibold text-fg mb-1">
+            {imageSlots > 0 ? `Select ${imageSlots} image${imageSlots !== 1 ? "s" : ""}` : "Images"}
+          </h2>
           <p className="text-body-small text-fg-muted mb-3">
             {imageSlots > 0
-              ? `Select ${imageSlots} image${imageSlots !== 1 ? "s" : ""} for this template. First = hero. Choose from Pexels or your gallery; they're copied to our CDN.`
+              ? `This template needs ${imageSlots} image${imageSlots !== 1 ? "s" : ""}. First = hero. You cannot select more. Choose from Pexels or your gallery; they're copied to our CDN.`
               : "First image = hero. Choose from Pexels or your brand gallery; they're copied to our CDN."}
           </p>
           {imageSlots > 0 && selectedUrls.length >= imageSlots && (
