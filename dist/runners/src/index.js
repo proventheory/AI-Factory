@@ -12,13 +12,21 @@ import { registerWorker, claimJob, startHeartbeatLoop, completeJobSuccess, compl
 import { getJobContext } from "./job-context.js";
 import { getHandler, registerAllHandlers } from "./handlers/index.js";
 import { getExecutor, run as runExecutor, jobRequestFromContext, persistJobResult, } from "./executor-registry.js";
-import { advanceSuccessors, checkRunCompletion } from "../../control-plane/src/scheduler.js";
+import { advanceSuccessors, checkRunCompletion, markRunFailedIfNoPendingJobs } from "../../control-plane/src/scheduler.js";
 registerAllHandlers();
 const POLL_INTERVAL_MS = 2_000;
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl?.trim()) {
     console.error("[runner] DATABASE_URL is not set. Set it in .env (same as Control Plane) so the runner can claim jobs.");
     process.exit(1);
+}
+// Log DB hint (host/port only) so you can compare with Control Plane GET /health/db — artifacts must be in the same DB.
+try {
+    const u = new URL(databaseUrl);
+    console.log("[runner] DATABASE_URL hint (verify same as Control Plane): host=" + u.hostname + " port=" + (u.port || "5432"));
+}
+catch {
+    console.log("[runner] DATABASE_URL hint: (could not parse URL)");
 }
 const poolSize = Math.max(1, Math.min(20, Number(process.env.DATABASE_POOL_MAX) || 5));
 const pool = new pg.Pool({
@@ -45,10 +53,11 @@ let activeJobs = 0;
 async function pollAndExecute() {
     if (activeJobs >= config.maxConcurrency)
         return;
+    let claimed = null;
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
-        const claimed = await claimJob(client, config.workerId);
+        claimed = await claimJob(client, config.workerId);
         // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
         if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
             if (!claimed) {
@@ -64,9 +73,22 @@ async function pollAndExecute() {
             return;
         }
         await client.query("COMMIT");
-        activeJobs++;
-        const { jobRun, claim } = claimed;
-        const stopHeartbeat = startHeartbeatLoop(pool, jobRun.id, config.workerId);
+    }
+    catch (err) {
+        await client.query("ROLLBACK").catch(() => { });
+        console.error("[runner] Poll error:", err);
+        return;
+    }
+    finally {
+        client.release();
+    }
+    // From here we no longer hold the claim connection, so the pool can serve other polls and jobs
+    if (!claimed)
+        return;
+    activeJobs++;
+    const { jobRun, claim } = claimed;
+    const stopHeartbeat = startHeartbeatLoop(pool, jobRun.id, config.workerId);
+    try {
         const ctxClient = await pool.connect();
         let jobContext = null;
         try {
@@ -111,6 +133,9 @@ async function pollAndExecute() {
                     await txClient.query("BEGIN");
                     await handler(txClient, jobContext, { runId: jobRun.run_id, jobRunId: jobRun.id, planNodeId: jobRun.plan_node_id });
                     await txClient.query("COMMIT");
+                    const countResult = await txClient.query("SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1", [jobRun.run_id]);
+                    const artifactCount = countResult.rows[0]?.c ?? 0;
+                    console.log("[runner] handler transaction committed (artifacts persisted)", { run_id: jobRun.run_id, job_type: jobContext.job_type, artifact_count: artifactCount });
                     // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
                     if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
                         fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:handler_done", message: "handler completed", data: { job_type: jobContext.job_type, runId: jobRun.run_id }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => { });
@@ -131,7 +156,7 @@ async function pollAndExecute() {
                     fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:no_executor_handler", message: "no executor or handler", data: { job_type: jobContext?.job_type }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => { });
                 }
                 // #endregion
-                await new Promise((resolve) => setTimeout(resolve, 100));
+                throw new Error(`No executor or handler for job_type=${jobContext?.job_type ?? "unknown"}. Ensure the runner is up to date and has a handler for this job (e.g. email_generate_mjml).`);
             }
             const txClient = await pool.connect();
             try {
@@ -170,6 +195,7 @@ async function pollAndExecute() {
             try {
                 await txClient.query("BEGIN");
                 await completeJobFailure(txClient, jobRun.id, jobRun.run_id, jobRun.plan_node_id, config.workerId, errorSig);
+                await markRunFailedIfNoPendingJobs(txClient, jobRun.run_id);
                 await txClient.query("COMMIT");
             }
             catch {
@@ -184,12 +210,8 @@ async function pollAndExecute() {
             activeJobs--;
         }
     }
-    catch (err) {
-        await client.query("ROLLBACK").catch(() => { });
-        console.error("[runner] Poll error:", err);
-    }
     finally {
-        client.release();
+        // outer try (97) finally — no op; ensures try/catch/finally is complete
     }
 }
 async function main() {

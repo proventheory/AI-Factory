@@ -64,10 +64,11 @@ let activeJobs = 0;
 async function pollAndExecute(): Promise<void> {
   if (activeJobs >= config.maxConcurrency) return;
 
+  let claimed: Awaited<ReturnType<typeof claimJob>> = null;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const claimed = await claimJob(client, config.workerId);
+    claimed = await claimJob(client, config.workerId);
     // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
     if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
       if (!claimed) {
@@ -82,11 +83,21 @@ async function pollAndExecute(): Promise<void> {
       return;
     }
     await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("[runner] Poll error:", err);
+    return;
+  } finally {
+    client.release();
+  }
 
-    activeJobs++;
-    const { jobRun, claim } = claimed;
-    const stopHeartbeat = startHeartbeatLoop(pool, jobRun.id, config.workerId);
+  // From here we no longer hold the claim connection, so the pool can serve other polls and jobs
+  if (!claimed) return;
+  activeJobs++;
+  const { jobRun, claim } = claimed;
+  const stopHeartbeat = startHeartbeatLoop(pool, jobRun.id, config.workerId);
 
+  try {
     const ctxClient = await pool.connect();
     let jobContext = null;
     try {
@@ -200,11 +211,8 @@ async function pollAndExecute(): Promise<void> {
       stopHeartbeat();
       activeJobs--;
     }
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
-    console.error("[runner] Poll error:", err);
   } finally {
-    client.release();
+    // outer try (97) finally — no op; ensures try/catch/finally is complete
   }
 }
 
