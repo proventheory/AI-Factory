@@ -296,6 +296,18 @@ function ContentPageInner() {
     setSelectedUrls((prev) => prev.filter((u) => u !== url));
   };
 
+  /** Move this image to the first position so it is used as the hero (runner uses images[0] as hero). */
+  const setAsHero = (url: string) => {
+    setSelectedUrls((prev) => {
+      const i = prev.indexOf(url);
+      if (i <= 0) return prev;
+      const next = [...prev];
+      const [removed] = next.splice(i, 1);
+      next.unshift(removed);
+      return next;
+    });
+  };
+
   const handleNext = async () => {
     setNextError(null);
     const products = Array.from(selected).map((i) => items[i]);
@@ -475,8 +487,8 @@ function ContentPageInner() {
           </h2>
           <p className="text-body-small text-fg-muted mb-3">
             {imageSlots > 0
-              ? `This template needs ${imageSlots} image${imageSlots !== 1 ? "s" : ""}. First = hero. You cannot select more. Choose from Pexels or your gallery; they're copied to our CDN.`
-              : "First image = hero. Choose from Pexels or your brand gallery; they're copied to our CDN."}
+              ? `This template needs ${imageSlots} image${imageSlots !== 1 ? "s" : ""}. The first image is the hero (top of email). Use "Set as hero" to reorder. Choose from Pexels or your gallery; they're copied to our CDN.`
+              : "The first image is the hero (top of email). Use \"Set as hero\" on any image to move it to the top. Choose from Pexels or your brand gallery; they're copied to our CDN."}
           </p>
           {imageSlots > 0 && selectedUrls.length >= imageSlots && (
             <p className="text-body-small text-brand-600 mb-2">Maximum reached ({selectedUrls.length} / {imageSlots}). Remove one to change selection.</p>
@@ -538,7 +550,11 @@ function ContentPageInner() {
                   {selectedUrls.map((url, index) => (
                     <li key={url} className="flex items-center gap-2 rounded border border-border bg-card p-2">
                       <img src={url} alt="" className="h-10 w-10 shrink-0 rounded object-cover" onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' fill='%23ccc'%3E%3Crect width='40' height='40'/%3E%3C/svg%3E"; }} />
-                      {index === 0 && <span className="text-[10px] font-medium text-brand-600">Hero</span>}
+                      {index === 0 ? (
+                        <span className="text-[10px] font-medium text-brand-600 shrink-0">Hero</span>
+                      ) : (
+                        <Button variant="secondary" size="sm" className="shrink-0 text-[10px] py-1 px-2" onClick={() => setAsHero(url)}>Set as hero</Button>
+                      )}
                       <span className="min-w-0 flex-1 truncate text-body-small text-fg-muted">{url.slice(0, 30)}…</span>
                       <Button variant="secondary" size="sm" onClick={() => removeSelectedImage(url)}>Remove</Button>
                     </li>

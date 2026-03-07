@@ -419,9 +419,10 @@ function applyBrandColorsAndCampaignCopy(
     if (out.includes(DEFAULT_HERO_BODY)) {
       out = out.replace(DEFAULT_HERO_BODY, safeBody);
     } else {
-      // Fallback: template may have entity-encoded or slightly different text (e.g. you're → you&#39;re)
+      // Fallback: template may have entity-encoded or slightly different text (e.g. you're → you&#39;re).
+      // Use body whenever we have it (LLM or campaignPrompt); otherwise static "Emma SMS helps you..." stays.
       const emmaStart = "Emma SMS helps you";
-      if (out.includes(emmaStart) && generatedCopy?.body) {
+      if (out.includes(emmaStart) && body.length > 0) {
         const flexibleEmma = /Emma SMS helps you[\s\S]*?<\/(p|td|div)>/i;
         out = out.replace(flexibleEmma, (_m, tag) => safeBody + "</" + tag + ">");
       }
@@ -1141,6 +1142,80 @@ export async function handleEmailGenerateMjml(request: {
           }
           return _match;
         });
+        // Emma: footer uses siteUrl as logo img src – replace with white logo in dark footer (#292929)
+        const logoWhite = String(sj.logo_white_url ?? sj.logoWhite ?? sj.white_logo ?? sj.logoUrl ?? "").trim();
+        if (logoWhite && siteUrl && siteUrl !== "#") {
+          const footerStart = htmlInput.indexOf("#292929");
+          if (footerStart !== -1) {
+            const beforeFooter = htmlInput.slice(0, footerStart);
+            const footerSection = htmlInput.slice(footerStart);
+            const safeLogo = logoWhite.replace(/"/g, "&quot;");
+            let out = footerSection;
+            const siteUrlNorm = siteUrl.replace(/\/$/, "");
+            if (footerSection.includes(`src="${siteUrl}"`) || footerSection.includes(`src="${siteUrlNorm}"`)) {
+              out = out.replace(new RegExp(`src="${siteUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "i"), `src="${safeLogo}"`);
+              out = out.replace(new RegExp(`src="${siteUrlNorm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`, "i"), `src="${safeLogo}"`);
+            }
+            htmlInput = beforeFooter + out;
+          }
+        }
+        // Emma: "Request a demo" and similar CTA <p> are not links – replace <p>...</p> with <a href="cta_url">...</a>
+        const requestDemoRegex = /<p(\s+style="[^"]*")>Request a demo<\/p>/gi;
+        htmlInput = htmlInput.replace(requestDemoRegex, () => {
+          const href = (ctaUrl !== "#" ? ctaUrl : fallbackUrl).replace(/"/g, "&quot;");
+          return `<a href="${href}" style="display:inline-block;background:#FFFFFF;color:#16a34a;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;line-height:130%;margin:0;text-decoration:none;padding:10px 40px 15px 40px;border-radius:50px;" target="_blank">Request a demo</a>`;
+        });
+        // Emma: wrap standalone "Discover more." and product title text in <a href="product_url"> (template often uses <div> not <a>)
+        let discoverIndex = 0;
+        htmlInput = htmlInput.replace(/<div([^>]*)>(\s*Discover more\.?\s*)<\/div>/gi, (_match, attrs, text) => {
+          if (text.includes("<a ")) return _match;
+          const url = productUrls[discoverIndex] ?? productUrls[0] ?? fallbackUrl;
+          discoverIndex++;
+          const safeUrl = url.replace(/"/g, "&quot;");
+          return `<div${attrs}><a href="${safeUrl}" style="color:inherit;text-decoration:none;" target="_blank">${text.trim()}</a></div>`;
+        });
+        for (let i = 0; i < productTitles.length; i++) {
+          if (!productTitles[i]) continue;
+          const title = productTitles[i];
+          const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          // Match <div>title</div> or <div>title | extra text</div> (template may append suffix)
+          const re = new RegExp(`(<div([^>]*)>)\\s*(${escaped})([^<]*)\\s*(</div>)`, "gi");
+          htmlInput = htmlInput.replace(re, (match, openDiv, attrs, titlePart, suffix, closeDiv) => {
+            if (match.includes("<a ")) return match;
+            const url = productUrls[i] ?? productUrls[0] ?? fallbackUrl;
+            const safeUrl = url.replace(/"/g, "&quot;");
+            const fullText = (titlePart + (suffix ?? "").trim()).trim();
+            return `${openDiv}<a href="${safeUrl}" style="color:inherit;text-decoration:none;font-weight:bold;" target="_blank">${fullText}</a>${closeDiv}`;
+          });
+        }
+        // Emma: template has no [social media N icon] block – inject social icons into footer after logo row
+        const socialEntries: { link: string; icon: string }[] = [];
+        for (let n = 1; n <= 5; n++) {
+          const link = String(sj[`social_media_${n}_link`] ?? "").trim();
+          const icon = String(sj[`social_media_${n}_icon`] ?? "").trim();
+          if (link && link !== "#" && icon && icon !== EMPTY_IMAGE_DATA_URI) {
+            socialEntries.push({ link, icon });
+          }
+        }
+        if (socialEntries.length > 0) {
+          const footerStart = htmlInput.indexOf("#292929");
+          if (footerStart !== -1) {
+            const footerSection = htmlInput.slice(footerStart);
+            const firstTrEnd = footerSection.indexOf("</tr>");
+            if (firstTrEnd !== -1) {
+              const socialCells = socialEntries
+                .map(
+                  (e) =>
+                    `<a href="${e.link.replace(/"/g, "&quot;")}" target="_blank" style="display:inline-block;margin:0 6px;text-decoration:none;"><img src="${e.icon.replace(/"/g, "&quot;")}" alt="" width="24" height="24" style="border:0;display:block;height:24px;width:24px;" /></a>`,
+                )
+                .join("");
+              const socialRow = `<tr><td align="center" style="font-size:0px;padding:10px 25px 8px;word-break:break-word;">${socialCells}</td></tr>`;
+              const beforeFooter = htmlInput.slice(0, footerStart);
+              const afterFirstTr = footerSection.slice(firstTrEnd + 5);
+              htmlInput = beforeFooter + footerSection.slice(0, firstTrEnd + 5) + socialRow + afterFirstTr;
+            }
+          }
+        }
       }
       const html = applyBrandColorsAndCampaignCopy(
         htmlInput,
