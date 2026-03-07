@@ -32,7 +32,7 @@ export default function EmailMarketingNewBrandPage() {
 
   const handleSelect = (brandId: string) => {
     setWizardState({ brand_profile_id: brandId });
-    router.push("/email-marketing/new/products");
+    router.push("/email-marketing/new/template");
   };
 
   return (
@@ -66,7 +66,7 @@ export default function EmailMarketingNewBrandPage() {
         )}
         <div className="flex flex-wrap gap-3">
           <Button variant="primary" asChild>
-            <Link href="/email-marketing/new/products">Next: Products</Link>
+            <Link href="/email-marketing/new/template">Next: Template</Link>
           </Button>
           <Button variant="secondary" asChild>
             <Link href="/email-marketing/new">Back</Link>

@@ -136,10 +136,10 @@ export default function EmailMarketingNewTemplatePage() {
           return;
         }
         setWizardState({ template_id: templateId });
-        router.push("/email-marketing/new/generate");
+        router.push("/email-marketing/new/products");
       } catch (_e) {
         setWizardState({ template_id: templateId });
-        router.push("/email-marketing/new/generate");
+        router.push("/email-marketing/new/products");
       } finally {
         setValidationLoading(false);
       }
@@ -151,7 +151,7 @@ export default function EmailMarketingNewTemplatePage() {
   const continueAnyway = () => {
     if (validationModal) {
       setWizardState({ template_id: validationModal.templateId });
-      router.push("/email-marketing/new/generate");
+      router.push("/email-marketing/new/products");
       closeValidationModal();
     }
   };
@@ -208,14 +208,12 @@ export default function EmailMarketingNewTemplatePage() {
                         <p className="truncate font-medium text-fg">
                           {t.name}
                         </p>
-                        <p className="text-body-small text-fg-muted">
+                        <p className="text-body-small text-fg-muted break-words">
                           {t.layout_style ?? `(${t.type})`}
+                          {(t.image_slots != null || t.product_slots != null) && (
+                            <> · {t.image_slots ?? 0} image{t.image_slots !== 1 ? "s" : ""}, {t.product_slots ?? 0} product{(t.product_slots ?? 0) !== 1 ? "s" : ""}</>
+                          )}
                         </p>
-                        {(t.image_slots != null || t.product_slots != null) && (
-                          <p className="text-body-small text-fg-muted mt-0.5">
-                            Image slots: {t.image_slots ?? 0} · Product slots: {t.product_slots ?? 0}
-                          </p>
-                        )}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -264,11 +262,11 @@ export default function EmailMarketingNewTemplatePage() {
         )}
 
         <div className="flex flex-wrap gap-3">
-          <Button variant="primary" onClick={() => router.push("/email-marketing/new/generate")}>
-            Next: Generate
+          <Button variant="primary" onClick={() => router.push("/email-marketing/new/products")}>
+            Next: Products
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/email-marketing/new/images">Back</Link>
+            <Link href="/email-marketing/new/brand">Back</Link>
           </Button>
         </div>
       </Stack>

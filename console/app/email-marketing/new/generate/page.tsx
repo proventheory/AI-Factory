@@ -158,6 +158,9 @@ export default function EmailMarketingNewGeneratePage() {
             className="w-full max-w-md rounded border border-border bg-bg px-3 py-2 text-body-small"
             rows={2}
           />
+          <p className="text-body-small text-fg-muted mt-1">
+            Add a theme (e.g. Summer sale) to guide the generated email copy. You can leave it blank to use a default.
+          </p>
         </div>
         {error && <p className="text-state-danger text-body-small">{error}</p>}
         {step && <p className="text-body-small text-fg-muted">{step}</p>}
@@ -177,7 +180,7 @@ export default function EmailMarketingNewGeneratePage() {
             );
           })()}
           <Button variant="secondary" asChild disabled={busy}>
-            <Link href="/email-marketing/new/template">Back</Link>
+            <Link href="/email-marketing/new/images">Back</Link>
           </Button>
           <Button variant="secondary" asChild disabled={busy}>
             <Link href="/email-marketing">Cancel</Link>

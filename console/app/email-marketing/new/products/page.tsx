@@ -391,7 +391,7 @@ export default function EmailMarketingNewProductsPage() {
             {saving ? "Saving…" : "Next: Images"}
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/email-marketing/new/brand">Back</Link>
+            <Link href="/email-marketing/new/template">Back</Link>
           </Button>
         </div>
       </Stack>

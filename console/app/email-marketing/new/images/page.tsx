@@ -95,7 +95,7 @@ export default function EmailMarketingNewImagesPage() {
     const cdnAlready = selectedUrls.filter(isCdnUrl);
     if (toCopy.length === 0) {
       setWizardState({ selected_images: cdnAlready });
-      router.push("/email-marketing/new/template");
+      router.push("/email-marketing/new/generate");
       return;
     }
     setNextLoading(true);
@@ -110,11 +110,11 @@ export default function EmailMarketingNewImagesPage() {
       if (newCdnUrls.length < toCopy.length) {
         setNextError(`Some images could not be copied to CDN (${newCdnUrls.length}/${toCopy.length} succeeded). Your selection was saved; the runner will use what it can.`);
       }
-      router.push("/email-marketing/new/template");
+      router.push("/email-marketing/new/generate");
     } catch (e) {
       setWizardState({ selected_images: selectedUrls });
       setNextError(e instanceof Error ? e.message : "Failed to copy images to CDN. Your selection was saved; you can continue.");
-      router.push("/email-marketing/new/template");
+      router.push("/email-marketing/new/generate");
     } finally {
       setNextLoading(false);
     }
@@ -199,12 +199,18 @@ export default function EmailMarketingNewImagesPage() {
           {/* Right: Selected */}
           <div className="rounded-xl border-2 border-border bg-card p-5 shadow-sm">
             <h3 className="text-body font-semibold text-fg mb-1">Selected ({selectedUrls.length})</h3>
-            <p className="text-body-small text-fg-muted mb-4">These will be copied to our CDN when you go Next so emails never lose images.</p>
+            <p className="text-body-small text-fg-muted mb-1">These will be copied to our CDN when you go Next so emails never lose images.</p>
+            <p className="text-body-small text-fg-muted mb-4">The <strong>first image</strong> is used as the hero/banner at the top of the email; the rest appear in content areas with product images (product images are never used as the hero).</p>
             <ScrollArea className="h-[380px] rounded-lg border-2 border-border bg-fg-muted/10">
               <ul className="p-3 space-y-2">
-                {selectedUrls.map((url) => (
+                {selectedUrls.map((url, index) => (
                   <li key={url} className="flex items-center gap-3 rounded-lg border-2 border-border bg-card p-2.5">
-                    <img src={url} alt="" className="h-12 w-12 rounded-md object-cover shrink-0 border border-border" onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' fill='%23ccc'%3E%3Crect width='48' height='48'/%3E%3C/svg%3E"; }} />
+                    <div className="relative shrink-0">
+                      <img src={url} alt="" className="h-12 w-12 rounded-md object-cover border border-border" onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' fill='%23ccc'%3E%3Crect width='48' height='48'/%3E%3C/svg%3E"; }} />
+                      {index === 0 && (
+                        <span className="absolute -top-1.5 -right-1.5 rounded bg-brand-600 px-1.5 py-0.5 text-[10px] font-medium text-white shadow">Hero</span>
+                      )}
+                    </div>
                     <span className="min-w-0 flex-1 truncate text-body-small text-fg-muted">{url.slice(0, 40)}…</span>
                     <Button variant="secondary" size="sm" onClick={() => removeSelected(url)}>Remove</Button>
                   </li>
@@ -222,7 +228,7 @@ export default function EmailMarketingNewImagesPage() {
 
         <div className="flex flex-wrap gap-3 pt-2">
           <Button variant="primary" onClick={handleNext} disabled={nextLoading}>
-            {nextLoading ? "Copying to CDN…" : "Next: Template"}
+            {nextLoading ? "Copying to CDN…" : "Next: Render preview"}
           </Button>
           <Button variant="secondary" asChild>
             <Link href="/email-marketing/new/products">Back</Link>
