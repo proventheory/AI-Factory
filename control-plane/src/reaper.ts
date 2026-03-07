@@ -115,3 +115,51 @@ export async function reconcileRunStatuses(pool: pg.Pool): Promise<number> {
   }
   return reconciled;
 }
+
+/**
+ * Reconcile runs stuck in "running" when there are no pending job_runs (all are succeeded or failed).
+ * E.g. after lease_expired the job_runs are failed but the run was never marked failed/succeeded.
+ */
+export async function reconcileRunningRunsWithNoPendingJobs(pool: pg.Pool): Promise<{ succeeded: number; failed: number }> {
+  const runs = await pool.query<{ id: string }>(
+    `SELECT r.id
+     FROM runs r
+     WHERE r.status = 'running'
+       AND (SELECT count(*) FROM job_runs jr WHERE jr.run_id = r.id AND jr.status IN ('queued', 'running')) = 0
+       AND (SELECT count(*) FROM job_runs jr WHERE jr.run_id = r.id) > 0
+     LIMIT 200`,
+  );
+  let succeeded = 0;
+  let failed = 0;
+  for (const row of runs.rows) {
+    const counts = await pool.query<{ succeeded: string; failed: string }>(
+      `SELECT
+         count(*) FILTER (WHERE status = 'succeeded')::text AS succeeded,
+         count(*) FILTER (WHERE status = 'failed')::text AS failed
+       FROM job_runs WHERE run_id = $1`,
+      [row.id],
+    );
+    const s = Number(counts.rows[0]?.succeeded ?? 0);
+    const f = Number(counts.rows[0]?.failed ?? 0);
+    if (s > 0 && f === 0) {
+      const r = await pool.query(
+        `UPDATE runs SET status = 'succeeded', ended_at = now() WHERE id = $1 AND status = 'running' RETURNING id`,
+        [row.id],
+      );
+      if (r.rowCount && r.rowCount > 0) {
+        await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'succeeded')`, [row.id]).catch(() => {});
+        succeeded++;
+      }
+    } else {
+      const r = await pool.query(
+        `UPDATE runs SET status = 'failed', ended_at = now() WHERE id = $1 AND status = 'running' RETURNING id`,
+        [row.id],
+      );
+      if (r.rowCount && r.rowCount > 0) {
+        await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`, [row.id]).catch(() => {});
+        failed++;
+      }
+    }
+  }
+  return { succeeded, failed };
+}

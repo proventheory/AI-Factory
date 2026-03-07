@@ -40,6 +40,7 @@ function GeneratePageContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<string>("");
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   // Wizard state is in sessionStorage; sync after mount (and from URL fallback) so we don't show "Select a template" when user came from Content
   const [wizardTemplateId, setWizardTemplateId] = useState<string | null>(null);
 
@@ -111,6 +112,7 @@ function GeneratePageContent() {
       const startJson = await startRes.json();
       if (!startRes.ok) throw new Error(startJson.error ?? "Start run failed");
       const runId = startJson.id as string;
+      setCurrentRunId(runId);
 
       setStep("Waiting for run…");
       for (let i = 0; i < 120; i++) {
@@ -144,12 +146,13 @@ function GeneratePageContent() {
           return;
         }
       }
-      throw new Error("Run timed out");
+      throw new Error("Run timed out (about 4 min). Open the run below to see status or try again.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setBusy(false);
       setStep("");
+      setCurrentRunId(null);
     }
   };
 
@@ -177,7 +180,20 @@ function GeneratePageContent() {
           </p>
         </div>
         {error && <p className="text-state-danger text-body-small">{error}</p>}
-        {step && <p className="text-body-small text-fg-muted">{step}</p>}
+        {step && (
+          <div className="space-y-1">
+            <p className="text-body-small text-fg-muted">{step}</p>
+            {currentRunId && step.includes("Waiting") && (
+              <p className="text-body-small text-fg-muted">
+                Run may take 1–2 minutes.{" "}
+                <Link href={`/runs/${currentRunId}`} className="text-brand-600 hover:underline">
+                  Open run
+                </Link>{" "}
+                to see status, jobs, or artifacts without waiting.
+              </p>
+            )}
+          </div>
+        )}
         <div className="flex flex-wrap gap-3">
           {(() => {
             const isDisabled = busy || createCampaign.isPending || !hasTemplate;
