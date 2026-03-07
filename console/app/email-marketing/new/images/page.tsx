@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button, ScrollArea } from "@/components/ui";
-import { useBrandProfile } from "@/hooks/use-api";
+import { useBrandProfile, useEmailTemplate } from "@/hooks/use-api";
 import { pexelsSearch, copyCampaignImageToCdn } from "@/lib/api";
 import { readDesignTokensFromBrand } from "../../../brands/token-helpers";
 
@@ -43,7 +43,10 @@ export default function EmailMarketingNewImagesPage() {
   const router = useRouter();
   const state = getWizardState();
   const brandId = state.brand_profile_id as string | undefined;
+  const templateId = state.template_id as string | undefined;
   const { data: brand } = useBrandProfile(brandId ?? null);
+  const { data: template } = useEmailTemplate(templateId ?? null);
+  const imageSlots = template?.image_slots ?? 0;
 
   const initialImages = (state.selected_images as string[]) ?? [];
   const [selectedUrls, setSelectedUrls] = useState<string[]>(initialImages);
@@ -125,7 +128,11 @@ export default function EmailMarketingNewImagesPage() {
       <Stack>
         <PageHeader
           title="Images"
-          description="Select images from Pexels or your brand gallery. They will be stored on our CDN so your emails always load."
+          description={
+            imageSlots > 0
+              ? `Select ${imageSlots} image${imageSlots !== 1 ? "s" : ""} for this template. Choose from Pexels or your brand gallery; they will be stored on our CDN.`
+              : "Select images from Pexels or your brand gallery. They will be stored on our CDN so your emails always load."
+          }
         />
 
         <div className="grid gap-6 lg:grid-cols-3">

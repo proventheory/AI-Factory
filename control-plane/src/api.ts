@@ -2665,15 +2665,41 @@ app.get("/v1/email_templates", async (req, res) => {
       params.push(brand_profile_id);
     }
     params.push(limit, offset);
-    // Query email_templates only so list works when template_image_contracts migration is not yet applied.
-    const q = `SELECT t.* FROM email_templates t
-      WHERE ${conditions.join(" AND ")} ORDER BY t.created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
     const countQ = `SELECT count(*)::int AS total FROM email_templates t WHERE ${conditions.join(" AND ")}`;
+    let items: Record<string, unknown>[];
+    try {
+      const q = `SELECT t.*, c.max_content_slots AS contract_max_content_slots, c.max_product_slots AS contract_max_product_slots
+        FROM email_templates t
+        LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1'
+        WHERE ${conditions.join(" AND ")} ORDER BY t.created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
+      const [itemsResult, totalResult] = await Promise.all([
+        pool.query(q, params),
+        pool.query(countQ, params.slice(0, -2)),
+      ]);
+      items = itemsResult.rows as Record<string, unknown>[];
+      const total = totalResult.rows[0]?.total ?? 0;
+      for (const row of items) {
+        const maxContent = row.contract_max_content_slots;
+        const maxProduct = row.contract_max_product_slots;
+        delete row.contract_max_content_slots;
+        delete row.contract_max_product_slots;
+        const contract =
+          maxContent != null || maxProduct != null
+            ? { max_content_slots: maxContent as number | undefined, max_product_slots: maxProduct as number | undefined }
+            : null;
+        enrichTemplateRow(row, contract);
+      }
+      res.json({ items, total });
+      return;
+    } catch (e) {
+      if (!isTemplateImageContractsMissing(e)) throw e;
+    }
+    const fallbackQ = `SELECT t.* FROM email_templates t WHERE ${conditions.join(" AND ")} ORDER BY t.created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
     const [itemsResult, totalResult] = await Promise.all([
-      pool.query(q, params),
+      pool.query(fallbackQ, params),
       pool.query(countQ, params.slice(0, -2)),
     ]);
-    const items = itemsResult.rows as Record<string, unknown>[];
+    items = itemsResult.rows as Record<string, unknown>[];
     for (const row of items) {
       enrichTemplateRow(row, null);
     }
@@ -2747,10 +2773,30 @@ function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content
 app.get("/v1/email_templates/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    const r = await pool.query("SELECT * FROM email_templates WHERE id = $1", [id]);
-    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
-    const row = r.rows[0] as Record<string, unknown>;
-    enrichTemplateRow(row, null);
+    let row: Record<string, unknown>;
+    try {
+      const r = await pool.query(
+        "SELECT t.*, c.max_content_slots AS contract_max_content_slots, c.max_product_slots AS contract_max_product_slots FROM email_templates t LEFT JOIN template_image_contracts c ON c.template_id = t.id AND c.version = 'v1' WHERE t.id = $1",
+        [id]
+      );
+      if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+      row = r.rows[0] as Record<string, unknown>;
+      const maxContent = row.contract_max_content_slots;
+      const maxProduct = row.contract_max_product_slots;
+      delete row.contract_max_content_slots;
+      delete row.contract_max_product_slots;
+      const contract =
+        maxContent != null || maxProduct != null
+          ? { max_content_slots: maxContent as number | undefined, max_product_slots: maxProduct as number | undefined }
+          : null;
+      enrichTemplateRow(row, contract);
+    } catch (e) {
+      if (!isTemplateImageContractsMissing(e)) throw e;
+      const r = await pool.query("SELECT * FROM email_templates WHERE id = $1", [id]);
+      if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+      row = r.rows[0] as Record<string, unknown>;
+      enrichTemplateRow(row, null);
+    }
     res.json(row);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });

@@ -55,15 +55,17 @@ export default function EmailTemplateDetailPage() {
   const brandName = template.brand_profile_id
     ? (brand?.name ?? brandsMap.get(template.brand_profile_id) ?? template.brand_profile_id?.slice(0, 8))
     : "—";
+  const imageSlots = template.image_slots ?? template.img_count ?? 0;
+  const productSlots = template.product_slots ?? 0;
 
   return (
     <PageFrame>
       <Stack>
         <PageHeader
           title={template.name}
-          description={`Email template · Style: ${template.type}${template.brand_profile_id ? ` · Brand: ${brandName}` : " · Global"}`}
+          description={template.brand_profile_id ? `Global · ${brandName}` : "Global (all brands)"}
           actions={
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="primary" asChild>
                 <Link href="/email-marketing/new/template">Use in email wizard</Link>
               </Button>
@@ -73,50 +75,85 @@ export default function EmailTemplateDetailPage() {
             </div>
           }
         />
-        <CardSection title="Details">
-          <dl className="grid gap-3 text-body-small sm:grid-cols-2">
+
+        {/* Template capacity — prominent so users see slot limits before using in wizard */}
+        <CardSection title="Template capacity" className="border-brand-200 bg-brand-50/50">
+          <div className="flex flex-wrap gap-6">
             <div>
-              <dt className="text-text-secondary">Name</dt>
-              <dd className="font-medium">{template.name}</dd>
+              <p className="text-caption-small uppercase tracking-wider text-fg-muted">Layout style</p>
+              <p className="text-body font-medium text-fg">{template.type ?? "email"} (email template)</p>
             </div>
             <div>
-              <dt className="text-text-secondary">Layout style</dt>
-              <dd className="font-medium">{template.type} (email template)</dd>
+              <p className="text-caption-small uppercase tracking-wider text-fg-muted">Slots</p>
+              <p className="text-body font-medium text-fg">
+                {imageSlots} image{imageSlots !== 1 ? "s" : ""}, {productSlots} product{productSlots !== 1 ? "s" : ""}
+              </p>
+              <p className="text-caption-small text-fg-muted">
+                Content: [image 1], [image 2], … · Products: product_1, …
+              </p>
             </div>
-            <div>
-              <dt className="text-text-secondary">Brand</dt>
-              <dd className="font-medium">
-                {template.brand_profile_id ? (
-                  <Link href={`/brands/${template.brand_profile_id}`} className="text-brand-600 hover:underline">
-                    {brandName}
-                  </Link>
-                ) : (
-                  "Global (all brands)"
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-text-secondary">Image slots</dt>
-              <dd className="font-medium">{template.img_count}</dd>
-            </div>
-            <div>
-              <dt className="text-text-secondary">Created</dt>
-              <dd className="font-medium">{new Date(template.created_at).toLocaleString()}</dd>
-            </div>
-          </dl>
+          </div>
         </CardSection>
-        {template.image_url && (
-          <CardSection title="Preview image">
-            <img
-              src={template.image_url}
-              alt={template.name}
-              className="max-h-48 w-auto rounded border border-border object-contain"
-            />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <CardSection title="Details">
+            <dl className="grid gap-3 text-body-small sm:grid-cols-1">
+              <div>
+                <dt className="text-text-secondary">Name</dt>
+                <dd className="font-medium">{template.name}</dd>
+              </div>
+              <div>
+                <dt className="text-text-secondary">Brand</dt>
+                <dd className="font-medium">
+                  {template.brand_profile_id ? (
+                    <Link href={`/brands/${template.brand_profile_id}`} className="text-brand-600 hover:underline">
+                      {brandName}
+                    </Link>
+                  ) : (
+                    "Global (all brands)"
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-text-secondary">Layout style</dt>
+                <dd className="font-medium">{template.layout_style ?? `${template.type ?? "email"} (email template)`}</dd>
+              </div>
+              <div>
+                <dt className="text-text-secondary">Slots</dt>
+                <dd className="font-medium">
+                  {imageSlots} image{imageSlots !== 1 ? "s" : ""}, {productSlots} product{productSlots !== 1 ? "s" : ""}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-text-secondary">Created</dt>
+                <dd className="font-medium">{new Date(template.created_at).toLocaleString()}</dd>
+              </div>
+            </dl>
           </CardSection>
-        )}
+
+          {template.image_url && (
+            <CardSection title="Preview">
+              <div className="flex justify-center rounded-lg border border-border bg-fg-muted/5 p-4">
+                <img
+                  src={template.image_url}
+                  alt={template.name}
+                  className="max-h-72 w-auto rounded object-contain shadow-sm"
+                />
+              </div>
+            </CardSection>
+          )}
+        </div>
+
         {template.mjml && (
-          <CardSection title="MJML">
-            <pre className="max-h-64 overflow-auto rounded border border-border bg-bg-muted p-3 font-mono text-body-small">
+          <CardSection
+            title="MJML source"
+            rightSlot={
+              <span className="text-caption-small text-fg-muted">
+                {template.mjml.length.toLocaleString()} chars
+              </span>
+            }
+          >
+            <pre className="max-h-72 overflow-auto rounded-lg border border-border bg-bg-muted p-4 font-mono text-body-small leading-relaxed">
               {template.mjml.slice(0, 2000)}
               {template.mjml.length > 2000 ? "\n…" : ""}
             </pre>

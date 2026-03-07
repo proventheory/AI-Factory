@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button, LoadingSkeleton, Checkbox } from "@/components/ui";
-import { useSitemapProducts, useProductsFromUrl, useBrandProfile } from "@/hooks/use-api";
+import { useSitemapProducts, useProductsFromUrl, useBrandProfile, useEmailTemplate } from "@/hooks/use-api";
 import { updateBrandProfile } from "@/lib/api";
 
 const WIZARD_KEY = "email_marketing_wizard";
@@ -74,7 +74,10 @@ export default function EmailMarketingNewProductsPage() {
   const router = useRouter();
   const state = getWizardState();
   const brandId = state.brand_profile_id as string | undefined;
+  const templateId = state.template_id as string | undefined;
   const { data: brand } = useBrandProfile(brandId ?? null);
+  const { data: template } = useEmailTemplate(templateId ?? null);
+  const productSlots = template?.product_slots ?? 0;
 
   const cacheMatchesUrl = (url: string, type: string, c: ProductsCache) =>
     normalizeSitemapUrl(c.sitemap_url) === normalizeSitemapUrl(url) && c.sitemap_type === type;
@@ -247,7 +250,11 @@ export default function EmailMarketingNewProductsPage() {
       <Stack>
         <PageHeader
           title="Products"
-          description="Enter your sitemap URL, fetch products, then select the ones to feature in the email."
+          description={
+            productSlots > 0
+              ? `Select ${productSlots} products for this template. Enter your sitemap URL, fetch products, then choose the ones to feature.`
+              : "Enter your sitemap URL, fetch products, then select the ones to feature in the email."
+          }
         />
 
         {/* Fetch bar */}
