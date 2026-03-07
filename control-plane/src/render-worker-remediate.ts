@@ -4,11 +4,17 @@
  * so jobs get claimed and artifacts are produced. No human in the loop.
  *
  * Requires: ENABLE_SELF_HEAL=true, RENDER_API_KEY set.
- * Worker service: set RENDER_WORKER_SERVICE_NAME to the exact name/slug in Render (default: ai-factory-runner-staging).
+ * Worker: set RENDER_WORKER_SERVICE_ID to the Render service ID (most reliable), or
+ * RENDER_WORKER_SERVICE_NAME to the exact name/slug (default: ai-factory-runner-staging).
  */
 
 const RENDER_API_BASE = "https://api.render.com/v1";
+const WORKER_SERVICE_ID = process.env.RENDER_WORKER_SERVICE_ID?.trim();
 const WORKER_SERVICE_NAME = process.env.RENDER_WORKER_SERVICE_NAME?.trim() || "ai-factory-runner-staging";
+
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/_/g, "-").replace(/\s+/g, "-");
+}
 
 export interface SyncResult {
   ok: boolean;
@@ -18,7 +24,30 @@ export interface SyncResult {
 }
 
 /**
+ * Get a single service by ID from Render API. Returns id, name, slug or null if not found.
+ */
+export async function getRenderService(
+  apiKey: string,
+  serviceId: string
+): Promise<{ id: string; name?: string; slug?: string } | null> {
+  const res = await fetch(`${RENDER_API_BASE}/services/${serviceId}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Render API get service failed: ${res.status} ${await res.text()}`);
+  }
+  const s = (await res.json()) as { id?: string; name?: string; slug?: string };
+  return s?.id ? { id: s.id, name: s.name, slug: s.slug } : null;
+}
+
+/**
  * List services from Render API. Returns services with id, name, slug.
+ * Handles array or object with items/services.
  */
 export async function listRenderServices(apiKey: string): Promise<{ id: string; name?: string; slug?: string }[]> {
   const res = await fetch(`${RENDER_API_BASE}/services?limit=100`, {
@@ -110,36 +139,61 @@ export async function syncWorkerEnvFromControlPlane(): Promise<SyncResult> {
     return { ok: false, message: "DATABASE_URL not set on Control Plane" };
   }
 
-  const services = await listRenderServices(apiKey);
-  const want = WORKER_SERVICE_NAME.toLowerCase();
-  const baseName = want.replace(/-?(staging|prod)$/i, "").trim(); // e.g. "ai-factory-runner-staging" -> "ai-factory-runner"
-  const worker =
-    services.find(
-      (s) =>
-        (s.name && s.name.toLowerCase() === want) ||
-        (s.slug && s.slug.toLowerCase() === want)
-    ) ??
-    (baseName !== want
-      ? services.find(
-          (s) =>
-            (s.name && s.name.toLowerCase() === baseName) ||
-            (s.slug && s.slug.toLowerCase() === baseName)
-        )
-      : undefined);
+  let worker: { id: string; name?: string; slug?: string } | null = null;
+
+  if (WORKER_SERVICE_ID) {
+    worker = await getRenderService(apiKey, WORKER_SERVICE_ID);
+    if (!worker) {
+      return {
+        ok: false,
+        message: `Worker service ID '${WORKER_SERVICE_ID}' not found in Render. Check RENDER_WORKER_SERVICE_ID (from Render dashboard → service → URL or API).`,
+      };
+    }
+  }
+
   if (!worker) {
-    const hints = services
-      .filter((s) => (s.slug ?? s.name ?? "").toLowerCase().includes("runner"))
-      .map((s) => s.slug ?? s.name ?? s.id)
-      .slice(0, 5);
-    const hint = hints.length ? ` (Render services with "runner": ${hints.join(", ")})` : "";
-    return {
-      ok: false,
-      message: `Worker service '${WORKER_SERVICE_NAME}' not found in Render${hint}. Set RENDER_WORKER_SERVICE_NAME to the exact service slug (e.g. from the service URL: <slug>.onrender.com).`,
-    };
+    const services = await listRenderServices(apiKey);
+    const want = normalize(WORKER_SERVICE_NAME);
+    const baseName = want.replace(/-?(staging|prod)$/i, "").trim();
+    worker =
+      services.find(
+        (s) =>
+          (s.name && normalize(s.name) === want) ||
+          (s.slug && normalize(s.slug) === want)
+      ) ??
+      (baseName !== want
+        ? services.find(
+            (s) =>
+              (s.name && normalize(s.name) === baseName) ||
+              (s.slug && normalize(s.slug) === baseName)
+          )
+        : undefined) ??
+      services.find(
+        (s) => {
+          const n = normalize(s.slug ?? s.name ?? "");
+          return n.includes("runner") && (n.includes("staging") || n.includes("ai-factory-runner"));
+        }
+      ) ??
+      null;
+
+    if (!worker) {
+      const hints = services
+        .filter((s) => (s.slug ?? s.name ?? "").toLowerCase().includes("runner"))
+        .map((s) => s.slug ?? s.name ?? s.id)
+        .slice(0, 10);
+      const hint = hints.length ? ` (Render services with "runner": ${hints.join(", ")})` : "";
+      const idHint =
+        " Or set RENDER_WORKER_SERVICE_ID to the service ID from Render dashboard (service → Settings or URL).";
+      return {
+        ok: false,
+        message: `Worker service '${WORKER_SERVICE_NAME}' not found in Render${hint}. Set RENDER_WORKER_SERVICE_NAME to the exact service slug, or RENDER_WORKER_SERVICE_ID to the service ID.${idHint}`,
+      };
+    }
   }
 
   if (!controlPlaneUrl) {
-    const apiService = services.find(
+    const servicesForApi = await listRenderServices(apiKey);
+    const apiService = servicesForApi.find(
       (s) =>
         (s.name && /ai-factory-api-(staging|prod)/i.test(s.name)) ||
         (s.slug && /ai-factory-api-(staging|prod)/i.test(s.slug))

@@ -63,7 +63,7 @@ If you use a separate **llm-gateway** service, keep `https://llm-gateway.onrende
 
 **Done when:** Runner has `LLM_GATEWAY_URL` = `https://ai-factory-gateway-staging.onrender.com`. You do not need `llm-gateway.onrender.com` for the runner unless you use that as a separate gateway.
 
-**Self-heal (optional):** If you see "Worker service 'ai-factory-runner-staging' not found in Render", set `RENDER_WORKER_SERVICE_NAME` on the Control Plane to the exact service slug (default: `ai-factory-runner-staging`). **Staging:** Runner slug confirmed as `ai-factory-runner-staging`; `RENDER_WORKER_SERVICE_NAME` has been set on ai-factory-api-staging via MCP. Ensure `RENDER_API_KEY` is set on the Control Plane and is from the same Render account that owns the services.
+**Self-heal (optional):** If you see "Worker service 'ai-factory-runner-staging' not found in Render", set on the Control Plane either **`RENDER_WORKER_SERVICE_ID`** (recommended: service ID from Render dashboard → worker service → URL or API) or **`RENDER_WORKER_SERVICE_NAME`** to the exact service slug (default: `ai-factory-runner-staging`). Ensure `RENDER_API_KEY` is set and is from the same Render account that owns the services.
 
 **Verdict:** Confirm CONTROL_PLANE_URL is `ai-factory` (not `a1-factory`). Confirm LLM_GATEWAY_URL points to the gateway service that’s actually deployed and healthy.
 

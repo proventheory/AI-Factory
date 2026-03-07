@@ -2364,6 +2364,10 @@ app.get("/v1/brand_profiles/:id/assets", async (req, res) => {
     const r = await pool.query(q, params);
     res.json({ items: r.rows });
   } catch (e) {
+    if (isBrandAssetsMissing(e)) {
+      res.status(200).json({ items: [] });
+      return;
+    }
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
@@ -2384,6 +2388,10 @@ app.post("/v1/brand_profiles/:id/assets", async (req, res) => {
     const r = await pool.query("SELECT * FROM brand_assets WHERE id = $1", [aid]);
     res.status(201).json(r.rows[0]);
   } catch (e) {
+    if (isBrandAssetsMissing(e)) {
+      res.status(503).json({ error: "brand_assets table does not exist. Run migration 20250303000007_brand_engine.sql." });
+      return;
+    }
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
@@ -2401,6 +2409,10 @@ app.delete("/v1/brand_profiles/:id/assets/:aid", async (req, res) => {
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
     res.status(200).json({ deleted: true, id: aid });
   } catch (e) {
+    if (isBrandAssetsMissing(e)) {
+      res.status(503).json({ error: "brand_assets table does not exist. Run migration 20250303000007_brand_engine.sql." });
+      return;
+    }
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
@@ -2629,6 +2641,11 @@ function isTemplateImageContractsMissing(e: unknown): boolean {
   return /relation\s+["']?template_image_contracts["']?\s+does not exist/i.test(msg);
 }
 
+function isBrandAssetsMissing(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /relation\s+["']?brand_assets["']?\s+does not exist/i.test(msg);
+}
+
 /** GET /v1/email_templates — list with image_slots, product_slots, layout_style for picker. */
 app.get("/v1/email_templates", async (req, res) => {
   try {
@@ -2707,10 +2724,20 @@ function contentSlotsFromMjml(mjml: string | null): number {
   return max;
 }
 
+/** Normalize template type to a short label so layout_style is never a long sentence (e.g. from DB). */
+function normalizeTemplateType(type: string | null | undefined): string {
+  const t = (type ?? "").trim().toLowerCase();
+  if (t === "newsletter" || t === "product" || t === "promo" || t === "email") return t;
+  if (t.includes("product")) return "product";
+  if (t.includes("newsletter")) return "newsletter";
+  if (t.includes("promo")) return "promo";
+  return "email";
+}
+
 /** Add image_slots, product_slots, layout_style to a template row (from contract or MJML). */
 function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content_slots?: number; max_product_slots?: number } | null): void {
   const mjml = row.mjml as string | null;
-  const typeLabel = (row.type as string) ?? "email";
+  const typeLabel = normalizeTemplateType(row.type as string);
   (row as Record<string, unknown>).image_slots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
   (row as Record<string, unknown>).product_slots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
   (row as Record<string, unknown>).layout_style = `${typeLabel} (email template)`;
