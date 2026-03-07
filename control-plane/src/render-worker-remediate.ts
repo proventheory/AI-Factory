@@ -31,8 +31,14 @@ export async function listRenderServices(apiKey: string): Promise<{ id: string; 
   if (!res.ok) {
     throw new Error(`Render API list services failed: ${res.status} ${await res.text()}`);
   }
-  const data = (await res.json()) as { id?: string; name?: string; slug?: string }[] | { services?: { id: string; name?: string; slug?: string }[] };
-  const list = Array.isArray(data) ? data : (data as { services?: { id: string; name?: string; slug?: string }[] }).services ?? [];
+  const data = (await res.json()) as
+    | { id?: string; name?: string; slug?: string }[]
+    | { services?: { id: string; name?: string; slug?: string }[]; items?: { id: string; name?: string; slug?: string }[] };
+  const list = Array.isArray(data)
+    ? data
+    : (data as { services?: { id: string; name?: string; slug?: string }[] }).services ??
+      (data as { items?: { id: string; name?: string; slug?: string }[] }).items ??
+      [];
   return list.map((s: { id?: string; name?: string; slug?: string }) => ({
     id: s.id!,
     name: s.name,
