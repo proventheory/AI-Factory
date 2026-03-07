@@ -707,16 +707,23 @@ export async function handleEmailGenerateMjml(request: {
   let templateJson: Record<string, unknown> | null = null;
   let sectionsJsonMerged = false;
 
+  let templateName = "";
   if (input.template_id) {
     try {
       const res = await fetch(`${CONTROL_PLANE_URL}/v1/email_templates/${input.template_id}`);
       if (res.ok) {
-        const t = (await res.json()) as { mjml?: string; template_json?: unknown; sections_json?: unknown };
+        const t = (await res.json()) as { name?: string; mjml?: string; template_json?: unknown; sections_json?: unknown };
+        templateName = String(t.name ?? "").trim();
         templateMjml = t.mjml ?? null;
         templateJson = (t.template_json as Record<string, unknown>) ?? null;
         if (t.sections_json != null && typeof t.sections_json === "object") {
           templateJson = { ...(templateJson ?? {}), ...(t.sections_json as Record<string, unknown>) };
           sectionsJsonMerged = true;
+        }
+        // Hero must use campaign image, not product. If "Introducing Emma" (or similar) uses {{product_1_image}} in the hero, replace first occurrence so hero shows selected image.
+        if (templateMjml && /introducing\s+emma/i.test(templateName) && /\{\{\s*product_1_image\s*\}\}/.test(templateMjml)) {
+          templateMjml = templateMjml.replace(/\{\{\s*product_1_image\s*\}\}/, "{{hero_image_url}}");
+          console.log("[MJML] Emma template: replaced first {{product_1_image}} with {{hero_image_url}} in hero", { run_id: runId, template_id: input.template_id });
         }
         // #region agent log
         console.log("[MJML] template fetch ok (H6)", { run_id: runId, template_id: input.template_id, mjml_len: templateMjml?.length ?? 0, template_jsonKeys: Object.keys(templateJson ?? {}), hasSectionsJson: !!t.sections_json, sectionsJsonMerged });
@@ -1040,8 +1047,35 @@ export async function handleEmailGenerateMjml(request: {
         partnerLine: brandCtx?.name ? `${brandCtx.name}${siteUrl && siteUrl !== "#" ? ` | ${siteUrl.replace(/^https?:\/\//, "")}` : ""}` : "",
         termsUrl: siteUrl && siteUrl !== "#" ? `${siteUrl.replace(/\/$/, "")}/terms` : "#",
       };
+      let htmlInput = replaceBracketPlaceholders(rawHtml ?? "", sectionJson as Record<string, unknown>);
+      // Emma template: ensure product "Discover more" and title links point to product URLs (not #)
+      if (/introducing\s+emma/i.test(templateName)) {
+        const productUrls: string[] = [];
+        for (let n = 1; n <= 5; n++) {
+          const u = (sectionJson as Record<string, unknown>)[`product_${n}_url`];
+          if (typeof u === "string" && u.trim()) productUrls.push(u.trim());
+          else productUrls.push("#");
+        }
+        if (productUrls.some((u) => u !== "#")) {
+          let linkCount = 0;
+          // Replace <a href="#">...</a> for product image, title, and CTA – assign product URL (3 links per product: image + title + Discover more)
+          htmlInput = htmlInput.replace(/<a\s+href="#"\s*([^>]*)>([\s\S]*?)<\/a>/gi, (_match, attrs, content) => {
+            const text = content.replace(/<[^>]+>/g, "").trim();
+            const isProductImage = /<img[\s\S]*?>/i.test(content) && content.trim().length < 500;
+            const isDiscoverMore = /discover\s+more|learn\s+more|shop\s+now|view\s+product/i.test(text);
+            const isProductTitle = text.length > 0 && text.length < 80 && !/^(Terms|Privacy|Unsubscribe|View in browser|#)$/i.test(text);
+            if (isProductImage || isDiscoverMore || isProductTitle) {
+              const productIndex = Math.floor(linkCount / 3) % productUrls.length;
+              linkCount++;
+              const url = productUrls[productIndex];
+              return `<a href="${url}" ${attrs}>${content}</a>`;
+            }
+            return _match;
+          });
+        }
+      }
       const html = applyBrandColorsAndCampaignCopy(
-        replaceBracketPlaceholders(rawHtml ?? "", sectionJson as Record<string, unknown>),
+        htmlInput,
         brandColor,
         campaignPrompt,
         generatedCopy,

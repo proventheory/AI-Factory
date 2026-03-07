@@ -18,7 +18,6 @@ async function getClient(): Promise<unknown> {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
   try {
-    // @ts-expect-error — dynamic import; package may not be installed at build time
     const mod = await import("@supabase/supabase-js");
     _client = mod.createClient(url, key);
     return _client;
