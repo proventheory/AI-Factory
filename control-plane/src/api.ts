@@ -2767,7 +2767,7 @@ function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content
   let imageSlots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
   let productSlots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
   const name = String(row.name ?? "").trim();
-  if (/introducing\s+emma/i.test(name) && imageSlots === 0 && productSlots === 0) {
+  if (/introducing\s+emma/i.test(name)) {
     imageSlots = 1;
     productSlots = 5;
   }
