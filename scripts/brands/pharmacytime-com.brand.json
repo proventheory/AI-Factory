@@ -1,103 +1,120 @@
 {
   "name": "Pharmacy Time",
   "slug": "pharmacytime-com",
+  "status": "active",
   "identity": {
-    "tagline": "Precision compounding for personalized care.",
-    "website": "https://pharmacytime.com",
     "archetype": "trusted_care",
-    "description": "Modern medical weight loss and precision compounding, delivered online. Trusted by 10K+ patients nationwide. GLP-1 options, licensed providers, end-to-end care 100% online."
+    "industry": "health_wellness",
+    "tagline": "Weight Management personalized to you",
+    "mission": "Modern pharmacy and clinically guided weight loss. Personalized medical programs, GLP-1 options, licensed providers. Trusted by 10K+ patients. End-to-end care 100% online.",
+    "website": "https://pharmacytime.com",
+    "values": ["quality", "trust", "personalization", "clinical_expertise"]
   },
   "tone": {
-    "formality": "professional",
+    "voice_descriptors": ["professional", "warm", "clear", "trustworthy", "approachable"],
     "reading_level": "grade_8",
-    "voice": "warm, clear, trustworthy"
+    "formality": "professional",
+    "sentence_length": "medium"
   },
   "visual_style": {
-    "notes": "Blue-dominant palette, clean layout, Aventa + Bebas Neue typography. Text wordmark 'pharmacy' + 'time' in header."
+    "density": "default",
+    "style_description": "Clean, modern health/telehealth. Purple-dominant palette: deep purple hero/footer/buttons, light lavender section backgrounds, white content areas. Sans-serif typography; H1 bold white on dark purple; H2/H3 bold dark on light.",
+    "image_style": "Professional photography: diverse individuals, medical products, doctors",
+    "icon_style": "Minimal line icons; social icons white on dark purple footer"
+  },
+  "copy_style": {
+    "voice": "Warm but professional. Emphasize personalization, trust, clinical guidance. CTAs: Get Started, Start order, Add to Cart.",
+    "cta_style": "Bold sans-serif, white on purple buttons"
   },
   "design_tokens": {
-    "identity": {
-      "tagline": "Precision compounding for personalized care.",
-      "website": "https://pharmacytime.com"
-    },
-    "voice": {
-      "reading_level": "grade_8",
-      "formality": "professional"
+    "color": {
+      "brand": {
+        "50": "#f3eef6",
+        "100": "#e8dcee",
+        "200": "#c9a3d4",
+        "300": "#a366b8",
+        "400": "#844CA0",
+        "500": "#6D2C91",
+        "600": "#5B2478",
+        "700": "#4B1F5E",
+        "800": "#3B2160",
+        "900": "#241437",
+        "primary": "#6D2C91",
+        "primary_dark": "#241437"
+      },
+      "neutral": {
+        "50": "#f8f9fa",
+        "100": "#f1f3f5",
+        "200": "#e8e2ee",
+        "500": "#64748b",
+        "700": "#334155",
+        "900": "#1a1a1a"
+      }
     },
     "colors": {
       "brand": {
-        "primary": "#0066cc",
-        "primary_dark": "#0052a3",
-        "primary_light": "#42a5f5",
-        "primary_lighter": "#90caf9",
-        "primary_lightest": "#e3f2fd",
-        "500": "#1F8FFF",
-        "400": "#47A3FF",
-        "800": "#0053A4",
-        "950": "#002952",
-        "050": "#C2E0FF"
+        "50": "#f3eef6",
+        "100": "#e8dcee",
+        "200": "#c9a3d4",
+        "300": "#a366b8",
+        "400": "#844CA0",
+        "500": "#6D2C91",
+        "600": "#5B2478",
+        "700": "#4B1F5E",
+        "800": "#3B2160",
+        "900": "#241437",
+        "primary": "#6D2C91",
+        "primary_dark": "#241437"
       },
-      "text": {
-        "primary": "#1a1a1a",
-        "secondary": "#666666",
-        "muted": "#666666",
-        "inverse": "#ffffff"
-      },
-      "surface": {
-        "base": "#ffffff",
-        "raised": "#f8f9fa",
-        "blue": "#e3f2fd"
-      },
-      "border": {
-        "subtle": "#e0e0e0",
-        "default": "#e0e0e0"
+      "neutral": {
+        "50": "#f8f9fa",
+        "100": "#f1f3f5",
+        "200": "#e8e2ee",
+        "500": "#64748b",
+        "700": "#334155",
+        "900": "#1a1a1a"
       }
     },
     "typography": {
-      "fonts": {
-        "heading": "Aventa, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        "body": "Aventa, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        "display": "Bebas Neue, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-        "mono": "ui-monospace, monospace"
+      "fonts": { "heading": "Aventa, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", "body": "Aventa, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", "mono": "ui-monospace, monospace" },
+      "font_headings": "Aventa, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      "font_body": "Aventa, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      "heading": {
+        "h1": { "size": "3.5rem", "weight": 600, "lineHeight": 1.2 },
+        "h2": { "size": "2.5rem", "weight": 600, "lineHeight": 1.2 },
+        "h3": { "size": "2rem", "weight": 600, "lineHeight": 1.2 },
+        "h4": { "size": "1.5rem", "weight": 600, "lineHeight": 1.2 },
+        "h5": { "size": "1.25rem", "weight": 600, "lineHeight": 1.2 },
+        "h6": { "size": "1.125rem", "weight": 600, "lineHeight": 1.2 }
       },
-      "scale": {
-        "xs": "0.75rem",
-        "sm": "0.875rem",
-        "base": "1rem",
-        "lg": "1.125rem",
-        "xl": "1.25rem",
-        "2xl": "1.5rem",
-        "3xl": "2rem",
-        "4xl": "2.5rem",
-        "5xl": "3.5rem"
+      "body": {
+        "default": { "size": "1rem", "weight": 400, "lineHeight": 1.6 },
+        "small": { "size": "0.875rem", "weight": 400, "lineHeight": 1.5 }
       },
-      "weight": {
-        "normal": 400,
-        "medium": 500,
-        "semibold": 600,
-        "bold": 700
-      }
+      "caption": { "size": "0.875rem", "weight": 400, "lineHeight": 1.4 },
+      "display": { "size": "2.75rem", "weight": 400, "lineHeight": 1.2, "letterSpacing": "-0.02em" },
+      "fontWeight": { "normal": 400, "medium": 500, "semibold": 600, "bold": 700 }
     },
-    "logo": {
-      "url": "https://pharmacytime.com/favicon.ico",
-      "wordmark": "pharmacy time",
-      "wordmark_bold": "Pharmacy",
-      "wordmark_light": "time",
-      "type": "wordmark"
-    },
-    "spacing": {
-      "xs": "0.5rem",
-      "sm": "1rem",
-      "md": "2rem",
-      "lg": "3rem",
-      "xl": "4rem"
-    },
-    "layout": {
-      "containerMaxWidth": "1200px",
-      "containerPadding": "32px",
-      "borderRadius": "4px",
-      "borderRadiusLg": "8px",
-      "borderRadiusXl": "1.5rem"
-    }
+    "logo_url": "https://pharmacytime.com/favicon.ico",
+    "logo": { "url": "https://pharmacytime.com/favicon.ico" },
+    "cta_text": "Get Started",
+    "cta_link": "https://pharmacytime.com",
+    "contact_info": [],
+    "social_media": [
+      { "name": "Facebook", "url": "https://www.facebook.com/pharmacytime" },
+      { "name": "Instagram", "url": "https://www.instagram.com/pharmacytime" },
+      { "name": "X", "url": "https://twitter.com/pharmacytime" },
+      { "name": "LinkedIn", "url": "https://www.linkedin.com/company/pharmacytime" },
+      { "name": "YouTube", "url": "https://www.youtube.com/@pharmacytime" }
+    ]
+  },
+  "deck_theme": {
+    "chart_color_sequence": ["#6D2C91", "#4B1F5E", "#3B2160", "#844CA0", "#a366b8", "#241437"],
+    "font_config": { "heading": "Aventa, sans-serif", "body": "Aventa, sans-serif" },
+    "slide_master": { "title_font": "Bebas Neue, Aventa, sans-serif", "title_size": "2rem", "title_weight": 700 }
+  },
+  "report_theme": {
+    "header_style": { "background": "#241437", "text": "#ffffff" },
+    "section_spacing": "1.5rem"
   }
 }

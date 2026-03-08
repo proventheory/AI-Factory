@@ -4,19 +4,20 @@
  * No hard-coded hex/sizes in components; reference these tokens only.
  */
 
+/** Pharmacy Time / ProfessorX theme: purple palette, Aventa-aligned typography (staging source of truth). */
 export const tokens = {
   color: {
     brand: {
-      50: "#eff6ff",
-      100: "#dbeafe",
-      200: "#bfdbfe",
-      300: "#93c5fd",
-      400: "#60a5fa",
-      500: "#3b82f6",
-      600: "#2563eb",
-      700: "#1d4ed8",
-      800: "#1e40af",
-      900: "#1e3a8a",
+      50: "#f3eef6",
+      100: "#e8dcee",
+      200: "#c9a3d4",
+      300: "#a366b8",
+      400: "#844CA0",
+      500: "#6D2C91",
+      600: "#5B2478",
+      700: "#4B1F5E",
+      800: "#3B2160",
+      900: "#241437",
     },
     surface: {
       base: "#ffffff",
@@ -60,7 +61,7 @@ export const tokens = {
 
   typography: {
     fontFamily: {
-      sans: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+      sans: "Aventa, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       mono: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
     },
     fontSize: {
@@ -75,20 +76,26 @@ export const tokens = {
       "5xl": "3rem",     // 48px
     },
     heading: {
-      h1: { size: "2.25rem", weight: 700, lineHeight: 1.2 },   // 36px
-      h2: { size: "1.875rem", weight: 700, lineHeight: 1.25 }, // 30px
-      h3: { size: "1.5rem", weight: 600, lineHeight: 1.3 },    // 24px
-      h4: { size: "1.25rem", weight: 600, lineHeight: 1.35 },  // 20px
-      h5: { size: "1.125rem", weight: 600, lineHeight: 1.4 },   // 18px
-      h6: { size: "1rem", weight: 600, lineHeight: 1.5 },      // 16px
+      h1: { size: "3.5rem", weight: 600, lineHeight: 1.2 },
+      h2: { size: "2.5rem", weight: 600, lineHeight: 1.2 },
+      h3: { size: "2rem", weight: 600, lineHeight: 1.2 },
+      h4: { size: "1.5rem", weight: 600, lineHeight: 1.2 },
+      h5: { size: "1.25rem", weight: 600, lineHeight: 1.2 },
+      h6: { size: "1.125rem", weight: 600, lineHeight: 1.2 },
     },
     subheading: {
-      size: "1.125rem",   // 18px
+      size: "1.125rem",
       weight: 500,
       lineHeight: 1.4,
     },
+    display: {
+      size: "2.75rem",
+      weight: 400,
+      lineHeight: 1.2,
+      letterSpacing: "-0.02em",
+    },
     body: {
-      default: { size: "1rem", weight: 400, lineHeight: 1.5 },
+      default: { size: "1rem", weight: 400, lineHeight: 1.6 },
       small: { size: "0.875rem", weight: 400, lineHeight: 1.5 },
     },
     caption: {

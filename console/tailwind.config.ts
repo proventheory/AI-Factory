@@ -80,6 +80,10 @@ const config: Config = {
         "heading-5": [tokens.typography.heading.h5.size, { lineHeight: String(tokens.typography.heading.h5.lineHeight) }],
         "heading-6": [tokens.typography.heading.h6.size, { lineHeight: String(tokens.typography.heading.h6.lineHeight) }],
         subheading: [tokens.typography.subheading.size, { lineHeight: String(tokens.typography.subheading.lineHeight) }],
+        display: [
+          tokens.typography.display.size,
+          { lineHeight: String(tokens.typography.display.lineHeight), letterSpacing: tokens.typography.display.letterSpacing },
+        ],
         "body-default": [tokens.typography.body.default.size, { lineHeight: String(tokens.typography.body.default.lineHeight) }],
         "body-small": [tokens.typography.body.small.size, { lineHeight: String(tokens.typography.body.small.lineHeight) }],
         caption: [tokens.typography.caption.size, { lineHeight: String(tokens.typography.caption.lineHeight) }],
