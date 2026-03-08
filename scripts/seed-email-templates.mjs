@@ -198,6 +198,56 @@ const TEMPLATES = [
   </mj-body>
 </mjml>`,
   },
+  {
+    type: "newsletter",
+    name: "Dark hero (1 image)",
+    img_count: 1,
+    mjml: `<mjml>
+  <mj-body background-color="#1E3730">
+    <mj-section background-color="#1E3730" padding="28px 32px 24px">
+      <mj-column width="100%">
+        <mj-image src="[logo]" alt="[brandName]" href="[siteUrl]" width="140px" align="left" padding="0" />
+        <mj-text font-size="18px" font-weight="700" color="[brandColor]" align="left" padding-top="8px" padding-left="0">[tagline]</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#1E3730" padding="24px 32px 16px">
+      <mj-column>
+        <mj-text font-size="32px" font-weight="700" color="[brandColor]" line-height="1.2" padding="0">[headline]</mj-text>
+        <mj-text font-size="16px" color="#ffffff" line-height="1.6" padding-top="20px">[body]</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#1E3730" padding="24px 32px">
+      <mj-column>
+        <mj-image src="[image_url]" alt="[headline]" width="100%" padding="0 8px" border-radius="12px" />
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#1E3730" padding="32px 32px 24px">
+      <mj-column>
+        <mj-text font-size="16px" font-weight="700" color="[brandColor]" align="center" padding-bottom="20px">Sign up to start creating effective campaigns.</mj-text>
+        <mj-button background-color="[brandColor]" color="#1E3730" href="[cta_url]" border-radius="24px" inner-padding="14px 40px" font-size="14px" font-weight="700" align="center">[cta_text]</mj-button>
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#264A3E" padding="28px 32px">
+      <mj-column width="60%">
+        <mj-image src="[logo]" alt="[brandName]" href="[siteUrl]" width="100px" align="left" padding="0" />
+      </mj-column>
+      <mj-column width="40%" vertical-align="middle">
+        <mj-text font-size="13px" color="#ffffff" align="right" padding="0">Follow us</mj-text>
+        <mj-social font-size="14px" icon-size="20px" mode="horizontal" padding-top="8px" align="right" icon-padding="4px">
+          <mj-social-element name="instagram" href="[social media link]" />
+        </mj-social>
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#264A3E" padding="0 32px 28px">
+      <mj-column>
+        <mj-text font-size="12px" color="#94a3b8" line-height="1.5" padding="0">[footerRights]</mj-text>
+        <mj-text font-size="12px" color="#94a3b8" padding-top="12px">This message was sent to your email. <a href="[siteUrl]" style="color:[brandColor];text-decoration:none">Unsubscribe</a> or update your profile.</mj-text>
+        <mj-text font-size="12px" color="#94a3b8" padding-top="12px">[contactInfo]</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>`,
+  },
 ];
 
 async function main() {

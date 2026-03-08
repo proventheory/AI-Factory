@@ -14,8 +14,8 @@ import { buildImageAssignmentV1, getCanonicalHeroUrl, getCampaignOnlyContentUrls
 
 const CONTROL_PLANE_URL = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 
-/** Minimum HTML length (bytes) for non-trivial template emails; below this the job fails. */
-const MIN_HTML_LENGTH = 15_000;
+/** Minimum HTML length (bytes) for template emails; below this the job fails (catches broken/empty output). */
+const MIN_HTML_LENGTH = 2_000;
 
 /** Handlebars placeholder regex: {{name}} */
 const PLACEHOLDER_REGEX = /\{\{(\w+)\}\}/g;

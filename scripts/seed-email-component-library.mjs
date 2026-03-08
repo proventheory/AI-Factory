@@ -10,146 +10,164 @@ import "dotenv/config";
 const API = process.argv[2] ?? process.env.CONTROL_PLANE_URL ?? "http://localhost:3001";
 const base = API.replace(/\/$/, "");
 
+// Premium email components — inspired by MJML.io templates (Racoon, Card, Arturia, Proof).
+// Placeholders follow BRAND_EMAIL_FIELD_MAPPING; same keys so runner and brand substitution work unchanged.
 const COMPONENTS = [
   {
     component_type: "header_logo",
     name: "Header with logo",
-    description: "Single row: logo linked to site URL, optional tagline.",
+    description: "Single row: logo linked to site URL, optional tagline. Refined spacing and subtle border.",
     position: 0,
     placeholder_docs: ["logo", "siteUrl", "brandName"],
-    mjml_fragment: `<mj-section background-color="#ffffff" padding="20px 24px">
+    mjml_fragment: `<mj-section background-color="#ffffff" padding="28px 40px 24px" css-class="header-section">
   <mj-column>
-    <mj-image src="[logo]" alt="[brandName]" href="[siteUrl]" width="120px" align="left" />
+    <mj-image src="[logo]" alt="[brandName]" href="[siteUrl]" width="140px" align="left" padding="0" fluid-on-mobile="true" />
+  </mj-column>
+</mj-section>
+<mj-section padding="0 40px">
+  <mj-column>
+    <mj-divider border-color="#e2e8f0" border-width="1px" padding-bottom="0" padding-top="0" />
   </mj-column>
 </mj-section>`,
   },
   {
     component_type: "hero_1",
     name: "Hero centered",
-    description: "Full-width: headline, body, CTA button.",
+    description: "Full-width: headline, body, CTA. Strong hierarchy and generous whitespace.",
     position: 1,
     placeholder_docs: ["headline", "body", "cta_url", "cta_text", "brandColor"],
-    mjml_fragment: `<mj-section background-color="#f8fafc" padding="40px 24px">
-  <mj-column>
-    <mj-text font-size="28px" font-weight="bold" align="center" color="#1e293b">[headline]</mj-text>
-    <mj-text font-size="16px" align="center" color="#475569" padding-top="12px">[body]</mj-text>
-    <mj-button background-color="[brandColor]" href="[cta_url]" padding-top="24px">[cta_text]</mj-button>
+    mjml_fragment: `<mj-section background-color="#f8fafc" padding="56px 40px">
+  <mj-column width="100%">
+    <mj-text font-size="36px" font-weight="700" align="center" color="#0f172a" line-height="1.2" padding="0 16px" css-class="hero-headline">[headline]</mj-text>
+    <mj-text font-size="17px" align="center" color="#475569" line-height="1.6" padding-top="20px" padding-left="24px" padding-right="24px">[body]</mj-text>
+    <mj-button background-color="[brandColor]" href="[cta_url]" padding-top="32px" padding-bottom="8px" border-radius="8px" inner-padding="14px 32px" font-size="16px" font-weight="600">[cta_text]</mj-button>
   </mj-column>
 </mj-section>`,
   },
   {
     component_type: "hero_2",
     name: "Hero with image",
-    description: "Two-column: hero image + headline, body, CTA. Uses brandColor for button.",
+    description: "Two-column: hero image + headline, body, CTA. Image stacks on mobile.",
     position: 2,
     placeholder_docs: ["image_url", "headline", "body", "cta_url", "cta_text", "brandColor"],
-    mjml_fragment: `<mj-section background-color="#ffffff" padding="32px 24px">
-  <mj-column width="50%">
-    <mj-image src="[image_url]" alt="[headline]" width="280px" />
+    mjml_fragment: `<mj-section background-color="#ffffff" padding="40px 24px">
+  <mj-column width="48%" vertical-align="middle">
+    <mj-image src="[image_url]" alt="[headline]" width="280px" padding="0 12px 0 0" fluid-on-mobile="true" />
   </mj-column>
-  <mj-column width="50%">
-    <mj-text font-size="24px" font-weight="bold" color="#1e293b">[headline]</mj-text>
-    <mj-text font-size="15px" color="#475569" padding-top="12px">[body]</mj-text>
-    <mj-button background-color="[brandColor]" href="[cta_url]" padding-top="20px">[cta_text]</mj-button>
+  <mj-column width="52%" vertical-align="middle">
+    <mj-text font-size="28px" font-weight="700" color="#0f172a" line-height="1.25" padding="0 0 16px 0">[headline]</mj-text>
+    <mj-text font-size="16px" color="#475569" line-height="1.6" padding-bottom="24px">[body]</mj-text>
+    <mj-button background-color="[brandColor]" href="[cta_url]" border-radius="8px" inner-padding="12px 28px" font-size="15px" font-weight="600">[cta_text]</mj-button>
   </mj-column>
 </mj-section>`,
   },
   {
     component_type: "hero_overlay",
     name: "Hero full-bleed with overlay",
-    description: "Full-width hero with background image and dark overlay; headline and CTA in white. High-converting.",
+    description: "Full-width hero with background image and dark overlay; headline and CTA in white.",
     position: 8,
     placeholder_docs: ["image_url", "headline", "body", "cta_url", "cta_text", "brandColor"],
-    mjml_fragment: `<mj-section background-url="[image_url]" background-width="600px" background-height="400px" padding="80px 24px" vertical-align="middle">
-  <mj-column width="100%">
-    <mj-text font-size="32px" font-weight="bold" color="#ffffff" align="center" padding-bottom="12px">[headline]</mj-text>
-    <mj-text font-size="18px" color="#f1f5f9" align="center" padding-bottom="24px">[body]</mj-text>
-    <mj-button background-color="[brandColor]" href="[cta_url]" align="center">[cta_text]</mj-button>
+    mjml_fragment: `<mj-section background-url="[image_url]" background-width="600px" background-height="400px" padding="88px 32px" vertical-align="middle">
+  <mj-column width="100%" vertical-align="middle">
+    <mj-text font-size="34px" font-weight="700" color="#ffffff" align="center" line-height="1.2" padding-bottom="16px" text-shadow="0 1px 2px rgba(0,0,0,0.3)">[headline]</mj-text>
+    <mj-text font-size="18px" color="#f1f5f9" align="center" line-height="1.5" padding-bottom="28px">[body]</mj-text>
+    <mj-button background-color="[brandColor]" href="[cta_url]" align="center" border-radius="8px" inner-padding="14px 36px" font-size="16px" font-weight="600">[cta_text]</mj-button>
   </mj-column>
 </mj-section>`,
   },
   {
     component_type: "hero_3",
     name: "Hero minimal",
-    description: "Compact: headline only or headline + one line.",
+    description: "Compact: headline and one line. Clean and scannable.",
     position: 3,
     placeholder_docs: ["headline", "body"],
-    mjml_fragment: `<mj-section background-color="#f1f5f9" padding="24px 24px">
+    mjml_fragment: `<mj-section background-color="#f1f5f9" padding="32px 40px">
   <mj-column>
-    <mj-text font-size="22px" font-weight="bold" color="#1e293b">[headline]</mj-text>
-    <mj-text font-size="14px" color="#64748b" padding-top="8px">[body]</mj-text>
+    <mj-text font-size="24px" font-weight="700" color="#0f172a" line-height="1.3">[headline]</mj-text>
+    <mj-text font-size="15px" color="#64748b" line-height="1.5" padding-top="10px">[body]</mj-text>
   </mj-column>
 </mj-section>`,
   },
   {
     component_type: "product_block_1",
     name: "Product single",
-    description: "One product: image, title, link, description.",
+    description: "One product: image, title, link, description. Card-style with clear CTA.",
     position: 4,
     placeholder_docs: ["product A src", "product A title", "product A productUrl", "product A description"],
-    mjml_fragment: `<mj-section background-color="#ffffff" padding="24px">
+    mjml_fragment: `<mj-section padding="0" background-color="#f1f5f9">
+  <mj-column padding="0"><mj-image src="[product A src]" alt="[product A title]" href="[product A productUrl]" width="100%" padding="0" /></mj-column>
+</mj-section>
+<mj-section background-color="#fafafa" padding="28px 40px 32px">
   <mj-column>
-    <mj-image src="[product A src]" alt="[product A title]" href="[product A productUrl]" width="100%" />
-    <mj-text font-size="18px" font-weight="bold"><a href="[product A productUrl]" style="color:#1e293b">[product A title]</a></mj-text>
-    <mj-text font-size="14px" color="#475569">[product A description]</mj-text>
+    <mj-text font-size="20px" font-weight="700"><a href="[product A productUrl]" style="color:#0f172a;text-decoration:none">[product A title]</a></mj-text>
+    <mj-text font-size="15px" color="#475569" line-height="1.5" padding-top="8px">[product A description]</mj-text>
+    <mj-button href="[product A productUrl]" background-color="#0f172a" border-radius="6px" inner-padding="10px 24px" font-size="14px" padding-top="20px">Shop now</mj-button>
   </mj-column>
 </mj-section>`,
   },
   {
     component_type: "product_block_2",
     name: "Product 2-col",
-    description: "Two products side by side (A, B).",
+    description: "Two products side by side (A, B). Polished cards with descriptions.",
     position: 5,
     placeholder_docs: ["product A src", "product A title", "product A productUrl", "product B src", "product B title", "product B productUrl"],
-    mjml_fragment: `<mj-section background-color="#ffffff" padding="24px">
-  <mj-column width="50%">
-    <mj-image src="[product A src]" alt="[product A title]" href="[product A productUrl]" width="100%" />
-    <mj-text font-size="16px" font-weight="bold"><a href="[product A productUrl]" style="color:#1e293b">[product A title]</a></mj-text>
+    mjml_fragment: `<mj-section background-color="#fafafa" padding="24px 20px">
+  <mj-column width="50%" padding="8px">
+    <mj-image src="[product A src]" alt="[product A title]" href="[product A productUrl]" width="100%" padding="0" />
+    <mj-text font-size="16px" font-weight="600" padding="16px 0 6px"><a href="[product A productUrl]" style="color:#0f172a;text-decoration:none">[product A title]</a></mj-text>
+    <mj-text font-size="13px" padding="0 0 8px"><a href="[product A productUrl]" style="color:[brandColor];text-decoration:none;font-weight:600">View product →</a></mj-text>
   </mj-column>
-  <mj-column width="50%">
-    <mj-image src="[product B src]" alt="[product B title]" href="[product B productUrl]" width="100%" />
-    <mj-text font-size="16px" font-weight="bold"><a href="[product B productUrl]" style="color:#1e293b">[product B title]</a></mj-text>
+  <mj-column width="50%" padding="8px">
+    <mj-image src="[product B src]" alt="[product B title]" href="[product B productUrl]" width="100%" padding="0" />
+    <mj-text font-size="16px" font-weight="600" padding="16px 0 6px"><a href="[product B productUrl]" style="color:#0f172a;text-decoration:none">[product B title]</a></mj-text>
+    <mj-text font-size="13px" padding="0 0 8px"><a href="[product B productUrl]" style="color:[brandColor];text-decoration:none;font-weight:600">View product →</a></mj-text>
   </mj-column>
 </mj-section>`,
   },
   {
     component_type: "product_block_3",
     name: "Product grid",
-    description: "Four products in a grid (A–D).",
+    description: "Four products in a grid (A–D). Compact cards, mobile-friendly stack.",
     position: 6,
     placeholder_docs: ["product A src", "product A title", "product A productUrl", "product B src", "product B title", "product B productUrl", "product C src", "product C title", "product C productUrl", "product D src", "product D title", "product D productUrl"],
-    mjml_fragment: `<mj-section background-color="#ffffff" padding="24px">
-  <mj-column width="50%">
-    <mj-image src="[product A src]" alt="[product A title]" href="[product A productUrl]" width="100%" />
-    <mj-text font-size="14px"><a href="[product A productUrl]" style="color:#1e293b">[product A title]</a></mj-text>
+    mjml_fragment: `<mj-section background-color="#fafafa" padding="16px 20px 8px">
+  <mj-column width="50%" padding="6px">
+    <mj-image src="[product A src]" alt="[product A title]" href="[product A productUrl]" width="100%" padding="0" />
+    <mj-text font-size="14px" font-weight="600" padding="12px 0 0"><a href="[product A productUrl]" style="color:#0f172a;text-decoration:none">[product A title]</a></mj-text>
   </mj-column>
-  <mj-column width="50%">
-    <mj-image src="[product B src]" alt="[product B title]" href="[product B productUrl]" width="100%" />
-    <mj-text font-size="14px"><a href="[product B productUrl]" style="color:#1e293b">[product B title]</a></mj-text>
+  <mj-column width="50%" padding="6px">
+    <mj-image src="[product B src]" alt="[product B title]" href="[product B productUrl]" width="100%" padding="0" />
+    <mj-text font-size="14px" font-weight="600" padding="12px 0 0"><a href="[product B productUrl]" style="color:#0f172a;text-decoration:none">[product B title]</a></mj-text>
   </mj-column>
 </mj-section>
-<mj-section background-color="#ffffff" padding="0 24px 24px">
-  <mj-column width="50%">
-    <mj-image src="[product C src]" alt="[product C title]" href="[product C productUrl]" width="100%" />
-    <mj-text font-size="14px"><a href="[product C productUrl]" style="color:#1e293b">[product C title]</a></mj-text>
+<mj-section background-color="#fafafa" padding="8px 20px 24px">
+  <mj-column width="50%" padding="6px">
+    <mj-image src="[product C src]" alt="[product C title]" href="[product C productUrl]" width="100%" padding="0" />
+    <mj-text font-size="14px" font-weight="600" padding="12px 0 0"><a href="[product C productUrl]" style="color:#0f172a;text-decoration:none">[product C title]</a></mj-text>
   </mj-column>
-  <mj-column width="50%">
-    <mj-image src="[product D src]" alt="[product D title]" href="[product D productUrl]" width="100%" />
-    <mj-text font-size="14px"><a href="[product D productUrl]" style="color:#1e293b">[product D title]</a></mj-text>
+  <mj-column width="50%" padding="6px">
+    <mj-image src="[product D src]" alt="[product D title]" href="[product D productUrl]" width="100%" padding="0" />
+    <mj-text font-size="14px" font-weight="600" padding="12px 0 0"><a href="[product D productUrl]" style="color:#0f172a;text-decoration:none">[product D title]</a></mj-text>
   </mj-column>
 </mj-section>`,
   },
   {
     component_type: "footer_logo",
     name: "Footer with logo",
-    description: "Copyright, site link (brandColor), contact, social. Maps to brand tokens.",
+    description: "Copyright, site link (brandColor), contact, social. Clear hierarchy.",
     position: 7,
     placeholder_docs: ["footerRights", "siteUrl", "contactInfo", "social media link", "social media icon", "brandColor"],
-    mjml_fragment: `<mj-section background-color="#1e293b" padding="24px">
+    mjml_fragment: `<mj-section padding="0 40px 16px">
   <mj-column>
-    <mj-text font-size="12px" color="#94a3b8" align="center">[footerRights] · <a href="[siteUrl]" style="color:[brandColor]">Visit site</a></mj-text>
-    <mj-text font-size="12px" color="#94a3b8" align="center" padding-top="8px">[contactInfo]</mj-text>
-    <mj-social font-size="14px" icon-size="24px" mode="horizontal" padding-top="12px">
+    <mj-divider border-color="#e2e8f0" border-width="1px" padding-bottom="24px" padding-top="0" />
+  </mj-column>
+</mj-section>
+<mj-section background-color="#0f172a" padding="32px 40px">
+  <mj-column width="100%">
+    <mj-text font-size="13px" color="#94a3b8" align="center" line-height="1.5">[footerRights]</mj-text>
+    <mj-text font-size="13px" align="center" padding-top="8px"><a href="[siteUrl]" style="color:[brandColor];font-weight:600;text-decoration:none">Visit our site</a></mj-text>
+    <mj-text font-size="12px" color="#64748b" align="center" padding-top="12px">[contactInfo]</mj-text>
+    <mj-social font-size="14px" icon-size="22px" mode="horizontal" padding-top="20px" icon-padding="8px">
       <mj-social-element name="facebook" href="[social media link]" src="[social media icon]" />
     </mj-social>
   </mj-column>
