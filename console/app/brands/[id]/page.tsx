@@ -477,16 +477,22 @@ export default function BrandDetailPage() {
             <div>
               <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Specimens & in-context</h4>
               <p className="text-body-small text-text-secondary mb-3">
-                All heading levels and body copy using this brand&apos;s type scale and colors. Headings use the brand primary; body uses neutral for readability.
+                Rendered with the same scale as the table above (size / weight / line-height). Root font-size is 16px so rem values match. Headings use the brand primary; body uses neutral.
               </p>
-              <div className="space-y-3 rounded-lg border border-border bg-white p-4 shadow-sm">
+              <div
+                className="space-y-3 rounded-lg border border-border bg-white p-4 shadow-sm"
+                style={{ fontSize: "16px" }}
+              >
                 {(["h1", "h2", "h3", "h4", "h5", "h6"] as const).map((h) => {
                   const spec = typography.heading[h];
                   if (!spec) return null;
                   const headingColor = palette.brand["700"] ?? palette.brand["600"] ?? palette.brand["500"] ?? palette.brand.primary ?? "#0f172a";
                   return (
-                    <div key={h} className="flex items-baseline gap-4">
-                      <span className="text-fg-muted w-14 shrink-0 text-body-small font-mono">{h}</span>
+                    <div key={h} className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                      <span className="text-fg-muted shrink-0 font-mono text-xs" style={{ width: "2.5rem" }}>{h}</span>
+                      <span className="text-fg-muted shrink-0 text-xs font-normal" style={{ width: "10rem" }}>
+                        {spec.size} · {spec.weight} · {spec.lineHeight}
+                      </span>
                       <span
                         style={{
                           fontSize: spec.size,
@@ -502,6 +508,12 @@ export default function BrandDetailPage() {
                   );
                 })}
                 <div className="mt-4 pt-4 border-t border-border">
+                  <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-2">
+                    <span className="text-fg-muted shrink-0 font-mono text-xs" style={{ width: "2.5rem" }}>body</span>
+                    <span className="text-fg-muted shrink-0 text-xs font-normal" style={{ width: "10rem" }}>
+                      {typography.body.default.size} · {typography.body.default.weight} · {typography.body.default.lineHeight}
+                    </span>
+                  </div>
                   <p
                     style={{
                       fontSize: typography.body.default.size,

@@ -2481,17 +2481,24 @@ app.put("/v1/brand_profiles/:id", async (req, res) => {
   }
 });
 
-/** DELETE /v1/brand_profiles/:id — soft delete */
+/** DELETE /v1/brand_profiles/:id — soft delete (default) or permanent delete (?permanent=true) */
 app.delete("/v1/brand_profiles/:id", async (req, res) => {
   try {
     const id = req.params.id;
     if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
-    const r = await pool.query(
-      "UPDATE brand_profiles SET status = 'archived', updated_at = now() WHERE id = $1 RETURNING id, status",
-      [id]
-    );
-    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
-    res.json(r.rows[0]);
+    const permanent = req.query.permanent === "true" || req.query.permanent === "1";
+    if (permanent) {
+      const r = await pool.query("DELETE FROM brand_profiles WHERE id = $1 RETURNING id", [id]);
+      if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+      res.json({ id: r.rows[0].id, deleted: true });
+    } else {
+      const r = await pool.query(
+        "UPDATE brand_profiles SET status = 'archived', updated_at = now() WHERE id = $1 RETURNING id, status",
+        [id]
+      );
+      if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+      res.json(r.rows[0]);
+    }
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
