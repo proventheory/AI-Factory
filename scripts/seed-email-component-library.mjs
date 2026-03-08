@@ -207,20 +207,24 @@ async function main() {
       }
       updated += 1;
       console.log(`Updated: ${c.component_type} (${c.name})`);
-    } else {
-      const res = await fetch(`${base}/v1/email_component_library`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        console.error(`Failed to create ${c.component_type}:`, res.status, await res.text());
-        process.exitCode = 1;
-        continue;
-      }
-      created += 1;
-      console.log(`Created: ${c.component_type} (${c.name})`);
+      continue;
     }
+    const res = await fetch(`${base}/v1/email_component_library`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`Failed to create ${c.component_type}:`, res.status, errText);
+      if (errText.includes("use_context") && res.status === 500) {
+        console.error("  (Staging DB may be missing use_context column. Run migration 20250314000000_email_component_library_use_context.sql)");
+      }
+      process.exitCode = 1;
+      continue;
+    }
+    created += 1;
+    console.log(`Created: ${c.component_type} (${c.name})`);
   }
   console.log(`Done. Created ${created}, updated ${updated}, total ${COMPONENTS.length} components.`);
 }

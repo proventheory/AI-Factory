@@ -323,13 +323,13 @@ const TEMPLATES = [
     </mj-section>
     <mj-section background-color="[brandColor]" padding="0 24px 40px">
       <mj-column width="50%" padding="0 8px" vertical-align="top" background-color="#FFF9EB" border-radius="16px">
-        <mj-image src="[product A src]" alt="[product A title]" href="[product A productUrl]" width="100%" padding="0" border-radius="12px 12px 0 0" />
+        <mj-image src="[product A src]" alt="[product A title]" href="[product A productUrl]" width="276px" padding="0" border-radius="12px 12px 0 0" fluid-on-mobile="true" />
         <mj-text font-family="[font_headings]" font-size="20px" font-weight="700" color="#004225" padding="16px 16px 4px">[product A title]</mj-text>
         <mj-text font-family="[font_body]" font-size="14px" color="rgba(0,66,37,0.65)" line-height="1.4" padding="0 16px 16px">[product A description]</mj-text>
         <mj-button font-family="[font_headings]" background-color="#004225" color="#ffffff" href="[product A productUrl]" border-radius="12px" inner-padding="12px 24px" font-size="12px" font-weight="700" padding="0 16px 16px 16px" letter-spacing="0.08em">SHOP NOW</mj-button>
       </mj-column>
       <mj-column width="50%" padding="0 8px" vertical-align="top" background-color="#FFF9EB" border-radius="16px">
-        <mj-image src="[product B src]" alt="[product B title]" href="[product B productUrl]" width="100%" padding="0" border-radius="12px 12px 0 0" />
+        <mj-image src="[product B src]" alt="[product B title]" href="[product B productUrl]" width="276px" padding="0" border-radius="12px 12px 0 0" fluid-on-mobile="true" />
         <mj-text font-family="[font_headings]" font-size="20px" font-weight="700" color="#004225" padding="16px 16px 4px">[product B title]</mj-text>
         <mj-text font-family="[font_body]" font-size="14px" color="rgba(0,66,37,0.65)" line-height="1.4" padding="0 16px 16px">[product B description]</mj-text>
         <mj-button font-family="[font_headings]" background-color="#004225" color="#ffffff" href="[product B productUrl]" border-radius="12px" inner-padding="12px 24px" font-size="12px" font-weight="700" padding="0 16px 16px 16px" letter-spacing="0.08em">SHOP NOW</mj-button>
@@ -376,6 +376,9 @@ const TEMPLATES = [
   },
 ];
 
+/** Export for update-stitch-template-mjml.mjs (update existing Stitch template in DB). */
+export { TEMPLATES };
+
 async function main() {
   console.log("Seeding email templates at", base);
   for (const t of TEMPLATES) {
@@ -400,7 +403,9 @@ async function main() {
   console.log("Done. List templates: GET", `${base}/v1/email_templates`);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith("seed-email-templates.mjs")) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

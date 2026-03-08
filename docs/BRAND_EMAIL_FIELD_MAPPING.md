@@ -67,6 +67,8 @@ When products have no description (e.g. from XML sitemap or JSON without body), 
 
 ## 5. Template placeholders (bracket vs Handlebars)
 
+**When you design a template, use this doc as the single source of truth.** There are no “template schemas” to choose from—only one universal set of placeholders. Use the bracket forms below in your MJML; the runner and linter accept them.
+
 Templates can use **Handlebars** `{{key}}` or **bracket** `[key]` placeholders. The runner compiles Handlebars first (on the MJML source), then compiles MJML to HTML, then replaces **all** `[placeholder]` tokens in the HTML with values from `sectionJson`.
 
 ### Bracket placeholders (recommended for multi-template support)
@@ -87,6 +89,11 @@ For **LLM-generated copy and logo** to appear, the template must use placeholder
 - Use `[product X src]`, `[product X productUrl]` (with brackets) in `href` and `src`; broken links like `href="product productUrl"` (no brackets) are fixed by the runner when possible, but templates should use `[product productUrl]` or `[product P productUrl]`.
 - Footer: use `[footerRights]`, `[siteUrl]`, and `***unsubscribe***` or design_tokens for legal/copyright.
 - Social: use `[social media link]` and `[social media icon]` (or numbered variants); ensure design_tokens include `social_media` with `url` (and optional `icon`) per entry.
+
+### Placeholders vs template contracts
+
+- **Placeholders** (above) are universal. Every template uses the same `[logo]`, `[headline]`, `[product A src]`, etc. You don’t pick a “schema” per template.
+- **Template image contract** (`template_image_contracts` row per template) is metadata the system uses for lint and the Document Templates UI (e.g. “1 img, 2 prod”). It describes capacity and hero rules for that template. The system can infer slots from the MJML, or a migration/seed can insert a row (e.g. for Stitch). You don’t choose a contract when designing—you use the universal placeholders; the platform attaches or infers the contract.
 
 ## 6. Full token reference (sectionJson keys)
 

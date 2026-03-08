@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-factory.local/schemas/image_assignment.schema.json",
+  "title": "ImageAssignment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "run_id",
+    "template_id",
+    "brand_profile_id",
+    "inputs",
+    "pools",
+    "assignment",
+    "resolution",
+    "diagnostics"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "v1"
+    },
+    "run_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "template_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "brand_profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected_campaign_assets",
+        "selected_product_assets",
+        "selected_logo_assets",
+        "selected_brand_default_assets"
+      ],
+      "properties": {
+        "selected_campaign_assets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        },
+        "selected_product_assets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        },
+        "selected_logo_assets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        },
+        "selected_brand_default_assets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        }
+      }
+    },
+    "pools": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hero_pool",
+        "content_pool",
+        "product_pool",
+        "logo_pool"
+      ],
+      "properties": {
+        "hero_pool": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        },
+        "content_pool": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        },
+        "product_pool": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        },
+        "logo_pool": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        }
+      }
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hero",
+        "content",
+        "products"
+      ],
+      "properties": {
+        "hero": {
+          "anyOf": [
+            { "$ref": "#/$defs/resolvedAsset" },
+            { "type": "null" }
+          ]
+        },
+        "content": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        },
+        "products": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resolvedAsset" }
+        }
+      }
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hero_strategy",
+        "logo_fallback_used",
+        "collapsed_modules",
+        "duplicated_asset_ids",
+        "rejected_asset_ids"
+      ],
+      "properties": {
+        "hero_strategy": {
+          "type": "string",
+          "enum": [
+            "manual_override",
+            "first_campaign_image",
+            "best_scored_campaign_image",
+            "brand_default",
+            "logo_fallback",
+            "featured_product",
+            "none"
+          ]
+        },
+        "logo_fallback_used": {
+          "type": "boolean"
+        },
+        "collapsed_modules": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "duplicated_asset_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "rejected_asset_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "usable_campaign_count",
+        "usable_content_count",
+        "usable_product_count",
+        "usable_logo_count",
+        "warnings"
+      ],
+      "properties": {
+        "usable_campaign_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "usable_content_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "usable_product_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "usable_logo_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "resolvedAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_url",
+        "source_kind",
+        "is_usable"
+      ],
+      "properties": {
+        "asset_id": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "campaign",
+            "product",
+            "logo",
+            "brand_default"
+          ]
+        },
+        "role_hint": {
+          "type": "string",
+          "enum": [
+            "hero_candidate",
+            "content_candidate",
+            "product",
+            "logo"
+          ]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "alt_text": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "product_id": {
+          "type": "string"
+        },
+        "is_usable": {
+          "type": "boolean"
+        },
+        "rejection_reason": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

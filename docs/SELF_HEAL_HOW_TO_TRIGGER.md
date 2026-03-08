@@ -142,3 +142,9 @@ If the Control Plane build fails on Render and you want an AI to read the logs a
 1. **Select a workspace** in the Render MCP (Cursor/Claude). The Render MCP needs a workspace to be selected before it can list services or fetch logs. In your Render dashboard, note your account/workspace; then in Cursor, use the Render MCP and select that workspace when prompted.
 2. **Fetch build logs:** Use the Render MCP tools `list_services` (to get the service ID for `ai-factory-api-staging` or `ai-factory-api-prod`), then `list_logs` with `resource: [serviceId]` and `type: ["build"]` to get the build log lines.
 3. **Fix and push:** Apply the same fixes you would for local tsc (path aliases, implicit `any`, missing modules), then commit and push so Render redeploys.
+
+---
+
+## See also
+
+- [EMAIL_COMPONENTS_AND_STICKY_GREEN](EMAIL_COMPONENTS_AND_STICKY_GREEN.md) — Build email templates from the Component Registry; placeholders align with BRAND_EMAIL_FIELD_MAPPING; use Sticky Green as the reference brand for testing.

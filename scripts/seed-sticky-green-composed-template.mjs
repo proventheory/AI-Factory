@@ -42,7 +42,7 @@ async function main() {
     const patchRes = await fetch(`${base}/v1/email_templates/${existing.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ component_sequence: ids, img_count: 0 }),
+      body: JSON.stringify({ component_sequence: JSON.stringify(ids), img_count: 0 }),
     });
     if (!patchRes.ok) throw new Error(`Failed to update template: ${await patchRes.text()}`);
     console.log("Updated email template:", existing.id, TEMPLATE_NAME);

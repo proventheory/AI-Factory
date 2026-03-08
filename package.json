@@ -31,7 +31,8 @@
     "seed:email-component-library": "node scripts/seed-email-component-library.mjs",
     "seed:sticky-green-composed": "node scripts/seed-sticky-green-composed-template.mjs",
     "seed:email-templates": "node scripts/seed-email-templates.mjs",
-    "test:stitch-sticky-green": "node scripts/test-stitch-email-sticky-green.mjs"
+    "test:stitch-sticky-green": "node scripts/test-stitch-email-sticky-green.mjs",
+    "update:stitch-template": "node scripts/update-stitch-template-mjml.mjs"
   },
   "dependencies": {
     "@sentry/node": "^8.49.0",
