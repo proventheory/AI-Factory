@@ -2896,13 +2896,36 @@ app.get("/v1/email_templates", async (req, res) => {
   }
 });
 
-/** GET /v1/email_templates/:id/preview — render template MJML to HTML for preview */
+/** GET /v1/email_templates/:id/preview — render template MJML to HTML. When component_sequence is set and mjml is null, assemble from email_component_library. */
 app.get("/v1/email_templates/:id/preview", async (req, res) => {
   try {
     const id = req.params.id;
-    const r = await pool.query("SELECT mjml FROM email_templates WHERE id = $1", [id]);
+    const r = await pool.query("SELECT mjml, component_sequence FROM email_templates WHERE id = $1", [id]);
     if (r.rows.length === 0) return res.status(404).send("Not found");
-    const mjml = r.rows[0].mjml;
+    let mjml = r.rows[0].mjml as string | null;
+    let seq = r.rows[0].component_sequence as unknown;
+    if (typeof seq === "string") {
+      try {
+        seq = JSON.parse(seq) as unknown;
+      } catch {
+        seq = null;
+      }
+    }
+    if ((!mjml || typeof mjml !== "string") && Array.isArray(seq) && seq.length > 0) {
+      const ids = (seq as unknown[])
+        .map((x) => (typeof x === "string" ? x : null))
+        .filter((s): s is string => s != null && isValidUuid(s));
+      if (ids.length > 0) {
+        const fragRes = await pool.query(
+          "SELECT mjml_fragment FROM email_component_library WHERE id = ANY($1::uuid[]) ORDER BY array_position($1::uuid[], id)",
+          [ids]
+        );
+        const fragments = (fragRes.rows as { mjml_fragment: string }[]).map((row) => row.mjml_fragment ?? "").filter(Boolean);
+        if (fragments.length > 0) {
+          mjml = `<mjml>\n<mj-body>\n${fragments.join("\n")}\n</mj-body>\n</mjml>`;
+        }
+      }
+    }
     if (!mjml || typeof mjml !== "string") {
       return res.status(422).send("Template has no MJML content");
     }
@@ -2977,8 +3000,12 @@ function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content
     // Newsletter 1 (e.g. United Sodas / 12 reasons): 2 images, 0 products
     imageSlots = 2;
     productSlots = 0;
+  } else if (row.component_sequence && Array.isArray(row.component_sequence) && row.component_sequence.length > 0 && !mjml) {
+    // Composed template (no stored MJML): use img_count and sensible product default
+    imageSlots = typeof row.img_count === "number" ? row.img_count : 2;
+    productSlots = 2; // typical for product_block_2 in composed templates
   } else {
-    imageSlots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
+    imageSlots = contract?.max_content_slots ?? (typeof row.img_count === "number" ? row.img_count : null) ?? contentSlotsFromMjml(mjml) ?? 0;
     productSlots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
     if (typeLabel === "newsletter" && imageSlots === 0 && mjml) {
       const imageLike = mjml.match(/\{\{[^}]*image[^}]*\}\}|\[image\s*\d*\][^\]]*|\[hero\]|\[banner\]/gi);

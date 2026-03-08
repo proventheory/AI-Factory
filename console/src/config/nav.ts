@@ -96,7 +96,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/template-proofing", label: "Template Proofing", branchId: "studio" },
       { href: "/tokens", label: "Token Registry", branchId: "studio" },
       { href: "/components", label: "Component Registry", branchId: "studio" },
-      { href: "/brand-themes", label: "Brand Themes", branchId: "studio" },
     ],
   },
   {
@@ -176,7 +175,6 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "agent-memory": "Agent Memory",
   tokens: "Token Registry",
   components: "Component Registry",
-  "brand-themes": "Brand Themes",
 };
 
 export function getAllNavItems(): NavItem[] {

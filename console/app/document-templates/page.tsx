@@ -167,7 +167,7 @@ export default function DocumentTemplatesPage() {
       <Stack>
         <PageHeader
           title="Document Templates"
-          description="Deck, report, and email templates. Email templates show image and product slot capacity; use them in the email wizard to build campaigns."
+          description="Deck, report, and email templates. Email templates show image and product slot capacity; use them in the email wizard to build campaigns. Brand embeddings are managed per brand: open a brand → Brand Embeddings → Manage."
         />
         <CardSection className="overflow-hidden rounded-lg border border-border shadow-sm">
           {isLoading ? (

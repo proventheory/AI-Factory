@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -11,6 +12,7 @@ import {
   LoadingSkeleton,
 } from "@/components/ui";
 import { useEmailTemplate, useBrandProfile, useBrandProfiles } from "@/hooks/use-api";
+import { fetchEmailTemplatePreviewHtml } from "@/lib/api";
 
 export default function EmailTemplateDetailPage() {
   const params = useParams<{ id: string }>();
@@ -20,6 +22,20 @@ export default function EmailTemplateDetailPage() {
   const { data: brandsData } = useBrandProfiles();
   const brandId = template?.brand_profile_id ?? null;
   const { data: brand } = useBrandProfile(brandId);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewHtml(null);
+    fetchEmailTemplatePreviewHtml(id)
+      .then(setPreviewHtml)
+      .catch((e) => setPreviewError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setPreviewLoading(false));
+  }, [id]);
 
   const brandsMap = new Map((brandsData?.items ?? []).map((b) => [b.id, b.name]));
 
@@ -132,7 +148,7 @@ export default function EmailTemplateDetailPage() {
           </CardSection>
 
           {template.image_url && (
-            <CardSection title="Preview">
+            <CardSection title="Preview image">
               <div className="flex justify-center rounded-lg border border-border bg-fg-muted/5 p-4">
                 <img
                   src={template.image_url}
@@ -143,6 +159,27 @@ export default function EmailTemplateDetailPage() {
             </CardSection>
           )}
         </div>
+
+        <CardSection title="Rendered preview">
+          <div className="rounded-lg border border-border bg-white overflow-hidden">
+            {previewLoading && (
+              <div className="flex items-center justify-center h-64 text-fg-muted text-sm">Loading preview…</div>
+            )}
+            {previewError && (
+              <div className="px-4 py-3 text-body-small text-state-danger">
+                Preview failed: {previewError}
+              </div>
+            )}
+            {previewHtml && !previewError && (
+              <iframe
+                title="Email template preview"
+                srcDoc={previewHtml}
+                className="w-full min-h-[420px] border-0"
+                sandbox="allow-same-origin"
+              />
+            )}
+          </div>
+        </CardSection>
 
         {template.mjml && (
           <CardSection
