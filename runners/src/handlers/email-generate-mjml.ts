@@ -428,6 +428,99 @@ async function enrichProductDescriptionsIfEnabled(
 }
 
 /**
+ * Design polish: apply brand fonts throughout inline styles, make hero image full-width,
+ * deduplicate CTA section text, and improve visual hierarchy for professional appearance.
+ */
+function applyDesignPolish(
+  html: string,
+  fontFamily: string,
+  brandColor: string,
+  generatedCopy?: GeneratedEmailCopy | null,
+): string {
+  let out = html;
+  const ff = fontFamily.trim();
+
+  // 1. Replace hardcoded inline font-families with brand font so the email matches the brand.
+  //    Email clients ignore <style> rules and only read inline styles, so we must patch each one.
+  if (ff && ff !== "system-ui, sans-serif") {
+    const safeFf = ff.replace(/'/g, "\\'");
+    const genericFonts = [
+      "font-family:'Inter'",
+      "font-family:Inter",
+      "font-family:sans-serif",
+      "font-family:Arial, sans-serif",
+      "font-family:Helvetica,Arial,sans-serif",
+      "font-family:Helvetica,Arial, sans-serif",
+      "font-family:Arial,sans-serif",
+    ];
+    for (const gf of genericFonts) {
+      const re = new RegExp(gf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      out = out.replace(re, `font-family:'${safeFf}',sans-serif`);
+    }
+  }
+
+  // 2. Hero image: make it full-width (remove fixed width constraint, remove fixed height).
+  //    The hero is the first crop-image in the #F2F2F2 section — it has width:320px and height:200px.
+  //    Make it span the full container (560px) and auto-height for proper aspect ratio.
+  out = out.replace(
+    /(<td[^>]*class="crop-image"[^>]*background:#F2F2F2[^>]*>[\s\S]*?<td style=")(width:\d+px;)(">[\s\S]*?<img[^>]*)(height:\d+px;)(width:100%;)/i,
+    (_m, pre, _w, mid, _h, _ww) => `${pre}width:100%;${mid}height:auto;width:100%;`,
+  );
+  // Broader approach: find the first large crop-image img before footer and widen it
+  const heroImgRe = /(<td[^>]*style="[^"]*width:\s*)(\d{2,3})(px;">\s*<a[^>]*><img[^>]*style="[^"]*)(height:\s*\d+px;)/i;
+  const heroMatch = heroImgRe.exec(out);
+  if (heroMatch && parseInt(heroMatch[2]) < 560) {
+    out = out.replace(heroImgRe, (_m, pre, _w, mid, _h) => `${pre}560${mid}height:auto;`);
+  }
+
+  // 3. Remove duplicate headline in the green CTA section.
+  //    The template often renders the same text as both <h> and <p> in the CTA block.
+  if (generatedCopy?.ctaSectionHeadline) {
+    const headline = generatedCopy.ctaSectionHeadline;
+    const escaped = headline.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Remove second occurrence of same text within the CTA section (green block bgcolor="#16a34a" area)
+    const ctaStart = out.indexOf('background:#16a34a') ?? out.indexOf('bgcolor="#16a34a"');
+    if (ctaStart !== -1) {
+      const ctaEnd = out.indexOf('#292929', ctaStart);
+      const ctaSection = out.slice(ctaStart, ctaEnd !== -1 ? ctaEnd : undefined);
+      const re = new RegExp(`(>${escaped}<[^>]*>[\\s\\S]*?)>${escaped}<`, "i");
+      if (re.test(ctaSection)) {
+        const fixed = ctaSection.replace(re, (m, before) => `${before}>&nbsp;<`);
+        out = out.slice(0, ctaStart) + fixed + out.slice(ctaEnd !== -1 ? ctaEnd : out.length);
+      }
+    }
+  }
+
+  // 4. Tighten spacing: reduce excessive padding around hero section for cleaner look.
+  //    Replace 30px top/bottom padding on crop-image to 0px top (image flush to edge).
+  out = out.replace(
+    /padding-top:30px;padding-right:0px;padding-bottom:30px;padding-left:0px/g,
+    "padding-top:0px;padding-right:0px;padding-bottom:20px;padding-left:0px",
+  );
+
+  // 5. Product grid images: remove fixed height so they scale naturally (no awkward cropping).
+  out = out.replace(/(class="crop-image"[^>]*>[\s\S]*?<img[^>]*style="[^"]*)(height:\s*170px;)/gi,
+    (_, pre, _h) => `${pre}height:auto;`,
+  );
+  out = out.replace(/(class="crop-image"[^>]*>[\s\S]*?<img[^>]*style="[^"]*)(height:\s*114px;)/gi,
+    (_, pre, _h) => `${pre}height:auto;`,
+  );
+
+  // 6. Mobile-responsive: add responsive CSS for better mobile rendering
+  const mobileStyles = `
+    @media only screen and (max-width:479px) {
+      .crop-image img { height:auto !important; width:100% !important; }
+      .mj-column-per-50 { width:100% !important; max-width:100% !important; }
+      .mj-column-per-33-33 { width:50% !important; max-width:50% !important; }
+    }`;
+  if (out.includes("</style>")) {
+    out = out.replace(/<\/style>/, mobileStyles + "</style>");
+  }
+
+  return out;
+}
+
+/**
  * Apply brand color to template accent/CTA, replace default hero/CTA copy with campaign or LLM-generated copy,
  * and replace hardcoded footer (Marigold/Emma) with brand footer.
  */
@@ -868,6 +961,7 @@ export async function handleEmailGenerateMjml(request: {
     console.log("[MJML] no campaign images provided; hero will be logo or blank. Save selected assets in campaign metadata (images) for hero/content.", { run_id: runId });
   }
   console.log("[MJML] image_assignment", { run_id: runId, sourceSummary: imageAssignment.sourceSummary, campaignOnlyCount: campaignImages.length, heroFirst: !!heroUrl, campaignImagesCount: campaignImagesRaw.length, heroUrl: heroUrl?.slice(-60) ?? "(none)", productImageCount: productImageUrls.length });
+  console.log("[MJML] font_resolution", { run_id: runId, fontFamily, hasFonts: !!fonts, hasTypoObj: !!typoObj, headingFont: fonts?.heading, bodyFont: (typoObj?.fonts as Record<string, string> | undefined)?.body });
 
   const typo = mergedTokens && typeof mergedTokens === "object" ? (mergedTokens as Record<string, unknown>).typography : undefined;
   const typoObj = typo && typeof typo === "object" ? (typo as Record<string, unknown>) : undefined;
@@ -1366,15 +1460,19 @@ export async function handleEmailGenerateMjml(request: {
           htmlInput = htmlInput.replace(/<a\s+href="[^"]*"\s+[^>]*style="display:inline-block[^"]*"[^>]*>\s*<img\s+src="data:image\/gif;base64,[^"]*"[^>]*>\s*<\/a>/gi, "");
         }
       }
-      const html = applyBrandColorsAndCampaignCopy(
+      let html = applyBrandColorsAndCampaignCopy(
         htmlInput,
         brandColor,
         campaignPrompt,
         generatedCopy,
         brandFooter,
       );
+
+      // ── Design polish: brand fonts, full-width hero, tighter spacing ──
+      html = applyDesignPolish(html, fontFamily, brandColor, generatedCopy);
+
       // #region agent log
-      console.log("[MJML] compile success (H9)", { run_id: runId, htmlLen: html?.length ?? 0, campaignPromptSnippet: campaignPrompt.slice(0, 40) });
+      console.log("[MJML] compile success (H9)", { run_id: runId, htmlLen: html?.length ?? 0, campaignPromptSnippet: campaignPrompt.slice(0, 40), fontFamily: fontFamily.slice(0, 30) });
       fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", location: "email-generate-mjml.ts:compile success", message: "MJML compile success", data: { run_id: runId, htmlLen: html?.length ?? 0 }, timestamp: Date.now(), hypothesisId: "H9" }) }).catch(() => {});
       // #endregion
 
