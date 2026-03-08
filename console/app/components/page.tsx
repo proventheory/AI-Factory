@@ -428,7 +428,7 @@ export default function ComponentRegistryPage() {
               <iframe
                 title="Component preview"
                 srcDoc={previewHtml}
-                className="w-full min-h-[320px] border-0"
+                className="w-full min-h-[520px] border-0"
                 sandbox="allow-same-origin"
               />
             )}
