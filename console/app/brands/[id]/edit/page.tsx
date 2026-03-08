@@ -17,8 +17,11 @@ import { useBrandProfile, useUpdateBrandProfile } from "@/hooks/use-api";
 import {
   buildDesignTokens,
   readDesignTokensFromBrand,
+  validateDesignTokens,
+  mergeDesignTokensExtended,
   type SocialLink,
   type ContactItem,
+  type DesignTokensExtended,
 } from "../../token-helpers";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { copyCampaignImageToCdn } from "@/lib/api";
@@ -67,6 +70,11 @@ export default function EditBrandPage() {
   const [ctaText, setCtaText] = useState("");
   const [ctaLink, setCtaLink] = useState("");
   const [submitError, setSubmitError] = useState("");
+  const [brandScale, setBrandScale] = useState<Record<string, string>>({});
+  const [headingScale, setHeadingScale] = useState<Record<string, { size: string; weight: number }>>({});
+  const [bodySize, setBodySize] = useState("");
+  const [captionSize, setCaptionSize] = useState("");
+  const [fontWeights, setFontWeights] = useState<Record<string, number>>({ normal: 400, medium: 500, semibold: 600, bold: 700 });
 
   useEffect(() => {
     if (!brand) return;
@@ -111,6 +119,24 @@ export default function EditBrandPage() {
     const t = tokens as unknown as Record<string, unknown>;
     setCtaText(typeof t.ctaText === "string" ? t.ctaText : "");
     setCtaLink(typeof t.ctaLink === "string" ? t.ctaLink : "");
+
+    const colors = (dt.colors ?? dt.color) as Record<string, Record<string, string>> | undefined;
+    const existingBrand = colors?.brand ?? {};
+    setBrandScale(existingBrand as Record<string, string>);
+    const typo = dt.typography as Record<string, unknown> | undefined;
+    const heading = (typo?.heading ?? {}) as Record<string, { size?: string; weight?: number }>;
+    const headMap: Record<string, { size: string; weight: number }> = {};
+    for (const [k, v] of Object.entries(heading)) {
+      if (v && (typeof v.size === "string" || typeof v.weight === "number"))
+        headMap[k] = { size: v.size ?? "1rem", weight: typeof v.weight === "number" ? v.weight : 700 };
+    }
+    setHeadingScale(headMap);
+    const body = typo?.body as { default?: { size?: string } } | undefined;
+    setBodySize(body?.default?.size ?? "");
+    const caption = typo?.caption as { size?: string } | undefined;
+    setCaptionSize(caption?.size ?? "");
+    const fw = (typo?.fontWeight ?? {}) as Record<string, number>;
+    setFontWeights(Object.keys(fw).length ? fw : { normal: 400, medium: 500, semibold: 600, bold: 700 });
   }, [brand]);
 
   const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -215,6 +241,41 @@ export default function EditBrandPage() {
           return;
         }
       }
+      const baseTokens = buildDesignTokens({
+        primaryColor,
+        secondaryColor,
+        fontHeadings,
+        fontBody,
+        logoUrl: resolvedLogoUrl || logoUrl,
+        logoUrlWhite: resolvedLogoUrlWhite || logoUrlWhite,
+        wordmarkBold,
+        wordmarkLight,
+        sitemapUrl,
+        sitemapType,
+        socialMedia,
+        contactInfo: contactInfo.filter((c) => (c.type ?? "").toLowerCase() !== "email"),
+        assetUrls: assetUrls.length ? assetUrls : assetUrlsText.split("\n").map((u) => u.trim()).filter(Boolean),
+        ctaText,
+        ctaLink,
+      });
+      const extended: DesignTokensExtended = {};
+      const scaleFiltered = Object.fromEntries(Object.entries(brandScale).filter(([, v]) => v && v.trim()));
+      if (Object.keys(scaleFiltered).length > 0) extended.brandScale = scaleFiltered;
+      const typoExt: DesignTokensExtended["typography"] = {};
+      if (Object.keys(headingScale).length > 0) typoExt.heading = headingScale;
+      if (bodySize.trim()) typoExt.body = { default: { size: bodySize.trim(), weight: 400 } };
+      if (captionSize.trim()) typoExt.caption = { size: captionSize.trim(), weight: 400 };
+      if (Object.keys(fontWeights).length > 0) typoExt.fontWeight = fontWeights;
+      if (Object.keys(typoExt).length > 0) extended.typography = typoExt;
+      const mergedTokens = mergeDesignTokensExtended(
+        baseTokens,
+        Object.keys(extended).length > 0 ? extended : null
+      );
+      const validation = validateDesignTokens(mergedTokens);
+      if (!validation.valid) {
+        setSubmitError(`Token validation: ${validation.errors.join(". ")}`);
+        return;
+      }
       await update.mutateAsync({
         id,
         name: name.trim(),
@@ -244,23 +305,7 @@ export default function EditBrandPage() {
             ? bannedWords.split(",").map((s) => s.trim()).filter(Boolean)
             : undefined,
         },
-        design_tokens: buildDesignTokens({
-          primaryColor,
-          secondaryColor,
-          fontHeadings,
-          fontBody,
-          logoUrl: resolvedLogoUrl || logoUrl,
-          logoUrlWhite: resolvedLogoUrlWhite || logoUrlWhite,
-          wordmarkBold,
-          wordmarkLight,
-          sitemapUrl,
-          sitemapType,
-          socialMedia,
-          contactInfo: contactInfo.filter((c) => (c.type ?? "").toLowerCase() !== "email"),
-          assetUrls: assetUrls.length ? assetUrls : assetUrlsText.split("\n").map((u) => u.trim()).filter(Boolean),
-          ctaText,
-          ctaLink,
-        }),
+        design_tokens: mergedTokens,
       });
       router.push(`/brands/${id}`);
     } catch (err: any) {
@@ -828,6 +873,110 @@ export default function EditBrandPage() {
                   onChange={(e) => setBannedWords(e.target.value)}
                   placeholder="slang, jargon"
                 />
+              </div>
+            </div>
+          </CardSection>
+
+          <CardSection title="Design tokens (advanced)">
+            <p className="text-body-small text-text-secondary mb-4">
+              Optional palette scale (50–900) and typography scale. Validated on save (hex colors, allowed weights 300–700). Primary/secondary above are always saved.
+            </p>
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-body font-medium text-text-primary mb-2">Palette scale</h4>
+                <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                  {["50", "100", "200", "300", "400", "500", "600", "700", "800", "900"].map((key) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className="text-body-small text-fg-muted w-8">{key}</span>
+                      <input
+                        type="color"
+                        value={brandScale[key] && /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(brandScale[key]) ? brandScale[key] : "#000000"}
+                        onChange={(e) => setBrandScale((s) => ({ ...s, [key]: e.target.value }))}
+                        className="h-8 w-12 cursor-pointer rounded border"
+                      />
+                      <Input
+                        placeholder="#hex"
+                        value={brandScale[key] ?? ""}
+                        onChange={(e) => setBrandScale((s) => ({ ...s, [key]: e.target.value }))}
+                        className="font-mono text-body-small min-w-0 flex-1"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-body font-medium text-text-primary mb-2">Heading scale (size / weight)</h4>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {(["h1", "h2", "h3", "h4", "h5", "h6"] as const).map((h) => (
+                    <div key={h} className="flex items-center gap-2">
+                      <span className="text-body-small text-fg-muted w-8">{h}</span>
+                      <Input
+                        placeholder="e.g. 2rem"
+                        value={headingScale[h]?.size ?? ""}
+                        onChange={(e) =>
+                          setHeadingScale((s) => ({
+                            ...s,
+                            [h]: { ...(s[h] ?? { size: "1rem", weight: 700 }), size: e.target.value },
+                          }))
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                      <select
+                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-body-small"
+                        value={headingScale[h]?.weight ?? 700}
+                        onChange={(e) =>
+                          setHeadingScale((s) => ({
+                            ...s,
+                            [h]: { ...(s[h] ?? { size: "1rem", weight: 700 }), weight: Number(e.target.value) },
+                          }))
+                        }
+                      >
+                        {[300, 400, 500, 600, 700].map((w) => (
+                          <option key={w} value={w}>{w}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className={labelCls}>Body default size</label>
+                  <Input
+                    placeholder="e.g. 1rem"
+                    value={bodySize}
+                    onChange={(e) => setBodySize(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Caption size</label>
+                  <Input
+                    placeholder="e.g. 0.875rem"
+                    value={captionSize}
+                    onChange={(e) => setCaptionSize(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <h4 className="text-body font-medium text-text-primary mb-2">Font weights</h4>
+                <div className="flex flex-wrap gap-4">
+                  {["normal", "medium", "semibold", "bold"].map((name) => (
+                    <div key={name} className="flex items-center gap-2">
+                      <span className="text-body-small text-fg-muted w-20">{name}</span>
+                      <select
+                        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-body-small"
+                        value={fontWeights[name] ?? 400}
+                        onChange={(e) =>
+                          setFontWeights((s) => ({ ...s, [name]: Number(e.target.value) }))
+                        }
+                      >
+                        {[300, 400, 500, 600, 700].map((w) => (
+                          <option key={w} value={w}>{w}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </CardSection>

@@ -2348,6 +2348,39 @@ app.get("/v1/brand_profiles/:id", async (req, res) => {
   }
 });
 
+/** GET /v1/brand_profiles/:id/usage — telemetry for "where these tokens are used" (Phase 4). */
+app.get("/v1/brand_profiles/:id/usage", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
+    const [initCount, runsResult, docTplCount, emailTplCount] = await Promise.all([
+      pool.query("SELECT count(*)::int AS c FROM initiatives WHERE brand_profile_id = $1", [id]),
+      pool.query(
+        `SELECT count(*)::int AS runs_count, max(r.started_at) AS last_run_at
+         FROM runs r JOIN plans p ON p.id = r.plan_id JOIN initiatives i ON i.id = p.initiative_id
+         WHERE i.brand_profile_id = $1`,
+        [id]
+      ),
+      pool.query("SELECT count(*)::int AS c FROM document_templates WHERE brand_profile_id = $1", [id]),
+      pool.query("SELECT count(*)::int AS c FROM email_templates WHERE brand_profile_id = $1", [id]),
+    ]);
+    const initiatives_count = initCount.rows[0]?.c ?? 0;
+    const runs_count = runsResult.rows[0]?.runs_count ?? 0;
+    const last_run_at = runsResult.rows[0]?.last_run_at ?? null;
+    const document_templates_count = docTplCount.rows[0]?.c ?? 0;
+    const email_templates_count = emailTplCount.rows[0]?.c ?? 0;
+    res.json({
+      initiatives_count,
+      runs_count,
+      last_run_at,
+      document_templates_count,
+      email_templates_count,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** POST /v1/brand_profiles/prefill_from_url — fetch live site and extract tokens (colors, fonts, logo, sitemap). Logo URL is copied to our CDN so the brand record can store a stable URL. */
 app.post("/v1/brand_profiles/prefill_from_url", async (req, res) => {
   try {

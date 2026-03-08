@@ -347,6 +347,14 @@ export function useBrandProfile(id: string | null) {
   });
 }
 
+export function useBrandUsage(brandProfileId: string | null) {
+  return useQuery({
+    queryKey: ["brandUsage", brandProfileId],
+    queryFn: () => api.getBrandUsage(brandProfileId!),
+    enabled: !!brandProfileId,
+  });
+}
+
 export function useCreateBrandProfile() {
   const queryClient = useQueryClient();
   return useMutation({

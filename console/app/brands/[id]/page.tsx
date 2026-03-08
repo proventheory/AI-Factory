@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   Button,
@@ -15,18 +16,20 @@ import {
   useDeleteBrandProfile,
   useBrandEmbeddings,
   useBrandAssets,
+  useBrandUsage,
 } from "@/hooks/use-api";
 import {
   getBrandPalette,
   getBrandTypography,
-  getBrandCompleteness,
+  getBrandCompletenessDiagnostics,
   getResolvedTokenEntries,
-  type BrandCompleteness,
+  RESOLVED_TOKEN_PATHS,
+  PALETTE_ROLE_USAGE,
   type BrandPalette,
   type BrandTypography,
 } from "../token-helpers";
 
-function ColorSwatch({ hex, label, large }: { hex: string; label: string; large?: boolean }) {
+function ColorSwatch({ hex, label, large, usage }: { hex: string; label: string; large?: boolean; usage?: string }) {
   return (
     <div className="flex flex-col items-center gap-1.5">
       <span
@@ -34,6 +37,7 @@ function ColorSwatch({ hex, label, large }: { hex: string; label: string; large?
         style={{ backgroundColor: hex }}
       />
       <span className="text-[10px] text-text-secondary">{label}</span>
+      {usage && <span className="text-[9px] text-fg-muted max-w-[80px] text-center">{usage}</span>}
       <span className="text-[10px] font-mono text-text-muted">{hex}</span>
     </div>
   );
@@ -44,12 +48,51 @@ function CompletenessBadge({ level }: { level: string }) {
   return <Badge variant={variant as "success" | "info" | "neutral"}>{level}</Badge>;
 }
 
+function ReadinessRow({
+  label,
+  level,
+  reason,
+  suggestion,
+  missing,
+}: { label: string; level: string; reason: string; suggestion?: string; missing?: string[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-border bg-fg-muted/5 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">{label}</span>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <CompletenessBadge level={level} />
+            <button
+              type="button"
+              onClick={() => setOpen(!open)}
+              className="text-body-small text-brand-600 hover:underline"
+            >
+              {open ? "Hide why" : "Why?"}
+            </button>
+          </div>
+        </div>
+      </div>
+      {open && (
+        <div className="mt-2 space-y-1 border-t border-border pt-2 text-body-small text-text-secondary">
+          <p>{reason}</p>
+          {suggestion && <p className="text-fg-muted">→ {suggestion}</p>}
+          {missing && missing.length > 0 && (
+            <p className="font-medium text-fg-muted">Missing: {missing.join(", ")}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BrandDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data: brand, isLoading, error } = useBrandProfile(id);
   const { data: embeddings } = useBrandEmbeddings(id);
   const { data: assets } = useBrandAssets(id);
+  const { data: usage } = useBrandUsage(id ?? null);
   const archiveMut = useDeleteBrandProfile();
 
   if (error) {
@@ -96,11 +139,14 @@ export default function BrandDetailPage() {
 
   const palette: BrandPalette = getBrandPalette(dt);
   const typography: BrandTypography = getBrandTypography(dt);
-  const completeness: BrandCompleteness = getBrandCompleteness(dt, deckTheme, reportTheme);
-  const resolvedPaths = ["color.brand.500", "color.brand.600", "typography.fonts.heading", "typography.fonts.body", "logo.url"];
-  const resolvedEntries = getResolvedTokenEntries(dt, resolvedPaths);
+  const diagnostics = getBrandCompletenessDiagnostics(dt, deckTheme, reportTheme);
+  const resolvedEntries = getResolvedTokenEntries(dt, [...RESOLVED_TOKEN_PATHS]);
   const brandColors: Record<string, string> = palette.brand ?? {};
   const neutralColors: Record<string, string> = palette.neutral ?? {};
+  const scaleKeys = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900"];
+  const roleAliasKeys = ["primary", "primary_dark", "accent", "secondary"];
+  const brandScale = Object.fromEntries(Object.entries(brandColors).filter(([k]) => scaleKeys.includes(k)));
+  const brandRoles = Object.fromEntries(Object.entries(brandColors).filter(([k]) => !scaleKeys.includes(k)));
   const sortScale = (a: [string, string], b: [string, string]) => {
     const na = Number(a[0]);
     const nb = Number(b[0]);
@@ -137,33 +183,19 @@ export default function BrandDetailPage() {
 
         <CardSection title="Brand system">
           <p className="text-body-small text-text-secondary mb-4">
-            Token registry and downstream readiness. Used across emails, pitch decks, reports, and content.
+            Diagnostic panel: token registry and downstream readiness. Click &quot;Why?&quot; to see why each item is in its state and what to configure next.
           </p>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-4">
-            <div>
-              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Color system</span>
-              <div className="mt-1"><CompletenessBadge level={completeness.color} /></div>
-            </div>
-            <div>
-              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Typography</span>
-              <div className="mt-1"><CompletenessBadge level={completeness.typography} /></div>
-            </div>
-            <div>
-              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Deck readiness</span>
-              <div className="mt-1"><CompletenessBadge level={completeness.deck} /></div>
-            </div>
-            <div>
-              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Report readiness</span>
-              <div className="mt-1"><CompletenessBadge level={completeness.report} /></div>
-            </div>
-            <div>
-              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Email readiness</span>
-              <div className="mt-1"><CompletenessBadge level={completeness.email} /></div>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 mb-4">
+            <ReadinessRow label="Color system" level={diagnostics.color.level} reason={diagnostics.color.reason} suggestion={diagnostics.color.suggestion} />
+            <ReadinessRow label="Typography" level={diagnostics.typography.level} reason={diagnostics.typography.reason} suggestion={diagnostics.typography.suggestion} />
+            <ReadinessRow label="Deck readiness" level={diagnostics.deck.level} reason={diagnostics.deck.reason} missing={diagnostics.deck.missing.length ? diagnostics.deck.missing : undefined} />
+            <ReadinessRow label="Report readiness" level={diagnostics.report.level} reason={diagnostics.report.reason} missing={diagnostics.report.missing.length ? diagnostics.report.missing : undefined} />
+            <ReadinessRow label="Email readiness" level={diagnostics.email.level} reason={diagnostics.email.reason} missing={diagnostics.email.missing.length ? diagnostics.email.missing : undefined} />
           </div>
           <div className="flex flex-wrap gap-4 text-body-small text-text-muted border-t border-border pt-4">
             <span>Last updated: {brand.updated_at ? new Date(brand.updated_at).toLocaleDateString() : "—"}</span>
             <span>Source: manual</span>
+            <span>Provenance: who changed and when — coming when audit is available</span>
           </div>
         </CardSection>
 
@@ -335,22 +367,34 @@ export default function BrandDetailPage() {
 
         <CardSection title="Color palette">
           <p className="text-body-small text-text-secondary mb-4">
-            Used in emails, pitch decks, reports, and UI. Scale keys (50–900) and legacy primary/secondary.
+            Scale (50–900) is canonical; role aliases point into the scale. Labels show where colors are used downstream (CTA, headings, charts).
           </p>
           <div className="space-y-6">
             <div>
-              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Brand</h4>
+              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Scale (50–900)</h4>
               <div className="flex flex-wrap gap-4">
-                {Object.entries(brandColors)
+                {Object.entries(brandScale)
                   .sort(sortScale)
                   .map(([shade, hex]) => (
-                    <ColorSwatch key={shade} hex={hex} label={shade} large />
+                    <ColorSwatch key={shade} hex={hex} label={shade} large usage={PALETTE_ROLE_USAGE[shade]} />
                   ))}
-                {Object.keys(brandColors).length === 0 && (
-                  <p className="text-body-small text-text-muted">No brand color tokens. Add in Edit.</p>
+                {Object.keys(brandScale).length === 0 && (
+                  <p className="text-body-small text-text-muted">No scale keys. Add in Edit → Design tokens (advanced).</p>
                 )}
               </div>
             </div>
+            {Object.keys(brandRoles).length > 0 && (
+              <div>
+                <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Role aliases (primary, primary_dark, accent…)</h4>
+                <div className="flex flex-wrap gap-4">
+                  {Object.entries(brandRoles)
+                    .sort(sortScale)
+                    .map(([role, hex]) => (
+                      <ColorSwatch key={role} hex={hex} label={role} large usage={PALETTE_ROLE_USAGE[role]} />
+                    ))}
+                </div>
+              </div>
+            )}
             {Object.keys(neutralColors).length > 0 && (
               <div>
                 <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Neutral</h4>
@@ -368,50 +412,60 @@ export default function BrandDetailPage() {
 
         <CardSection title="Typography">
           <p className="text-body-small text-text-secondary mb-4">
-            Type scale and weights used across emails, pitch decks, reports, and content.
+            Three layers: families, scale (with actual size/line-height), and weights. Specimens and in-context sample show the system in use.
           </p>
           <div className="space-y-6">
             <div>
-              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Families</h4>
+              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">1. Families</h4>
               <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3 text-body-small">
                 <div><dt className="text-fg-muted">Heading</dt><dd className="font-medium" style={{ fontFamily: typography.fontHeadings }}>{typography.fontHeadings}</dd></div>
                 <div><dt className="text-fg-muted">Body</dt><dd className="font-medium" style={{ fontFamily: typography.fontBody }}>{typography.fontBody}</dd></div>
                 <div><dt className="text-fg-muted">Mono</dt><dd className="font-medium font-mono">{typography.fontMono}</dd></div>
               </dl>
             </div>
-            {Object.keys(typography.heading).length > 0 && (
-              <div>
-                <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Type scale (specimens)</h4>
-                <div className="space-y-2">
-                  {(["h1", "h2", "h3", "h4", "h5", "h6"] as const).filter((h) => typography.heading[h]).map((h) => {
-                    const spec = typography.heading[h];
-                    if (!spec) return null;
-                    return (
-                      <div key={h} className="flex items-baseline gap-3">
-                        <span className="text-fg-muted w-12 shrink-0 text-body-small">{h}</span>
-                        <span style={{ fontSize: spec.size, fontWeight: spec.weight, lineHeight: spec.lineHeight, fontFamily: typography.fontHeadings }}>
-                          {brand.name}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  <div className="flex items-baseline gap-3">
-                    <span className="text-fg-muted w-12 shrink-0 text-body-small">Body</span>
-                    <span style={{ fontSize: typography.body.default.size, fontWeight: typography.body.default.weight, fontFamily: typography.fontBody }}>
-                      The quick brown fox jumps over the lazy dog.
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-3">
-                    <span className="text-fg-muted w-12 shrink-0 text-body-small">Caption</span>
-                    <span style={{ fontSize: typography.caption.size, fontWeight: typography.caption.weight, fontFamily: typography.fontBody }}>
-                      Caption and metadata text
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
             <div>
-              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Weights</h4>
+              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">2. Scale (size / weight / line-height)</h4>
+              <div className="rounded border border-border overflow-hidden">
+                <table className="w-full text-body-small">
+                  <thead className="bg-fg-muted/10">
+                    <tr>
+                      <th className="text-left p-2 font-medium text-fg-muted">Role</th>
+                      <th className="text-left p-2 font-medium text-fg-muted">Size</th>
+                      <th className="text-left p-2 font-medium text-fg-muted">Weight</th>
+                      <th className="text-left p-2 font-medium text-fg-muted">Line height</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(["h1", "h2", "h3", "h4", "h5", "h6"] as const).filter((h) => typography.heading[h]).map((h) => {
+                      const spec = typography.heading[h];
+                      if (!spec) return null;
+                      return (
+                        <tr key={h} className="border-t border-border">
+                          <td className="p-2 font-mono">{h}</td>
+                          <td className="p-2">{spec.size}</td>
+                          <td className="p-2">{spec.weight}</td>
+                          <td className="p-2">{spec.lineHeight}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="border-t border-border">
+                      <td className="p-2 font-mono">body</td>
+                      <td className="p-2">{typography.body.default.size}</td>
+                      <td className="p-2">{typography.body.default.weight}</td>
+                      <td className="p-2">{typography.body.default.lineHeight}</td>
+                    </tr>
+                    <tr className="border-t border-border">
+                      <td className="p-2 font-mono">caption</td>
+                      <td className="p-2">{typography.caption.size}</td>
+                      <td className="p-2">{typography.caption.weight}</td>
+                      <td className="p-2">{typography.caption.lineHeight}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">3. Weights</h4>
               <div className="flex flex-wrap gap-4">
                 {Object.entries(typography.fontWeight).map(([name, w]) => (
                   <span key={name} className="text-body-small" style={{ fontWeight: w }}>
@@ -420,12 +474,126 @@ export default function BrandDetailPage() {
                 ))}
               </div>
             </div>
+            <div>
+              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Specimens & in-context</h4>
+              <div className="space-y-2 rounded-lg border border-border bg-fg-muted/5 p-4">
+                {(["h1", "h2", "h3"] as const).filter((h) => typography.heading[h]).map((h) => {
+                  const spec = typography.heading[h];
+                  if (!spec) return null;
+                  return (
+                    <div key={h} className="flex items-baseline gap-3">
+                      <span className="text-fg-muted w-12 shrink-0 text-body-small">{h}</span>
+                      <span style={{ fontSize: spec.size, fontWeight: spec.weight, lineHeight: spec.lineHeight, fontFamily: typography.fontHeadings }}>
+                        {brand.name}
+                      </span>
+                    </div>
+                  );
+                })}
+                <p
+                  className="mt-2 pt-2 border-t border-border text-text-secondary"
+                  style={{ fontSize: typography.body.default.size, fontWeight: typography.body.default.weight, lineHeight: typography.body.default.lineHeight, fontFamily: typography.fontBody }}
+                >
+                  The quick brown fox jumps over the lazy dog. This is body copy so you can see how the brand feels in a short paragraph. Used in emails, decks, and reports.
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardSection>
+
+        <CardSection title="Preview surfaces">
+          <p className="text-body-small text-text-secondary mb-4">
+            Mini mockups using this brand&apos;s tokens. How the brand feels when applied to email, deck, report, and product.
+          </p>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border border-border overflow-hidden bg-white">
+              <p className="text-xs font-medium uppercase tracking-wider text-fg-muted px-3 py-2 border-b border-border">Email header</p>
+              <div
+                className="h-24 flex items-center justify-center p-3"
+                style={{ backgroundColor: Object.values(brandColors)[0] ?? palette.brand["500"] ?? "#3b82f6" }}
+              >
+                {logoUrl ? (
+                  <img src={logoUrl} alt="" className="max-h-full w-auto object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                ) : (
+                  <span className="text-white/90 font-medium" style={{ fontFamily: typography.fontHeadings }}>{brand.name}</span>
+                )}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border overflow-hidden bg-white">
+              <p className="text-xs font-medium uppercase tracking-wider text-fg-muted px-3 py-2 border-b border-border">Deck title slide</p>
+              <div
+                className="h-24 flex items-center justify-center p-3"
+                style={{
+                  backgroundColor: palette.brand["700"] ?? palette.brand["600"] ?? Object.values(brandColors)[0] ?? "#1e3a8a",
+                  color: "rgba(255,255,255,0.95)",
+                }}
+              >
+                <span
+                  className="font-bold text-center line-clamp-2"
+                  style={{
+                    fontFamily: typography.fontHeadings,
+                    fontSize: typography.heading?.h2?.size ?? "1.25rem",
+                    fontWeight: typography.heading?.h2?.weight ?? 700,
+                  }}
+                >
+                  {brand.name}
+                </span>
+              </div>
+            </div>
+            <div className="rounded-lg border border-border overflow-hidden bg-white">
+              <p className="text-xs font-medium uppercase tracking-wider text-fg-muted px-3 py-2 border-b border-border">Report cover</p>
+              <div
+                className="h-24 flex flex-col justify-end p-3"
+                style={{
+                  borderBottom: `3px solid ${palette.brand["500"] ?? Object.values(brandColors)[0] ?? "#3b82f6"}`,
+                }}
+              >
+                <span
+                  className="font-semibold text-fg"
+                  style={{
+                    fontFamily: typography.fontHeadings,
+                    fontSize: typography.heading?.h3?.size ?? "1.125rem",
+                    fontWeight: typography.heading?.h3?.weight ?? 600,
+                  }}
+                >
+                  {brand.name} — Report
+                </span>
+              </div>
+            </div>
+            <div className="rounded-lg border border-border overflow-hidden bg-white">
+              <p className="text-xs font-medium uppercase tracking-wider text-fg-muted px-3 py-2 border-b border-border">Product card</p>
+              <div
+                className="h-24 flex flex-col justify-between p-3"
+                style={{
+                  borderLeft: `4px solid ${palette.brand["500"] ?? Object.values(brandColors)[0] ?? "#3b82f6"}`,
+                }}
+              >
+                <span
+                  className="font-semibold text-fg line-clamp-1"
+                  style={{
+                    fontFamily: typography.fontHeadings,
+                    fontSize: typography.heading?.h4?.size ?? "1rem",
+                    fontWeight: typography.heading?.h4?.weight ?? 600,
+                  }}
+                >
+                  Product name
+                </span>
+                <span
+                  className="text-fg-muted line-clamp-1"
+                  style={{
+                    fontSize: typography.body.default.size,
+                    fontFamily: typography.fontBody,
+                  }}
+                >
+                  Short description
+                </span>
+              </div>
+            </div>
           </div>
         </CardSection>
 
         <CardSection title="Resolved tokens">
           <p className="text-body-small text-text-secondary mb-4">
-            Where each value comes from: explicit on this brand, or default. Use for debugging.
+            Debugging surface for the design token pipeline. <strong>Explicit</strong> = set on this brand. <strong>Default</strong> = inherited from system; configure in Edit to override. <strong>Missing</strong> = not set and no fallback—downstream may skip or use a safe default. When you see a value from default, you know what to configure next.
           </p>
           <div className="rounded border border-border overflow-hidden">
             <table className="w-full text-body-small">
@@ -460,26 +628,50 @@ export default function BrandDetailPage() {
 
         <CardSection title="Where these tokens are used">
           <p className="text-body-small text-text-secondary mb-4">
-            This brand system drives output across the factory. v1: static links; later: template counts and last used.
+            System integration map: actual relationships and counts. Use the links to navigate to campaigns, runs, and templates that use this brand.
           </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+            {usage && (
+              <>
+                <a href="/initiatives" className="rounded-lg border border-border bg-fg-muted/5 p-3 hover:bg-fg-muted/10 transition-colors block">
+                  <span className="text-2xl font-semibold text-brand-600">{usage.initiatives_count}</span>
+                  <p className="text-body-small text-fg-muted">Initiatives (campaigns)</p>
+                </a>
+                <a href="/runs" className="rounded-lg border border-border bg-fg-muted/5 p-3 hover:bg-fg-muted/10 transition-colors block">
+                  <span className="text-2xl font-semibold text-brand-600">{usage.runs_count}</span>
+                  <p className="text-body-small text-fg-muted">Runs</p>
+                </a>
+                <div className="rounded-lg border border-border bg-fg-muted/5 p-3">
+                  <span className="text-body font-medium text-fg">
+                    {usage.last_run_at ? new Date(usage.last_run_at).toLocaleDateString() : "—"}
+                  </span>
+                  <p className="text-body-small text-fg-muted">Last run</p>
+                </div>
+                <a href="/document-templates" className="rounded-lg border border-border bg-fg-muted/5 p-3 hover:bg-fg-muted/10 transition-colors block">
+                  <span className="text-2xl font-semibold text-brand-600">{usage.document_templates_count + usage.email_templates_count}</span>
+                  <p className="text-body-small text-fg-muted">Templates linked</p>
+                </a>
+              </>
+            )}
+          </div>
           <ul className="grid gap-3 sm:grid-cols-2">
             <li>
               <a href="/document-templates" className="text-body font-medium text-brand-600 hover:underline">
-                Email templates
+                {usage ? `${usage.email_templates_count} email templates` : "Email templates"}
               </a>
-              <span className="text-body-small text-fg-muted ml-1">— templates, campaigns</span>
+              <span className="text-body-small text-fg-muted ml-1">— link to this brand</span>
             </li>
             <li>
               <a href="/document-templates" className="text-body font-medium text-brand-600 hover:underline">
-                Pitch decks
+                {usage ? `${usage.document_templates_count} document templates` : "Document templates"}
               </a>
-              <span className="text-body-small text-fg-muted ml-1">— slide master, charts</span>
+              <span className="text-body-small text-fg-muted ml-1">— decks, reports</span>
             </li>
             <li>
-              <a href="/document-templates" className="text-body font-medium text-brand-600 hover:underline">
-                Report decks
+              <a href="/email-marketing" className="text-body font-medium text-brand-600 hover:underline">
+                Email marketing
               </a>
-              <span className="text-body-small text-fg-muted ml-1">— reports, PDFs</span>
+              <span className="text-body-small text-fg-muted ml-1">— runs, generate</span>
             </li>
             <li>
               <span className="text-body font-medium text-fg">Graphics & content</span>
@@ -598,12 +790,22 @@ export default function BrandDetailPage() {
           <p className="text-sm text-text-secondary">
             {embeddings?.items?.length ?? 0} embeddings stored
           </p>
+          {(embeddings?.items?.length ?? 0) === 0 && (
+            <p className="mt-2 text-body-small text-fg-muted rounded-lg border border-border bg-fg-muted/5 p-3">
+              <strong>Next step:</strong> Embeddings help the AI match brand tone and imagery. Add content (taglines, mission, copy samples) in Manage so generation stays on-brand.
+            </p>
+          )}
         </CardSection>
 
         <CardSection title="Brand Assets">
           <div className="flex flex-wrap gap-4">
             {(assets?.items ?? []).length === 0 ? (
-              <p className="text-sm text-text-secondary">No assets uploaded.</p>
+              <>
+                <p className="text-sm text-text-secondary">No assets uploaded.</p>
+                <p className="w-full mt-2 text-body-small text-fg-muted rounded-lg border border-border bg-fg-muted/5 p-3">
+                  <strong>Next step:</strong> Add product shots or lifestyle photos so emails and content can use on-brand imagery. Upload in Edit → Asset URLs or via brand assets.
+                </p>
+              </>
             ) : (
               (assets?.items ?? []).map((a) => (
                 <div key={a.id} className="flex flex-col items-center gap-1">

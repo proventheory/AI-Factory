@@ -830,6 +830,20 @@ export async function getBrandProfile(id: string): Promise<BrandProfileRow> {
   return res.json();
 }
 
+export type BrandUsageRow = {
+  initiatives_count: number;
+  runs_count: number;
+  last_run_at: string | null;
+  document_templates_count: number;
+  email_templates_count: number;
+};
+
+export async function getBrandUsage(brandProfileId: string): Promise<BrandUsageRow> {
+  const res = await fetch(`${API}/v1/brand_profiles/${brandProfileId}/usage`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 /** Prefill brand form from live URL: fetches site and extracts colors, fonts, logo, sitemap, tagline, industry. */
 export type BrandPrefillFromUrlResult = {
   name: string;

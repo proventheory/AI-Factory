@@ -212,6 +212,85 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
 }
 
 const SCALE_KEYS = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900"];
+const ALLOWED_WEIGHTS = [300, 400, 500, 600, 700];
+
+/** Validation result for design_tokens (Phase 3). Legacy shapes allowed. */
+export interface DesignTokensValidation {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+/** Validate design_tokens per docs/BRAND_TOKEN_VALIDATION.md. Does not reject legacy keys. */
+export function validateDesignTokens(dt: Record<string, unknown> | null | undefined): DesignTokensValidation {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!dt || typeof dt !== "object") return { valid: true, errors: [], warnings: [] };
+  const colors = (dt.colors ?? dt.color) as Record<string, Record<string, string>> | undefined;
+  const brand = colors?.brand ?? {};
+  const hexRe = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
+  for (const [key, value] of Object.entries(brand)) {
+    if (typeof value !== "string") continue;
+    if (key !== "primary" && key !== "primary_dark" && !SCALE_KEYS.includes(key)) {
+      warnings.push(`Palette key "${key}" is not in scale (50-900) or legacy (primary, primary_dark).`);
+    }
+    if (!hexRe.test(value)) {
+      errors.push(`color.brand.${key}: invalid hex (use #RGB or #RRGGBB).`);
+    }
+  }
+  const typo = dt.typography as Record<string, unknown> | undefined;
+  if (typo?.heading && typeof typo.heading === "object") {
+    const heading = typo.heading as Record<string, { size?: string; weight?: number }>;
+    for (const [h, spec] of Object.entries(heading)) {
+      if (spec?.weight != null && !ALLOWED_WEIGHTS.includes(spec.weight)) {
+        warnings.push(`typography.heading.${h}.weight ${spec.weight} not in allowed set (300, 400, 500, 600, 700).`);
+      }
+    }
+  }
+  if (typo?.fontWeight && typeof typo.fontWeight === "object") {
+    for (const [name, w] of Object.entries(typo.fontWeight as Record<string, number>)) {
+      if (typeof w === "number" && !ALLOWED_WEIGHTS.includes(w)) {
+        warnings.push(`typography.fontWeight.${name}: ${w} not in allowed set.`);
+      }
+    }
+  }
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+/** Extended design_tokens for Phase 3 edit form: optional scale + typography. */
+export interface DesignTokensExtended {
+  brandScale?: Record<string, string>;
+  typography?: {
+    heading?: Record<string, { size?: string; weight?: number; lineHeight?: number }>;
+    body?: { default?: { size?: string; weight?: number }; small?: { size?: string; weight?: number } };
+    caption?: { size?: string; weight?: number };
+    fontWeight?: Record<string, number>;
+  };
+}
+
+/** Merge base design_tokens (from buildDesignTokens) with extended palette/typography. */
+export function mergeDesignTokensExtended(
+  base: Record<string, unknown>,
+  extended: DesignTokensExtended | null | undefined
+): Record<string, unknown> {
+  if (!extended) return base;
+  const out = { ...base };
+  const color = (out.color ?? out.colors) as Record<string, Record<string, string>>;
+  const brand = { ...(color?.brand ?? {}) };
+  if (extended.brandScale && Object.keys(extended.brandScale).length > 0) {
+    for (const [k, v] of Object.entries(extended.brandScale)) {
+      if (v && (SCALE_KEYS.includes(k) || k === "primary" || k === "primary_dark")) brand[k] = v;
+    }
+    (out as Record<string, unknown>).color = { ...(out.color as object), brand };
+    if (out.colors) (out as Record<string, unknown>).colors = { ...(out.colors as object), brand };
+  }
+  if (extended.typography && Object.keys(extended.typography).length > 0) {
+    const existing = (out.typography ?? {}) as Record<string, unknown>;
+    const typo = { ...existing, ...extended.typography };
+    out.typography = typo;
+  }
+  return out;
+}
 
 /** Full palette from design_tokens for Brand System View. Additive; does not mutate or remove legacy keys. */
 export function getBrandPalette(dt: Record<string, unknown> | null | undefined): BrandPalette {
@@ -278,6 +357,107 @@ export function getBrandCompleteness(
   return { color: colorLevel, typography: typoLevel, deck: deckReady, report: reportReady, email: emailReady };
 }
 
+/** Diagnostic reasons and missing tokens for the readiness block (operational panel). */
+export interface CompletenessDiagnostics {
+  color: { level: CompletenessLevel; reason: string; suggestion?: string };
+  typography: { level: CompletenessLevel; reason: string; suggestion?: string };
+  deck: { level: ReadinessLevel; reason: string; missing: string[] };
+  report: { level: ReadinessLevel; reason: string; missing: string[] };
+  email: { level: ReadinessLevel; reason: string; missing: string[] };
+}
+
+export function getBrandCompletenessDiagnostics(
+  dt: Record<string, unknown> | null | undefined,
+  deckTheme?: Record<string, unknown> | null,
+  reportTheme?: Record<string, unknown> | null
+): CompletenessDiagnostics {
+  const colors = (dt?.colors ?? dt?.color) as Record<string, Record<string, string>> | undefined;
+  const brand = colors?.brand ?? {};
+  const neutral = colors?.neutral ?? (dt?.color as Record<string, Record<string, string>>)?.neutral ?? {};
+  const typo = dt?.typography as Record<string, unknown> | undefined;
+  const fonts = typo?.fonts as Record<string, string> | undefined;
+  const numericCount = Object.keys(brand).filter((k) => /^\d+$/.test(k)).length;
+  const has500 = typeof brand["500"] === "string" || typeof (brand as Record<string, string>).primary === "string";
+  const has600 = typeof brand["600"] === "string" || typeof (brand as Record<string, string>).primary_dark === "string";
+  const hasNeutral = Object.keys(neutral).length > 0;
+  const hasHeading = !!(fonts?.heading ?? typo?.font_headings);
+  const hasBody = !!(fonts?.body ?? typo?.font_body);
+  const hasScale = !!(typo?.heading && typeof (typo.heading as object) === "object") || !!(typo?.fontSize);
+  const hasWeights = !!(typo?.fontWeight && Object.keys(typo.fontWeight as object).length > 0);
+
+  let colorReason: string;
+  let colorSuggestion: string | undefined;
+  if (numericCount >= 5 || (numericCount >= 3 && hasNeutral)) {
+    colorReason = "Full scale (50–900) and/or neutral ramp defined.";
+  } else if (numericCount >= 3 || (has500 && has600 && hasNeutral)) {
+    colorReason = "Multiple scale keys or primary + secondary + neutral.";
+    colorSuggestion = "Add more scale keys (50, 100, 700, 800, 900) for Complete.";
+  } else if (has500 || has600) {
+    colorReason = "Only primary/secondary (500, 600) defined—no full scale or neutral.";
+    colorSuggestion = "Add scale keys (50–900) or neutral in Edit → Design tokens (advanced).";
+  } else {
+    colorReason = "No brand colors defined.";
+    colorSuggestion = "Set primary and secondary in Edit.";
+  }
+
+  let typoReason: string;
+  let typoSuggestion: string | undefined;
+  if (hasHeading && hasBody && hasScale && hasWeights) {
+    typoReason = "Families, full type scale (h1–h6), and weights defined.";
+  } else if (hasHeading && hasBody && (hasScale || hasWeights)) {
+    typoReason = "Families and either scale or weights—not both.";
+    typoSuggestion = hasScale ? "Add typography.fontWeight in Edit (advanced)." : "Add heading/body scale (sizes) in Edit (advanced).";
+  } else if (hasHeading || hasBody) {
+    typoReason = "Only font families defined—no type scale or weight tokens.";
+    typoSuggestion = "Add heading scale (h1–h6 sizes) and fontWeight in Edit → Design tokens (advanced).";
+  } else {
+    typoReason = "No typography tokens.";
+    typoSuggestion = "Set heading and body fonts in Edit.";
+  }
+
+  const deckMissing: string[] = [];
+  if (!deckTheme || typeof deckTheme !== "object") deckMissing.push("deck_theme");
+  if (!Array.isArray(deckTheme?.chart_color_sequence) || deckTheme.chart_color_sequence.length === 0) deckMissing.push("chart_color_sequence");
+  if (!deckTheme?.slide_master || typeof deckTheme.slide_master !== "object") deckMissing.push("slide_master (title font/size)");
+  const deckReason = deckMissing.length === 0
+    ? "Chart palette and/or slide master defined."
+    : `Missing for deck generation: ${deckMissing.join(", ")}.`;
+
+  const reportMissing: string[] = [];
+  if (!reportTheme || typeof reportTheme !== "object") reportMissing.push("report_theme");
+  if (reportTheme && reportTheme.header_style === undefined) reportMissing.push("header_style");
+  if (reportTheme && reportTheme.section_spacing === undefined) reportMissing.push("section_spacing");
+  const reportReason = reportMissing.length === 0
+    ? "Header style and/or section spacing defined."
+    : `Missing: ${reportMissing.join(", ")}.`;
+
+  const emailMissing: string[] = [];
+  if (!has500 && !(brand as Record<string, string>).primary) emailMissing.push("primary color (CTA)");
+  if (typeof (dt?.cta_text ?? dt?.cta_link) !== "string") emailMissing.push("cta_text or cta_link");
+  const emailReason = emailMissing.length === 0
+    ? "Primary color and CTA tokens present."
+    : `Missing: ${emailMissing.join(", ")}.`;
+
+  const completeness = getBrandCompleteness(dt, deckTheme, reportTheme);
+  return {
+    color: { level: completeness.color, reason: colorReason, suggestion: colorSuggestion },
+    typography: { level: completeness.typography, reason: typoReason, suggestion: typoSuggestion },
+    deck: { level: completeness.deck, reason: deckReason, missing: deckMissing },
+    report: { level: completeness.report, reason: reportReason, missing: reportMissing },
+    email: { level: completeness.email, reason: emailReason, missing: emailMissing },
+  };
+}
+
+/** Role aliases that point into the scale (for palette UI). Downstream usage hints. */
+export const PALETTE_ROLE_USAGE: Record<string, string> = {
+  primary: "CTA, headings, links",
+  primary_dark: "Buttons, hover",
+  "500": "Primary, CTA",
+  "600": "Secondary, headings",
+  "700": "Deck titles, dark UI",
+  accent: "Charts, highlights",
+};
+
 function getByPath(obj: unknown, path: string): unknown {
   if (obj == null) return undefined;
   let current: unknown = obj;
@@ -307,3 +487,23 @@ export function getResolvedTokenEntries(
     return { path, value: undefined, source: "missing" as ResolvedTokenSource };
   });
 }
+
+/** Default paths for resolved-tokens debug view (expanded set). */
+export const RESOLVED_TOKEN_PATHS = [
+  "color.brand.500",
+  "color.brand.600",
+  "color.brand.700",
+  "color.brand.primary",
+  "color.brand.primary_dark",
+  "color.neutral.500",
+  "typography.fonts.heading",
+  "typography.fonts.body",
+  "typography.heading.h1.size",
+  "typography.heading.h2.size",
+  "typography.body.default.size",
+  "typography.fontWeight.bold",
+  "logo.url",
+  "logo.url_white",
+  "cta_text",
+  "cta_link",
+] as const;
