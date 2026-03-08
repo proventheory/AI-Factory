@@ -42,6 +42,9 @@ const SOCIAL_ICON_BY_NAME: Record<string, string> = {
   tiktok: "https://cdn-icons-png.freepik.com/512/15789/15789316.png",
 };
 
+/** Visible fallback for missing social icon (24x24 white-friendly link icon) so footer icons aren't invisible. */
+const SOCIAL_ICON_FALLBACK_URL = "https://cdn-icons-png.flaticon.com/512/2991/2991148.png";
+
 /** Map product letter A–Z to product index 1–11 (wraps). */
 function productLetterToIndex(letter: string): number {
   const code = letter.toUpperCase().charCodeAt(0) - 65; // A=0, Z=25
@@ -120,7 +123,7 @@ function getBracketPlaceholderValue(
     const linkKey = `social_media_${n}_link`;
     const iconKey = `social_media_${n}_icon`;
     const v = (sectionJson as Record<string, unknown>)[kind === "link" ? linkKey : iconKey];
-    if (kind === "icon") return (v && String(v).trim()) ? String(v).trim() : EMPTY_IMAGE_DATA_URI;
+    if (kind === "icon") return (v && String(v).trim() && String(v) !== EMPTY_IMAGE_DATA_URI) ? String(v).trim() : SOCIAL_ICON_FALLBACK_URL;
     return String(v ?? (sectionJson.siteUrl ?? "#"));
   }
   const socialFirstMatch = /^social\s+media\s+(link|icon)$/i.exec(k);
@@ -746,16 +749,15 @@ export async function handleEmailGenerateMjml(request: {
           templateJson = { ...(templateJson ?? {}), ...(t.sections_json as Record<string, unknown>) };
           sectionsJsonMerged = true;
         }
-        // Hero must use campaign image, not product. Emma-style templates: replace first {{product_1_image}} only when it's in the hero (first ~2500 chars) so we don't replace the product section's placeholder.
-        const isEmmaTemplate = /emma/i.test(templateName);
-        if (templateMjml && isEmmaTemplate) {
+        // Hero must use campaign image when available, not product. Replace first {{product_1_image}} in the hero zone (first ~2500 chars) with {{hero_image_url}} for any template so campaign/pexels hero shows.
+        if (templateMjml) {
           const heroZone = templateMjml.slice(0, 2500);
           const heroMatch = heroZone.match(/\{\{\s*product_1_image\s*\}\}/);
           if (heroMatch) {
             const placeholder = heroMatch[0];
             const firstInHero = heroZone.indexOf(placeholder);
             templateMjml = templateMjml.substring(0, firstInHero) + "{{hero_image_url}}" + templateMjml.substring(firstInHero + placeholder.length);
-            console.log("[MJML] Emma template: replaced {{product_1_image}} with {{hero_image_url}} in hero zone", { run_id: runId, template_id: input.template_id });
+            console.log("[MJML] template: replaced {{product_1_image}} with {{hero_image_url}} in hero zone", { run_id: runId, template_id: input.template_id });
           }
         }
         // #region agent log
@@ -969,7 +971,7 @@ export async function handleEmailGenerateMjml(request: {
           (socialMediaFromTokens as Array<{ url?: string; icon?: string; name?: string }>).flatMap((s, i) => {
             const n = i + 1;
             const iconUrl = (s?.icon ?? "").trim();
-            const icon = iconUrl || (s?.name ? SOCIAL_ICON_BY_NAME[String(s.name).toLowerCase()] : "") || EMPTY_IMAGE_DATA_URI;
+            const icon = iconUrl || (s?.name ? SOCIAL_ICON_BY_NAME[String(s.name).toLowerCase()] : "") || SOCIAL_ICON_FALLBACK_URL;
             return [
               [`social_media_${n}_link`, (s?.url ?? "").trim() || "#"],
               [`social_media_${n}_icon`, icon],
@@ -987,12 +989,25 @@ export async function handleEmailGenerateMjml(request: {
         emailTitle: subjectLine ?? campaignPrompt,
         subject_line: subjectLine ?? campaignPrompt,
       };
-      // Campaign copy: set after templateJson. Use LLM-generated copy when available; otherwise raw campaign prompt.
+      // Campaign copy: set after templateJson. Use LLM-generated copy when available; otherwise derive headline/body/CTA from prompt so content isn't the same everywhere.
       const copyKeys = [
-        "campaignPrompt", "headline", "title", "header", "subhead", "body", "message", "description",
+        "campaignPrompt", "title", "header", "subhead", "message", "description",
         "prehead", "eyebrow", "offerText", "offer", "content", "main_message", "mainMessage", "theme", "intro", "copy", "promo_text",
       ];
       for (const k of copyKeys) (sectionJson as Record<string, unknown>)[k] = campaignPrompt;
+      if (!generatedCopy && campaignPrompt.trim().length > 0) {
+        const parts = campaignPrompt.trim().split(/\s*[.|]\s*/).filter(Boolean);
+        const headline = parts[0]?.trim().slice(0, 80) ?? campaignPrompt.trim().slice(0, 80);
+        const body = parts.slice(1).join(". ").trim().slice(0, 300) || headline;
+        const ctaText = parts[parts.length - 1]?.trim().slice(0, 25) || "Shop now";
+        (sectionJson as Record<string, unknown>).headline = headline;
+        (sectionJson as Record<string, unknown>).body = body;
+        (sectionJson as Record<string, unknown>).header = headline;
+        (sectionJson as Record<string, unknown>).cta_text = ctaText;
+        (sectionJson as Record<string, unknown>).cta_label = ctaText;
+        (sectionJson as Record<string, unknown>).ctaSectionHeadline = headline;
+        (sectionJson as Record<string, unknown>).ctaSectionBody = body;
+      }
       if (generatedCopy) {
         if (!generatedCopy.ctaSectionHeadline && generatedCopy.headline) {
           const short = generatedCopy.headline.split(/\s+/).slice(0, 5).join(" ").trim();
@@ -1102,38 +1117,38 @@ export async function handleEmailGenerateMjml(request: {
         termsUrl: siteUrl && siteUrl !== "#" ? `${siteUrl.replace(/\/$/, "")}/terms` : "#",
       };
       let htmlInput = replaceBracketPlaceholders(rawHtml ?? "", sectionJson as Record<string, unknown>);
-      // Emma template: ensure product image, title, "Discover more", and CTA buttons point to product/cta/site URLs (not #)
-      const isEmmaTemplate = /emma/i.test(templateName);
       const sj = sectionJson as Record<string, unknown>;
       const ctaUrl = String(sj.cta_url ?? sj.cta_link ?? siteUrl ?? "#").trim() || "#";
       const fallbackUrl = (productList[0]?.link && productList[0].link !== "#" ? productList[0].link : ctaUrl !== "#" ? ctaUrl : siteUrl) ?? "#";
-      if (isEmmaTemplate) {
-        const productUrls: string[] = [];
-        const productImages: string[] = [];
-        const productTitles: string[] = [];
-        for (let n = 1; n <= 5; n++) {
-          const u = sj[`product_${n}_url`];
-          const img = sj[`product_${n}_image`];
-          const title = sj[`product_${n}_title`];
-          productUrls.push(typeof u === "string" && u.trim() ? u.trim() : fallbackUrl);
-          productImages.push(typeof img === "string" && img.trim() ? img.trim() : "");
-          productTitles.push(typeof title === "string" && title.trim() ? String(title).trim() : "");
-        }
-        // Hero must show first campaign image, not a product. Replace first product-image in body (before footer) with hero.
-        const heroUrlForReplace = String(sj.hero_image_url ?? sj.hero_image ?? "").trim();
-        if (heroUrlForReplace) {
-          const bodyEnd = htmlInput.indexOf("#292929");
-          const bodyOnly = bodyEnd !== -1 ? htmlInput.slice(0, bodyEnd) : htmlInput;
-          const firstProductImg = bodyOnly.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i);
-          if (firstProductImg) {
-            const src = firstProductImg[1];
-            const isProductSrc = productImages.some((p) => p && (src === p || src.includes(p.slice(-50)) || p.includes(src.slice(-50)))) || /cdn\.shopify\.com|shopify\.com\/files\//i.test(src);
-            if (isProductSrc) {
-              const safeHero = heroUrlForReplace.replace(/"/g, "&quot;");
-              htmlInput = htmlInput.replace(firstProductImg[0], firstProductImg[0].replace(/src=["'][^"']*["']/i, `src="${safeHero}"`));
-            }
+      const productUrls: string[] = [];
+      const productImages: string[] = [];
+      const productTitles: string[] = [];
+      for (let n = 1; n <= 5; n++) {
+        const u = sj[`product_${n}_url`];
+        const img = sj[`product_${n}_image`];
+        const title = sj[`product_${n}_title`];
+        productUrls.push(typeof u === "string" && u.trim() ? u.trim() : fallbackUrl);
+        productImages.push(typeof img === "string" && img.trim() ? img.trim() : "");
+        productTitles.push(typeof title === "string" && title.trim() ? String(title).trim() : "");
+      }
+      // Hero: show first campaign image when present (any template). Replace first product-image in body (before footer) with hero.
+      const heroUrlForReplace = String(sj.hero_image_url ?? sj.hero_image ?? "").trim();
+      const isHeroFromCampaign = heroUrlForReplace && (isOurCdnUrl(heroUrlForReplace) || /pexels|unsplash|\.(jpg|jpeg|png|webp)/i.test(heroUrlForReplace));
+      if (heroUrlForReplace && isHeroFromCampaign) {
+        const bodyEnd = htmlInput.indexOf("#292929");
+        const bodyOnly = bodyEnd !== -1 ? htmlInput.slice(0, bodyEnd) : htmlInput;
+        const firstProductImg = bodyOnly.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i);
+        if (firstProductImg) {
+          const src = firstProductImg[1];
+          const isProductSrc = productImages.some((p) => p && (src === p || src.includes(p.slice(-50)) || p.includes(src.slice(-50)))) || /cdn\.shopify\.com|shopify\.com\/files\//i.test(src);
+          if (isProductSrc) {
+            const safeHero = heroUrlForReplace.replace(/"/g, "&quot;");
+            htmlInput = htmlInput.replace(firstProductImg[0], firstProductImg[0].replace(/src=["'][^"']*["']/i, `src="${safeHero}"`));
           }
         }
+      }
+      const isEmmaTemplate = /emma/i.test(templateName);
+      if (isEmmaTemplate) {
         let linkCount = 0;
         const linkRegex = /<a\s+href=["']#["']\s*([^>]*)>([\s\S]*?)<\/a>/gi;
         htmlInput = htmlInput.replace(linkRegex, (_match, attrs, content) => {
@@ -1228,8 +1243,9 @@ export async function handleEmailGenerateMjml(request: {
           const socialEntries: { link: string; icon: string }[] = [];
           for (let n = 1; n <= 5; n++) {
             const link = String(sj[`social_media_${n}_link`] ?? "").trim();
-            const icon = String(sj[`social_media_${n}_icon`] ?? "").trim();
-            if (link && link !== "#" && icon && icon !== EMPTY_IMAGE_DATA_URI) {
+            let icon = String(sj[`social_media_${n}_icon`] ?? "").trim();
+            if (!icon || icon === EMPTY_IMAGE_DATA_URI) icon = SOCIAL_ICON_FALLBACK_URL;
+            if (link && link !== "#") {
               socialEntries.push({ link, icon });
             }
           }
@@ -1264,9 +1280,26 @@ export async function handleEmailGenerateMjml(request: {
           });
           htmlInput = beforeFooter + darkFooter;
         }
-        // Remove any unreplaced bracket placeholders in footer (e.g. [social media 5 icon]) so no literal text shows.
+        // Remove any unreplaced bracket placeholders in footer (e.g. [social media 5 icon]) so no literal text shows; use visible fallback icon.
         htmlInput = htmlInput.replace(/src="\[social media \d+ (icon|link)\]"/gi, (_, kind) =>
-          kind === "icon" ? `src="${EMPTY_IMAGE_DATA_URI}"` : 'src="#"',
+          kind === "icon" ? `src="${SOCIAL_ICON_FALLBACK_URL}"` : 'src="#"',
+        );
+      }
+      // For any template with dark footer (#292929): ensure social icons are visible (white filter) and replace any remaining [social media N icon] placeholders.
+      const footerStartForSocial = htmlInput.indexOf("#292929");
+      if (footerStartForSocial !== -1) {
+        let darkFooter = htmlInput.slice(footerStartForSocial);
+        darkFooter = darkFooter.replace(/<img(\s[^>]*?)>/gi, (match) => {
+          if (!/width=["']24["']/i.test(match) || !/height=["']24["']/i.test(match) || /filter:\s*brightness/i.test(match)) return match;
+          const whiteFilter = "filter:brightness(0) invert(1);";
+          if (/style=["']([^"']*)["']/.test(match)) {
+            return match.replace(/style=["']([^"']*)["']/i, (_, s) => `style="${s}${s.trim().endsWith(";") ? "" : " "}${whiteFilter}"`);
+          }
+          return match.replace(/<img(\s)/i, `<img$1style="${whiteFilter}" `);
+        });
+        htmlInput = htmlInput.slice(0, footerStartForSocial) + darkFooter;
+        htmlInput = htmlInput.replace(/src="\[social media \d+ (icon|link)\]"/gi, (_, kind) =>
+          kind === "icon" ? `src="${SOCIAL_ICON_FALLBACK_URL}"` : 'src="#"',
         );
       }
       const html = applyBrandColorsAndCampaignCopy(
