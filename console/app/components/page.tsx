@@ -362,7 +362,7 @@ export default function ComponentRegistryPage() {
                 onChange={(e) => setForm((f) => ({ ...f, html_fragment: e.target.value }))}
                 placeholder='<footer class="...">... use {{placeholders}} ...</footer>'
               />
-              <p className="text-xs text-slate-500 mt-1">Use when For = Landing page. Placeholders as {{name}}. Include &lt;style&gt; if needed.</p>
+              <p className="text-xs text-slate-500 mt-1">Use when For = Landing page. Placeholders as {"{{name}}"}. Include &lt;style&gt; if needed.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Placeholders (comma-separated)</label>
