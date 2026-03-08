@@ -8,9 +8,9 @@
 
 | Layer | What it does |
 |-------|----------------|
-| **Console** (`console/app/brands/`, `token-helpers.ts`) | Builds `design_tokens` from Basic Info (colors, fonts, logo) and sends them on create/update. Reads back via `readDesignTokensFromBrand`. See [BRAND_TOKENS_MIGRATION_MAPPING.md](BRAND_TOKENS_MIGRATION_MAPPING.md). |
+| **Console** (`console/app/brands/`, `token-helpers.ts`) | Builds `design_tokens` from Basic Info (colors, fonts, logo) and sends them on create/update. **Brand System View** (`/brands/[id]`): diagnostics (completeness + missing tokens), palette scale vs roles, typography specimens (h1–h6, body in brand colors), resolved tokens, preview surfaces (email, deck, report, product card), usage (from `GET /v1/brand_profiles/:id/usage`). **Edit** (`/brands/[id]/edit`): "Design tokens (advanced)" with palette scale (50–900), typography scale/weights; `validateDesignTokens` + `mergeDesignTokensExtended` before save. See [BRAND_TOKENS_MIGRATION_MAPPING.md](BRAND_TOKENS_MIGRATION_MAPPING.md), [BRAND_DECK_REFERENCE_SCHEMA.md](BRAND_DECK_REFERENCE_SCHEMA.md), [BRAND_TOKEN_VALIDATION.md](BRAND_TOKEN_VALIDATION.md). |
 | **packages/tokens** | `TokenService`: getToken, setToken, mergeTokens, validateTokens, computeDerivedTokens. Exports: `exportToCssVariables`, `exportToEmailJson`, `exportToDeckConfig`. Used by runners (e.g. brand-context) and by build scripts. |
-| **Control Plane** | Syncs `design_tokens` to `brand_design_tokens_flat` when a brand is updated (for search). |
+| **Control Plane** | Syncs `design_tokens` to `brand_design_tokens_flat` when a brand is updated (for search). Exposes `GET /v1/brand_profiles/:id/usage` for Console Brand System View. |
 
 ---
 

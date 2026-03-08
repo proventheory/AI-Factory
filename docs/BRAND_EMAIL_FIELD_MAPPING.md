@@ -2,6 +2,8 @@
 
 This document defines how brand-edit UI fields map to storage and to the email runner (`sectionJson`), the product payload contract, and how products are pulled from XML sitemaps vs JSON URLs.
 
+**See also:** [BRAND_DECK_REFERENCE_SCHEMA.md](BRAND_DECK_REFERENCE_SCHEMA.md) for the full design_tokens structure (palette scale 50–900, role aliases, typography scale, completeness model) and Brand System View; [BRAND_TOKEN_VALIDATION.md](BRAND_TOKEN_VALIDATION.md) for validation rules on save.
+
 ## 1. Field mapping (UI → storage → runner)
 
 | UI section / field | Stored in | Runner / sectionJson key | Notes |

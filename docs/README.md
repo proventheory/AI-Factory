@@ -38,11 +38,12 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 | Document | Purpose |
 |----------|---------|
 | **[BRAND_DECK_REFERENCE_SCHEMA.md](BRAND_DECK_REFERENCE_SCHEMA.md)** | Token contract: three layers (core tokens, semantic roles, channel mappings), alias policy, fallback precedence, completeness model. Brand System View reference. |
-| **[BRAND_TOKEN_VALIDATION.md](BRAND_TOKEN_VALIDATION.md)** | Validation rules for colors, typography, and deck/report theme references. |
+| **[BRAND_TOKEN_VALIDATION.md](BRAND_TOKEN_VALIDATION.md)** | Validation rules for colors, typography, and deck/report theme references. Runs on Console Edit submit; legacy shapes allowed. |
 | **[BRAND_TOKENS_AND_PACKAGES.md](BRAND_TOKENS_AND_PACKAGES.md)** | Brand tokens: Console write-through, packages/tokens (TokenService, export CSS/email), upgrade plan alignment. |
 | **[BRAND_TOKENS_TAXONOMY.md](BRAND_TOKENS_TAXONOMY.md)** | Brand tokens taxonomy. |
 | **[BRAND_TOKENS_MIGRATION_MAPPING.md](BRAND_TOKENS_MIGRATION_MAPPING.md)** | Brand tokens migration mapping. |
 | **[BRAND_DESIGN_TOKENS_UPGRADE_PLAN.md](BRAND_DESIGN_TOKENS_UPGRADE_PLAN.md)** | Brand design tokens upgrade plan. |
+| **[brand-deck-example.json](brand-deck-example.json)** | Example JSON for a full brand (design_tokens, deck_theme, report_theme). Use with seed scripts or API. |
 
 ## Deployment and operations
 

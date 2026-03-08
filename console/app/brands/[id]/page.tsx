@@ -476,25 +476,44 @@ export default function BrandDetailPage() {
             </div>
             <div>
               <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Specimens & in-context</h4>
-              <div className="space-y-2 rounded-lg border border-border bg-fg-muted/5 p-4">
-                {(["h1", "h2", "h3"] as const).filter((h) => typography.heading[h]).map((h) => {
+              <p className="text-body-small text-text-secondary mb-3">
+                All heading levels and body copy using this brand&apos;s type scale and colors. Headings use the brand primary; body uses neutral for readability.
+              </p>
+              <div className="space-y-3 rounded-lg border border-border bg-white p-4 shadow-sm">
+                {(["h1", "h2", "h3", "h4", "h5", "h6"] as const).map((h) => {
                   const spec = typography.heading[h];
                   if (!spec) return null;
+                  const headingColor = palette.brand["700"] ?? palette.brand["600"] ?? palette.brand["500"] ?? palette.brand.primary ?? "#0f172a";
                   return (
-                    <div key={h} className="flex items-baseline gap-3">
-                      <span className="text-fg-muted w-12 shrink-0 text-body-small">{h}</span>
-                      <span style={{ fontSize: spec.size, fontWeight: spec.weight, lineHeight: spec.lineHeight, fontFamily: typography.fontHeadings }}>
+                    <div key={h} className="flex items-baseline gap-4">
+                      <span className="text-fg-muted w-14 shrink-0 text-body-small font-mono">{h}</span>
+                      <span
+                        style={{
+                          fontSize: spec.size,
+                          fontWeight: spec.weight,
+                          lineHeight: spec.lineHeight,
+                          fontFamily: typography.fontHeadings,
+                          color: headingColor,
+                        }}
+                      >
                         {brand.name}
                       </span>
                     </div>
                   );
                 })}
-                <p
-                  className="mt-2 pt-2 border-t border-border text-text-secondary"
-                  style={{ fontSize: typography.body.default.size, fontWeight: typography.body.default.weight, lineHeight: typography.body.default.lineHeight, fontFamily: typography.fontBody }}
-                >
-                  The quick brown fox jumps over the lazy dog. This is body copy so you can see how the brand feels in a short paragraph. Used in emails, decks, and reports.
-                </p>
+                <div className="mt-4 pt-4 border-t border-border">
+                  <p
+                    style={{
+                      fontSize: typography.body.default.size,
+                      fontWeight: typography.body.default.weight,
+                      lineHeight: typography.body.default.lineHeight,
+                      fontFamily: typography.fontBody,
+                      color: palette.neutral["700"] ?? palette.neutral["900"] ?? "#334155",
+                    }}
+                  >
+                    The quick brown fox jumps over the lazy dog. This is body copy so you can see how the brand feels in a short paragraph. Used in emails, decks, and reports.
+                  </p>
+                </div>
               </div>
             </div>
           </div>

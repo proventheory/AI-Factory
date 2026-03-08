@@ -63,6 +63,7 @@ Run: `npx ts-node packages/ui/scripts/build-tokens.ts [--brand path/to/brand.jso
 ## Control Plane API
 
 - `GET/POST/PUT/DELETE /v1/brand_profiles` — CRUD for brand profiles
+- `GET /v1/brand_profiles/:id/usage` — **usage telemetry**: initiatives_count, runs_count, last_run_at, document_templates_count, email_templates_count (for Brand System View "Where these tokens are used")
 - `GET/POST/DELETE /v1/brand_profiles/:id/embeddings` — manage brand embeddings
 - `POST /v1/brand_profiles/:id/embeddings/search` — semantic search
 - `GET/POST/DELETE /v1/brand_profiles/:id/assets` — manage brand assets
@@ -72,9 +73,15 @@ Run: `npx ts-node packages/ui/scripts/build-tokens.ts [--brand path/to/brand.jso
 ## Console Pages
 
 - `/brands` — list, create, detail, edit, archive brand profiles
+- **`/brands/[id]` — Brand System View** (brand detail): diagnostic readiness panel (Why? + missing tokens), palette (Scale 50–900 vs Role aliases + usage labels), typography (families, scale table, weights, specimens h1–h6 + in-context body in brand colors), resolved tokens table, preview surfaces (email header, deck slide, report cover, product card), usage section (clickable counts from usage API), empty-state guidance (embeddings, assets), provenance placeholder
+- `/brands/[id]/edit` — edit identity, tone, visual/copy style, design tokens (basic + advanced: palette scale, typography scale/weights); validation before save per [BRAND_TOKEN_VALIDATION.md](BRAND_TOKEN_VALIDATION.md)
 - `/brands/[id]/embeddings` — manage brand embeddings
 - `/document-templates` — list, create document templates
 - Initiative create/edit — brand_profile_id selector
+
+## Seed script: Sticky Green (canonical brand)
+
+`scripts/seed-brand-sticky-green.mjs [CONTROL_PLANE_URL]` — **Upserts** the Sticky Green brand (creates if missing, updates if exists). Sets full design_tokens (palette 50–900, neutral, typography scale, contact_info, social_media, cta_text/link, sitemap), identity, tone, visual_style, copy_style, deck_theme, report_theme. Safe to run repeatedly. See [POST_DEPLOY_SEEDS.md](POST_DEPLOY_SEEDS.md).
 
 ## Factory Job Types
 
@@ -102,7 +109,7 @@ Run: `npx ts-node packages/ui/scripts/build-tokens.ts [--brand path/to/brand.jso
 - Brand latent space (style_dimensions: serious↔playful, luxury↔accessible)
 - Figma sync via Tokens Studio
 - Report → Deck bridge (auto-summarize report into slides)
-- Brand analytics (cost/runs/quality per brand)
+- Brand analytics (cost/runs/quality per brand) — usage telemetry API is in place; expand with more metrics as needed
 - Multi-tenant brand isolation (RLS by org_id)
-- Brand versioning (version history, diff, rollback)
+- Brand versioning (version history, diff, rollback); provenance "who changed when" in Brand System View when audit data exists
 - Brand-aware illustration/video/social generation

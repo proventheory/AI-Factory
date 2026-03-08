@@ -40,3 +40,8 @@ Validation can **warn** on missing referenced keys rather than hard-fail, so exi
 
 - **On read:** For resolved-token view and completeness; do not block rendering.
 - **On write:** Before saving from Console edit form or API; can block save for invalid new data while allowing legacy shapes.
+
+## Implementation
+
+- **Console:** `console/app/brands/token-helpers.ts` exports `validateDesignTokens(dt)` returning `{ valid, errors, warnings }`. The brand edit page runs it on submit before calling `updateBrandProfile`; if `!valid`, it sets the error message and does not save. Legacy shapes are allowed (no errors for existing 500/600/primary/primary_dark or font_headings/font_body).
+- **Extended tokens:** Edit form "Design tokens (advanced)" can send palette scale (50–900) and typography scale/weights; `mergeDesignTokensExtended` merges them with base tokens before validation.

@@ -65,7 +65,18 @@ Rules (single place for runners + UI):
 - `brand_profiles.design_tokens` (JSONB) holds Layer 1 and optionally Layer 2 (role mapping).
 - `brand_profiles.deck_theme` (JSONB) holds deck-specific application.
 - `brand_profiles.report_theme` (JSONB) holds report-specific application.
-- Layer 3 (channel mappings) is derived from usage data or static copy in v1.
+- Layer 3 (channel mappings) is served by **usage telemetry**: `GET /v1/brand_profiles/:id/usage` returns `initiatives_count`, `runs_count`, `last_run_at`, `document_templates_count`, `email_templates_count`. Console Brand System View displays these as clickable counts and links.
+
+## Console Brand System View
+
+The brand detail page (`/brands/[id]`) is the **Brand System View**: a diagnostic and navigation surface for the design token pipeline.
+
+- **Diagnostic panel:** Completeness (Color, Typography, Deck, Report, Email) with "Why?" expandable reason and missing-token list; suggestions for what to configure next.
+- **Palette:** Visually separated into Scale (50–900) and Role aliases (primary, primary_dark, accent); optional usage labels (CTA, headings, charts) from `PALETTE_ROLE_USAGE`.
+- **Typography:** Three layers (families, scale table with size/weight/line-height, weights); Specimens & in-context shows h1–h6 and body paragraph in **brand colors** (heading color from palette.brand.700/600/500, body from neutral).
+- **Resolved tokens:** Expanded path set; Explicit / Default / Missing with fallback-chain copy for debugging.
+- **Preview surfaces:** Email header, deck title slide, report cover, product card (mini mockups using brand tokens).
+- **Usage:** Data from usage API; clickable counts to initiatives, runs, document templates.
 
 ## Normalization table (reference deck extraction)
 

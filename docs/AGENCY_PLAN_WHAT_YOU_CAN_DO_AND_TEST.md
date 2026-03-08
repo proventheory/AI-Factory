@@ -37,7 +37,7 @@ ProfessorX is the **operator console** for the AI Factory: one control surface t
 
 | Use case | How in ProfessorX | Notes |
 |----------|--------------------|--------|
-| **Client brands** | **Brands** (`/brands`): create and edit brands; set Basic Info + design tokens (colors, typography, logo). | Design tokens drive emails, decks, and UI. |
+| **Client brands** | **Brands** (`/brands`): create and edit brands; Basic Info + design tokens (colors, typography, logo). Brand detail = **Brand System View** (diagnostics, palette scale/roles, typography specimens, resolved tokens, preview surfaces, usage); edit has advanced tokens (palette 50–900, typography scale) with validation. | Design tokens drive emails, decks, and UI. |
 | **Document templates** | **Document templates** (`/document-templates`): pitch decks, reports, one-pagers; define component sequence (KPI cards, tables, charts, etc.). | Linked to a brand (or global). |
 | **Token system** | **Token registry** (`/tokens`): platform default tokens (read-only). **Component registry** (`/components`): block types (kpi_card, table_block, chart_block, …). | Brands override tokens; templates use components. |
 | **Email campaigns** | **Email marketing** (`/email-marketing`): dedicated UI for flows, segments, templates. | Uses brand context and tokens where wired. |
