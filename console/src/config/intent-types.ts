@@ -3,11 +3,15 @@
  * Used by Create/Edit initiative flows so users pick a pipeline type.
  */
 
+/** Canonical label for email design generator flow (used for both email_design_generator and legacy email_campaign). */
+export const EMAIL_DESIGN_GENERATOR_LABEL = "Email design generator (brand → products → template → generate)";
+
 export const INTENT_TYPES = [
   { value: "software", label: "Software (PRD → design → code → test → review)" },
   { value: "issue_fix", label: "Issue fix (analyze → patch → test → PR)" },
   { value: "marketing", label: "Marketing (brand → copy → deck)" },
-  { value: "email_design_generator", label: "Email design generator (brand → products → template → generate)" },
+  { value: "email_design_generator", label: EMAIL_DESIGN_GENERATOR_LABEL },
+  { value: "email_campaign", label: EMAIL_DESIGN_GENERATOR_LABEL }, // legacy; DB may still return this for older runs
   { value: "landing", label: "Landing page (copy → landing page)" },
   { value: "migration", label: "Migration (analyze → plan → apply → validate)" },
   { value: "factory_ops", label: "Factory ops (review → codegen → patch)" },

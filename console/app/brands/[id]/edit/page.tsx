@@ -31,23 +31,23 @@ import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { copyCampaignImageToCdn } from "@/lib/api";
 
 const FOOTER_LINK_KEYS: { key: string; label: string; group: "popular" | "company" | "legal" }[] = [
-  { key: "popularWeightManagementUrl", label: "Weight Management", group: "popular" },
-  { key: "popularHormoneReplacementUrl", label: "Hormone Replacement", group: "popular" },
-  { key: "popularIvTherapyUrl", label: "IV Therapy & Supplements", group: "popular" },
-  { key: "popularSexualWellnessUrl", label: "Sexual Wellness", group: "popular" },
-  { key: "popularThyroidUrl", label: "Thyroid", group: "popular" },
-  { key: "popularGlp1Url", label: "GLP-1 Treatments", group: "popular" },
-  { key: "popularOzempicUrl", label: "Ozempic®", group: "popular" },
-  { key: "popularWegovyUrl", label: "Wegovy®", group: "popular" },
-  { key: "popularSermorelinUrl", label: "Sermorelin", group: "popular" },
-  { key: "popularNadUrl", label: "NAD+", group: "popular" },
+  { key: "popularWeightManagementUrl", label: "Featured link 1", group: "popular" },
+  { key: "popularHormoneReplacementUrl", label: "Featured link 2", group: "popular" },
+  { key: "popularIvTherapyUrl", label: "Featured link 3", group: "popular" },
+  { key: "popularSexualWellnessUrl", label: "Featured link 4", group: "popular" },
+  { key: "popularThyroidUrl", label: "Featured link 5", group: "popular" },
+  { key: "popularGlp1Url", label: "Featured link 6", group: "popular" },
+  { key: "popularOzempicUrl", label: "Featured link 7", group: "popular" },
+  { key: "popularWegovyUrl", label: "Featured link 8", group: "popular" },
+  { key: "popularSermorelinUrl", label: "Featured link 9", group: "popular" },
+  { key: "popularNadUrl", label: "Featured link 10", group: "popular" },
   { key: "howItWorksUrl", label: "How it works", group: "company" },
   { key: "faqUrl", label: "FAQ", group: "company" },
   { key: "contactUrl", label: "Contact Us", group: "company" },
   { key: "supportUrl", label: "Support", group: "company" },
   { key: "termsUrl", label: "Terms & Conditions", group: "legal" },
   { key: "privacyUrl", label: "Privacy Policy", group: "legal" },
-  { key: "hipaaUrl", label: "HIPAA Privacy Statement", group: "legal" },
+  { key: "hipaaUrl", label: "Other legal / compliance", group: "legal" },
 ];
 
 export default function EditBrandPage() {
@@ -732,10 +732,10 @@ export default function EditBrandPage() {
               <div>
                 <h4 className="text-body font-medium text-text-primary mb-3">Footer & page links</h4>
                 <p className="text-body-small text-text-secondary mb-3">
-                  Category links (POPULAR), company, and legal URLs. Used in footers and other assets that resolve placeholders from this brand.
+                  Featured category links, company, and legal URLs. Used in footers and other assets that resolve placeholders from this brand.
                 </p>
                 {(["popular", "company", "legal"] as const).map((group) => {
-                  const groupLabels = { popular: "Category links (POPULAR)", company: "Company", legal: "Legal" };
+                  const groupLabels = { popular: "Featured / category links", company: "Company", legal: "Legal" };
                   const items = FOOTER_LINK_KEYS.filter((f) => f.group === group);
                   return (
                     <div key={group} className="mb-6">

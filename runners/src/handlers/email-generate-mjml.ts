@@ -31,6 +31,16 @@ function isOurCdnUrl(url: string): boolean {
   return /supabase\.co\/storage\/v1\/object\/public\/upload\//.test(url);
 }
 
+/** Convert hex color to rgba( r, g, b, alpha ) for muted accent text. */
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
+  if (!m) return `rgba(36,20,55,${alpha})`;
+  const r = parseInt(m[1], 16);
+  const g = parseInt(m[2], 16);
+  const b = parseInt(m[3], 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 /** Inline SVG data-URI icons for social platforms. These render in every email client without external CDN dependency. White fill, 24x24 viewBox. */
 const SOCIAL_ICON_BY_NAME: Record<string, string> = {
   facebook: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"/></svg>')}`,
@@ -222,6 +232,8 @@ function replaceBracketPlaceholders(html: string, sectionJson: Record<string, un
 
 /** Template default accent colors (Emma SMS template) – replace with brand color in final HTML. */
 const TEMPLATE_ACCENT_COLORS = [/#FF7055/gi, /#053A5E/gi, /#ffd875/gi, /#16a34a/gi, /#222222/gi];
+/** Dark section/CTA background (e.g. #004225) – replace with tokenized accent so it contrasts with brand. */
+const TEMPLATE_ACCENT_BACKGROUND = [/#004225/gi];
 
 /** Default hero headline in template – replaced with campaign prompt when present. */
 const DEFAULT_HERO_HEADLINE = "Introducing Emma SMS";
@@ -559,6 +571,7 @@ function applyDesignPolish(
 /**
  * Apply brand color to template accent/CTA, replace default hero/CTA copy with campaign or LLM-generated copy,
  * and replace hardcoded footer (Marigold/Emma) with brand footer.
+ * Replaces tokenized accent background (#004225) with accentColor so sections contrast with brand.
  */
 function applyBrandColorsAndCampaignCopy(
   html: string,
@@ -566,10 +579,19 @@ function applyBrandColorsAndCampaignCopy(
   campaignPrompt: string,
   generatedCopy?: GeneratedEmailCopy | null,
   footer?: BrandFooterReplacements | null,
+  accentColor?: string,
 ): string {
   let out = html;
   for (const re of TEMPLATE_ACCENT_COLORS) {
     out = out.replace(re, brandColor);
+  }
+  const accent = (accentColor ?? brandColor).trim();
+  if (accent) {
+    for (const re of TEMPLATE_ACCENT_BACKGROUND) {
+      out = out.replace(re, accent);
+    }
+    // Muted accent text (e.g. product description) – was rgba(0,66,37,0.65)
+    out = out.replace(/rgba\s*\(\s*0\s*,\s*66\s*,\s*37\s*,\s*0\.65\s*\)/gi, () => hexToRgba(accent, 0.65));
   }
   const headline = generatedCopy?.headline ?? campaignPrompt.trim();
   const body = generatedCopy?.body ?? campaignPrompt.trim();
@@ -685,6 +707,8 @@ function applyBrandColorsAndCampaignCopy(
 const PLACEHOLDER_ALIASES: Record<string, string[]> = {
   logo: ["logoUrl", "logo_url", "logo", "brandLogo", "brand_logo", "logo_src", "logoSrc"],
   brandColor: ["brandColor", "color", "primaryColor", "brand_color"],
+  accentColor: ["accentColor", "accent_color", "brandAccent"],
+  accentColorMuted: ["accentColorMuted", "accent_color_muted"],
   campaignCopy: [
     "campaignPrompt", "headline", "title", "header", "subhead", "body", "message", "description",
     "prehead", "eyebrow", "offerText", "offer", "content", "main_message", "mainMessage", "theme", "intro", "copy", "promo_text",
@@ -1086,6 +1110,9 @@ export async function handleEmailGenerateMjml(request: {
       const brandColors = (mt?.color ?? mt?.colors) as Record<string, Record<string, string>> | undefined;
       const brandColorObj = brandColors?.brand;
       const secondaryColor = brandColorObj?.["600"] ?? brandColorObj?.primary_dark ?? "";
+      // Tokenized accent for sections/CTAs: dark brand shade so it contrasts with primary (replaces hardcoded #004225).
+      const accentColor = brandColorObj?.["800"] ?? brandColorObj?.["900"] ?? "#241437";
+      const accentColorMuted = hexToRgba(accentColor, 0.65);
       const sitemapUrl = typeof mt?.sitemap_url === "string" ? mt.sitemap_url : "";
       const sitemapType = typeof mt?.sitemap_type === "string" ? mt.sitemap_type : "";
       const assetUrlsArr = Array.isArray(mt?.asset_urls) ? (mt.asset_urls as string[]).filter((u) => typeof u === "string" && u.trim() !== "") : [];
@@ -1123,6 +1150,11 @@ export async function handleEmailGenerateMjml(request: {
         color: brandColor,
         primaryColor: brandColor,
         brand_color: brandColor,
+        accentColor,
+        accent_color: accentColor,
+        brandAccent: accentColor,
+        accentColorMuted,
+        accent_color_muted: accentColorMuted,
         logoUrl: logo,
         logo_url: logo,
         logo: logo,
@@ -1573,6 +1605,7 @@ export async function handleEmailGenerateMjml(request: {
         campaignPrompt,
         generatedCopy,
         brandFooter,
+        accentColor,
       );
 
       // ── Design polish: brand fonts, hero→homepage links, full-width hero, mobile padding ──

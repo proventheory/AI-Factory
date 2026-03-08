@@ -324,19 +324,19 @@ const TEMPLATES = [
     <mj-section background-color="[brandColor]" padding="0 24px 40px">
       <mj-column width="50%" padding="0 8px" vertical-align="top" background-color="#FFF9EB" border-radius="16px">
         <mj-image src="[product A src]" alt="[product A title]" href="[product A productUrl]" width="276px" padding="0" border-radius="12px 12px 0 0" fluid-on-mobile="true" />
-        <mj-text font-family="[font_headings]" font-size="20px" font-weight="700" color="#004225" padding="16px 16px 4px">[product A title]</mj-text>
-        <mj-text font-family="[font_body]" font-size="14px" color="rgba(0,66,37,0.65)" line-height="1.4" padding="0 16px 16px">[product A description]</mj-text>
-        <mj-button font-family="[font_headings]" background-color="#004225" color="#ffffff" href="[product A productUrl]" border-radius="12px" inner-padding="12px 24px" font-size="12px" font-weight="700" padding="0 16px 16px 16px" letter-spacing="0.08em">SHOP NOW</mj-button>
+        <mj-text font-family="[font_headings]" font-size="20px" font-weight="700" color="[accentColor]" padding="16px 16px 4px">[product A title]</mj-text>
+        <mj-text font-family="[font_body]" font-size="14px" color="[accentColorMuted]" line-height="1.4" padding="0 16px 16px">[product A description]</mj-text>
+        <mj-button font-family="[font_headings]" background-color="[accentColor]" color="#ffffff" href="[product A productUrl]" border-radius="12px" inner-padding="12px 24px" font-size="12px" font-weight="700" padding="0 16px 16px 16px" letter-spacing="0.08em">SHOP NOW</mj-button>
       </mj-column>
       <mj-column width="50%" padding="0 8px" vertical-align="top" background-color="#FFF9EB" border-radius="16px">
         <mj-image src="[product B src]" alt="[product B title]" href="[product B productUrl]" width="276px" padding="0" border-radius="12px 12px 0 0" fluid-on-mobile="true" />
-        <mj-text font-family="[font_headings]" font-size="20px" font-weight="700" color="#004225" padding="16px 16px 4px">[product B title]</mj-text>
-        <mj-text font-family="[font_body]" font-size="14px" color="rgba(0,66,37,0.65)" line-height="1.4" padding="0 16px 16px">[product B description]</mj-text>
-        <mj-button font-family="[font_headings]" background-color="#004225" color="#ffffff" href="[product B productUrl]" border-radius="12px" inner-padding="12px 24px" font-size="12px" font-weight="700" padding="0 16px 16px 16px" letter-spacing="0.08em">SHOP NOW</mj-button>
+        <mj-text font-family="[font_headings]" font-size="20px" font-weight="700" color="[accentColor]" padding="16px 16px 4px">[product B title]</mj-text>
+        <mj-text font-family="[font_body]" font-size="14px" color="[accentColorMuted]" line-height="1.4" padding="0 16px 16px">[product B description]</mj-text>
+        <mj-button font-family="[font_headings]" background-color="[accentColor]" color="#ffffff" href="[product B productUrl]" border-radius="12px" inner-padding="12px 24px" font-size="12px" font-weight="700" padding="0 16px 16px 16px" letter-spacing="0.08em">SHOP NOW</mj-button>
       </mj-column>
     </mj-section>
-    <!-- Wavy divider: brand/coral wave into dark green -->
-    <mj-section padding="0" background-color="#004225">
+    <!-- Wavy divider: brand wave into accent (tokenized for contrast with brand) -->
+    <mj-section padding="0" background-color="[accentColor]">
       <mj-column width="100%" padding="0">
         <mj-raw>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="line-height:0;font-size:0;">
@@ -345,12 +345,12 @@ const TEMPLATES = [
         </mj-raw>
       </mj-column>
     </mj-section>
-    <!-- Results That Matter: dark green, accent headline, CTA button -->
-    <mj-section background-color="#004225" padding="48px 32px 56px">
+    <!-- Results That Matter: accent background (tokenized), brand headline, CTA button -->
+    <mj-section background-color="[accentColor]" padding="48px 32px 56px">
       <mj-column width="100%">
         <mj-text font-family="[font_headings]" font-size="36px" font-weight="700" color="[brandColor]" align="center" padding="0 0 24px">Results That Matter</mj-text>
         <mj-text font-family="[font_body]" font-size="17px" color="rgba(255,249,235,0.88)" align="center" line-height="1.6" padding="0 16px 32px">Every one is unique. Discover the perfect fit tailored to you.</mj-text>
-        <mj-button font-family="[font_headings]" background-color="[brandColor]" color="#004225" href="[siteUrl]" border-radius="9999px" inner-padding="18px 48px" font-size="14px" font-weight="800" align="center" letter-spacing="0.05em">TAKE THE QUIZ</mj-button>
+        <mj-button font-family="[font_headings]" background-color="[brandColor]" color="[accentColor]" href="[siteUrl]" border-radius="9999px" inner-padding="18px 48px" font-size="14px" font-weight="800" align="center" letter-spacing="0.05em">TAKE THE QUIZ</mj-button>
       </mj-column>
     </mj-section>
     <!-- Footer: dark -->
