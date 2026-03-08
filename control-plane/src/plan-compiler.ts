@@ -178,6 +178,7 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   marketing: TEMPLATE_MARKETING,
   landing: TEMPLATE_LANDING,
   email_campaign: TEMPLATE_EMAIL_CAMPAIGN,
+  email_design_generator: TEMPLATE_EMAIL_CAMPAIGN,
 };
 
 /** Load initiative; includes template_id when present for email_campaign and other template-driven flows. */
@@ -229,11 +230,11 @@ export function computePlanHash(initiativeId: string, intentType: string, prdHas
 }
 
 export function decomposeToDAG(initiative: Initiative): { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } {
-  // intent_type "email_campaign" must map to plan template "email_campaign" (single email_mjml node).
+  // intent_type "email_design_generator" must map to plan template "email_design_generator" (single email_mjml node).
   // initiative.template_id is the MJML template selection (e.g. UUID), not a plan template key.
   const templateId =
-    initiative.intent_type === "email_campaign"
-      ? "email_campaign"
+    initiative.intent_type === "email_design_generator" || initiative.intent_type === "email_campaign"
+      ? "email_design_generator"
       : (initiative.template_id ?? initiative.intent_type ?? "software");
   const t = TEMPLATES[templateId] ?? TEMPLATE_SOFTWARE;
   return { nodes: t.nodes, edges: t.edges };

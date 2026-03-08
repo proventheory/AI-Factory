@@ -25,7 +25,7 @@ export default function EmailMarketingPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Email Generator" />
+          <PageHeader title="Email Design Generator" />
           <p className="text-state-danger">Error: {formatApiError(error)}</p>
         </Stack>
       </PageFrame>
@@ -59,8 +59,8 @@ export default function EmailMarketingPage() {
     <PageFrame>
       <Stack>
         <PageHeader
-          title="Email Generator"
-          description="Email campaigns are initiatives with intent type email_campaign. Create a campaign to get started, then open the initiative to compile a plan and run."
+          title="Email Design Generator"
+          description="Email designs are initiatives with intent type email_design_generator. Create a design to get started, then open the initiative to compile a plan and run."
         />
         {isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />
@@ -97,7 +97,7 @@ export default function EmailMarketingPage() {
                 {creating || createCampaign.isPending ? "Creating…" : "Quick create"}
               </Button>
               <Button variant="secondary" asChild>
-                <Link href="/runs?intent_type=email_campaign">View pipeline runs</Link>
+                <Link href="/runs?intent_type=email_design_generator">View pipeline runs</Link>
               </Button>
             </div>
             <TableFrame>

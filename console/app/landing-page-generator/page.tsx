@@ -58,7 +58,7 @@ export default function LandingPageGeneratorPage() {
       <Stack>
         <PageHeader
           title="Landing Page Generator"
-          description="Create landing pages from brand, template, and content. Same flow as Email Generator for now; workflow will use pre-built landing page templates next."
+          description="Create landing pages from brand, template, and content. Same flow as Email Design Generator for now; workflow will use pre-built landing page templates next."
         />
         {isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />
@@ -95,7 +95,7 @@ export default function LandingPageGeneratorPage() {
                 {creating || createCampaign.isPending ? "Creating…" : "Quick create"}
               </Button>
               <Button variant="secondary" asChild>
-                <Link href="/runs?intent_type=email_campaign">View pipeline runs</Link>
+                <Link href="/runs?intent_type=email_design_generator">View pipeline runs</Link>
               </Button>
             </div>
             <TableFrame>

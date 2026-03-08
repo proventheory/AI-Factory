@@ -194,10 +194,10 @@ function RunsPageContent() {
         <CardSection>
           {items.length === 0 ? (
             <EmptyState
-              title={intentFilter === "email_campaign" ? "No email campaign runs yet" : "No runs yet"}
+              title={intentFilter === "email_design_generator" ? "No email design generator runs yet" : "No runs yet"}
               description={
-                intentFilter === "email_campaign"
-                  ? "Email campaign runs appear after you finish the wizard (Generate) or click Start run on an email campaign plan. If you just ran the wizard, set Pipeline to All and check the top of the list (newest first). If you see an error on the Generate page (e.g. Start run failed), the run was not created—fix that error and try again."
+                intentFilter === "email_design_generator"
+                  ? "Email design generator runs appear after you finish the wizard (Generate) or click Start run on an email design plan. If you just ran the wizard, set Pipeline to All and check the top of the list (newest first). If you see an error on the Generate page (e.g. Start run failed), the run was not created—fix that error and try again."
                   : "Create an initiative and run a plan to see runs here."
               }
             />

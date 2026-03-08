@@ -209,13 +209,13 @@ app.get("/v1/initiatives/:id", async (req, res) => {
   }
 });
 
-/** GET /v1/email_campaigns — list initiatives with intent_type = email_campaign + metadata. Optional campaign_kind=landing_page to list only landing-page campaigns. */
+/** GET /v1/email_campaigns — list initiatives with intent_type = email_design_generator + metadata. Optional campaign_kind=landing_page to list only landing-page campaigns. */
 app.get("/v1/email_campaigns", async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
     const offset = Number(req.query.offset) || 0;
     const campaign_kind = req.query.campaign_kind as string | undefined;
-    const conditions = ["i.intent_type = 'email_campaign'"];
+    const conditions = ["i.intent_type = 'email_design_generator'"];
     const params: unknown[] = [limit, offset];
     if (campaign_kind === "landing_page") {
       conditions.push("(m.metadata_json->>'campaign_kind') = 'landing_page'");
@@ -243,11 +243,11 @@ app.get("/v1/email_campaigns/:id", async (req, res) => {
     const fullSelect = `SELECT i.id, i.title, i.created_at, i.brand_profile_id, i.template_id, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
        FROM initiatives i
        LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
-       WHERE i.id = $1 AND i.intent_type = 'email_campaign'`;
+       WHERE i.id = $1 AND i.intent_type = 'email_design_generator'`;
     const minimalSelect = `SELECT i.id, i.title, i.created_at, i.template_id, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
        FROM initiatives i
        LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
-       WHERE i.id = $1 AND i.intent_type = 'email_campaign'`;
+       WHERE i.id = $1 AND i.intent_type = 'email_design_generator'`;
     let r: { rows: Record<string, unknown>[] };
     try {
       r = await pool.query(fullSelect, [id]);
@@ -272,7 +272,7 @@ app.get("/v1/email_campaigns/:id", async (req, res) => {
   }
 });
 
-/** POST /v1/email_campaigns — create initiative (email_campaign) + optional metadata */
+/** POST /v1/email_campaigns — create initiative (email_design_generator) + optional metadata */
 app.post("/v1/email_campaigns", async (req, res) => {
   try {
     const role = getRole(req);
@@ -299,7 +299,7 @@ app.post("/v1/email_campaigns", async (req, res) => {
     const err = (e: unknown) => (e as { code?: string; message?: string }).code === "42703" || String((e as Error).message).includes("brand_profile_id");
     try {
       await pool.query(
-        `INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_campaign', $2, $5, $3, $4)`,
+        `INSERT INTO initiatives (id, intent_type, title, risk_level, brand_profile_id, template_id) VALUES ($1, 'email_design_generator', $2, $5, $3, $4)`,
         [id, body.title ?? "New email campaign", body.brand_profile_id ?? null, body.template_id ?? null, riskLevel]
       );
     } catch (e) {
@@ -309,13 +309,13 @@ app.post("/v1/email_campaigns", async (req, res) => {
       if (err(e)) {
         try {
           await pool.query(
-            `INSERT INTO initiatives (id, intent_type, title, risk_level, template_id) VALUES ($1, 'email_campaign', $2, $3, $4)`,
+            `INSERT INTO initiatives (id, intent_type, title, risk_level, template_id) VALUES ($1, 'email_design_generator', $2, $3, $4)`,
             [id, body.title ?? "New email campaign", riskLevel, body.template_id ?? null]
           );
         } catch (e2) {
           if ((e2 as { code?: string }).code === "42703") {
             await pool.query(
-              `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_campaign', $2, $3)`,
+              `INSERT INTO initiatives (id, intent_type, title, risk_level) VALUES ($1, 'email_design_generator', $2, $3)`,
               [id, body.title ?? "New email campaign", riskLevel]
             );
           } else throw e2;
@@ -354,7 +354,7 @@ app.patch("/v1/email_campaigns/:id", async (req, res) => {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const id = req.params.id;
-    const exists = await pool.query("SELECT id FROM initiatives WHERE id = $1 AND intent_type = 'email_campaign'", [id]);
+    const exists = await pool.query("SELECT id FROM initiatives WHERE id = $1 AND intent_type = 'email_design_generator'", [id]);
     if (exists.rows.length === 0) return res.status(404).json({ error: "Not found" });
     const body = req.body as Record<string, unknown>;
     const allowed = [
@@ -843,7 +843,7 @@ app.post("/v1/plans/:id/start", async (req, res) => {
     const initRow = await pool.query("SELECT template_id, intent_type FROM initiatives WHERE id = $1", [initiativeId]);
     if (initRow.rows.length > 0) {
       const { template_id: templateId, intent_type: intentType } = initRow.rows[0] as { template_id: string | null; intent_type: string };
-      if (intentType === "email_campaign" && templateId) {
+      if (intentType === "email_design_generator" && templateId) {
         const gate = await runTemplateLintGate(pool, templateId);
         if (!gate.ok) {
           const message = "Template lint failed: " + gate.errors.map((e) => `${e.code}: ${e.message}`).join("; ");
@@ -2989,6 +2989,15 @@ function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, 
   const footerUrls = design_tokens.footer_urls && typeof design_tokens.footer_urls === "object"
     ? (design_tokens.footer_urls as Record<string, string>)
     : {};
+  const gradientsList = Array.isArray(design_tokens.gradients) ? design_tokens.gradients : [];
+  const gradientCssList: string[] = [];
+  for (const g of gradientsList) {
+    if (g && typeof g === "object" && (g as Record<string, unknown>).type === "linear" && Array.isArray((g as Record<string, unknown>).stops)) {
+      const stops = ((g as Record<string, unknown>).stops as string[]).filter((s) => typeof s === "string" && (s as string).trim());
+      if (stops.length >= 2)
+        gradientCssList.push(`linear-gradient(135deg, ${stops.join(", ")})`);
+    }
+  }
   const typo = design_tokens.typography as Record<string, unknown> | undefined;
   const fonts = typo?.fonts as Record<string, string> | undefined;
   const fontHeadings = typeof fonts?.heading === "string" ? fonts.heading : (typeof typo?.font_headings === "string" ? typo.font_headings : (typeof design_tokens.font_headings === "string" ? design_tokens.font_headings : ""));
@@ -3066,6 +3075,17 @@ function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, 
   for (const [k, v] of Object.entries(footerUrls)) {
     if (typeof v === "string" && v.trim()) result[k] = v.trim();
   }
+  gradientCssList.forEach((css, i) => {
+    result[`gradient_${i}`] = css;
+    if (i === 0) result.gradientContainer1 = css;
+    if (i === 1) result.gradientContainer2 = css;
+  });
+  gradientsList.forEach((g, i) => {
+    if (gradientCssList[i] && g && typeof g === "object" && typeof (g as Record<string, string>).name === "string") {
+      const name = String((g as Record<string, string>).name).trim().replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "") || `gradient_${i}`;
+      if (name) result[`gradient_${name}`] = gradientCssList[i];
+    }
+  });
   return result;
 }
 

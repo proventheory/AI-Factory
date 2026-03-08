@@ -414,9 +414,29 @@ export default function BrandDetailPage() {
             )}
             {typeof dt.heading_highlight_color === "string" && dt.heading_highlight_color.trim() && (
               <div>
-                <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Heading highlight (H1/H2)</h4>
+                <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Title highlight (H1/H2)</h4>
                 <div className="flex flex-wrap gap-4">
-                  <ColorSwatch hex={dt.heading_highlight_color.trim()} label="heading highlight" large usage="H1/H2 text highlight" />
+                  <ColorSwatch hex={dt.heading_highlight_color.trim()} label="title highlight" large usage="Design touch on titles (not links); alternative: bold a keyword" />
+                </div>
+              </div>
+            )}
+            {Array.isArray(dt.gradients) && dt.gradients.length > 0 && (
+              <div>
+                <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Gradients (container backgrounds)</h4>
+                <div className="flex flex-wrap gap-4">
+                  {dt.gradients.map((g: { name?: string; type?: string; stops?: string[] }, i: number) => {
+                    const stops = Array.isArray(g?.stops) ? g.stops.filter((s: unknown) => typeof s === "string") as string[] : [];
+                    if (stops.length < 2) return null;
+                    const css = `linear-gradient(135deg, ${stops.join(", ")})`;
+                    const name = typeof g.name === "string" && g.name.trim() ? g.name.trim() : `Gradient ${i + 1}`;
+                    return (
+                      <div key={i} className="flex flex-col items-center gap-1.5">
+                        <span className="rounded border border-border h-12 w-20" style={{ background: css }} />
+                        <span className="text-[10px] text-text-secondary">{name}</span>
+                        <span className="text-[9px] font-mono text-fg-muted max-w-[120px] truncate" title={css}>{stops.join(" → ")}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -724,7 +744,7 @@ export default function BrandDetailPage() {
               <span className="text-body-small text-fg-muted ml-1">— decks, reports</span>
             </li>
             <li>
-              <a href="/email-marketing" className="text-body font-medium text-brand-600 hover:underline">Email Generator
+              <a href="/email-marketing" className="text-body font-medium text-brand-600 hover:underline">Email Design Generator
               </a>
               <span className="text-body-small text-fg-muted ml-1">— runs, generate</span>
             </li>

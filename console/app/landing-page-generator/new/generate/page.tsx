@@ -156,7 +156,7 @@ function GeneratePageContent() {
       <Stack>
         <PageHeader
           title="Generate"
-          description="Create campaign and run the pipeline. Same flow as Email Generator for now; we will switch to landing-page-specific workflow next."
+          description="Create campaign and run the pipeline. Same flow as Email Design Generator for now; we will switch to landing-page-specific workflow next."
         />
         {!hasTemplate && (
           <p className="text-state-warning text-body-small mb-2">Select a template in the Template step first, then return here.</p>

@@ -16,7 +16,7 @@ export default function EmailMarketingNewPage() {
             <Link href="/email-marketing/new/brand">Start: Brand</Link>
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/email-marketing">Back to Email Generator</Link>
+            <Link href="/email-marketing">Back to Email Design Generator</Link>
           </Button>
         </div>
       </Stack>
