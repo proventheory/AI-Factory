@@ -3437,22 +3437,28 @@ app.post("/v1/email_component_library", async (req, res) => {
       component_type?: string;
       name?: string;
       description?: string;
-      mjml_fragment?: string;
+      mjml_fragment?: string | null;
+      html_fragment?: string | null;
       placeholder_docs?: unknown;
       position?: number;
       use_context?: string;
     };
-    if (!body.component_type?.trim() || !body.name?.trim() || body.mjml_fragment == null)
-      return res.status(400).json({ error: "component_type, name, and mjml_fragment required" });
+    if (!body.component_type?.trim() || !body.name?.trim())
+      return res.status(400).json({ error: "component_type and name required" });
+    const hasMjml = body.mjml_fragment != null && String(body.mjml_fragment).trim() !== "";
+    const hasHtml = body.html_fragment != null && String(body.html_fragment).trim() !== "";
+    if (!hasMjml && !hasHtml)
+      return res.status(400).json({ error: "At least one of mjml_fragment or html_fragment required (use html_fragment for landing_page e.g. WordPress/PHP footer)" });
     const useContext = typeof body.use_context === "string" && body.use_context.trim() ? body.use_context.trim().toLowerCase() : "email";
     const r = await pool.query(
-      `INSERT INTO email_component_library (component_type, name, description, mjml_fragment, placeholder_docs, position, use_context, updated_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, now()) RETURNING *`,
+      `INSERT INTO email_component_library (component_type, name, description, mjml_fragment, html_fragment, placeholder_docs, position, use_context, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, now()) RETURNING *`,
       [
         body.component_type.trim(),
         body.name.trim(),
         body.description?.trim() ?? null,
-        body.mjml_fragment,
+        hasMjml ? body.mjml_fragment : null,
+        hasHtml ? body.html_fragment : null,
         body.placeholder_docs != null ? JSON.stringify(body.placeholder_docs) : "[]",
         typeof body.position === "number" ? body.position : 0,
         useContext,
@@ -3472,7 +3478,7 @@ app.patch("/v1/email_component_library/:id", async (req, res) => {
     const id = req.params.id;
     if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
     const body = req.body as Record<string, unknown>;
-    const allowed = ["component_type", "name", "description", "mjml_fragment", "placeholder_docs", "position", "use_context"];
+    const allowed = ["component_type", "name", "description", "mjml_fragment", "html_fragment", "placeholder_docs", "position", "use_context"];
     const sets: string[] = ["updated_at = now()"];
     const params: unknown[] = [];
     let i = 1;
@@ -3487,6 +3493,9 @@ app.patch("/v1/email_component_library/:id", async (req, res) => {
         } else if (field === "use_context" && typeof body[field] === "string") {
           sets.push(`${field} = $${i++}`);
           params.push(body[field].trim().toLowerCase() || "email");
+        } else if (field === "mjml_fragment" || field === "html_fragment") {
+          sets.push(`${field} = $${i++}`);
+          params.push(typeof body[field] === "string" ? body[field] : null);
         } else if (typeof body[field] === "string") {
           sets.push(`${field} = $${i++}`);
           params.push(body[field]);

@@ -12,7 +12,8 @@ import {
   LoadingSkeleton,
 } from "@/components/ui";
 import { useEmailTemplate, useBrandProfile, useBrandProfiles } from "@/hooks/use-api";
-import { fetchEmailTemplatePreviewHtml } from "@/lib/api";
+import { fetchEmailTemplatePreviewHtml, getEmailComponentLibrary } from "@/lib/api";
+import type { EmailComponentRow } from "@/lib/api";
 
 export default function EmailTemplateDetailPage() {
   const params = useParams<{ id: string }>();
@@ -25,6 +26,7 @@ export default function EmailTemplateDetailPage() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [componentsUsed, setComponentsUsed] = useState<EmailComponentRow[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -36,6 +38,22 @@ export default function EmailTemplateDetailPage() {
       .catch((e) => setPreviewError(e instanceof Error ? e.message : String(e)))
       .finally(() => setPreviewLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    const seq = template?.component_sequence;
+    if (!seq || !Array.isArray(seq) || seq.length === 0) {
+      setComponentsUsed([]);
+      return;
+    }
+    getEmailComponentLibrary({ limit: 200 })
+      .then(({ items }) => {
+        const ordered = seq
+          .map((id) => items.find((c) => c.id === id))
+          .filter((c): c is EmailComponentRow => c != null);
+        setComponentsUsed(ordered);
+      })
+      .catch(() => setComponentsUsed([]));
+  }, [template?.component_sequence]);
 
   const brandsMap = new Map((brandsData?.items ?? []).map((b) => [b.id, b.name]));
 
@@ -91,6 +109,26 @@ export default function EmailTemplateDetailPage() {
             </div>
           }
         />
+
+        {/* Components used — when template is built from component_sequence */}
+        {componentsUsed.length > 0 && (
+          <CardSection title="Components used" className="border-brand-200 bg-brand-50/50">
+            <p className="text-body-small text-text-secondary mb-3">
+              This template is composed from the following components (in order) from the Component Registry.
+            </p>
+            <ol className="list-decimal list-inside space-y-2 text-body-small">
+              {componentsUsed.map((c) => (
+                <li key={c.id} className="flex flex-wrap items-baseline gap-2">
+                  <span className="font-medium text-fg">{c.name}</span>
+                  <span className="text-fg-muted font-mono text-xs">{c.component_type}</span>
+                  <Link href="/components" className="text-brand-600 hover:underline text-xs">
+                    View in registry
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          </CardSection>
+        )}
 
         {/* Template capacity — prominent so users see slot limits before using in wizard */}
         <CardSection title="Template capacity" className="border-brand-200 bg-brand-50/50">

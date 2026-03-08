@@ -845,7 +845,12 @@ export async function handleEmailGenerateMjml(request: {
         if (templateIdFromCamp) input.template_id = input.template_id ?? templateIdFromCamp;
         if (camp.metadata_json && typeof camp.metadata_json === "object") {
           const meta = camp.metadata_json as { products?: unknown[]; images?: string[]; selected_images?: string[]; campaign_prompt?: string; sitemap_url?: string; sitemap_type?: string };
-          if (meta.products && !input.products?.length) input.products = meta.products as EmailGenerateMjmlInput["products"];
+          if (meta.products && Array.isArray(meta.products) && meta.products.length > 0 && !input.products?.length) {
+            input.products = meta.products as EmailGenerateMjmlInput["products"];
+            console.log("[MJML] products from campaign metadata", { run_id: runId, initiative_id: initiativeId, count: input.products.length });
+          } else if (!input.products?.length && (!meta.products || !Array.isArray(meta.products) || meta.products.length === 0)) {
+            console.log("[MJML] campaign metadata has no products; will try sitemap/brand fallbacks", { run_id: runId, initiative_id: initiativeId, hasMetaProducts: !!meta.products, metaProductsLength: Array.isArray(meta.products) ? meta.products.length : 0 });
+          }
           if (Array.isArray(meta.images)) input.images = meta.images.slice(0);
           else if (Array.isArray(meta.selected_images) && !input.images?.length) input.images = meta.selected_images.slice(0);
           // Console sends images with first = hero; buildImageAssignmentV1 uses campaign[0] as hero.
@@ -897,6 +902,25 @@ export async function handleEmailGenerateMjml(request: {
         }
       } catch (_e2) {
         console.log("[MJML] initiative fallback failed", { initiative_id: initiativeId, err: String((_e2 as Error).message).slice(0, 60) });
+      }
+    }
+    // Fallback: products from brand design_tokens (Content step saves selected products to brand when user clicks Next).
+    if (!input.products?.length && brandCtx?.design_tokens && typeof brandCtx.design_tokens === "object") {
+      const dt = brandCtx.design_tokens as Record<string, unknown>;
+      const raw = dt.products;
+      if (Array.isArray(raw) && raw.length > 0) {
+        const normalized = raw
+          .filter((p): p is Record<string, unknown> => p != null && typeof p === "object")
+          .map((p) => ({
+            src: typeof p.src === "string" ? p.src : typeof p.image === "string" ? p.image : "",
+            title: typeof p.title === "string" ? p.title : "",
+            product_url: typeof p.product_url === "string" ? p.product_url : typeof p.link === "string" ? p.link : typeof p.url === "string" ? p.url : "",
+          }))
+          .filter((p) => (p.src || p.title || p.product_url));
+        if (normalized.length > 0) {
+          input.products = normalized as EmailGenerateMjmlInput["products"];
+          console.log("[MJML] products from brand design_tokens fallback (Content step selection)", { run_id: runId, initiative_id: initiativeId, count: normalized.length });
+        }
       }
     }
   }

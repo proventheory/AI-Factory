@@ -662,9 +662,29 @@ export type EmailTemplateRow = {
   /** e.g. "newsletter (email template)". Shown when picking templates. */
   layout_style?: string;
   brand_profile_id?: string | null;
+  /** Ordered list of email_component_library IDs this template is composed from. */
+  component_sequence?: string[] | null;
   created_at: string;
   updated_at: string;
 };
+
+/** Single row from email component library (for "Components used" on template detail). */
+export type EmailComponentRow = {
+  id: string;
+  component_type: string;
+  name: string;
+  position: number;
+  use_context?: string;
+  description?: string | null;
+};
+
+export async function getEmailComponentLibrary(params?: { limit?: number }): Promise<{ items: EmailComponentRow[]; total: number }> {
+  const sp = new URLSearchParams();
+  if (params?.limit) sp.set("limit", String(params.limit));
+  const res = await fetch(`${API}/v1/email_component_library?${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 
 /** Pexels API proxy (search photos). */
 export async function pexelsSearch(params: { q: string; per_page?: number; page?: number }): Promise<{

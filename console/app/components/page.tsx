@@ -31,6 +31,7 @@ const USE_CONTEXT_LABELS: Record<string, string> = {
   email: "Email",
   deck: "Deck",
   report: "Report",
+  landing_page: "Landing page",
 };
 
 function useContextLabel(value: string | null | undefined): string {
@@ -43,7 +44,8 @@ type EmailComponentRow = {
   component_type: string;
   name: string;
   description: string | null;
-  mjml_fragment: string;
+  mjml_fragment: string | null;
+  html_fragment?: string | null;
   placeholder_docs: string[];
   position: number;
   use_context?: string | null;
@@ -63,6 +65,7 @@ export default function ComponentRegistryPage() {
     name: "",
     description: "",
     mjml_fragment: "",
+    html_fragment: "",
     placeholder_docs: "" as string,
     position: 0,
     use_context: "email",
@@ -110,6 +113,7 @@ export default function ComponentRegistryPage() {
       name: "",
       description: "",
       mjml_fragment: "",
+      html_fragment: "",
       placeholder_docs: "",
       position: items.length,
       use_context: "email",
@@ -123,7 +127,8 @@ export default function ComponentRegistryPage() {
       component_type: row.component_type,
       name: row.name,
       description: row.description ?? "",
-      mjml_fragment: row.mjml_fragment,
+      mjml_fragment: row.mjml_fragment ?? "",
+      html_fragment: row.html_fragment ?? "",
       placeholder_docs: Array.isArray(row.placeholder_docs) ? row.placeholder_docs.join(", ") : "",
       position: row.position ?? 0,
       use_context: (row.use_context ?? "email").toLowerCase(),
@@ -140,57 +145,73 @@ export default function ComponentRegistryPage() {
     }
     setPreviewLoading(true);
     setPreviewError(null);
-    const params = new URLSearchParams({ ids: previewId, format: "html" });
-    if (previewBrandId && previewBrandId.trim()) params.set("brand_profile_id", previewBrandId.trim());
-    fetch(`${API}/v1/email_component_library/assembled?${params.toString()}`)
-      .then(async (r) => {
-        const text = await r.text();
-        if (!r.ok) throw new Error(text);
-        return text;
+    fetch(`${API}/v1/email_component_library/${previewId}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Not found"))))
+      .then((row: { html_fragment?: string | null; mjml_fragment?: string | null; use_context?: string | null }) => {
+        const useContext = (row.use_context ?? "email").toLowerCase();
+        const hasHtml = row.html_fragment != null && String(row.html_fragment).trim() !== "";
+        if (useContext === "landing_page" && hasHtml) {
+          const html = String(row.html_fragment).trim();
+          setPreviewHtml(`<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head><body>${html}</body></html>`);
+          setPreviewLoading(false);
+          return;
+        }
+        const params = new URLSearchParams({ ids: previewId, format: "html" });
+        if (previewBrandId && previewBrandId.trim()) params.set("brand_profile_id", previewBrandId.trim());
+        return fetch(`${API}/v1/email_component_library/assembled?${params.toString()}`)
+          .then(async (r) => {
+            const text = await r.text();
+            if (!r.ok) throw new Error(text);
+            return text;
+          })
+          .then((text) => {
+            setPreviewHtml(text);
+            setPreviewLoading(false);
+          });
       })
-      .then(setPreviewHtml)
-      .catch((e) => setPreviewError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setPreviewLoading(false));
+      .catch((e) => {
+        setPreviewError(e instanceof Error ? e.message : String(e));
+        setPreviewLoading(false);
+      });
   }, [previewId, previewBrandId]);
 
   const handleSave = async () => {
-    if (!form.component_type.trim() || !form.name.trim() || form.mjml_fragment.trim() === "")
-      return;
+    const hasMjml = form.mjml_fragment.trim() !== "";
+    const hasHtml = form.html_fragment.trim() !== "";
+    const useContext = (form.use_context || "email").trim().toLowerCase() || "email";
+    const canSave =
+      form.component_type.trim() !== "" &&
+      form.name.trim() !== "" &&
+      (hasMjml || hasHtml);
+    if (!canSave) return;
     setSaveBusy(true);
     try {
       const placeholder_docs = form.placeholder_docs
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      const useContext = (form.use_context || "email").trim().toLowerCase() || "email";
+      const payload = {
+        component_type: form.component_type.trim(),
+        name: form.name.trim(),
+        description: form.description.trim() || null,
+        mjml_fragment: hasMjml ? form.mjml_fragment : null,
+        html_fragment: hasHtml ? form.html_fragment : null,
+        placeholder_docs,
+        position: Number(form.position) || 0,
+        use_context: useContext,
+      };
       if (editingId) {
         const r = await fetch(`${API}/v1/email_component_library/${editingId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            component_type: form.component_type.trim(),
-            name: form.name.trim(),
-            description: form.description.trim() || null,
-            mjml_fragment: form.mjml_fragment,
-            placeholder_docs,
-            position: Number(form.position) || 0,
-            use_context: useContext,
-          }),
+          body: JSON.stringify(payload),
         });
         if (!r.ok) throw new Error(await r.text());
       } else {
         const r = await fetch(`${API}/v1/email_component_library`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            component_type: form.component_type.trim(),
-            name: form.name.trim(),
-            description: form.description.trim() || null,
-            mjml_fragment: form.mjml_fragment,
-            placeholder_docs,
-            position: Number(form.position) || 0,
-            use_context: useContext,
-          }),
+          body: JSON.stringify(payload),
         });
         if (!r.ok) throw new Error(await r.text());
       }
@@ -323,13 +344,25 @@ export default function ComponentRegistryPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">MJML fragment</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                {form.use_context === "landing_page" ? "MJML fragment (optional for Landing page)" : "MJML fragment"}
+              </label>
               <textarea
-                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-mono text-sm min-h-[120px] p-2"
+                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-mono text-sm min-h-[100px] p-2"
                 value={form.mjml_fragment}
                 onChange={(e) => setForm((f) => ({ ...f, mjml_fragment: e.target.value }))}
-                placeholder="<mj-section>...</mj-section>"
+                placeholder={form.use_context === "landing_page" ? "Leave empty if using HTML fragment below" : "<mj-section>...</mj-section>"}
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">HTML fragment (for Landing page / WordPress footer)</label>
+              <textarea
+                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-mono text-sm min-h-[120px] p-2"
+                value={form.html_fragment}
+                onChange={(e) => setForm((f) => ({ ...f, html_fragment: e.target.value }))}
+                placeholder='<footer class="...">... use {{placeholders}} ...</footer>'
+              />
+              <p className="text-xs text-slate-500 mt-1">Use when For = Landing page. Placeholders as {{name}}. Include &lt;style&gt; if needed.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Placeholders (comma-separated)</label>
@@ -357,12 +390,21 @@ export default function ComponentRegistryPage() {
                 <option value="email">Email</option>
                 <option value="deck">Deck</option>
                 <option value="report">Report</option>
+                <option value="landing_page">Landing page</option>
               </select>
-              <p className="text-xs text-slate-500 mt-1">Where this component is used (email templates, decks, reports).</p>
+              <p className="text-xs text-slate-500 mt-1">Where this component is used (email templates, decks, reports, landing pages).</p>
             </div>
           </div>
           <div className="mt-6 flex gap-2">
-            <Button onClick={handleSave} disabled={saveBusy || !form.component_type.trim() || !form.name.trim() || !form.mjml_fragment.trim()}>
+            <Button
+              onClick={handleSave}
+              disabled={
+                saveBusy ||
+                !form.component_type.trim() ||
+                !form.name.trim() ||
+                (form.mjml_fragment.trim() === "" && form.html_fragment.trim() === "")
+              }
+            >
               {saveBusy ? "Saving…" : editingId ? "Save" : "Create"}
             </Button>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>

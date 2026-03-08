@@ -43,6 +43,7 @@ const migrations = [
   { path: "supabase/migrations/20250313000001_email_templates_component_sequence.sql", name: "email_templates_component_sequence", skipIfErrorCode: "42710", skipMessage: "column/objects already exist" },
   { path: "supabase/migrations/20250314000000_email_component_library_use_context.sql", name: "email_component_library_use_context" },
   { path: "supabase/migrations/20250315100000_stitch_template_contract.sql", name: "stitch_template_contract" },
+  { path: "supabase/migrations/20250316100000_email_component_library_html_fragment.sql", name: "email_component_library_html_fragment", skipIfErrorCode: "42701", skipMessage: "column already exists" },
 ];
 
 async function run() {
