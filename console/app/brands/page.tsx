@@ -71,7 +71,8 @@ export default function BrandsPage() {
       header: "Color",
       render: (row) => {
         const dt = row.design_tokens as Record<string, unknown>;
-        const hex = dt?.color?.brand?.["500"] as string | undefined;
+        const color = dt?.color as Record<string, Record<string, string>> | undefined;
+        const hex = color?.brand?.["500"];
         return hex ? (
           <span className="inline-block h-4 w-4 rounded-full border" style={{ backgroundColor: hex }} />
         ) : (
