@@ -3000,13 +3000,25 @@ app.get("/v1/email_templates/:id/preview", async (req, res) => {
   }
 });
 
-/** Compute product slot count from MJML (max N in product_N_image placeholders). */
+/** Letter to product slot index (A=1, B=2, ..., K=11). */
+function productLetterToSlot(letter: string): number {
+  const code = letter.toUpperCase().charCodeAt(0);
+  if (code >= 65 && code <= 75) return code - 64; // A=1 .. K=11
+  return 0;
+}
+
+/** Compute product slot count from MJML (product_N_image/title/url or [product A/B/... src/title/productUrl/description]). */
 function productSlotsFromMjml(mjml: string | null): number {
   if (!mjml || typeof mjml !== "string") return 0;
-  const matches = mjml.matchAll(/product_(\d+)_(?:image|title|url)/gi);
   let max = 0;
-  for (const m of matches) {
+  const numericMatches = mjml.matchAll(/product_(\d+)_(?:image|title|url)/gi);
+  for (const m of numericMatches) {
     const n = parseInt(m[1], 10);
+    if (n > max) max = n;
+  }
+  const bracketMatches = mjml.matchAll(/\[product\s+([A-Za-z])\s+(?:src|title|productUrl|description)\]/gi);
+  for (const m of bracketMatches) {
+    const n = productLetterToSlot(m[1]);
     if (n > max) max = n;
   }
   return max;
@@ -3028,7 +3040,7 @@ function contentSlotsFromMjml(mjml: string | null): number {
   }
   // Hero counts as one slot when present; so if we only have hero, treat as 1. We already count [image N] and image_N above.
   // If max is still 0 but template has hero placeholder, treat as 1 (hero-only). Else return max.
-  if (max === 0 && /\{\{hero_image|imageUrl|image_url\}\}|\[hero\]|\[banner\]/i.test(mjml)) {
+  if (max === 0 && /\{\{hero_image|imageUrl|image_url\}\}|\[hero\]|\[banner\]|\[image_url\]|\[hero_image_url\]/i.test(mjml)) {
     return 1;
   }
   return max;
@@ -3247,10 +3259,11 @@ app.patch("/v1/email_templates/:id", async (req, res) => {
       if (body[field] !== undefined) {
         if (field === "template_json" || field === "sections_json" || field === "component_sequence") {
           sets.push(`${field} = $${i++}::jsonb`);
+          params.push(typeof body[field] === "string" ? body[field] : JSON.stringify(body[field]));
         } else {
           sets.push(`${field} = $${i++}`);
+          params.push(body[field]);
         }
-        params.push(body[field]);
       }
     }
     if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });

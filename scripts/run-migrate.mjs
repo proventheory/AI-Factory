@@ -42,6 +42,7 @@ const migrations = [
   { path: "supabase/migrations/20250313000000_email_component_library.sql", name: "email_component_library", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
   { path: "supabase/migrations/20250313000001_email_templates_component_sequence.sql", name: "email_templates_component_sequence", skipIfErrorCode: "42710", skipMessage: "column/objects already exist" },
   { path: "supabase/migrations/20250314000000_email_component_library_use_context.sql", name: "email_component_library_use_context" },
+  { path: "supabase/migrations/20250315100000_stitch_template_contract.sql", name: "stitch_template_contract" },
 ];
 
 async function run() {
