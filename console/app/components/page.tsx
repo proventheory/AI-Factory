@@ -143,9 +143,10 @@ export default function ComponentRegistryPage() {
     const params = new URLSearchParams({ ids: previewId, format: "html" });
     if (previewBrandId && previewBrandId.trim()) params.set("brand_profile_id", previewBrandId.trim());
     fetch(`${API}/v1/email_component_library/assembled?${params.toString()}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(await r.text());
-        return r.text();
+      .then(async (r) => {
+        const text = await r.text();
+        if (!r.ok) throw new Error(text);
+        return text;
       })
       .then(setPreviewHtml)
       .catch((e) => setPreviewError(e instanceof Error ? e.message : String(e)))
