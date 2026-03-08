@@ -242,14 +242,14 @@ export function useAnalytics(params?: { from?: string; to?: string }) {
 
 export function useEmailCampaigns(params?: { limit?: number; offset?: number; campaign_kind?: string }) {
   return useQuery({
-    queryKey: ["email_campaigns", params?.limit, params?.offset, params?.campaign_kind],
+    queryKey: ["email_designs", params?.limit, params?.offset, params?.campaign_kind],
     queryFn: () => api.getEmailCampaigns(params),
   });
 }
 
 export function useEmailCampaign(id: string | null) {
   return useQuery({
-    queryKey: ["email_campaign", id],
+    queryKey: ["email_design", id],
     queryFn: () => api.getEmailCampaign(id!),
     enabled: !!id,
   });
@@ -259,7 +259,7 @@ export function useCreateEmailCampaign() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: Parameters<typeof api.createEmailCampaign>[0]) => api.createEmailCampaign(body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["email_campaigns"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["email_designs"] }),
   });
 }
 
@@ -268,8 +268,8 @@ export function useUpdateEmailCampaign() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: Parameters<typeof api.updateEmailCampaign>[1] }) => api.updateEmailCampaign(id, body),
     onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ["email_campaigns"] });
-      queryClient.invalidateQueries({ queryKey: ["email_campaign", id] });
+      queryClient.invalidateQueries({ queryKey: ["email_designs"] });
+      queryClient.invalidateQueries({ queryKey: ["email_design", id] });
     },
   });
 }

@@ -32,6 +32,7 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 | **[TEMPLATE_IMAGE_QA_CHECKLIST.md](TEMPLATE_IMAGE_QA_CHECKLIST.md)** | Template image QA checklist. |
 | **[SUPABASE_EMAIL_SCHEMA_DEPLOY.md](SUPABASE_EMAIL_SCHEMA_DEPLOY.md)** | Supabase email schema and deploy notes. |
 | **[EMAIL_MARKETING_FACTORY_INTEGRATION.md](EMAIL_MARKETING_FACTORY_INTEGRATION.md)** | Email Marketing Factory app in `email-marketing-factory/`, base path, proxy from Console. |
+| **[EMAIL_DESIGN_VS_CAMPAIGN.md](EMAIL_DESIGN_VS_CAMPAIGN.md)** | Naming: `email_design_generator` (design initiatives) vs reserved *email campaign* (future: sent to Klaviyo etc.). |
 
 ## Brand tokens
 

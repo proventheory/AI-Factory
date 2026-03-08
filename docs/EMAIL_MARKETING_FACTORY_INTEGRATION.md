@@ -63,7 +63,7 @@ const nextConfig = {
 
 - Campaigns can map to **initiatives** with **`intent_type = 'email_design_generator'`** (Console: **Email Design Generator**).
 - Email templates can be stored as **artifacts** with **`artifact_class = 'email_template'`**.
-- Campaign-level fields: **`email_campaign_metadata`** table (see `supabase/migrations/20250303000004_email_marketing_factory.sql`). Optionally wire the Email Marketing Factory to read/write this table when using the shared DB.
+- Campaign-level fields: **`email_design_generator_metadata`** table (see `supabase/migrations/20250303000004_email_marketing_factory.sql` and `20250318000000_rename_email_campaign_metadata_to_email_design_generator.sql`). Optionally wire the Email Marketing Factory to read/write this table when using the shared DB.
 
 ---
 
@@ -84,7 +84,8 @@ AI Factory (repo root)
 ├── scripts/
 │   └── clone-email-marketing-factory.sh
 └── supabase/migrations/
-    └── 20250303000004_email_marketing_factory.sql   # email_campaign_metadata, artifact_class
+    ├── 20250303000004_email_marketing_factory.sql   # creates table (renamed by 20250318), artifact_class
+    └── 20250318000000_rename_email_campaign_metadata_to_email_design_generator.sql   # email_design_generator_metadata
 ```
 
 ---
@@ -107,25 +108,33 @@ Clicking **Email Marketing** in the Console opens `/email-marketing` on the same
 | Email template | **Artifact** (`artifact_class = 'email_template'`) |
 | Send / dispatch | **Run** or job_run |
 | Approvals | **Approvals** table + Console Approvals page |
-| Campaign metadata | **email_campaign_metadata** table |
+| Campaign metadata | **email_design_generator_metadata** table |
 
 ---
 
-## 6. API (Control Plane)
+## 6. Naming: design generator vs campaign (future)
 
-The Control Plane exposes **`/v1/email_campaigns`** for initiatives with **`intent_type = 'email_design_generator'`** (Console label: **Email Design Generator**). The table name remains `email_campaign_metadata`; the intent type value is `email_design_generator`.
+- **email_design_generator** — Intent type for initiatives that create an email *design* in the Console (**Email Design Generator**). This is the generator flow: brand → template → generate. Stored as `initiatives.intent_type = 'email_design_generator'`.
+- **email_campaign** — Reserved for the *future* concept: an email design that has been sent (or scheduled) as a campaign, e.g. to Klaviyo. Do not use `email_campaign` as an intent type; it will later represent the "design sent as campaign" entity.
+
+The current table **`email_design_generator_metadata`** holds metadata for the *design* initiative (subject, from, template ref). The API is **`/v1/email_designs`**. When we add sent campaigns (Klaviyo, etc.), we may introduce a separate table or API for that. This avoids overloading the term *email campaign* so it can mean "campaign sent to an audience" later.
+
+## 7. API (Control Plane)
+
+The Control Plane exposes **`/v1/email_designs`** for initiatives with **`intent_type = 'email_design_generator'`** (Console: **Email Design Generator**).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/email_campaigns` | List initiatives where `intent_type = 'email_design_generator'` (optional `campaign_kind=landing_page`) |
-| GET | `/v1/email_campaigns/:id` | Single campaign (initiative + metadata) |
-| POST | `/v1/email_campaigns` | Create initiative with `intent_type = 'email_design_generator'` and a row in `email_campaign_metadata` |
-| PATCH | `/v1/email_campaigns/:id` | Update campaign metadata |
+| GET | `/v1/email_designs` | List initiatives where `intent_type = 'email_design_generator'` (optional `campaign_kind=landing_page`) |
+| GET | `/v1/email_designs/:id` | Single email design (initiative + metadata) |
+| POST | `/v1/email_designs` | Create initiative with `intent_type = 'email_design_generator'` and a row in `email_design_generator_metadata` |
+| PATCH | `/v1/email_designs/:id` | Update email design metadata |
 
 ---
 
-## 7. References
+## 8. References
 
+- **Naming (design vs campaign):** `docs/EMAIL_DESIGN_VS_CAMPAIGN.md` — why we use `email_design_generator` and reserve *email campaign* for future sent campaigns (Klaviyo, etc.).
 - Source repo: https://github.com/cultura-company/CULTURA-AI  
 - AI Factory stack: `docs/STACK_AND_DECISIONS.md`  
-- Schema: `schemas/001_core_schema.sql` (initiatives, artifacts, email_campaign_metadata), `supabase/migrations/20250303000004_email_marketing_factory.sql`
+- Schema: `schemas/001_core_schema.sql` (initiatives, artifacts, email_design_generator_metadata), `supabase/migrations/20250303000004_email_marketing_factory.sql`, `20250318000000_rename_email_campaign_metadata_to_email_design_generator.sql`

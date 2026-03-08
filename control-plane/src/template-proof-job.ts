@@ -49,7 +49,7 @@ export async function runProofLoop(options: ProofLoopOptions): Promise<void> {
     const proofRunId = (insertRun.rows[0] as { id: string }).id;
 
     try {
-      const campaignRes = await fetch(`${baseUrl}/v1/email_campaigns`, {
+      const campaignRes = await fetch(`${baseUrl}/v1/email_designs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

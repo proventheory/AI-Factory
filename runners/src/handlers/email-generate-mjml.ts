@@ -837,7 +837,7 @@ export async function handleEmailGenerateMjml(request: {
   let subjectLine: string | undefined = undefined;
   if (initiativeId) {
     try {
-      const campRes = await fetch(`${CONTROL_PLANE_URL}/v1/email_campaigns/${initiativeId}`);
+      const campRes = await fetch(`${CONTROL_PLANE_URL}/v1/email_designs/${initiativeId}`);
       if (campRes.ok) {
         const camp = (await campRes.json()) as { template_id?: string; subject_line?: string; metadata_json?: { template_id?: string; products?: unknown[]; images?: string[]; campaign_prompt?: string } };
         subjectLine = camp.subject_line;

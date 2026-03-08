@@ -17,6 +17,13 @@ export interface ContactItem {
   value: string;
 }
 
+/** Linear gradient for container backgrounds etc. Stops are hex colors in order. */
+export interface GradientEntry {
+  name: string;
+  type: "linear";
+  stops: string[];
+}
+
 export interface DesignTokensInput {
   primaryColor: string;
   secondaryColor: string;
@@ -41,8 +48,10 @@ export interface DesignTokensInput {
   ctaLink: string;
   /** Footer and page links (e.g. category, company, legal). Keys match footer placeholders (popularWeightManagementUrl, howItWorksUrl, etc.). */
   footerUrls?: Record<string, string>;
-  /** Hex color for H1/H2 highlight/accent (e.g. #c2b6f8). Exposed as headingHighlightColor in placeholder map. */
+  /** Hex color for design touch on titles (H1/H2)—applied to part of a title, not for links. Alternative: bold a keyword when headings aren’t bold. Exposed as headingHighlightColor in placeholder map. */
   headingHighlightColor?: string;
+  /** Linear gradients for container backgrounds. Exposed in placeholder map as gradient_0, gradient_1, gradient_Container1, gradient_Container2, gradient_<name>. */
+  gradients?: GradientEntry[];
 }
 
 /** Full brand color palette (scale keys + optional neutral). Additive read for Brand System View. */
@@ -103,6 +112,7 @@ export function buildDesignTokens(opts: Partial<DesignTokensInput>): Record<stri
     ctaLink,
     footerUrls,
     headingHighlightColor,
+    gradients,
   } = opts;
   const colors = {
     brand: {
@@ -149,6 +159,13 @@ export function buildDesignTokens(opts: Partial<DesignTokensInput>): Record<stri
     tokens.footer_urls = { ...footerUrls };
   if (headingHighlightColor !== undefined && typeof headingHighlightColor === "string" && headingHighlightColor.trim())
     tokens.heading_highlight_color = headingHighlightColor.trim();
+  if (gradients !== undefined && Array.isArray(gradients) && gradients.length > 0) {
+    tokens.gradients = gradients.map((g) =>
+      g && g.type === "linear" && Array.isArray(g.stops) && g.stops.length >= 2
+        ? { name: String(g.name || "").trim() || "Unnamed", type: "linear" as const, stops: g.stops.filter((s) => typeof s === "string" && s.trim()) }
+        : null
+    ).filter(Boolean);
+  }
   return tokens;
 }
 
@@ -196,6 +213,14 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
       ? (dt.footer_urls as Record<string, string>)
       : {};
   const headingHighlightColor = typeof dt.heading_highlight_color === "string" ? dt.heading_highlight_color.trim() : "";
+  const gradientsRaw = Array.isArray(dt.gradients) ? dt.gradients : [];
+  const gradients: GradientEntry[] = gradientsRaw
+    .filter((g): g is Record<string, unknown> => g != null && typeof g === "object" && g.type === "linear" && Array.isArray(g.stops) && g.stops.length >= 2)
+    .map((g) => ({
+      name: typeof g.name === "string" ? g.name.trim() || "Unnamed" : "Unnamed",
+      type: "linear" as const,
+      stops: (g.stops as string[]).filter((s) => typeof s === "string" && s.trim()),
+    }));
   const rec = dt as Record<string, unknown>;
   const sitemapUrlVal =
     (typeof dt.sitemap_url === "string" ? dt.sitemap_url : null) ??
@@ -225,6 +250,7 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
     ctaLink,
     footerUrls,
     headingHighlightColor,
+    gradients,
   };
 }
 

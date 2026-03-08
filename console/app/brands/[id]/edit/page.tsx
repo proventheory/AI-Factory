@@ -22,6 +22,7 @@ import {
   type SocialLink,
   type ContactItem,
   type DesignTokensExtended,
+  type DesignTokensInput,
 } from "../../token-helpers";
 
 /** Linear gradient for container backgrounds (matches token-helpers.GradientEntry). */
@@ -272,7 +273,7 @@ export default function EditBrandPage() {
           return;
         }
       }
-      const baseTokens = buildDesignTokens({
+      const designInput: Partial<DesignTokensInput> = {
         primaryColor,
         secondaryColor,
         fontHeadings,
@@ -290,8 +291,9 @@ export default function EditBrandPage() {
         ctaLink,
         footerUrls: Object.keys(footerUrls).length ? footerUrls : undefined,
         headingHighlightColor: headingHighlightColor.trim() || undefined,
-        gradients: gradients.length > 0 ? gradients : undefined,
-      });
+      };
+      if (gradients.length > 0) Object.assign(designInput, { gradients });
+      const baseTokens = buildDesignTokens(designInput);
       const extended: DesignTokensExtended = {};
       const scaleFiltered = Object.fromEntries(Object.entries(brandScale).filter(([, v]) => v && v.trim()));
       if (Object.keys(scaleFiltered).length > 0) extended.brandScale = scaleFiltered;

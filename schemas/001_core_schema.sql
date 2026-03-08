@@ -327,11 +327,14 @@ CREATE INDEX idx_artifacts_run_type  ON artifacts (run_id, artifact_type);
 CREATE INDEX idx_artifacts_class     ON artifacts (artifact_class);
 
 -- ============================================================
--- 5.9b email_campaign_metadata (Email Marketing Factory)
+-- 5.9b email_design_generator_metadata (Email Design Generator)
 -- ============================================================
 -- One row per initiative with intent_type = 'email_design_generator'.
+-- This is metadata for the *design* initiative (subject, from, template). The term
+-- "email campaign" is reserved for future sent campaigns (e.g. Klaviyo); that may
+-- get a separate table/API later.
 
-CREATE TABLE email_campaign_metadata (
+CREATE TABLE email_design_generator_metadata (
   initiative_id        uuid PRIMARY KEY REFERENCES initiatives(id) ON DELETE CASCADE,
   subject_line         text,
   from_name            text,
@@ -344,8 +347,8 @@ CREATE TABLE email_campaign_metadata (
   updated_at           timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_email_campaign_metadata_initiative ON email_campaign_metadata (initiative_id);
-CREATE INDEX idx_email_campaign_metadata_template   ON email_campaign_metadata (template_artifact_id) WHERE template_artifact_id IS NOT NULL;
+CREATE INDEX idx_email_design_generator_metadata_initiative ON email_design_generator_metadata (initiative_id);
+CREATE INDEX idx_email_design_generator_metadata_template   ON email_design_generator_metadata (template_artifact_id) WHERE template_artifact_id IS NOT NULL;
 
 -- ============================================================
 -- 5.8 tool_calls (adapter invocations)

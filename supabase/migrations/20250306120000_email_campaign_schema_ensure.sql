@@ -1,6 +1,6 @@
 -- Ensure schema for email campaign flow (template_id + metadata_json).
 -- Safe to run on Supabase or Render; idempotent so can re-run.
--- Required for: POST/GET email_campaigns (template_id, campaign_prompt in metadata), runner template resolution.
+-- Required for: POST/GET /v1/email_designs (template_id, campaign_prompt in metadata), runner template resolution.
 
 -- initiatives.template_id: references email_templates.id (or slug) for email_design_generator initiatives.
 ALTER TABLE initiatives ADD COLUMN IF NOT EXISTS template_id text;

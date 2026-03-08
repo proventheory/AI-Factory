@@ -559,13 +559,13 @@ export async function getEmailCampaigns(params?: { limit?: number; offset?: numb
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
   if (params?.campaign_kind) searchParams.set("campaign_kind", params.campaign_kind);
-  const res = await fetch(`${API}/v1/email_campaigns?${searchParams}`);
+  const res = await fetch(`${API}/v1/email_designs?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getEmailCampaign(id: string): Promise<EmailCampaignRow & { reply_to?: string | null; metadata_json?: unknown }> {
-  const res = await fetch(`${API}/v1/email_campaigns/${id}`);
+  const res = await fetch(`${API}/v1/email_designs/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -580,7 +580,7 @@ export async function createEmailCampaign(body: {
   template_artifact_id?: string;
   metadata_json?: unknown;
 }): Promise<EmailCampaignRow> {
-  const res = await fetch(`${API}/v1/email_campaigns`, {
+  const res = await fetch(`${API}/v1/email_designs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -607,7 +607,7 @@ export async function updateEmailCampaign(id: string, body: {
   template_artifact_id?: string;
   metadata_json?: unknown;
 }): Promise<EmailCampaignRow> {
-  const res = await fetch(`${API}/v1/email_campaigns/${id}`, {
+  const res = await fetch(`${API}/v1/email_designs/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

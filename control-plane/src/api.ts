@@ -209,8 +209,8 @@ app.get("/v1/initiatives/:id", async (req, res) => {
   }
 });
 
-/** GET /v1/email_campaigns — list initiatives with intent_type = email_design_generator + metadata. Optional campaign_kind=landing_page to list only landing-page campaigns. */
-app.get("/v1/email_campaigns", async (req, res) => {
+/** GET /v1/email_designs — list initiatives with intent_type = email_design_generator + metadata. Optional campaign_kind=landing_page to list only landing-page campaigns. */
+app.get("/v1/email_designs", async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
     const offset = Number(req.query.offset) || 0;
@@ -225,7 +225,7 @@ app.get("/v1/email_campaigns", async (req, res) => {
       `SELECT i.id, i.title, i.intent_type, i.risk_level, i.created_at,
               m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.audience_segment_ref, m.updated_at AS metadata_updated_at
        FROM initiatives i
-       LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
+       LEFT JOIN email_design_generator_metadata m ON m.initiative_id = i.id
        WHERE ${whereClause}
        ORDER BY i.created_at DESC LIMIT $1 OFFSET $2`,
       params
@@ -236,17 +236,17 @@ app.get("/v1/email_campaigns", async (req, res) => {
   }
 });
 
-/** GET /v1/email_campaigns/:id — single email campaign (initiative + metadata) */
-app.get("/v1/email_campaigns/:id", async (req, res) => {
+/** GET /v1/email_designs/:id — single email design (initiative + metadata) */
+app.get("/v1/email_designs/:id", async (req, res) => {
   try {
     const id = req.params.id;
     const fullSelect = `SELECT i.id, i.title, i.created_at, i.brand_profile_id, i.template_id, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
        FROM initiatives i
-       LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
+       LEFT JOIN email_design_generator_metadata m ON m.initiative_id = i.id
        WHERE i.id = $1 AND i.intent_type = 'email_design_generator'`;
     const minimalSelect = `SELECT i.id, i.title, i.created_at, i.template_id, m.subject_line, m.from_name, m.from_email, m.reply_to, m.template_artifact_id, m.audience_segment_ref, m.metadata_json, m.created_at AS metadata_created_at, m.updated_at AS metadata_updated_at
        FROM initiatives i
-       LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
+       LEFT JOIN email_design_generator_metadata m ON m.initiative_id = i.id
        WHERE i.id = $1 AND i.intent_type = 'email_design_generator'`;
     let r: { rows: Record<string, unknown>[] };
     try {
@@ -272,8 +272,8 @@ app.get("/v1/email_campaigns/:id", async (req, res) => {
   }
 });
 
-/** POST /v1/email_campaigns — create initiative (email_design_generator) + optional metadata */
-app.post("/v1/email_campaigns", async (req, res) => {
+/** POST /v1/email_designs — create initiative (email_design_generator) + optional metadata */
+app.post("/v1/email_designs", async (req, res) => {
   try {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
@@ -290,7 +290,7 @@ app.post("/v1/email_campaigns", async (req, res) => {
     };
     const id = uuid();
     // #region agent log
-    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H1", location: "api.ts:POST email_campaigns", message: "body.risk_level and resolved riskLevel", data: { body_risk_level: body.risk_level, has_risk_level: "risk_level" in body }, timestamp: Date.now() }) }).catch(() => {});
+    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H1", location: "api.ts:POST email_designs", message: "body.risk_level and resolved riskLevel", data: { body_risk_level: body.risk_level, has_risk_level: "risk_level" in body }, timestamp: Date.now() }) }).catch(() => {});
     // #endregion
     const riskLevel = normalizeRiskLevel(body.risk_level) ?? "med"; // always normalize so "medium" -> "med" if client sends it
     // #region agent log
@@ -304,7 +304,7 @@ app.post("/v1/email_campaigns", async (req, res) => {
       );
     } catch (e) {
       // #region agent log
-      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H2", location: "api.ts:POST email_campaigns catch", message: "INSERT initiatives fallback", data: { error: String((e as Error).message).slice(0, 80), has_template_id: !!body.template_id }, timestamp: Date.now() }) }).catch(() => {});
+      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" }, body: JSON.stringify({ sessionId: "0db674", hypothesisId: "H2", location: "api.ts:POST email_designs catch", message: "INSERT initiatives fallback", data: { error: String((e as Error).message).slice(0, 80), has_template_id: !!body.template_id }, timestamp: Date.now() }) }).catch(() => {});
       // #endregion
       if (err(e)) {
         try {
@@ -326,7 +326,7 @@ app.post("/v1/email_campaigns", async (req, res) => {
       ? { ...(body.metadata_json as Record<string, unknown>), template_id: body.template_id ?? (body.metadata_json as Record<string, unknown>).template_id }
       : (body.template_id ? { template_id: body.template_id } : null);
     await pool.query(
-      `INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email, template_artifact_id, metadata_json) VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      `INSERT INTO email_design_generator_metadata (initiative_id, subject_line, from_name, from_email, template_artifact_id, metadata_json) VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
       [
         id,
         body.subject_line ?? null,
@@ -338,7 +338,7 @@ app.post("/v1/email_campaigns", async (req, res) => {
     );
     const r = await pool.query(
       `SELECT i.id, i.title, i.created_at, m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.metadata_json
-       FROM initiatives i LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id WHERE i.id = $1`,
+       FROM initiatives i LEFT JOIN email_design_generator_metadata m ON m.initiative_id = i.id WHERE i.id = $1`,
       [id]
     );
     const row = r.rows[0] as Record<string, unknown>;
@@ -348,8 +348,8 @@ app.post("/v1/email_campaigns", async (req, res) => {
   }
 });
 
-/** PATCH /v1/email_campaigns/:id — update campaign metadata (upsert) */
-app.patch("/v1/email_campaigns/:id", async (req, res) => {
+/** PATCH /v1/email_designs/:id — update email design metadata (upsert) */
+app.patch("/v1/email_designs/:id", async (req, res) => {
   try {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
@@ -381,7 +381,7 @@ app.patch("/v1/email_campaigns/:id", async (req, res) => {
     }
     updates.push("updated_at = now()");
     const r = await pool.query(
-      `INSERT INTO email_campaign_metadata (initiative_id, subject_line, from_name, from_email)
+      `INSERT INTO email_design_generator_metadata (initiative_id, subject_line, from_name, from_email)
        VALUES ($1, null, null, null)
        ON CONFLICT (initiative_id) DO UPDATE SET ${updates.join(", ")}
        RETURNING *`,
@@ -1187,7 +1187,7 @@ app.get("/v1/artifacts/:id", async (req, res) => {
     const artifact = r.rows[0] as { uri?: string; [k: string]: unknown };
     if (artifact.uri?.startsWith("supabase-storage://")) {
       try {
-        const { getArtifactSignedUrl } = await import("../../runners/src/artifact-storage.js");
+        const { getArtifactSignedUrl } = await import("./artifact-storage.js");
         const downloadUrl = await getArtifactSignedUrl(artifact.uri);
         if (downloadUrl) (artifact as Record<string, unknown>).download_url = downloadUrl;
       } catch { /* storage not configured */ }
@@ -1207,7 +1207,7 @@ app.get("/v1/artifacts/:id/content", async (req, res) => {
     let content: string | null = row.metadata_json?.content ?? null;
     if (content == null && row.uri?.startsWith("supabase-storage://")) {
       try {
-        const { downloadArtifact } = await import("../../runners/src/artifact-storage.js");
+        const { downloadArtifact } = await import("./artifact-storage.js");
         content = await downloadArtifact(row.uri);
       } catch { /* storage not configured */ }
     }
@@ -1230,7 +1230,7 @@ app.get("/v1/artifacts/:id/analyze", async (req, res) => {
     let content: string | null = row.metadata_json?.content ?? null;
     if (content == null && row.uri?.startsWith("supabase-storage://")) {
       try {
-        const { downloadArtifact } = await import("../../runners/src/artifact-storage.js");
+        const { downloadArtifact } = await import("./artifact-storage.js");
         content = await downloadArtifact(row.uri);
       } catch { /* storage not configured */ }
     }

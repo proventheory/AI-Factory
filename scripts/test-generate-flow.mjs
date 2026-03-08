@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Test the generate flow against the control-plane API:
- * POST /v1/email_campaigns (create campaign) -> POST .../plan -> POST .../start
+ * POST /v1/email_designs (create email design) -> POST .../plan -> POST .../start
  * Fails fast with clear errors. Use with CONTROL_PLANE_URL or default localhost:3001.
  */
 
@@ -29,7 +29,7 @@ async function main() {
   console.log("Control-plane API:", API);
 
   // 1. Create email campaign (include risk_level: "medium" to prove we ignore it)
-  const campaign = await request("POST", "/v1/email_campaigns", {
+  const campaign = await request("POST", "/v1/email_designs", {
     title: "Test campaign",
     risk_level: "medium",
     metadata_json: { products: [], campaign_prompt: "test" },

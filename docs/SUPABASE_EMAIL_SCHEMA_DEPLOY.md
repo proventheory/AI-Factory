@@ -4,7 +4,7 @@ Email design flow (Console: **Email Design Generator**) uses initiatives with **
 
 - `email_templates` (with `template_json`, `sections_json`, optional `brand_profile_id`)
 - `initiatives.template_id`
-- `email_campaign_metadata.metadata_json`
+- `email_design_generator_metadata.metadata_json`
 
 All migrations in `supabase/migrations/` are idempotent where possible.
 
@@ -13,7 +13,7 @@ All migrations in `supabase/migrations/` are idempotent where possible.
 From repo root, with your **Supabase** (or Render Postgres) connection string:
 
 ```bash
-# Full email schema: email_templates table + initiatives.template_id + email_campaign_metadata.metadata_json
+# Full email schema: email_templates table + initiatives.template_id + email_design_generator_metadata.metadata_json
 DATABASE_URL='postgresql://postgres.[ref]:[PASSWORD]@aws-0-[region].pooler.supabase.com:6543/postgres' node scripts/run-email-templates-migration.mjs
 ```
 
@@ -26,7 +26,7 @@ For **Render**: use the same `DATABASE_URL` you set on the Control Plane service
 1. **Supabase Dashboard** → your project → **SQL Editor**.
 2. Paste and run the combined schema (one shot):
    - Open `scripts/email-schema-supabase-paste.sql` (or run `node scripts/run-email-templates-migration.mjs --print-sql` and copy the output).
-   - Paste into SQL Editor and run. This creates `email_templates`, adds `initiatives.template_id` and `initiatives.brand_profile_id`, and `email_campaign_metadata.metadata_json`.
+   - Paste into SQL Editor and run. This creates `email_templates`, adds `initiatives.template_id` and `initiatives.brand_profile_id`, and `email_design_generator_metadata.metadata_json`.
 
 ## Option C: Neon MCP (if AI Factory DB is on Neon)
 
@@ -63,12 +63,12 @@ After deploy, check:
 
 - `email_templates` exists and has columns `template_json`, `sections_json`.
 - `initiatives` has `template_id` (and optionally `brand_profile_id`).
-- `email_campaign_metadata` has `metadata_json`.
+- `email_design_generator_metadata` has `metadata_json`.
 
 Example (replace with your connection details):
 
 ```sql
 SELECT column_name FROM information_schema.columns WHERE table_name = 'email_templates' AND column_name IN ('template_json','sections_json');
 SELECT column_name FROM information_schema.columns WHERE table_name = 'initiatives' AND column_name = 'template_id';
-SELECT column_name FROM information_schema.columns WHERE table_name = 'email_campaign_metadata' AND column_name = 'metadata_json';
+SELECT column_name FROM information_schema.columns WHERE table_name = 'email_design_generator_metadata' AND column_name = 'metadata_json';
 ```

@@ -2,7 +2,7 @@
 
 Footer components (e.g. Pharmacy Time staging footer) use placeholders like `{{popularWeightManagementUrl}}`, `{{howItWorksUrl}}`, `{{privacyUrl}}`. These are resolved from the **brand profile** when previewing or rendering.
 
-**Schema:** No Supabase migration is required. `footer_urls` and `heading_highlight_color` are stored inside the existing `brand_profiles.design_tokens` JSONB column.
+**Schema:** No Supabase migration is required. `footer_urls`, `heading_highlight_color`, and `gradients` are stored inside the existing `brand_profiles.design_tokens` JSONB column.
 
 ## Where to store URLs
 
@@ -56,13 +56,20 @@ node scripts/fetch-pharmacytime-footer-urls.mjs [BASE_URL]
 
 If a key is missing from `footer_urls`, the Control Plane falls back to `identity.website` + a default path (e.g. `/privacy-policy/`, `/weight-management/`).
 
-## Heading highlight color (optional)
+## Title highlight color (optional)
 
-For H1/H2 text highlight (e.g. the purple accent on pharmacytime headings):
+Design touch on titles (H1/H2): a color sometimes applied to part of a title (e.g. the purple #c2b6f8 on pharmacytime). **Not for links.** When this color isn’t used, titles often **bold a keyword** instead, since H1/H2 are not bold weight.
 
 - **design_tokens.heading_highlight_color** (e.g. `"#c2b6f8"`)
 
-Exposed in the placeholder map as **headingHighlightColor** and **heading_highlight_color**. If unset, the Control Plane uses brand 400 or `#c2b6f8`. Set in Console → Brands → Edit → Colors (Heading highlight).
+Exposed in the placeholder map as **headingHighlightColor** and **heading_highlight_color**. If unset, the Control Plane uses brand 400 or `#c2b6f8`. Set in Console → Brands → Edit → Colors (Title highlight color).
+
+## Gradients (container backgrounds)
+
+Linear gradients for hero/container backgrounds. Stored as **design_tokens.gradients**: an array of `{ name: string, type: "linear", stops: string[] }` (stops = hex colors in order).
+
+- **Console:** Brand Edit → Gradients (container backgrounds). Add/remove gradients; each has a name and 2+ color stops.
+- **Placeholder map:** Each gradient is exposed as CSS: `gradient_0`, `gradient_1`, …; `gradientContainer1`, `gradientContainer2` (first two); and `gradient_<Name>` (e.g. `gradient_Linear_2`). Use in templates as `background: {{gradientContainer1}};` or `{{gradient_Linear_2}}`.
 
 ## Logo text (optional)
 

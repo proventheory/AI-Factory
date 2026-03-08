@@ -3,5 +3,5 @@ UPDATE initiatives
 SET intent_type = 'email_design_generator'
 WHERE intent_type = 'email_campaign';
 
--- Update table comment to match (email_campaign_metadata is still the table name).
-COMMENT ON TABLE email_campaign_metadata IS 'Campaign-level fields for initiatives with intent_type = email_design_generator (subject, from, template ref, metadata_json).';
+-- Table comment: this is metadata for the *design* initiative (email_design_generator), not for the future "sent campaign" concept (Klaviyo etc.).
+COMMENT ON TABLE email_campaign_metadata IS 'Metadata for email-design initiatives (intent_type = email_design_generator): subject, from, template ref, metadata_json. Name is historical; "email campaign" reserved for future sent-campaign concept.';

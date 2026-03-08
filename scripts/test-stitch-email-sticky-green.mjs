@@ -74,7 +74,7 @@ async function main() {
   console.log("");
 
   // 3. Create campaign (initiative)
-  const campaign = await request("POST", "/v1/email_campaigns", {
+  const campaign = await request("POST", "/v1/email_designs", {
     brand_profile_id: brandProfileId,
     template_id: templateId,
     title: "Test: Stitch + Sticky Green",

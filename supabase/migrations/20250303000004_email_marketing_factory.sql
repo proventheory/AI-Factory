@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS email_campaign_metadata (
 CREATE INDEX IF NOT EXISTS idx_email_campaign_metadata_initiative ON email_campaign_metadata (initiative_id);
 CREATE INDEX IF NOT EXISTS idx_email_campaign_metadata_template ON email_campaign_metadata (template_artifact_id) WHERE template_artifact_id IS NOT NULL;
 
-COMMENT ON TABLE email_campaign_metadata IS 'Email Marketing Factory: campaign-level fields for initiatives with intent_type = email_design_generator';
+COMMENT ON TABLE email_campaign_metadata IS 'Metadata for email-design initiatives (intent_type = email_design_generator). Name is historical; "email campaign" reserved for future sent-campaign concept (e.g. Klaviyo).';
 
 -- RLS for email_campaign_metadata (allow read for authenticated; API uses service role)
 ALTER TABLE email_campaign_metadata ENABLE ROW LEVEL SECURITY;

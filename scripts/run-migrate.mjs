@@ -23,7 +23,7 @@ const client = new pg.Client({ connectionString: url });
 const migrations = [
   { path: "schemas/001_core_schema.sql", name: "001_core_schema", skipIfErrorCode: "42710", skipMessage: "objects already exist" },
   { path: "schemas/002_state_machines_and_constraints.sql", name: "002_state_machines_and_constraints", skipIfErrorCode: "42710", skipMessage: "objects already exist" },
-  { path: "supabase/migrations/20250303000004_email_marketing_factory.sql", name: "email_campaign_metadata", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
+  { path: "supabase/migrations/20250303000004_email_marketing_factory.sql", name: "email_marketing_factory", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
   { path: "supabase/migrations/20250303100000_webhook_outbox.sql", name: "webhook_outbox" },
   { path: "supabase/migrations/20250303100002_console_required_tables.sql", name: "console_required_tables" },
   { path: "supabase/migrations/20250303100003_brand_embeddings.sql", name: "brand_embeddings" },
@@ -44,6 +44,7 @@ const migrations = [
   { path: "supabase/migrations/20250314000000_email_component_library_use_context.sql", name: "email_component_library_use_context" },
   { path: "supabase/migrations/20250315100000_stitch_template_contract.sql", name: "stitch_template_contract" },
   { path: "supabase/migrations/20250316100000_email_component_library_html_fragment.sql", name: "email_component_library_html_fragment", skipIfErrorCode: "42701", skipMessage: "column already exists" },
+  { path: "supabase/migrations/20250318000000_rename_email_campaign_metadata_to_email_design_generator.sql", name: "rename_email_campaign_metadata_to_email_design_generator" },
 ];
 
 async function run() {
