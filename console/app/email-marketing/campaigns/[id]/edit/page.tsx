@@ -37,7 +37,7 @@ export default function EmailMarketingCampaignEditPage() {
           <PageHeader title="Edit campaign" description="Error loading campaign." />
           <p className="text-body-small text-fg-danger">{error instanceof Error ? error.message : "Campaign not found"}</p>
           <div className="flex flex-wrap gap-3">
-            <Button variant="secondary" asChild><Link href="/email-marketing">Back to Email Marketing</Link></Button>
+            <Button variant="secondary" asChild><Link href="/email-marketing">Back to Email Generator</Link></Button>
             <Button variant="secondary" asChild><Link href={`/initiatives/${id}`}>Open initiative</Link></Button>
           </div>
         </Stack>
@@ -52,7 +52,7 @@ export default function EmailMarketingCampaignEditPage() {
           <PageHeader title="Edit campaign" description={campaign?.title ? `Edit template for ${campaign.title}` : "Edit campaign"} />
           <p className="text-body-small text-fg-muted">This campaign has no template artifact linked. Add a template artifact to edit email content here.</p>
           <div className="flex flex-wrap gap-3">
-            <Button variant="secondary" asChild><Link href="/email-marketing">Back to Email Marketing</Link></Button>
+            <Button variant="secondary" asChild><Link href="/email-marketing">Back to Email Generator</Link></Button>
             <Button variant="secondary" asChild><Link href={`/initiatives/${id}`}>Open initiative</Link></Button>
           </div>
         </Stack>

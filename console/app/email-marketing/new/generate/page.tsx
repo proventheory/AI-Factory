@@ -79,7 +79,7 @@ function GeneratePageContent() {
     try {
       setStep("Creating campaign…");
       const campaign = await createCampaign.mutateAsync({
-        title: "New email campaign",
+        title: "New email design",
         brand_profile_id: brandProfileId,
         template_id: templateId,
         metadata_json: {

@@ -67,7 +67,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "ORCHESTRATION",
     items: [
       { href: "/initiatives", label: "Initiatives", branchId: "orchestration" },
-      { href: "/email-marketing", label: "Email Marketing", branchId: "orchestration" },
+      { href: "/email-marketing", label: "Email Generator", branchId: "orchestration" },
       { href: "/plans", label: "Plans", branchId: "orchestration" },
       { href: "/runs", label: "Pipeline Runs", branchId: "orchestration" },
       { href: "/jobs", label: "Jobs", branchId: "orchestration" },
@@ -162,7 +162,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   audit: "Audit",
   "webhook-outbox": "Webhook Outbox",
   secrets: "Secrets",
-  "email-marketing": "Email Marketing",
+  "email-marketing": "Email Generator",
   "new": "New",
   "brand": "Brand",
   "products": "Products",

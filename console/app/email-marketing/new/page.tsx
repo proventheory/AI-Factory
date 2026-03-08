@@ -8,7 +8,7 @@ export default function EmailMarketingNewPage() {
     <PageFrame>
       <Stack>
         <PageHeader
-          title="New email campaign"
+          title="New email design"
           description="Create a new email campaign: choose brand, select template, then pick products and images in one step and render preview."
         />
         <div className="flex flex-wrap gap-3">
@@ -16,7 +16,7 @@ export default function EmailMarketingNewPage() {
             <Link href="/email-marketing/new/brand">Start: Brand</Link>
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/email-marketing">Back to Email Marketing</Link>
+            <Link href="/email-marketing">Back to Email Generator</Link>
           </Button>
         </div>
       </Stack>

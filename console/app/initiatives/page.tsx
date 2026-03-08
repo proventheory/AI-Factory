@@ -94,7 +94,7 @@ export default function InitiativesPage() {
           actions={
             <div className="flex items-center gap-2">
               <Link href="/email-marketing/new">
-                <Button variant="secondary">New email campaign (wizard)</Button>
+                <Button variant="secondary">New email design (wizard)</Button>
               </Link>
               <Button variant="primary" onClick={() => setCreateOpen(true)}>Create initiative</Button>
             </div>

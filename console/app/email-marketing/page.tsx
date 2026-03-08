@@ -15,7 +15,7 @@ export default function EmailMarketingPage() {
   const handleCreate = async () => {
     setCreating(true);
     try {
-      await createCampaign.mutateAsync({ title: "New email campaign" });
+      await createCampaign.mutateAsync({ title: "New email design" });
     } finally {
       setCreating(false);
     }
@@ -25,7 +25,7 @@ export default function EmailMarketingPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Email Marketing" />
+          <PageHeader title="Email Generator" />
           <p className="text-state-danger">Error: {formatApiError(error)}</p>
         </Stack>
       </PageFrame>
@@ -59,7 +59,7 @@ export default function EmailMarketingPage() {
     <PageFrame>
       <Stack>
         <PageHeader
-          title="Email Marketing"
+          title="Email Generator"
           description="Email campaigns are initiatives with intent type email_campaign. Create a campaign to get started, then open the initiative to compile a plan and run."
         />
         {isLoading ? (
@@ -71,7 +71,7 @@ export default function EmailMarketingPage() {
             action={
               <div className="flex gap-2">
                 <Button variant="primary" asChild>
-                  <Link href="/email-marketing/new">New campaign (wizard)</Link>
+                  <Link href="/email-marketing/new">New email design (wizard)</Link>
                 </Button>
                 <Button
                   variant="secondary"
@@ -87,7 +87,7 @@ export default function EmailMarketingPage() {
           <>
             <div className="flex justify-end gap-2 flex-wrap">
               <Button variant="primary" asChild>
-                <Link href="/email-marketing/new">New campaign (wizard)</Link>
+                <Link href="/email-marketing/new">New email design (wizard)</Link>
               </Button>
               <Button
                 variant="secondary"

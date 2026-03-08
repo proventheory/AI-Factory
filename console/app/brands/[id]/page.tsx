@@ -699,8 +699,7 @@ export default function BrandDetailPage() {
               <span className="text-body-small text-fg-muted ml-1">— decks, reports</span>
             </li>
             <li>
-              <a href="/email-marketing" className="text-body font-medium text-brand-600 hover:underline">
-                Email marketing
+              <a href="/email-marketing" className="text-body font-medium text-brand-600 hover:underline">Email Generator
               </a>
               <span className="text-body-small text-fg-muted ml-1">— runs, generate</span>
             </li>
