@@ -23,8 +23,20 @@ import {
   AlertDialogTitle,
 } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
+import { useBrandProfiles } from "@/hooks/use-api";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
+
+const USE_CONTEXT_LABELS: Record<string, string> = {
+  email: "Email",
+  deck: "Deck",
+  report: "Report",
+};
+
+function useContextLabel(value: string | null | undefined): string {
+  const v = (value ?? "email").toLowerCase();
+  return USE_CONTEXT_LABELS[v] ?? v;
+}
 
 type EmailComponentRow = {
   id: string;
@@ -34,6 +46,7 @@ type EmailComponentRow = {
   mjml_fragment: string;
   placeholder_docs: string[];
   position: number;
+  use_context?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -52,9 +65,17 @@ export default function ComponentRegistryPage() {
     mjml_fragment: "",
     placeholder_docs: "" as string,
     position: 0,
+    use_context: "email",
   });
   const [saveBusy, setSaveBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [previewBrandId, setPreviewBrandId] = useState<string>("");
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const { data: brandsData } = useBrandProfiles();
+  const brands = brandsData?.items ?? [];
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -91,6 +112,7 @@ export default function ComponentRegistryPage() {
       mjml_fragment: "",
       placeholder_docs: "",
       position: items.length,
+      use_context: "email",
     });
     setModalOpen(true);
   };
@@ -104,9 +126,31 @@ export default function ComponentRegistryPage() {
       mjml_fragment: row.mjml_fragment,
       placeholder_docs: Array.isArray(row.placeholder_docs) ? row.placeholder_docs.join(", ") : "",
       position: row.position ?? 0,
+      use_context: (row.use_context ?? "email").toLowerCase(),
     });
     setModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!previewId) {
+      setPreviewHtml(null);
+      setPreviewError(null);
+      setPreviewLoading(false);
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    const params = new URLSearchParams({ ids: previewId, format: "html" });
+    if (previewBrandId && previewBrandId.trim()) params.set("brand_profile_id", previewBrandId.trim());
+    fetch(`${API}/v1/email_component_library/assembled?${params.toString()}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(await r.text());
+        return r.text();
+      })
+      .then(setPreviewHtml)
+      .catch((e) => setPreviewError(e instanceof Error ? e.message : String(e)))
+      .finally(() => setPreviewLoading(false));
+  }, [previewId, previewBrandId]);
 
   const handleSave = async () => {
     if (!form.component_type.trim() || !form.name.trim() || form.mjml_fragment.trim() === "")
@@ -117,6 +161,7 @@ export default function ComponentRegistryPage() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+      const useContext = (form.use_context || "email").trim().toLowerCase() || "email";
       if (editingId) {
         const r = await fetch(`${API}/v1/email_component_library/${editingId}`, {
           method: "PATCH",
@@ -128,6 +173,7 @@ export default function ComponentRegistryPage() {
             mjml_fragment: form.mjml_fragment,
             placeholder_docs,
             position: Number(form.position) || 0,
+            use_context: useContext,
           }),
         });
         if (!r.ok) throw new Error(await r.text());
@@ -142,6 +188,7 @@ export default function ComponentRegistryPage() {
             mjml_fragment: form.mjml_fragment,
             placeholder_docs,
             position: Number(form.position) || 0,
+            use_context: useContext,
           }),
         });
         if (!r.ok) throw new Error(await r.text());
@@ -174,6 +221,15 @@ export default function ComponentRegistryPage() {
     { key: "component_type", header: "Type", render: (r) => <span className="font-mono text-sm">{r.component_type}</span> },
     { key: "name", header: "Name" },
     {
+      key: "use_context",
+      header: "For",
+      render: (r) => (
+        <span className="text-sm font-medium text-fg">
+          {useContextLabel(r.use_context)}
+        </span>
+      ),
+    },
+    {
       key: "description",
       header: "Description",
       render: (r) => (r.description ? <span className="text-sm text-slate-600 dark:text-slate-400">{r.description}</span> : "—"),
@@ -193,7 +249,10 @@ export default function ComponentRegistryPage() {
       key: "actions",
       header: "",
       render: (r) => (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" onClick={() => { setPreviewId(r.id); setPreviewBrandId(""); }}>
+            Preview
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => openEdit(r)}>
             Edit
           </Button>
@@ -210,7 +269,7 @@ export default function ComponentRegistryPage() {
       <Stack>
         <PageHeader
           title="Component Registry"
-          description="Email building blocks (header, hero, product blocks, footer) used to compose email templates. Placeholders follow BRAND_EMAIL_FIELD_MAPPING. Brand embeddings are managed per brand: open a brand → Brand Embeddings → Manage."
+          description="Reusable building blocks for emails, decks, or reports. Each component has a “For” (use context). Email components use placeholders per BRAND_EMAIL_FIELD_MAPPING. Use Preview to see a component with or without a brand; brand embeddings: open a brand → Brand Embeddings → Manage."
         />
         <CardSection>
           <div className="mb-4 flex items-center gap-2">
@@ -287,6 +346,19 @@ export default function ComponentRegistryPage() {
                 onChange={(e) => setForm((f) => ({ ...f, position: Number(e.target.value) || 0 }))}
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">For (use context)</label>
+              <select
+                className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+                value={form.use_context}
+                onChange={(e) => setForm((f) => ({ ...f, use_context: e.target.value }))}
+              >
+                <option value="email">Email</option>
+                <option value="deck">Deck</option>
+                <option value="report">Report</option>
+              </select>
+              <p className="text-xs text-slate-500 mt-1">Where this component is used (email templates, decks, reports).</p>
+            </div>
           </div>
           <div className="mt-6 flex gap-2">
             <Button onClick={handleSave} disabled={saveBusy || !form.component_type.trim() || !form.name.trim() || !form.mjml_fragment.trim()}>
@@ -295,6 +367,40 @@ export default function ComponentRegistryPage() {
             <Button variant="secondary" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={!!previewId} onClose={() => setPreviewId(null)} title="Component preview">
+        <div className="p-2 space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Preview with brand (optional)</label>
+            <select
+              className="w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              value={previewBrandId}
+              onChange={(e) => setPreviewBrandId(e.target.value)}
+            >
+              <option value="">No brand (placeholders as-is)</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="rounded-lg border border-border bg-white overflow-hidden min-h-[200px]">
+            {previewLoading && (
+              <div className="flex items-center justify-center h-48 text-fg-muted text-sm">Loading preview…</div>
+            )}
+            {previewError && (
+              <div className="px-4 py-3 text-body-small text-state-danger">{previewError}</div>
+            )}
+            {previewHtml && !previewError && (
+              <iframe
+                title="Component preview"
+                srcDoc={previewHtml}
+                className="w-full min-h-[320px] border-0"
+                sandbox="allow-same-origin"
+              />
+            )}
           </div>
         </div>
       </Modal>

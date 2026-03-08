@@ -100,13 +100,14 @@ export default function EmailTemplateDetailPage() {
               <p className="text-body font-medium text-fg">{template.type ?? "email"} (email template)</p>
             </div>
             <div>
-              <p className="text-caption-small uppercase tracking-wider text-fg-muted">Slots</p>
-              <p className="text-body font-medium text-fg">
-                {imageSlots} image{imageSlots !== 1 ? "s" : ""}, {productSlots} product{productSlots !== 1 ? "s" : ""}
-              </p>
-              <p className="text-caption-small text-fg-muted">
-                Content: [image 1], [image 2], … · Products: product_1, …
-              </p>
+              <p className="text-caption-small uppercase tracking-wider text-fg-muted">Content images</p>
+              <p className="text-body font-medium text-fg">{imageSlots}</p>
+              <p className="text-caption-small text-fg-muted">Hero/banner images (not product images)</p>
+            </div>
+            <div>
+              <p className="text-caption-small uppercase tracking-wider text-fg-muted">Products</p>
+              <p className="text-body font-medium text-fg">{productSlots}</p>
+              <p className="text-caption-small text-fg-muted">Product slots (each has image + title + link)</p>
             </div>
           </div>
         </CardSection>
@@ -137,7 +138,7 @@ export default function EmailTemplateDetailPage() {
               <div>
                 <dt className="text-text-secondary">Slots</dt>
                 <dd className="font-medium">
-                  {imageSlots} image{imageSlots !== 1 ? "s" : ""}, {productSlots} product{productSlots !== 1 ? "s" : ""}
+                  {imageSlots} content image{imageSlots !== 1 ? "s" : ""}, {productSlots} product{productSlots !== 1 ? "s" : ""}
                 </dd>
               </div>
               <div>

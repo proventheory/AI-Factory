@@ -40,9 +40,9 @@ const COMPONENTS = [
   {
     component_type: "hero_2",
     name: "Hero with image",
-    description: "Two-column: hero image + headline and body.",
+    description: "Two-column: hero image + headline, body, CTA. Uses brandColor for button.",
     position: 2,
-    placeholder_docs: ["image_url", "headline", "body", "brandColor"],
+    placeholder_docs: ["image_url", "headline", "body", "cta_url", "cta_text", "brandColor"],
     mjml_fragment: `<mj-section background-color="#ffffff" padding="32px 24px">
   <mj-column width="50%">
     <mj-image src="[image_url]" alt="[headline]" width="280px" />
@@ -50,6 +50,21 @@ const COMPONENTS = [
   <mj-column width="50%">
     <mj-text font-size="24px" font-weight="bold" color="#1e293b">[headline]</mj-text>
     <mj-text font-size="15px" color="#475569" padding-top="12px">[body]</mj-text>
+    <mj-button background-color="[brandColor]" href="[cta_url]" padding-top="20px">[cta_text]</mj-button>
+  </mj-column>
+</mj-section>`,
+  },
+  {
+    component_type: "hero_overlay",
+    name: "Hero full-bleed with overlay",
+    description: "Full-width hero with background image and dark overlay; headline and CTA in white. High-converting.",
+    position: 8,
+    placeholder_docs: ["image_url", "headline", "body", "cta_url", "cta_text", "brandColor"],
+    mjml_fragment: `<mj-section background-url="[image_url]" background-width="600px" background-height="400px" padding="80px 24px" vertical-align="middle">
+  <mj-column width="100%">
+    <mj-text font-size="32px" font-weight="bold" color="#ffffff" align="center" padding-bottom="12px">[headline]</mj-text>
+    <mj-text font-size="18px" color="#f1f5f9" align="center" padding-bottom="24px">[body]</mj-text>
+    <mj-button background-color="[brandColor]" href="[cta_url]" align="center">[cta_text]</mj-button>
   </mj-column>
 </mj-section>`,
   },
@@ -127,12 +142,12 @@ const COMPONENTS = [
   {
     component_type: "footer_logo",
     name: "Footer with logo",
-    description: "Copyright, site link, contact, social icons.",
+    description: "Copyright, site link (brandColor), contact, social. Maps to brand tokens.",
     position: 7,
-    placeholder_docs: ["footerRights", "siteUrl", "contactInfo", "social media link", "social media icon"],
+    placeholder_docs: ["footerRights", "siteUrl", "contactInfo", "social media link", "social media icon", "brandColor"],
     mjml_fragment: `<mj-section background-color="#1e293b" padding="24px">
   <mj-column>
-    <mj-text font-size="12px" color="#94a3b8" align="center">[footerRights] · <a href="[siteUrl]" style="color:#94a3b8">Visit site</a></mj-text>
+    <mj-text font-size="12px" color="#94a3b8" align="center">[footerRights] · <a href="[siteUrl]" style="color:[brandColor]">Visit site</a></mj-text>
     <mj-text font-size="12px" color="#94a3b8" align="center" padding-top="8px">[contactInfo]</mj-text>
     <mj-social font-size="14px" icon-size="24px" mode="horizontal" padding-top="12px">
       <mj-social-element name="facebook" href="[social media link]" src="[social media icon]" />

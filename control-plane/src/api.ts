@@ -2896,14 +2896,70 @@ app.get("/v1/email_templates", async (req, res) => {
   }
 });
 
-/** GET /v1/email_templates/:id/preview — render template MJML to HTML. When component_sequence is set and mjml is null, assemble from email_component_library. */
+/** Build a placeholder map from a brand profile row for substituting [key] in MJML. Keys match BRAND_EMAIL_FIELD_MAPPING. */
+function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, string> {
+  const name = typeof brandRow.name === "string" ? brandRow.name : "Brand";
+  const identity = (brandRow.identity as Record<string, unknown>) ?? {};
+  const design_tokens = (brandRow.design_tokens as Record<string, unknown>) ?? {};
+  const website = typeof identity.website === "string" ? identity.website : "https://example.com";
+  const contactEmail = typeof identity.contact_email === "string" ? identity.contact_email : "";
+  let logo = "";
+  if (design_tokens.logo && typeof (design_tokens.logo as Record<string, unknown>).url === "string") {
+    logo = (design_tokens.logo as Record<string, unknown>).url as string;
+  } else if (typeof design_tokens.logo_url === "string") {
+    logo = design_tokens.logo_url;
+  }
+  let brandColor = "#16a34a";
+  const colors = (design_tokens.colors as Record<string, unknown>) ?? (design_tokens.color as Record<string, unknown>);
+  const brand = colors?.brand as Record<string, unknown> | undefined;
+  if (brand && typeof brand["500"] === "string") brandColor = brand["500"] as string;
+  const ctaText = typeof design_tokens.cta_text === "string" ? design_tokens.cta_text : "Learn more";
+  const ctaLink = typeof design_tokens.cta_link === "string" ? design_tokens.cta_link : website;
+  const contactInfo = typeof design_tokens.contact_info === "string" ? design_tokens.contact_info : contactEmail;
+  const year = new Date().getFullYear();
+  return {
+    logo: logo || "https://via.placeholder.com/120x40?text=Logo",
+    siteUrl: website,
+    site_url: website,
+    brandName: name,
+    brand_name: name,
+    headline: "Premium quality you can trust",
+    body: "Discover our bestsellers and limited drops. Free shipping on orders over $70.",
+    cta_text: ctaText,
+    cta_url: ctaLink,
+    brandColor,
+    brand_color: brandColor,
+    footerRights: `© ${year} ${name}. All rights reserved.`,
+    contactInfo: contactInfo || contactEmail || "Contact us",
+    "social media link": website,
+    "social media icon": "https://via.placeholder.com/24",
+    "image_url": "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=600&h=400&fit=crop",
+    "product A src": "https://via.placeholder.com/280x280?text=Product+A",
+    "product A title": "Featured product",
+    "product A productUrl": website,
+    "product B src": "https://via.placeholder.com/280x280?text=Product+B",
+    "product B title": "Best seller",
+    "product B productUrl": website,
+  };
+}
+
+/** Substitute [placeholder] in mjml with values from map; leave unknown placeholders as-is. */
+function substitutePlaceholders(mjml: string, map: Record<string, string>): string {
+  return mjml.replace(/\[([^\]]+)\]/g, (_, key: string) => {
+    const k = key.trim();
+    return k in map ? map[k] : `[${key}]`;
+  });
+}
+
+/** GET /v1/email_templates/:id/preview — render template MJML to HTML. When component_sequence is set and mjml is null, assemble from email_component_library. When template has brand_profile_id, substitute placeholders from brand so preview maps to brand tokens. */
 app.get("/v1/email_templates/:id/preview", async (req, res) => {
   try {
     const id = req.params.id;
-    const r = await pool.query("SELECT mjml, component_sequence FROM email_templates WHERE id = $1", [id]);
+    const r = await pool.query("SELECT mjml, component_sequence, brand_profile_id FROM email_templates WHERE id = $1", [id]);
     if (r.rows.length === 0) return res.status(404).send("Not found");
-    let mjml = r.rows[0].mjml as string | null;
-    let seq = r.rows[0].component_sequence as unknown;
+    const row = r.rows[0] as Record<string, unknown>;
+    let mjml = row.mjml as string | null;
+    let seq = row.component_sequence as unknown;
     if (typeof seq === "string") {
       try {
         seq = JSON.parse(seq) as unknown;
@@ -2920,7 +2976,7 @@ app.get("/v1/email_templates/:id/preview", async (req, res) => {
           "SELECT mjml_fragment FROM email_component_library WHERE id = ANY($1::uuid[]) ORDER BY array_position($1::uuid[], id)",
           [ids]
         );
-        const fragments = (fragRes.rows as { mjml_fragment: string }[]).map((row) => row.mjml_fragment ?? "").filter(Boolean);
+        const fragments = (fragRes.rows as { mjml_fragment: string }[]).map((r) => r.mjml_fragment ?? "").filter(Boolean);
         if (fragments.length > 0) {
           mjml = `<mjml>\n<mj-body>\n${fragments.join("\n")}\n</mj-body>\n</mjml>`;
         }
@@ -2928,6 +2984,14 @@ app.get("/v1/email_templates/:id/preview", async (req, res) => {
     }
     if (!mjml || typeof mjml !== "string") {
       return res.status(422).send("Template has no MJML content");
+    }
+    const brandProfileId = row.brand_profile_id as string | null | undefined;
+    if (brandProfileId && isValidUuid(brandProfileId)) {
+      const brandR = await pool.query("SELECT name, identity, design_tokens FROM brand_profiles WHERE id = $1", [brandProfileId]);
+      if (brandR.rows.length > 0) {
+        const map = brandPlaceholderMap(brandR.rows[0] as Record<string, unknown>);
+        mjml = substitutePlaceholders(mjml, map);
+      }
     }
     const { html } = mjml2html(mjml, { validationLevel: "skip" });
     res.type("text/html").send(html);
@@ -3001,9 +3065,9 @@ function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content
     imageSlots = 2;
     productSlots = 0;
   } else if (row.component_sequence && Array.isArray(row.component_sequence) && row.component_sequence.length > 0 && !mjml) {
-    // Composed template (no stored MJML): use img_count and sensible product default
-    imageSlots = typeof row.img_count === "number" ? row.img_count : 2;
-    productSlots = 2; // typical for product_block_2 in composed templates
+    // Composed template: content image slots only (hero/banner); product slots are separate (each product has its own image).
+    imageSlots = typeof row.img_count === "number" ? row.img_count : 0;
+    productSlots = 2; // typical for product_block_2; do not mix with content image count
   } else {
     imageSlots = contract?.max_content_slots ?? (typeof row.img_count === "number" ? row.img_count : null) ?? contentSlotsFromMjml(mjml) ?? 0;
     productSlots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
@@ -3246,7 +3310,7 @@ app.delete("/v1/email_templates/:id", async (req, res) => {
 
 // ---------- Email component library (reusable MJML fragments for composing templates) ----------
 
-/** GET /v1/email_component_library/assembled?ids=uuid1,uuid2,... — wrap fragments in mjml/mj-body and return full MJML (for preview). */
+/** GET /v1/email_component_library/assembled?ids=uuid1,uuid2,...&format=html&brand_profile_id=uuid — wrap fragments, optional brand substitution, return MJML or HTML. */
 app.get("/v1/email_component_library/assembled", async (req, res) => {
   try {
     const idsParam = (req.query.ids as string) ?? "";
@@ -3261,8 +3325,15 @@ app.get("/v1/email_component_library/assembled", async (req, res) => {
     );
     if (r.rows.length === 0) return res.status(404).json({ error: "No components found" });
     const fragments = (r.rows as { mjml_fragment: string }[]).map((row) => row.mjml_fragment ?? "").filter(Boolean);
-    const body = fragments.join("\n");
-    const mjml = `<mjml>\n<mj-body>\n${body}\n</mj-body>\n</mjml>`;
+    let mjml = `<mjml>\n<mj-body>\n${fragments.join("\n")}\n</mj-body>\n</mjml>`;
+    const brandProfileId = req.query.brand_profile_id as string | undefined;
+    if (brandProfileId && isValidUuid(brandProfileId)) {
+      const brandR = await pool.query("SELECT name, identity, design_tokens FROM brand_profiles WHERE id = $1", [brandProfileId]);
+      if (brandR.rows.length > 0) {
+        const map = brandPlaceholderMap(brandR.rows[0] as Record<string, unknown>);
+        mjml = substitutePlaceholders(mjml, map);
+      }
+    }
     if (req.query.format === "html") {
       const { html } = mjml2html(mjml, { validationLevel: "skip" });
       res.type("text/html").send(html);
@@ -3316,12 +3387,14 @@ app.post("/v1/email_component_library", async (req, res) => {
       mjml_fragment?: string;
       placeholder_docs?: unknown;
       position?: number;
+      use_context?: string;
     };
     if (!body.component_type?.trim() || !body.name?.trim() || body.mjml_fragment == null)
       return res.status(400).json({ error: "component_type, name, and mjml_fragment required" });
+    const useContext = typeof body.use_context === "string" && body.use_context.trim() ? body.use_context.trim().toLowerCase() : "email";
     const r = await pool.query(
-      `INSERT INTO email_component_library (component_type, name, description, mjml_fragment, placeholder_docs, position, updated_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, now()) RETURNING *`,
+      `INSERT INTO email_component_library (component_type, name, description, mjml_fragment, placeholder_docs, position, use_context, updated_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, now()) RETURNING *`,
       [
         body.component_type.trim(),
         body.name.trim(),
@@ -3329,6 +3402,7 @@ app.post("/v1/email_component_library", async (req, res) => {
         body.mjml_fragment,
         body.placeholder_docs != null ? JSON.stringify(body.placeholder_docs) : "[]",
         typeof body.position === "number" ? body.position : 0,
+        useContext,
       ]
     );
     res.status(201).json(r.rows[0]);
@@ -3345,7 +3419,7 @@ app.patch("/v1/email_component_library/:id", async (req, res) => {
     const id = req.params.id;
     if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
     const body = req.body as Record<string, unknown>;
-    const allowed = ["component_type", "name", "description", "mjml_fragment", "placeholder_docs", "position"];
+    const allowed = ["component_type", "name", "description", "mjml_fragment", "placeholder_docs", "position", "use_context"];
     const sets: string[] = ["updated_at = now()"];
     const params: unknown[] = [];
     let i = 1;
@@ -3357,6 +3431,9 @@ app.patch("/v1/email_component_library/:id", async (req, res) => {
         } else if (field === "position" && typeof body[field] === "number") {
           sets.push(`${field} = $${i++}`);
           params.push(body[field]);
+        } else if (field === "use_context" && typeof body[field] === "string") {
+          sets.push(`${field} = $${i++}`);
+          params.push(body[field].trim().toLowerCase() || "email");
         } else if (typeof body[field] === "string") {
           sets.push(`${field} = $${i++}`);
           params.push(body[field]);

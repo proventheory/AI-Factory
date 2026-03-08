@@ -7,6 +7,43 @@ import { PageFrame, Stack, PageHeader, Button, LoadingSkeleton, ScrollArea } fro
 import { useEmailTemplates } from "@/hooks/use-api";
 import { type EmailTemplateRow, fetchEmailTemplatePreviewHtml, getEmailTemplate } from "@/lib/api";
 
+/** Renders live preview HTML in the card when template has no image_url (e.g. composed templates). */
+function TemplateCardPreview({ templateId, className }: { templateId: string; className?: string }) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(true);
+    setErr(null);
+    fetchEmailTemplatePreviewHtml(templateId)
+      .then(setHtml)
+      .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
+      .finally(() => setLoading(false));
+  }, [templateId]);
+  if (loading) {
+    return (
+      <div className={`flex h-full items-center justify-center text-fg-muted text-sm ${className ?? ""}`}>
+        Loading…
+      </div>
+    );
+  }
+  if (err || !html) {
+    return (
+      <div className={`flex h-full items-center justify-center text-fg-muted text-sm ${className ?? ""}`}>
+        {err ? "Preview unavailable" : "No preview"}
+      </div>
+    );
+  }
+  return (
+    <iframe
+      title="Template preview"
+      srcDoc={html}
+      className={`h-full w-full border-0 object-cover object-top ${className ?? ""}`}
+      sandbox="allow-same-origin"
+    />
+  );
+}
+
 const WIZARD_KEY = "email_marketing_wizard";
 const CARD_HEIGHT = 320;
 
@@ -213,9 +250,7 @@ export default function EmailMarketingNewTemplatePage() {
                           className="h-full w-full object-cover object-top"
                         />
                       ) : (
-                        <div className="flex h-full items-center justify-center text-fg-muted text-sm">
-                          No preview image
-                        </div>
+                        <TemplateCardPreview templateId={t.id} className="h-full w-full min-h-[200px]" />
                       )}
                     </div>
                     <div className="flex min-h-0 flex-1 flex-col justify-between gap-2 p-3">

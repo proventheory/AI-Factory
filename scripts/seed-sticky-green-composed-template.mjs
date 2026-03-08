@@ -9,7 +9,8 @@ import "dotenv/config";
 
 const API = process.argv[2] ?? process.env.CONTROL_PLANE_URL ?? "http://localhost:3001";
 const base = API.replace(/\/$/, "");
-const SEQUENCE = ["header_logo", "hero_1", "product_block_2", "footer_logo"];
+const TEMPLATE_NAME = "Sticky Green - Composed";
+const SEQUENCE = ["header_logo", "hero_2", "product_block_2", "footer_logo"];
 
 async function resolveStickyGreenBrandId() {
   const res = await fetch(`${base}/v1/brand_profiles?search=sticky-green&limit=5`);
@@ -32,23 +33,38 @@ async function main() {
     if (!c) throw new Error(`Component not found: ${type}. Run seed-email-component-library.mjs first.`);
     ids.push(c.id);
   }
-  const body = {
-    type: "newsletter",
-    name: "Sticky Green - Composed",
-    brand_profile_id: brandProfileId,
-    component_sequence: ids,
-    mjml: null,
-    img_count: 2,
-  };
-  const createRes = await fetch(`${base}/v1/email_templates`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!createRes.ok) throw new Error(`Failed to create template: ${await createRes.text()}`);
-  const template = await createRes.json();
-  console.log("Created email template:", template.id, template.name);
+  const listTpl = await fetch(`${base}/v1/email_templates?brand_profile_id=${brandProfileId}&limit=100`);
+  if (!listTpl.ok) throw new Error(`Failed to list templates: ${await listTpl.text()}`);
+  const { items: templates } = await listTpl.json();
+  const existing = templates.find((t) => t.name === TEMPLATE_NAME);
+  if (existing) {
+    const patchRes = await fetch(`${base}/v1/email_templates/${existing.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ component_sequence: ids, img_count: 1 }),
+    });
+    if (!patchRes.ok) throw new Error(`Failed to update template: ${await patchRes.text()}`);
+    console.log("Updated email template:", existing.id, TEMPLATE_NAME);
+  } else {
+    const body = {
+      type: "newsletter",
+      name: TEMPLATE_NAME,
+      brand_profile_id: brandProfileId,
+      component_sequence: ids,
+      mjml: null,
+      img_count: 1,
+    };
+    const createRes = await fetch(`${base}/v1/email_templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!createRes.ok) throw new Error(`Failed to create template: ${await createRes.text()}`);
+    const template = await createRes.json();
+    console.log("Created email template:", template.id, template.name);
+  }
   console.log("Component sequence:", SEQUENCE.join(" → "));
+  console.log("Slots: 1 content image (hero), 2 products.");
 }
 
 main().catch((e) => {
