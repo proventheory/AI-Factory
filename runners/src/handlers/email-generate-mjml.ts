@@ -526,22 +526,23 @@ function applyDesignPolish(
     (_, pre, _h) => `${pre}height:auto;`,
   );
 
-  // 6. Mobile-responsive: add responsive CSS and consistent padding in green CTA block on mobile
-  const mobileStyles = `
-    @media only screen and (max-width:479px) {
-      .crop-image img { height:auto !important; width:100% !important; }
-      .mj-column-per-50 { width:100% !important; max-width:100% !important; }
-      .mj-column-per-33-33 { width:50% !important; max-width:50% !important; }
-      .email-cta-green td { padding-left: 20px !important; padding-right: 20px !important; }
-    }`;
-  if (out.includes("</style>")) {
-    out = out.replace(/<\/style>/, mobileStyles + "</style>");
-  }
-  // Add class to green CTA section so mobile padding rule applies (fix inconsistent 20px vs 35px on mobile)
+  // 6. Green CTA section: tighten vertical spacing (headline, paragraph, button) so it doesn’t look overly padded.
+  //    Add class first so the following rules apply.
   out = out.replace(
     /(<div\s+style="[^"]*background:#16a34a[^"]*")>/i,
     "$1 class=\"email-cta-green\">",
   );
+  const greenCtaStyles = `
+    .email-cta-green td { padding-top: 10px !important; padding-bottom: 10px !important; }
+    @media only screen and (max-width:479px) {
+      .crop-image img { height:auto !important; width:100% !important; }
+      .mj-column-per-50 { width:100% !important; max-width:100% !important; }
+      .mj-column-per-33-33 { width:50% !important; max-width:50% !important; }
+      .email-cta-green td { padding-left: 20px !important; padding-right: 20px !important; padding-top: 10px !important; padding-bottom: 10px !important; }
+    }`;
+  if (out.includes("</style>")) {
+    out = out.replace(/<\/style>/, greenCtaStyles + "</style>");
+  }
 
   return out;
 }
