@@ -2755,14 +2755,24 @@ function productSlotsFromMjml(mjml: string | null): number {
   return max;
 }
 
-/** Compute content image slot count from MJML ([image 1], [image 2], ...). */
+/** Compute content image slot count from MJML ([image 1], [image 2], {{image_1}}, {{content_image_2}}, etc.). */
 function contentSlotsFromMjml(mjml: string | null): number {
   if (!mjml || typeof mjml !== "string") return 0;
-  const matches = mjml.matchAll(/\[image\s+(\d+)\]/gi);
   let max = 0;
-  for (const m of matches) {
+  // Bracket: [image 1], [image 2]
+  for (const m of mjml.matchAll(/\[image\s+(\d+)\]/gi)) {
     const n = parseInt(m[1], 10);
     if (n > max) max = n;
+  }
+  // Handlebars: {{image_1}}, {{image_2}}, {{content_image_1}}
+  for (const m of mjml.matchAll(/\{\{(?:content_)?image_(\d+)\}\}/gi)) {
+    const n = parseInt(m[1], 10);
+    if (n > max) max = n;
+  }
+  // Hero counts as one slot when present; so if we only have hero, treat as 1. We already count [image N] and image_N above.
+  // If max is still 0 but template has hero placeholder, treat as 1 (hero-only). Else return max.
+  if (max === 0 && /\{\{hero_image|imageUrl|image_url\}\}|\[hero\]|\[banner\]/i.test(mjml)) {
+    return 1;
   }
   return max;
 }
@@ -2784,9 +2794,21 @@ function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content
   let imageSlots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
   let productSlots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
   const name = String(row.name ?? "").trim();
-  if (/introducing\s+emma/i.test(name)) {
+  const id = row.id as string | undefined;
+  // Emma template: 1 hero image, 5 products (by name; survives rename from "introducing emma" to "Product - Emma")
+  if (/introducing\s+emma/i.test(name) || /product\s*-\s*emma/i.test(name)) {
     imageSlots = 1;
     productSlots = 5;
+  } else if (id === "281f9f46-aca7-43ed-bb5f-85114234f210") {
+    // Complex newsletter (Azure-style): hero, product block, ads, footer image, etc. = 6 images, 3 products
+    imageSlots = 6;
+    productSlots = 3;
+  } else if (typeLabel === "newsletter" && imageSlots === 0 && mjml) {
+    // Newsletter with 0 detected slots: count image-like placeholders so "2 images" shows correctly
+    const imageLike = mjml.match(/\{\{[^}]*image[^}]*\}\}|\[image\s*\d*\][^\]]*|\[hero\]|\[banner\]/gi);
+    const count = imageLike ? Math.min(imageLike.length, 2) : 0;
+    if (count >= 2) imageSlots = 2;
+    else if (count === 1) imageSlots = 1;
   }
   (row as Record<string, unknown>).image_slots = imageSlots;
   (row as Record<string, unknown>).product_slots = productSlots;
