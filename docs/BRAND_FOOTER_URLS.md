@@ -48,7 +48,7 @@ node scripts/fetch-pharmacytime-footer-urls.mjs [BASE_URL]
 
 ## Placeholder groups (for reference)
 
-- **POPULAR**: category/treatment pages (Weight Management, Hormone Replacement, IV Therapy & Supplements, Sexual Wellness, Thyroid, GLP-1, Ozempic®, Wegovy®, Sermorelin, NAD+).
+- **POPULAR**: category/treatment pages (Weight Management, Hormone Replacement, IV Therapy & Supplements, Sexual Wellness, Thyroid, GLP-1, Ozempic®, Wegovy®, Sermorelin, NAD+). For WooCommerce, Sexual Wellness may use `product-category/sexual-wellness`; set `footer_urls.popularSexualWellnessUrl` to override.
 - **COMPANY**: How it works, FAQ, Contact Us.
 - **LEGAL**: Terms & Conditions, Privacy Policy, HIPAA Privacy Statement.
 

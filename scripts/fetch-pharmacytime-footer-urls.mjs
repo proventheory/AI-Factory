@@ -21,7 +21,7 @@ const PHARMACY_TIME_SLUGS = {
   popularWeightManagementUrl: "weight-management",
   popularHormoneReplacementUrl: "hormone-replacement",
   popularIvTherapyUrl: "iv-therapy-supplements",
-  popularSexualWellnessUrl: "sexual-wellness",
+  popularSexualWellnessUrl: "product-category/sexual-wellness",
   popularThyroidUrl: "thyroid",
   popularGlp1Url: "glp-1-treatments",
   popularOzempicUrl: "ozempic",

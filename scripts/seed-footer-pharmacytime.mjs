@@ -103,9 +103,9 @@ const FOOTER_HTML = `<footer id="colophon" class="site-footer site-footer--stagi
 
 const FOOTER_CSS = `<style>
 .site-footer--staging,
-.site-footer { --footer-container-max: 72rem; --footer-padding: 32px; --footer-font-size: 16px; --color-primary: #6D2C91; }
+.site-footer { --footer-container-max: 72rem; --footer-padding: 32px; --footer-font-size: 16px; --color-primary: #6D2C91; --font-family: {{fontFamily}}, sans-serif; }
 .site-footer--staging,
-.site-footer { background-color: #241437; color: #fff; padding: 4rem 0 2rem; margin-top: 0; }
+.site-footer { font-family: var(--font-family); background-color: #241437; color: #fff; padding: 4rem 0 2rem; margin-top: 0; }
 .footer-container { max-width: var(--footer-container-max); margin: 0 auto; padding: 0 var(--footer-padding); }
 .footer-main { display: grid; grid-template-columns: 2fr 1.5fr 1fr 1fr; gap: 3rem; margin-bottom: 3rem; padding-bottom: 3rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
 .footer-branding { display: flex; flex-direction: column; gap: 1rem; }
@@ -175,6 +175,7 @@ const PAYLOAD = {
   placeholder_docs: [
     "year",
     "companyName",
+    "fontFamily",
     "tagline",
     "siteUrl",
     "logoUrl",

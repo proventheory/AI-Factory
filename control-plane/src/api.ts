@@ -2989,12 +2989,17 @@ function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, 
   const footerUrls = design_tokens.footer_urls && typeof design_tokens.footer_urls === "object"
     ? (design_tokens.footer_urls as Record<string, string>)
     : {};
+  const typo = design_tokens.typography as Record<string, unknown> | undefined;
+  const fonts = typo?.fonts as Record<string, string> | undefined;
+  const fontHeadings = typeof fonts?.heading === "string" ? fonts.heading : (typeof typo?.font_headings === "string" ? typo.font_headings : (typeof design_tokens.font_headings === "string" ? design_tokens.font_headings : ""));
+  const fontBody = typeof fonts?.body === "string" ? fonts.body : (typeof typo?.font_body === "string" ? typo.font_body : (typeof design_tokens.font_body === "string" ? design_tokens.font_body : ""));
+  const fontFamily = (fontHeadings || fontBody || "system-ui").includes(" ") ? `"${fontHeadings || fontBody || "system-ui"}"` : (fontHeadings || fontBody || "system-ui");
   const logoPharmacyText = typeof design_tokens.logo_pharmacy_text === "string"
     ? design_tokens.logo_pharmacy_text
     : (typeof identity.logo_pharmacy_text === "string" ? identity.logo_pharmacy_text : (name.split(/\s+/)[0] ?? "Brand"));
   const logoTimeText = typeof design_tokens.logo_time_text === "string"
     ? design_tokens.logo_time_text
-    : (typeof identity.logo_time_text === "string" ? identity.logo_time_text : (name.split(/\s+/).slice(1).join(" ") || "Time"));
+    : (typeof identity.logo_time_text === "string" ? identity.logo_time_text : (name.split(/\s+/).slice(1).join(" ").trim() || ""));
 
   const base = {
     logo: logo || "https://via.placeholder.com/120x40?text=Logo",
@@ -3038,13 +3043,14 @@ function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, 
     popularWeightManagementUrl: `${baseUrl}/weight-management/`,
     popularHormoneReplacementUrl: `${baseUrl}/hormone-replacement/`,
     popularIvTherapyUrl: `${baseUrl}/iv-therapy-supplements/`,
-    popularSexualWellnessUrl: `${baseUrl}/sexual-wellness/`,
+    popularSexualWellnessUrl: `${baseUrl}/product-category/sexual-wellness/`,
     popularThyroidUrl: `${baseUrl}/thyroid/`,
     popularGlp1Url: `${baseUrl}/glp-1-treatments/`,
     popularOzempicUrl: `${baseUrl}/ozempic/`,
     popularWegovyUrl: `${baseUrl}/wegovy/`,
     popularSermorelinUrl: `${baseUrl}/sermorelin/`,
     popularNadUrl: `${baseUrl}/nad-plus/`,
+    fontFamily,
     ...socialByKey,
   };
   const result: Record<string, string> = { ...base };
