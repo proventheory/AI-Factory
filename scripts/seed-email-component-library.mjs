@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 /**
  * Seed email_component_library with 10 MJML fragments: header_logo, hero_1–3, product_block_1–3, footer_logo.
- * Placeholders follow BRAND_EMAIL_FIELD_MAPPING. Run after migration 20250313000000_email_component_library.sql.
+ * Also seeds the Pharmacy Time landing-page footer (html_fragment) if missing.
+ * Placeholders follow BRAND_EMAIL_FIELD_MAPPING. Run after migrations 20250313000000 + 20250316100000.
  *
  * Usage: node scripts/seed-email-component-library.mjs [CONTROL_PLANE_URL]
  */
 import "dotenv/config";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const API = process.argv[2] ?? process.env.CONTROL_PLANE_URL ?? "http://localhost:3001";
 const base = API.replace(/\/$/, "");
@@ -227,6 +233,21 @@ async function main() {
     console.log(`Created: ${c.component_type} (${c.name})`);
   }
   console.log(`Done. Created ${created}, updated ${updated}, total ${COMPONENTS.length} components.`);
+
+  // Seed Pharmacy Time landing-page footer (html_fragment) if not already present
+  if (!byType.has("footer_pharmacytime")) {
+    console.log("Seeding Pharmacy Time footer (landing_page)...");
+    await new Promise((resolve, reject) => {
+      const child = spawn("node", [join(__dirname, "seed-footer-pharmacytime.mjs"), base], {
+        stdio: "inherit",
+        cwd: join(__dirname, ".."),
+      });
+      child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`Footer seed exited ${code}`))));
+      child.on("error", reject);
+    });
+  } else {
+    console.log("Pharmacy Time footer already present.");
+  }
 }
 
 main().catch((e) => {

@@ -306,7 +306,7 @@ export default function ComponentRegistryPage() {
           ) : items.length === 0 ? (
             <EmptyState
               title="No email components"
-              description="Run the seed script to add the default set: node scripts/seed-email-component-library.mjs [CONTROL_PLANE_URL]. Or add a component manually."
+              description="Run the seed script against your Control Plane URL (same API your Console uses): node scripts/seed-email-component-library.mjs [CONTROL_PLANE_URL]. This adds the default email components plus the Pharmacy Time footer (Landing page). Or add a component manually."
             />
           ) : (
             <TableFrame>
