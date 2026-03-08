@@ -133,6 +133,36 @@ Runs exist and jobs may be queued, but the Artifacts tab stays empty. Usually th
 ### Log-based validations (Validations tab)
 When log mirror is enabled (`ENABLE_RENDER_LOG_INGEST=true` or one-off **Refresh logs** on a run), the Control Plane parses runner log messages and inserts **runner_log_check:*** validations (e.g. `runner_log_check:logo_missing`, `runner_log_check:campaign_copy_missing`). These are **visibility only**: they show up in the run’s Validations tab so you see "logo not loading" or "campaign copy not found" without pasting logs. **No automatic fix:** self-heal does not change brand data or templates. Fix the cause manually (e.g. set logo URL in Brand edit, fix campaign prompt) and **Re-run** the run. Optional future: suggested-fix links in the UI or webhook/ticket.
 
+### Template / image mapping self-heal (wrong images in email)
+If a run’s email artifact shows **every image as a product image** (or hero/content slots filled with products instead of campaign imagery), the run’s campaign metadata had no **campaign images**—only product images were sent as “images,” or the Images step was skipped.
+
+**How mapping works:** The runner uses `input.images` (from campaign metadata: wizard “Images” step / `selected_images`) for hero and for `[image 1]`, `[image 2]`, … Product images are used only for `[product A image]`, etc. If you only selected product images in the Images step (or left images empty), hero and content slots get product URLs or logo/blank.
+
+**Self-heal options:**
+
+1. **Create a new campaign (recommended)**  
+   In **Email Marketing → New campaign**, in the **Images** step select **campaign images** (e.g. from Pexels/gallery) for hero and content. In **Products** add your products. Then generate. The new run will have correct mapping: hero + `[image 1]`/`[image 2]` from campaign images; product slots from products.
+
+2. **Re-run**  
+   Re-run uses the **same** plan/initiative, so the same `selected_images` are sent. Re-run only fixes the output if the cause was transient (e.g. runner bug now fixed). For wrong inputs, use option 1.
+
+3. **Edit artifact**  
+   You can fix this specific artifact manually: open **Edit email artifact**, replace image URLs in the HTML source, then **Save**. That does not change the template or future runs.
+
+**To test template self-healing from a bad run:** Use the same template in a **new** campaign with correct Images + Products selection, then run. Optionally use **Template proofing** (`/template-proofing`) to run the template against a brand; ensure the proof campaign includes campaign images in metadata if your template expects hero/content images.
+
+### Template proof / self-heal loop (artifact analysis + validations)
+**Template proofing** runs each email template against a brand: create campaign → plan → start run → poll until done. This applies to **all** email templates (e.g. Emma, complex/Azure-style, newsletter), not just Emma. After a run **succeeds**, the Control Plane:
+
+1. **Artifact content analysis** — Fetches the run’s `email_template` artifact and calls **GET /v1/artifacts/:id/analyze**. The analyzer checks for unreplaced placeholders (e.g. `[social media icon]`, `[image N]`, `{{...}}`) and bad/empty `img` `src`. If the analysis **does not pass**, the proof run is marked **failed** so “template didn’t load properly” is visible.
+2. **Log ingest** — Ingest Render logs for that run so the **Validations** tab and log-based checks (e.g. `runner_log_check:logo_missing`) are populated.
+
+**Structured loop:** Run template proof (Console **Template proofing** or API) → check **Validations** tab and proof run status → if artifact analysis failed, fix runner/template and re-run proof. No automatic code change; use this loop to keep templates rendering properly.
+
+**Unreplaced [social media icon]:** Do **not** fake icons (e.g. transparent 1x1) when the brand has no social links. The correct self-heal is to **add the brand’s social media links** in Brand edit (Design tokens → Social). The runner derives icons from those URLs (e.g. facebook.com → Facebook icon). If the brand has no links, the placeholder stays and the analyzer fails so you add links. **Template proof only:** when the campaign prompt is "proof run" and the brand has zero social links, the runner injects a test link (facebook.com) so the proof run passes and you know the pipeline works; after the test passes, the cause of real-run failures is "add social to the brand."
+
+**Analyzer warnings (do not fail proof):** The analyzer also reports **warnings** for generic footer text (e.g. "Azure Publishing", "DESIGN ARCHITECTURE INTERIORS CURIOSITY") and duplicate social icon rows (e.g. two footer rows or &gt;6 social icons in footer). Fix by using brand category links and a single social row in the template; the runner collapses duplicate social rows and applies accent color (#222222) to CTA/buttons when the template uses that hex.
+
 ### Evals failing in CI
 1. Check GitHub Actions → "Evals (Prompt CI)" workflow.
 2. Download eval report artifact for details.

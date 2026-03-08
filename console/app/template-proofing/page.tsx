@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   PageFrame,
@@ -41,15 +42,21 @@ function statusVariant(status: string): "success" | "warning" | "error" | "neutr
   return "neutral";
 }
 
-export default function TemplateProofingPage() {
+const STICKY_GREEN_BRAND_ID = "6809ef73-a4ea-4790-b134-17208fa00e02";
+
+function TemplateProofingContent() {
+  const searchParams = useSearchParams();
   const [proofItems, setProofItems] = useState<ProofRunRow[]>([]);
   const [proofLoading, setProofLoading] = useState(false);
   const [proofError, setProofError] = useState<string | null>(null);
   const [startBusy, setStartBusy] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
-  const [brandProfileId, setBrandProfileId] = useState("");
+  const [brandProfileId, setBrandProfileId] = useState(() =>
+    searchParams.get("brand_profile_id") ?? ""
+  );
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [lastBatchId, setLastBatchId] = useState<string | null>(null);
+  const [batchActivity, setBatchActivity] = useState<{ template_id: string; status: string; run_id: string | null }[]>([]);
 
   const { data: brandsData } = useBrandProfiles({ limit: 100 });
   const { data: templatesData, isLoading: templatesLoading } = useEmailTemplates({ limit: 100 });
@@ -70,8 +77,39 @@ export default function TemplateProofingPage() {
 
   useEffect(() => { fetchProofRuns(); }, [fetchProofRuns]);
 
+  // Poll batch activity when we have a recent batch so user sees "what's running"
+  useEffect(() => {
+    if (!lastBatchId) return;
+    const fetchBatch = () => {
+      fetch(`${API}/v1/template_proof/${lastBatchId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { items?: { template_id: string; status: string; run_id: string | null }[] }) => {
+          if (d?.items) setBatchActivity(d.items);
+        })
+        .catch(() => {});
+    };
+    fetchBatch();
+    const interval = setInterval(fetchBatch, 8000);
+    return () => clearInterval(interval);
+  }, [lastBatchId]);
+
   const templates = (templatesData?.items ?? []) as TemplateRow[];
   const brands = brandsData?.items ?? [];
+  // Default to Sticky Green (brand with the most tokens) when brands load and none selected
+  useEffect(() => {
+    if (brandProfileId || !brands.length) return;
+    const stickyGreen = (brands as { id: string; name?: string }[]).find(
+      (b) => (b.name ?? "").trim().toLowerCase() === "sticky green"
+    );
+    if (stickyGreen?.id) setBrandProfileId(stickyGreen.id);
+  }, [brands, brandProfileId]);
+
+  // Allow URL ?brand_profile_id= to pre-select (e.g. Sticky Green only)
+  useEffect(() => {
+    const fromUrl = searchParams.get("brand_profile_id");
+    if (fromUrl && fromUrl !== brandProfileId) setBrandProfileId(fromUrl);
+  }, [searchParams, brandProfileId]);
+
   const proofByTemplate = new Map<string, ProofRunRow>();
   for (const p of proofItems) proofByTemplate.set(p.template_id, p);
 
@@ -127,7 +165,7 @@ export default function TemplateProofingPage() {
       header: "Last run",
       render: (r) =>
         r.last_proof_run_id ? (
-          <Link href={`/runs/${r.last_proof_run_id}`} className="text-brand-600 hover:underline font-mono text-xs">
+          <Link href={`/runs/${r.last_proof_run_id}?source=template_proof`} className="text-brand-600 hover:underline font-mono text-xs">
             {String(r.last_proof_run_id).slice(0, 8)}…
           </Link>
         ) : (
@@ -149,6 +187,34 @@ export default function TemplateProofingPage() {
           title="Template proofing"
           description="Run every email template with a canonical brand (e.g. Sticky Green) to verify pass/fail. Start a proof run to run for up to 30 minutes; review the table and open runs for Logs/Validations."
         />
+        <CardSection title="What template proofing does">
+          <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">
+            <strong>What it’s doing:</strong> For each template, it runs the pipeline with the selected brand, records pass/fail and artifact count, and ingests logs. It does <strong>not</strong> change templates or brands. “Self-heal” here means: proof run → you see what failed (Logs/Validations) → you fix the brand or template → you re-run proof until it passes.
+          </p>
+          <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-1 list-disc list-inside">
+            <li>Creates one pipeline run per template with the selected brand (runs in the background).</li>
+            <li>Records pass/fail and artifact count; after each run, ingests Render logs so you can see runner output.</li>
+            <li>It does <strong>not</strong> auto-fix: you fix the brand or template based on Logs/Validations, then re-run.</li>
+            <li>When you click <strong>Last run</strong> you go to that run’s pipeline page — open the <strong>Logs</strong> and <strong>Validations</strong> tabs to see why it failed or what the runner did.</li>
+            <li>Proof runs use a minimal campaign (no campaign images by default), so artifacts may show no images or product-only mapping; for real sends use a full campaign with campaign images selected.</li>
+          </ul>
+          {batchActivity.length > 0 && (
+            <div className="mt-4">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Batch activity (current batch)</p>
+              <ul className="text-sm font-mono bg-slate-100 dark:bg-slate-800 rounded p-3 max-h-48 overflow-y-auto space-y-1">
+                {batchActivity.map((row, i) => (
+                  <li key={i}>
+                    <span className="text-slate-500">{row.template_id.slice(0, 12)}…</span>{" "}
+                    <span className={row.status === "running" ? "text-amber-600" : row.status === "succeeded" ? "text-green-600" : "text-red-600"}>{row.status}</span>
+                    {row.run_id && (
+                      <Link href={`/runs/${row.run_id}?source=template_proof`} className="ml-2 text-brand-600 hover:underline text-xs">run →</Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </CardSection>
         <CardSection title="Start proof run">
           <p className="text-sm text-slate-500 mb-3">
             Select a brand profile and duration. The Control Plane will create a campaign per template, start a run (sandbox), and record pass/fail. Runs may take a few minutes each.
@@ -196,6 +262,21 @@ export default function TemplateProofingPage() {
             </Button>
           </div>
           {proofError && <p className="text-red-600 text-sm mb-2">{proofError}</p>}
+          {!templatesLoading && tableData.some((r) => r.last_status === "failed") && (
+            <div className="mb-4 p-3 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm text-slate-700 dark:text-slate-300">
+              <p className="font-medium text-amber-800 dark:text-amber-200 mb-1">Why did my proof runs fail?</p>
+              <p className="text-slate-600 dark:text-slate-400 mb-2">
+                Proofing doesn’t auto-fix, so failed means a check didn’t pass. You don’t have to search logs blindly — common causes:
+              </p>
+              <ul className="list-disc list-inside text-slate-600 dark:text-slate-400 space-y-0.5 mb-2">
+                <li><strong>No campaign images</strong> — proof runs use a minimal campaign, so image-assignment (e.g. V003) or logo fallback often fails; for real sends use a full campaign.</li>
+                <li><strong>Unreplaced placeholders</strong> — e.g. brand missing social links; add them on the brand or the run will fail.</li>
+              </ul>
+              <p className="text-slate-600 dark:text-slate-400">
+                To see the <strong>exact</strong> reason per template: click <strong>Last run</strong> → open the <strong>Validations</strong> and <strong>Logs</strong> tabs on that run.
+              </p>
+            </div>
+          )}
           {templatesLoading ? (
             <LoadingSkeleton className="h-48 w-full rounded-md" />
           ) : tableData.length === 0 ? (
@@ -211,5 +292,13 @@ export default function TemplateProofingPage() {
         </CardSection>
       </Stack>
     </PageFrame>
+  );
+}
+
+export default function TemplateProofingPage() {
+  return (
+    <Suspense fallback={<LoadingSkeleton className="h-48 w-full rounded-md" />}>
+      <TemplateProofingContent />
+    </Suspense>
   );
 }

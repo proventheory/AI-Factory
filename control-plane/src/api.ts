@@ -692,7 +692,7 @@ app.post("/v1/runs/:id/ingest_logs", async (req, res) => {
     const runId = req.params.id;
     const runRow = await pool.query("SELECT id, created_at, updated_at FROM runs WHERE id = $1", [runId]);
     if (runRow.rows.length === 0) return res.status(404).json({ error: "Run not found" });
-    const { ingestRunLogsOneOff } = await import("./render-log-ingest");
+    const { ingestRunLogsOneOff } = await import("./render-log-ingest.js");
     const result = await ingestRunLogsOneOff(runId, runRow.rows[0] as { created_at: Date; updated_at: Date });
     res.status(200).json({ ok: true, ingested: result.ingested, message: result.message });
   } catch (e: unknown) {
@@ -1214,6 +1214,28 @@ app.get("/v1/artifacts/:id/content", async (req, res) => {
   }
 });
 
+/** GET /v1/artifacts/:id/analyze — analyze rendered email artifact for load failures (unreplaced placeholders, bad image src). For self-heal and template proof. */
+app.get("/v1/artifacts/:id/analyze", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT id, artifact_type, metadata_json, uri FROM artifacts WHERE id = $1", [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Artifact not found" });
+    const row = r.rows[0] as { artifact_type: string; metadata_json: { content?: string } | null; uri?: string };
+    let content: string | null = row.metadata_json?.content ?? null;
+    if (content == null && row.uri?.startsWith("supabase-storage://")) {
+      try {
+        const { downloadArtifact } = await import("../../runners/src/artifact-storage.js");
+        content = await downloadArtifact(row.uri);
+      } catch { /* storage not configured */ }
+    }
+    if (content == null) return res.status(404).json({ error: "Artifact content not available" });
+    const { analyzeArtifactContent } = await import("./artifact-content-analyzer.js");
+    const result = analyzeArtifactContent(content);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** PATCH /v1/artifacts/:id — update artifact metadata_json (content and/or metadata). Primary use: email_template edit (Phase 5). Operator+ only. */
 const MAX_ARTIFACT_CONTENT_BYTES = 2 * 1024 * 1024; // 2MB
 app.patch("/v1/artifacts/:id", async (req, res) => {
@@ -1587,7 +1609,7 @@ app.post("/v1/template_proof/start", async (req, res) => {
     const batch = r.rows[0] as { id: string; status: string; started_at: string; end_at: string };
     setImmediate(async () => {
       try {
-        const { runProofLoop } = await import("./template-proof-job");
+        const { runProofLoop } = await import("./template-proof-job.js");
         await runProofLoop({
           batchId: batch.id,
           brandProfileId,

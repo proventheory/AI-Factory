@@ -37,7 +37,7 @@ export function Tabs({
 
 export function TabsList({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`flex gap-1 border-b border-slate-200 ${className}`} role="tablist">
+    <div className={`flex flex-nowrap gap-1 border-b border-slate-200 overflow-x-auto overflow-y-hidden [-webkit-overflow-scrolling:touch] ${className}`} role="tablist">
       {children}
     </div>
   );
@@ -61,7 +61,7 @@ export function TabsTrigger({
       role="tab"
       aria-selected={isActive}
       onClick={() => ctx.setValue(value)}
-      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+      className={`shrink-0 px-3 py-2.5 sm:px-4 text-sm font-medium border-b-2 -mb-px transition-colors touch-manipulation ${
         isActive
           ? "border-brand-600 text-brand-600"
           : "border-transparent text-slate-500 hover:text-slate-700"

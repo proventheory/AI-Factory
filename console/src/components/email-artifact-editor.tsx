@@ -162,6 +162,12 @@ export function EmailArtifactEditor({ artifactId, runIdFromParams }: EmailArtifa
           </div>
         </div>
 
+        <p className="text-body-small text-fg-muted">
+          Image mapping wrong? If every image shows as a product, this run had no campaign images in metadata.{" "}
+          <Link href="/email-marketing/new" className="text-brand-600 hover:underline">Create a new campaign</Link>
+          {" "}and select campaign images in the Images step, then add products—Re-run uses the same inputs and won’t fix it.
+        </p>
+
         <div className="grid flex-1 min-h-0 grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="flex flex-col min-h-[400px] rounded-md border border-border bg-background">
             <div className="px-3 py-2 border-b border-border text-body-small text-fg-muted">

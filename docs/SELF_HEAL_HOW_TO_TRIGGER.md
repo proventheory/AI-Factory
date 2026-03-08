@@ -102,6 +102,25 @@ ProfessorX is wired to **Render** (API key), **GitHub** (webhook), and **Supabas
 - **What happened in the truncation bug:** The runner wrote one `email_template` artifact, but the stored HTML was truncated (10KB limit), so the preview looked empty/broken. The run had **one** artifact, so self-heal never ran.
 - **Gap:** Self-heal fixes “no artifacts at all” (e.g. wrong worker env). It does **not** detect “artifact exists but is invalid” (truncated content, wrong type, failed upload, etc.). Those need runbook debugging, code fixes, or a future extension (e.g. validate `email_template` content length or basic HTML structure and treat “bad” artifacts like zero artifacts for remediation).
 
+## Template / image mapping self-heal
+
+If an email run shows **every image as a product image** (or wrong mapping), the campaign had no **campaign images** in metadata—only products or empty. Re-run uses the same inputs, so it won’t fix that. **Fix:** Create a **new campaign**, in the **Images** step select campaign images (hero/content), in **Products** add products, then generate. See [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **Template / image mapping self-heal**.
+
+## Template proof: "loaded properly" and validations
+
+**Template proofing** (Console **Template proofing** or API) runs each template against a brand. After each run **succeeds**, the Control Plane:
+
+- Calls **GET /v1/artifacts/:id/analyze** on the email artifact. If the analyzer finds unreplaced placeholders or bad image `src`, the proof run is marked **failed** so you see "template didn't load properly."
+- Ingests Render logs for that run so the **Validations** tab shows log-based checks (e.g. logo missing, campaign copy).
+
+**Structured loop:** Run proof → check Validations and proof status → if analysis failed, fix runner/template (e.g. social icon fallback) and re-run. See [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **Template proof / self-heal loop**.
+
+**Does it actually work?** Yes. Template proof and **GET /v1/artifacts/:id/analyze** are implemented and wired: the Control Plane runs the proof loop (create campaign → plan → start run → poll), then calls the analyzer on the email artifact and marks the proof run failed if the analysis does not pass; it also ingests Render logs for that run. To run: use the Console **Template proofing** page or **POST /v1/template_proof/start** with `brand_profile_id` and `duration_minutes`. The analyzer passes when there are no unreplaced placeholders or bad image src; it can still report **warnings** (e.g. generic footer text, duplicate social rows) which do not fail the proof. The runner applies brand accent color (including #222222 for CTA/buttons) and collapses duplicate footer social rows so re-runs produce a single social row.
+
+**Missing social icons:** If the brand has no social links in Design tokens, the runner does **not** invent icons (no transparent gif). The placeholder stays and the analyzer fails so the fix is to add the brand’s social media links in Brand edit; the runner then derives icons from URLs. For **template proof** runs only (campaign prompt "proof run"), when the brand has zero social links the runner injects a test link (facebook.com) so the proof can pass and you know the pipeline works.
+
+---
+
 ## Summary
 
 | Goal | Action |
@@ -109,6 +128,8 @@ ProfessorX is wired to **Render** (API key), **GitHub** (webhook), and **Supabas
 | **Auto-debug this repo right now (local)** | Run `npm run self-heal` in the repo (with `OPENAI_API_KEY` set). |
 | **Ask the platform to self-heal from GitHub** | Add the **fix-me** label to an issue or PR; set `ENABLE_SELF_HEAL=true` on the Control Plane and configure the GitHub webhook to `POST /v1/webhooks/github`. |
 | **Runs have no artifacts / landing page missing** | With `ENABLE_SELF_HEAL=true` and `RENDER_API_KEY` set, the Control Plane auto-remediates (worker env sync + new run). Otherwise use runbook: [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **No artifacts on runs**. |
+| **Email: every image is a product / wrong mapping** | Create a new campaign; in the **Images** step pick campaign images, then add products. Re-run won’t help (same inputs). Runbook: [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **Template / image mapping self-heal**. |
+| **Template proof: ensure template "loaded properly"** | Run **Template proofing**; check proof run status and **Validations** tab. If artifact analysis fails (unreplaced placeholders/bad images), fix runner/template and re-run proof. Runbook: [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **Template proof / self-heal loop**. |
 
 For gating (evals, human approval) on self-healing PRs, see [LLM_GATEWAY_AND_OPTIMIZATION.md](LLM_GATEWAY_AND_OPTIMIZATION.md) (“Self-healing gating policy”).
 

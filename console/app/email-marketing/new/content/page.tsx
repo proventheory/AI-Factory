@@ -571,7 +571,7 @@ function ContentPageInner() {
 
         <div className="flex flex-wrap gap-3">
           <Button variant="primary" onClick={handleNext} disabled={nextLoading || saving}>
-            {nextLoading ? "Copying images…" : saving ? "Saving…" : "Next: Render preview"}
+            {nextLoading ? "Copying images…" : saving ? "Saving…" : "Next: Enter email prompt"}
           </Button>
           <Button variant="secondary" asChild>
             <Link href="/email-marketing/new/template">Back</Link>

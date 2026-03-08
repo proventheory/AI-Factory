@@ -107,30 +107,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="min-h-14 shrink-0 border-b border-border-subtle bg-white flex items-center px-4 sm:px-6 gap-2 sm:gap-4 py-2 safe-area-padding">
+        <header className="min-h-12 sm:min-h-14 shrink-0 border-b border-border-subtle bg-white flex items-center px-3 sm:px-6 gap-2 sm:gap-4 py-2 safe-area-padding">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center p-2 -ml-2 rounded-md text-text-secondary hover:bg-surface-sunken touch-manipulation"
+            className="md:hidden min-h-[44px] min-w-[44px] flex items-center justify-center p-2 -ml-1 rounded-md text-text-secondary hover:bg-surface-sunken touch-manipulation"
             aria-label="Open menu"
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <nav className="flex items-center gap-2 text-sm text-text-secondary" aria-label="Breadcrumb">
+          <nav className="flex items-center gap-1.5 text-sm text-text-secondary min-w-0" aria-label="Breadcrumb">
             {breadcrumbs.map((crumb, i) => (
-              <span key={crumb.href} className="flex items-center gap-2">
-                {i > 0 && <span className="text-border-default">/</span>}
-                <Link href={crumb.href} className="hover:text-brand-600 transition-colors">
+              <span key={crumb.href} className={`flex items-center gap-1.5 ${i === breadcrumbs.length - 1 ? "min-w-0 truncate" : "shrink-0"}`}>
+                {i > 0 && <span className="text-border-default shrink-0">/</span>}
+                <Link href={crumb.href} className="hover:text-brand-600 transition-colors truncate">
                   {crumb.label}
                 </Link>
               </span>
             ))}
           </nav>
-          <div className="flex-1 flex items-center justify-end gap-2 sm:gap-3 min-h-[44px]">
+          <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-3 min-h-[44px] shrink-0">
             <select
-              className="rounded-md border border-border-default bg-white px-3 py-2 min-h-[44px] text-body-small text-text-primary focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 touch-manipulation"
+              className="rounded-md border border-border-default bg-white px-2 sm:px-3 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[44px] text-body-small text-text-primary focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 touch-manipulation"
               aria-label="Environment"
             >
               <option value="sandbox">sandbox</option>

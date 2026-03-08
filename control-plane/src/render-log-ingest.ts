@@ -6,7 +6,7 @@
 
 import { pool } from "./db.js";
 import { listRenderServices } from "./render-worker-remediate.js";
-import { parseLogValidation, insertLogValidations } from "./log-validations";
+import { parseLogValidation, insertLogValidations } from "./log-validations.js";
 
 const RENDER_API_BASE = "https://api.render.com/v1";
 const WORKER_SERVICE_ID = process.env.RENDER_WORKER_SERVICE_ID?.trim();
@@ -161,7 +161,7 @@ export async function ingestRunLogsOneOff(
   const logValidations: { validator_type: string; status: "fail" }[] = [];
   for (const row of toInsert) {
     const v = parseLogValidation(row.message);
-    if (v) logValidations.push(v);
+    if (v?.status === "fail") logValidations.push({ validator_type: v.validator_type, status: "fail" });
   }
   await insertLogValidations(pool, runId, logValidations);
 
@@ -229,7 +229,7 @@ export async function runScheduledLogIngest(): Promise<{ runsTouched: number; li
     const logValidations: { validator_type: string; status: "fail" }[] = [];
     for (const row of rows) {
       const v = parseLogValidation(row.message);
-      if (v) logValidations.push(v);
+      if (v?.status === "fail") logValidations.push({ validator_type: v.validator_type, status: "fail" });
     }
     await insertLogValidations(pool, runId, logValidations);
   }

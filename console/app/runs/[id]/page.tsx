@@ -311,16 +311,53 @@ export default function RunDetailPage() {
     { key: "created_at", header: "Created", render: (r) => new Date(r.created_at).toLocaleString() },
   ];
 
+  const VALIDATOR_DESCRIPTIONS: Record<string, string> = {
+    "image_assignment:V001": "Hero missing (template requires hero, none resolved)",
+    "image_assignment:V002": "Hero used disallowed source (e.g. product image in hero)",
+    "image_assignment:V003": "Logo used as hero fallback but template doesn’t allow it (often: no campaign images selected)",
+    "image_assignment:V004": "Unresolved image placeholder in output",
+    "image_assignment:V005": "Empty required hero module",
+    "image_assignment:V006": "Optional/collapse (not evaluated)",
+    "image_assignment:V007": "Content slot filled with duplicate of hero image",
+    "image_assignment:V008": "Product section binding (not evaluated here)",
+    "image_assignment:V009": "Too many assets rejected",
+    "image_assignment:V010": "Hero aspect (not validated here)",
+    "image_assignment:V011": "Remote image reachability (not checked)",
+    "image_assignment:V012": "Placeholder over-allocation (too many content/product slots)",
+    "runner_log_check:logo_missing": "Runner logged: logo URL missing",
+    "runner_log_check:campaign_copy_missing": "Runner logged: campaign copy not found",
+    "runner_log_check:pre_write_failed": "Runner logged: pre-write check failed",
+    "runner_log_check:placeholder_mismatch": "Runner logged: placeholder mismatch",
+  };
   const validationColumns: Column<ValidationRow>[] = [
     { key: "validator_type", header: "Validator" },
     { key: "status", header: "Status", render: (r) => <Badge variant={r.status === "pass" ? "success" : "error"}>{r.status}</Badge> },
+    {
+      key: "description",
+      header: "What it means",
+      render: (r) => (
+        <span className="text-sm text-slate-600 dark:text-slate-400">
+          {VALIDATOR_DESCRIPTIONS[r.validator_type] ?? (r.status === "fail" ? "Rule failed; see Logs for details." : "—")}
+        </span>
+      ),
+    },
     { key: "job_run_id", header: "Job run", render: (r) => r.job_run_id ? <span className="font-mono text-xs">{String(r.job_run_id).slice(0, 8)}…</span> : "—" },
     { key: "created_at", header: "Created", render: (r) => new Date(r.created_at).toLocaleString() },
   ];
 
+  const isTemplateProofRun = searchParams.get("source") === "template_proof";
+
   return (
     <PageFrame>
       <Stack>
+        {isTemplateProofRun && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-4 text-sm">
+            <p className="font-medium text-amber-800 dark:text-amber-200">Template proof run</p>
+            <p className="mt-1 text-amber-700 dark:text-amber-300">
+              This run was created by Template proofing. It does not auto-fix — it records pass/fail and ingests logs. To see why it failed or what the runner did, open the <button type="button" onClick={() => setActiveTab("logs")} className="font-medium underline hover:no-underline">Logs</button> and <button type="button" onClick={() => setActiveTab("validations")} className="font-medium underline hover:no-underline">Validations</button> tabs below. Fix the brand or template (e.g. add campaign images, social links) then re-run from Template proofing.
+            </p>
+          </div>
+        )}
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-heading-2 font-bold text-text-primary">Run</h1>
@@ -419,6 +456,9 @@ export default function RunDetailPage() {
 
           <TabsContent value="validations" className="pt-4">
             <CardSection title="Validations">
+              <p className="text-sm text-slate-500 mb-3">
+                These checks ran after the run completed. <strong>Fail</strong> means the run finished but didn’t meet that rule (e.g. V003: no campaign images → logo was used as hero on a template that doesn’t allow it). For runner output and more context, use the <button type="button" onClick={() => setActiveTab("logs")} className="font-medium text-brand-600 hover:underline">Logs</button> tab.
+              </p>
               {validations.length === 0 ? (
                 <EmptyState title="No validations" description="No validations recorded for this run." />
               ) : (

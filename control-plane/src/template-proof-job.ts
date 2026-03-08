@@ -119,17 +119,49 @@ export async function runProofLoop(options: ProofLoopOptions): Promise<void> {
       if (status !== "succeeded" && status !== "failed") status = "timed_out";
 
       let artifactCount = 0;
+      let proofStatus = status;
       if (status === "succeeded") {
         const runRes = await fetch(`${baseUrl}/v1/runs/${runId}`);
         if (runRes.ok) {
-          const runData = (await runRes.json()) as { artifacts?: unknown[] };
-          artifactCount = (runData.artifacts ?? []).length;
+          const runData = (await runRes.json()) as { artifacts?: { id: string; artifact_type?: string; artifact_class?: string }[] };
+          const artifacts = runData.artifacts ?? [];
+          artifactCount = artifacts.length;
+          // Analyze email artifact to verify template loaded properly (self-heal)
+          const emailArtifact = artifacts.find(
+            (a) => a.artifact_type === "email_template" || a.artifact_class === "email_template"
+          ) ?? (artifacts.length === 1 ? artifacts[0] : null);
+          if (emailArtifact?.id) {
+            try {
+              const analyzeRes = await fetch(`${baseUrl}/v1/artifacts/${emailArtifact.id}/analyze`);
+              if (analyzeRes.ok) {
+                const analysis = (await analyzeRes.json()) as { passed: boolean; issues?: unknown[]; summary?: string };
+                if (!analysis.passed) {
+                  proofStatus = "failed";
+                  if (process.env.NODE_ENV !== "test") {
+                    console.warn("[template-proof] Artifact analysis failed:", analysis.summary ?? analysis.issues);
+                  }
+                }
+              }
+            } catch (e) {
+              if (process.env.NODE_ENV !== "test") console.warn("[template-proof] Analyze request failed:", (e as Error).message);
+            }
+          }
+        }
+        // Ingest Render logs for this run so Validations tab and log-based checks are populated
+        try {
+          const runRow = await pool.query("SELECT created_at, updated_at FROM runs WHERE id = $1", [runId]);
+          if (runRow.rows.length > 0) {
+            const { ingestRunLogsOneOff } = await import("./render-log-ingest.js");
+            await ingestRunLogsOneOff(runId, runRow.rows[0] as { created_at: Date; updated_at: Date });
+          }
+        } catch {
+          // Log ingest optional (e.g. RENDER_API_KEY not set)
         }
       }
 
       await pool.query(
         `UPDATE template_proof_runs SET status = $2, artifact_count = $3, completed_at = now() WHERE id = $1`,
-        [proofRunId, status, artifactCount]
+        [proofRunId, proofStatus, artifactCount]
       );
     } catch (e) {
       await pool.query(

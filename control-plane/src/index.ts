@@ -92,7 +92,7 @@ function startRenderLogIngestLoop(): void {
   if (process.env.ENABLE_RENDER_LOG_INGEST !== "true") return;
   setInterval(async () => {
     try {
-      const { runScheduledLogIngest } = await import("./render-log-ingest");
+      const { runScheduledLogIngest } = await import("./render-log-ingest.js");
       const result = await runScheduledLogIngest();
       if (result.linesInserted > 0) {
         console.log(`[log-ingest] Ingested ${result.linesInserted} lines for ${result.runsTouched} run(s)`);
