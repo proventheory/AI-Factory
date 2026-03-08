@@ -2,6 +2,8 @@
 
 Footer components (e.g. Pharmacy Time staging footer) use placeholders like `{{popularWeightManagementUrl}}`, `{{howItWorksUrl}}`, `{{privacyUrl}}`. These are resolved from the **brand profile** when previewing or rendering.
 
+**Schema:** No Supabase migration is required. `footer_urls` and `heading_highlight_color` are stored inside the existing `brand_profiles.design_tokens` JSONB column.
+
 ## Where to store URLs
 
 Store them in the brand’s **design_tokens** under **footer_urls**: a flat object mapping placeholder name → full URL.
@@ -49,10 +51,18 @@ node scripts/fetch-pharmacytime-footer-urls.mjs [BASE_URL]
 ## Placeholder groups (for reference)
 
 - **POPULAR**: WooCommerce product-category links (Weight Management, Hormone Replacement, IV Therapy & Supplements, Sexual Wellness, Thyroid, GLP-1, Ozempic®, Wegovy®, Sermorelin, NAD+). Defaults use the `/product-category/...` path; set `footer_urls.popular*Url` to override.
-- **COMPANY**: How it works, FAQ, Contact Us.
+- **COMPANY**: How it works, FAQ, Contact Us, Support.
 - **LEGAL**: Terms & Conditions, Privacy Policy, HIPAA Privacy Statement.
 
 If a key is missing from `footer_urls`, the Control Plane falls back to `identity.website` + a default path (e.g. `/privacy-policy/`, `/weight-management/`).
+
+## Heading highlight color (optional)
+
+For H1/H2 text highlight (e.g. the purple accent on pharmacytime headings):
+
+- **design_tokens.heading_highlight_color** (e.g. `"#c2b6f8"`)
+
+Exposed in the placeholder map as **headingHighlightColor** and **heading_highlight_color**. If unset, the Control Plane uses brand 400 or `#c2b6f8`. Set in Console → Brands → Edit → Colors (Heading highlight).
 
 ## Logo text (optional)
 

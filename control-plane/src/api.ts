@@ -3000,6 +3000,12 @@ function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, 
   const logoTimeText = typeof design_tokens.logo_time_text === "string"
     ? design_tokens.logo_time_text
     : (typeof identity.logo_time_text === "string" ? identity.logo_time_text : (name.split(/\s+/).slice(1).join(" ").trim() || ""));
+  const headingHighlightColor =
+    (typeof design_tokens.heading_highlight_color === "string" && design_tokens.heading_highlight_color.trim())
+      ? design_tokens.heading_highlight_color.trim()
+      : (brand && typeof (brand as Record<string, string>)["400"] === "string"
+        ? (brand as Record<string, string>)["400"]
+        : "#c2b6f8");
 
   const base = {
     logo: logo || "https://via.placeholder.com/120x40?text=Logo",
@@ -3014,6 +3020,8 @@ function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, 
     cta_url: ctaLink,
     brandColor,
     brand_color: brandColor,
+    headingHighlightColor,
+    heading_highlight_color: headingHighlightColor,
     footerRights: `© ${year} ${name}. All rights reserved.`,
     contactInfo: contactInfo || contactEmail || "Contact us",
     "social media link": website,
@@ -3037,6 +3045,7 @@ function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, 
     howItWorksUrl: `${baseUrl}/how-it-works/`,
     faqUrl: `${baseUrl}/faq/`,
     contactUrl: `${baseUrl}/contact-us/`,
+    supportUrl: `${baseUrl}/support/`,
     emailPlaceholder: "Enter your email",
     emailSignupAction: `${baseUrl}/newsletter/`,
     legitscriptUrl: "https://legitscript.com",

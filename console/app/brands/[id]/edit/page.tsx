@@ -26,6 +26,26 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { copyCampaignImageToCdn } from "@/lib/api";
 
+const FOOTER_LINK_KEYS: { key: string; label: string; group: "popular" | "company" | "legal" }[] = [
+  { key: "popularWeightManagementUrl", label: "Weight Management", group: "popular" },
+  { key: "popularHormoneReplacementUrl", label: "Hormone Replacement", group: "popular" },
+  { key: "popularIvTherapyUrl", label: "IV Therapy & Supplements", group: "popular" },
+  { key: "popularSexualWellnessUrl", label: "Sexual Wellness", group: "popular" },
+  { key: "popularThyroidUrl", label: "Thyroid", group: "popular" },
+  { key: "popularGlp1Url", label: "GLP-1 Treatments", group: "popular" },
+  { key: "popularOzempicUrl", label: "Ozempic®", group: "popular" },
+  { key: "popularWegovyUrl", label: "Wegovy®", group: "popular" },
+  { key: "popularSermorelinUrl", label: "Sermorelin", group: "popular" },
+  { key: "popularNadUrl", label: "NAD+", group: "popular" },
+  { key: "howItWorksUrl", label: "How it works", group: "company" },
+  { key: "faqUrl", label: "FAQ", group: "company" },
+  { key: "contactUrl", label: "Contact Us", group: "company" },
+  { key: "supportUrl", label: "Support", group: "company" },
+  { key: "termsUrl", label: "Terms & Conditions", group: "legal" },
+  { key: "privacyUrl", label: "Privacy Policy", group: "legal" },
+  { key: "hipaaUrl", label: "HIPAA Privacy Statement", group: "legal" },
+];
+
 export default function EditBrandPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -69,6 +89,8 @@ export default function EditBrandPage() {
   const logoWhiteFileInputRef = useRef<HTMLInputElement>(null);
   const [ctaText, setCtaText] = useState("");
   const [ctaLink, setCtaLink] = useState("");
+  const [footerUrls, setFooterUrls] = useState<Record<string, string>>({});
+  const [headingHighlightColor, setHeadingHighlightColor] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [brandScale, setBrandScale] = useState<Record<string, string>>({});
   const [headingScale, setHeadingScale] = useState<Record<string, { size: string; weight: number }>>({});
@@ -118,6 +140,8 @@ export default function EditBrandPage() {
     setAssetUrlsText(tokens.assetUrls.join("\n"));
     const t = tokens as unknown as Record<string, unknown>;
     setCtaText(typeof t.ctaText === "string" ? t.ctaText : "");
+    setFooterUrls(typeof tokens.footerUrls === "object" && tokens.footerUrls !== null ? { ...tokens.footerUrls } : {});
+    setHeadingHighlightColor(typeof (tokens as Record<string, unknown>).headingHighlightColor === "string" ? (tokens as Record<string, unknown>).headingHighlightColor as string : "");
     setCtaLink(typeof t.ctaLink === "string" ? t.ctaLink : "");
 
     const colors = (dt.colors ?? dt.color) as Record<string, Record<string, string>> | undefined;
@@ -257,6 +281,8 @@ export default function EditBrandPage() {
         assetUrls: assetUrls.length ? assetUrls : assetUrlsText.split("\n").map((u) => u.trim()).filter(Boolean),
         ctaText,
         ctaLink,
+        footerUrls: Object.keys(footerUrls).length ? footerUrls : undefined,
+        headingHighlightColor: headingHighlightColor.trim() || undefined,
       });
       const extended: DesignTokensExtended = {};
       const scaleFiltered = Object.fromEntries(Object.entries(brandScale).filter(([, v]) => v && v.trim()));
@@ -481,6 +507,23 @@ export default function EditBrandPage() {
                 </div>
               </div>
               <div>
+                <label className={labelCls}>Heading highlight (H1/H2)</label>
+                <p className="text-body-small text-text-secondary mb-1">Used to highlight text in headings (e.g. #c2b6f8).</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={headingHighlightColor || "#c2b6f8"}
+                    onChange={(e) => setHeadingHighlightColor(e.target.value)}
+                    className="h-9 w-9 cursor-pointer rounded border"
+                  />
+                  <Input
+                    value={headingHighlightColor}
+                    onChange={(e) => setHeadingHighlightColor(e.target.value)}
+                    placeholder="#c2b6f8"
+                  />
+                </div>
+              </div>
+              <div>
                 <label className={labelCls}>Font (Headings)</label>
                 <Input
                   value={fontHeadings}
@@ -614,6 +657,35 @@ export default function EditBrandPage() {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <h4 className="text-body font-medium text-text-primary mb-3">Footer & page links</h4>
+                <p className="text-body-small text-text-secondary mb-3">
+                  Category links (POPULAR), company, and legal URLs. Used in footers and other assets that resolve placeholders from this brand.
+                </p>
+                {(["popular", "company", "legal"] as const).map((group) => {
+                  const groupLabels = { popular: "Category links (POPULAR)", company: "Company", legal: "Legal" };
+                  const items = FOOTER_LINK_KEYS.filter((f) => f.group === group);
+                  return (
+                    <div key={group} className="mb-6">
+                      <h5 className="text-body-small font-medium text-text-secondary mb-2">{groupLabels[group]}</h5>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {items.map(({ key, label }) => (
+                          <div key={key}>
+                            <label className={labelCls}>{label}</label>
+                            <Input
+                              type="url"
+                              value={footerUrls[key] ?? ""}
+                              onChange={(e) => setFooterUrls((prev) => ({ ...prev, [key]: e.target.value }))}
+                              placeholder="https://..."
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div>

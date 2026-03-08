@@ -284,7 +284,7 @@ export default function BrandDetailPage() {
             </div>
 
             {/* Sitemap, Social, Contact (single source), Asset URLs — in sub-cards */}
-            {((dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) || (dt.social_media?.length > 0) || (dt.contact_info?.length > 0) || identity.contact_email || (dt.asset_urls?.length > 0)) && (
+            {((dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) || (dt.social_media?.length > 0) || (dt.contact_info?.length > 0) || identity.contact_email || (dt.asset_urls?.length > 0) || (dt.footer_urls && typeof dt.footer_urls === "object" && !Array.isArray(dt.footer_urls) && Object.keys(dt.footer_urls).length > 0)) && (
               <div className="grid gap-4 sm:grid-cols-2">
                 {(dt.sitemap_url ?? dt.brand_sitemap_url ?? dt.email_sitemap_url) && (
                   <div className="rounded-lg border border-border bg-fg-muted/5 p-4">
@@ -295,6 +295,23 @@ export default function BrandDetailPage() {
                     {(dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type) && (
                       <span className="ml-1.5 text-body-small text-fg-muted">({dt.sitemap_type ?? dt.brand_sitemap_type ?? dt.email_sitemap_type})</span>
                     )}
+                  </div>
+                )}
+
+                {dt.footer_urls && typeof dt.footer_urls === "object" && !Array.isArray(dt.footer_urls) && Object.keys(dt.footer_urls).length > 0 && (
+                  <div className="rounded-lg border border-border bg-fg-muted/5 p-4 sm:col-span-2">
+                    <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-3">Footer & page links</h4>
+                    <p className="text-body-small text-fg-muted mb-3">Tokenized: terms of service, privacy, contact, support, and category links. Edit in Brand Edit → Footer & page links.</p>
+                    <ul className="space-y-2 max-h-48 overflow-y-auto">
+                      {Object.entries(dt.footer_urls as Record<string, string>).map(([key, url]) => (
+                        <li key={key} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <span className="text-body-small font-mono text-fg-muted shrink-0">{key}</span>
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-body text-brand-600 hover:underline break-all min-w-0">
+                            {url}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
@@ -392,6 +409,14 @@ export default function BrandDetailPage() {
                     .map(([role, hex]) => (
                       <ColorSwatch key={role} hex={hex} label={role} large usage={PALETTE_ROLE_USAGE[role]} />
                     ))}
+                </div>
+              </div>
+            )}
+            {typeof dt.heading_highlight_color === "string" && dt.heading_highlight_color.trim() && (
+              <div>
+                <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Heading highlight (H1/H2)</h4>
+                <div className="flex flex-wrap gap-4">
+                  <ColorSwatch hex={dt.heading_highlight_color.trim()} label="heading highlight" large usage="H1/H2 text highlight" />
                 </div>
               </div>
             )}

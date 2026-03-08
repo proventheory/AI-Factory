@@ -39,6 +39,10 @@ export interface DesignTokensInput {
   ctaText: string;
   /** CTA button URL. Used in emails when LLM does not override. */
   ctaLink: string;
+  /** Footer and page links (e.g. category, company, legal). Keys match footer placeholders (popularWeightManagementUrl, howItWorksUrl, etc.). */
+  footerUrls?: Record<string, string>;
+  /** Hex color for H1/H2 highlight/accent (e.g. #c2b6f8). Exposed as headingHighlightColor in placeholder map. */
+  headingHighlightColor?: string;
 }
 
 /** Full brand color palette (scale keys + optional neutral). Additive read for Brand System View. */
@@ -97,6 +101,8 @@ export function buildDesignTokens(opts: Partial<DesignTokensInput>): Record<stri
     assetUrls,
     ctaText,
     ctaLink,
+    footerUrls,
+    headingHighlightColor,
   } = opts;
   const colors = {
     brand: {
@@ -139,6 +145,10 @@ export function buildDesignTokens(opts: Partial<DesignTokensInput>): Record<stri
   if (assetUrls !== undefined) tokens.asset_urls = assetUrls;
   if (ctaText !== undefined) tokens.cta_text = ctaText;
   if (ctaLink !== undefined) tokens.cta_link = ctaLink;
+  if (footerUrls !== undefined && footerUrls !== null && typeof footerUrls === "object")
+    tokens.footer_urls = { ...footerUrls };
+  if (headingHighlightColor !== undefined && typeof headingHighlightColor === "string" && headingHighlightColor.trim())
+    tokens.heading_highlight_color = headingHighlightColor.trim();
   return tokens;
 }
 
@@ -181,6 +191,11 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
     : [];
   const ctaText = typeof dt.cta_text === "string" ? dt.cta_text : "";
   const ctaLink = typeof dt.cta_link === "string" ? dt.cta_link : "";
+  const footerUrls =
+    dt.footer_urls && typeof dt.footer_urls === "object" && !Array.isArray(dt.footer_urls)
+      ? (dt.footer_urls as Record<string, string>)
+      : {};
+  const headingHighlightColor = typeof dt.heading_highlight_color === "string" ? dt.heading_highlight_color.trim() : "";
   const rec = dt as Record<string, unknown>;
   const sitemapUrlVal =
     (typeof dt.sitemap_url === "string" ? dt.sitemap_url : null) ??
@@ -208,6 +223,8 @@ export function readDesignTokensFromBrand(dt: Record<string, unknown> | null | u
     assetUrls,
     ctaText,
     ctaLink,
+    footerUrls,
+    headingHighlightColor,
   };
 }
 
