@@ -27,6 +27,7 @@ type RunDetail = {
 type ToolCallRow = { id: string; job_run_id: string; capability: string; operation_key: string; status: string; started_at: string | null };
 type ArtifactRow = { id: string; artifact_type: string; artifact_class: string; uri: string; created_at: string };
 type ValidationRow = { id: string; validator_type: string; status: string; job_run_id: string | null; created_at: string };
+type LogEntryRow = { id: string; run_id: string; job_run_id: string | null; source: string; level: string | null; message: string; logged_at: string };
 type LlmCallRow = { id: string; job_run_id: string | null; model_tier: string; model_id: string; tokens_in: number | null; tokens_out: number | null; latency_ms: number | null; created_at: string };
 type AuditRow = { source: string; id: string; run_id: string; job_run_id: string | null; event_type: string; created_at: string; payload_json: unknown };
 
@@ -39,6 +40,10 @@ export default function RunDetailPage() {
   const [data, setData] = useState<RunDetail | null>(null);
   const [toolCalls, setToolCalls] = useState<ToolCallRow[]>([]);
   const [validations, setValidations] = useState<ValidationRow[]>([]);
+  const [logEntries, setLogEntries] = useState<LogEntryRow[]>([]);
+  const [logEntriesTotal, setLogEntriesTotal] = useState(0);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [ingestBusy, setIngestBusy] = useState(false);
   const [llmCalls, setLlmCalls] = useState<LlmCallRow[]>([]);
   const [auditItems, setAuditItems] = useState<AuditRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +105,42 @@ export default function RunDetailPage() {
       .then((d: { items?: ValidationRow[] }) => setValidations(d.items ?? []))
       .catch(() => setValidations([]));
   }, [id, activeTab]);
+
+  const fetchLogEntries = useCallback(() => {
+    if (!id) return;
+    setLogsLoading(true);
+    fetch(`${API}/v1/runs/${id}/log_entries?limit=200&order=desc`)
+      .then((r) => {
+        if (r.status === 503) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Log mirror not enabled"); });
+        if (!r.ok) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Failed to load logs"); });
+        return r.json();
+      })
+      .then((d: { items?: LogEntryRow[]; total?: number }) => {
+        setLogEntries(d.items ?? []);
+        setLogEntriesTotal(typeof d.total === "number" ? d.total : (d.items ?? []).length);
+      })
+      .catch(() => { setLogEntries([]); setLogEntriesTotal(0); })
+      .finally(() => setLogsLoading(false));
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || activeTab !== "logs") return;
+    fetchLogEntries();
+  }, [id, activeTab, fetchLogEntries]);
+
+  async function handleIngestLogs() {
+    if (!id) return;
+    setIngestBusy(true);
+    try {
+      const r = await fetch(`${API}/v1/runs/${id}/ingest_logs`, { method: "POST" });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 503) throw new Error((j as { error?: string }).error ?? "Log mirror not enabled");
+      if (!r.ok) throw new Error((j as { error?: string }).error ?? "Ingest failed");
+      fetchLogEntries();
+    } finally {
+      setIngestBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!id || activeTab !== "ai_calls") return;
@@ -202,8 +243,32 @@ export default function RunDetailPage() {
     URL.revokeObjectURL(a.href);
   }
 
-  if (error) return <PageFrame><p className="text-red-600">Error: {error}</p></PageFrame>;
-  if (!data) return <PageFrame><p className="text-slate-500">Loading...</p></PageFrame>;
+  if (error) {
+    return (
+      <PageFrame>
+        <Stack>
+          <PageHeader title={`Run ${id?.slice(0, 8) ?? "…"}…`} description="Run detail" />
+          <p className="text-red-600">Error: {error}</p>
+          {error.toLowerCase().includes("not found") && (
+            <p className="text-slate-600 text-sm">The run may not exist in this environment, or the API may be pointing at a different database. Check Pipeline Runs for this run, or try again from the wizard.</p>
+          )}
+          <Link href="/runs" className="text-brand-600 hover:underline text-sm">← Back to Pipeline Runs</Link>
+        </Stack>
+      </PageFrame>
+    );
+  }
+  if (!data) {
+    return (
+      <PageFrame>
+        <Stack>
+          <PageHeader title={`Run ${id?.slice(0, 8) ?? "…"}…`} description="Run detail" />
+          <p className="text-slate-500">Loading run…</p>
+          <p className="text-slate-400 text-sm">If this stays loading, the Control Plane may be slow or unreachable. Check that <code className="bg-surface-sunken px-1 rounded text-xs">NEXT_PUBLIC_CONTROL_PLANE_API</code> points to the same API that created the run.</p>
+          <Link href="/runs" className="text-brand-600 hover:underline text-sm">← Pipeline Runs</Link>
+        </Stack>
+      </PageFrame>
+    );
+  }
 
   const run = data.run as Record<string, unknown>;
 
@@ -256,21 +321,21 @@ export default function RunDetailPage() {
   return (
     <PageFrame>
       <Stack>
-        <PageHeader
-          title={`Run ${String(run.id).slice(0, 8)}…`}
-          description={undefined}
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href="/runs" className="text-brand-600 hover:underline text-sm shrink-0">← Runs</Link>
-              <Button variant="secondary" onClick={handleRerun} disabled={!!actionBusy}>{actionBusy === "rerun" ? "…" : "Re-run"}</Button>
-              <Button variant="secondary" onClick={openCancelConfirm} disabled={!!actionBusy || (run.status !== "running" && run.status !== "queued")}>{actionBusy === "cancel" ? "…" : "Cancel run"}</Button>
-              <Button variant="secondary" onClick={openRollbackConfirm} disabled={!!actionBusy}>{actionBusy === "rollback" ? "…" : "Rollback"}</Button>
-              <Button variant="secondary" onClick={() => handleApprove("approve")} disabled={!!actionBusy}>{actionBusy === "approve" ? "…" : "Approve"}</Button>
-              <Button variant="secondary" onClick={() => handleApprove("reject")} disabled={!!actionBusy}>{actionBusy === "reject" ? "…" : "Reject"}</Button>
-              <Button variant="ghost" onClick={handleExportMdd}>Export .mdd</Button>
-            </div>
-          }
-        />
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-heading-2 font-bold text-text-primary">Run</h1>
+            <p className="mt-1 font-mono text-xs text-text-muted break-all" title={String(run.id)}>{String(run.id)}</p>
+          </div>
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
+            <Link href="/runs" className="text-brand-600 hover:underline text-sm shrink-0">← Runs</Link>
+            <Button variant="secondary" size="sm" className="shrink-0" onClick={handleRerun} disabled={!!actionBusy}>{actionBusy === "rerun" ? "…" : "Re-run"}</Button>
+            <Button variant="secondary" size="sm" className="shrink-0" onClick={openCancelConfirm} disabled={!!actionBusy || (run.status !== "running" && run.status !== "queued")}>{actionBusy === "cancel" ? "…" : "Cancel run"}</Button>
+            <Button variant="secondary" size="sm" className="shrink-0" onClick={openRollbackConfirm} disabled={!!actionBusy}>{actionBusy === "rollback" ? "…" : "Rollback"}</Button>
+            <Button variant="secondary" size="sm" className="shrink-0" onClick={() => handleApprove("approve")} disabled={!!actionBusy}>{actionBusy === "approve" ? "…" : "Approve"}</Button>
+            <Button variant="secondary" size="sm" className="shrink-0" onClick={() => handleApprove("reject")} disabled={!!actionBusy}>{actionBusy === "reject" ? "…" : "Reject"}</Button>
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={handleExportMdd}>Export .mdd</Button>
+          </div>
+        </div>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -278,6 +343,7 @@ export default function RunDetailPage() {
             <TabsTrigger value="tool_calls">Tool Calls</TabsTrigger>
             <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
             <TabsTrigger value="validations">Validations</TabsTrigger>
+            <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="ai_calls">AI Calls</TabsTrigger>
             <TabsTrigger value="secrets">Secrets Access</TabsTrigger>
             <TabsTrigger value="events">Events</TabsTrigger>
@@ -363,6 +429,41 @@ export default function RunDetailPage() {
             </CardSection>
           </TabsContent>
 
+          <TabsContent value="logs" className="pt-4">
+            <CardSection title="Run logs">
+              <p className="text-sm text-slate-500 mb-2">
+                Runner (and optionally API) log lines for this run. If the run is recent and the list is empty, click <strong>Refresh logs</strong> to trigger a one-off ingest from Render.
+              </p>
+              <div className="mb-2 flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={handleIngestLogs} disabled={ingestBusy || logsLoading}>
+                  {ingestBusy ? "Ingesting…" : "Refresh logs"}
+                </Button>
+                {logEntriesTotal > 0 && <span className="text-sm text-slate-500">{logEntriesTotal} line(s)</span>}
+              </div>
+              {logsLoading ? (
+                <LoadingSkeleton className="h-[300px] w-full rounded-lg" />
+              ) : logEntries.length === 0 ? (
+                <EmptyState
+                  title="No log entries"
+                  description="No log lines have been ingested for this run. Enable ENABLE_RENDER_LOG_INGEST on the Control Plane for automatic ingest, or use Refresh logs to pull logs from Render now."
+                />
+              ) : (
+                <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 max-h-[500px] overflow-y-auto">
+                  <ul className="divide-y divide-slate-200 dark:divide-slate-700 text-sm font-mono p-0">
+                    {logEntries.map((entry) => (
+                      <li key={entry.id} className="px-3 py-1.5 flex gap-2 items-start">
+                        <span className="shrink-0 text-slate-500 whitespace-nowrap" title={entry.logged_at}>
+                          {new Date(entry.logged_at).toLocaleTimeString()}
+                        </span>
+                        <span className="text-slate-700 dark:text-slate-300 break-all">{entry.message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardSection>
+          </TabsContent>
+
           <TabsContent value="ai_calls" className="pt-4">
             <CardSection title="AI calls">
               {llmCalls.length === 0 ? (
@@ -413,7 +514,7 @@ export default function RunDetailPage() {
             </CardSection>
           </TabsContent>
 
-          <TabsContent value="notes" className="pt-4">
+          <TabsContent value="notes" className="pt-4 pb-16">
             <CardSection title="Notes">
               <textarea
                 className="w-full min-h-[200px] rounded-md border border-slate-300 bg-white p-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"

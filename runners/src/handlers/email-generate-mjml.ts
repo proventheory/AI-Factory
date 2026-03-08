@@ -220,7 +220,7 @@ function replaceBracketPlaceholders(html: string, sectionJson: Record<string, un
 }
 
 /** Template default accent colors (Emma SMS template) – replace with brand color in final HTML. */
-const TEMPLATE_ACCENT_COLORS = [/#FF7055/gi, /#053A5E/gi, /#ffd875/gi];
+const TEMPLATE_ACCENT_COLORS = [/#FF7055/gi, /#053A5E/gi, /#ffd875/gi, /#16a34a/gi];
 
 /** Default hero headline in template – replaced with campaign prompt when present. */
 const DEFAULT_HERO_HEADLINE = "Introducing Emma SMS";
@@ -493,22 +493,27 @@ function applyDesignPolish(
     out = out.replace(heroImgRe, (_m, pre, _w, mid, _h) => `${pre}560${mid}height:auto;`);
   }
 
-  // 3. Remove duplicate headline in the green CTA section.
+  // 3. Remove duplicate headline in the CTA section (and remove the resulting empty row so no gap).
   //    The template often renders the same text as both <h> and <p> in the CTA block.
-  if (generatedCopy?.ctaSectionHeadline) {
-    const headline = generatedCopy.ctaSectionHeadline;
-    const escaped = headline.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Remove second occurrence of same text within the CTA section (green block bgcolor="#16a34a" area)
-    const ctaStart = out.indexOf('background:#16a34a') ?? out.indexOf('bgcolor="#16a34a"');
-    if (ctaStart !== -1) {
-      const ctaEnd = out.indexOf('#292929', ctaStart);
-      const ctaSection = out.slice(ctaStart, ctaEnd !== -1 ? ctaEnd : undefined);
+  //    CTA block may be #16a34a (Emma default) or already replaced with brandColor by applyBrandColorsAndCampaignCopy.
+  const ctaStart = out.indexOf(`background:${brandColor}`) ?? out.indexOf(`bgcolor="${brandColor}"`) ?? out.indexOf("background:#16a34a") ?? out.indexOf('bgcolor="#16a34a"');
+  if (ctaStart !== -1) {
+    const ctaEnd = out.indexOf('#292929', ctaStart);
+    let ctaSection = ctaEnd !== -1 ? out.slice(ctaStart, ctaEnd) : out.slice(ctaStart);
+    if (generatedCopy?.ctaSectionHeadline) {
+      const headline = generatedCopy.ctaSectionHeadline;
+      const escaped = headline.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const re = new RegExp(`(>${escaped}<[^>]*>[\\s\\S]*?)>${escaped}<`, "i");
       if (re.test(ctaSection)) {
-        const fixed = ctaSection.replace(re, (m, before) => `${before}>&nbsp;<`);
-        out = out.slice(0, ctaStart) + fixed + out.slice(ctaEnd !== -1 ? ctaEnd : out.length);
+        ctaSection = ctaSection.replace(re, (m, before) => `${before}>&nbsp;<`);
       }
     }
+    // Remove the empty row (single cell with only &nbsp;) so "Discover Our Bestsellers" has no gap above body text
+    ctaSection = ctaSection.replace(
+      /<tr[^>]*>\s*<td[^>]*>[\s\S]*?<div[^>]*>\s*&nbsp;\s*<\/div>\s*<\/td>\s*<\/tr>/gi,
+      "",
+    );
+    out = ctaEnd !== -1 ? out.slice(0, ctaStart) + ctaSection + out.slice(ctaEnd) : out.slice(0, ctaStart) + ctaSection;
   }
 
   // 4. Tighten spacing: reduce excessive padding around hero section for cleaner look.
@@ -528,17 +533,19 @@ function applyDesignPolish(
 
   // 6. Green CTA section: tighten vertical spacing (headline, paragraph, button) so it doesn’t look overly padded.
   //    Add class first so the following rules apply.
-  out = out.replace(
-    /(<div\s+style="[^"]*background:#16a34a[^"]*")>/i,
-    "$1 class=\"email-cta-green\">",
+  const ctaBgEsc = brandColor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const ctaDivRe = new RegExp(
+    `(<div\\s+style="[^"]*background:(?:${ctaBgEsc}|#16a34a)[^"]*")>`,
+    "i",
   );
+  out = out.replace(ctaDivRe, '$1 class="email-cta-green">');
   const greenCtaStyles = `
-    .email-cta-green td { padding-top: 10px !important; padding-bottom: 10px !important; }
+    .email-cta-green td { padding-top: 5px !important; padding-bottom: 5px !important; }
     @media only screen and (max-width:479px) {
       .crop-image img { height:auto !important; width:100% !important; }
       .mj-column-per-50 { width:100% !important; max-width:100% !important; }
       .mj-column-per-33-33 { width:50% !important; max-width:50% !important; }
-      .email-cta-green td { padding-left: 20px !important; padding-right: 20px !important; padding-top: 10px !important; padding-bottom: 10px !important; }
+      .email-cta-green td { padding-left: 20px !important; padding-right: 20px !important; padding-top: 5px !important; padding-bottom: 5px !important; }
     }`;
   if (out.includes("</style>")) {
     out = out.replace(/<\/style>/, greenCtaStyles + "</style>");
@@ -1383,7 +1390,7 @@ export async function handleEmailGenerateMjml(request: {
         const requestDemoRegex = /<p(\s+style="[^"]*")>Request a demo<\/p>/gi;
         htmlInput = htmlInput.replace(requestDemoRegex, () => {
           const href = (ctaUrl !== "#" ? ctaUrl : fallbackUrl).replace(/"/g, "&quot;");
-          return `<a href="${href}" style="display:inline-block;background:#FFFFFF;color:#16a34a;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;line-height:130%;margin:0;text-decoration:none;padding:10px 40px 15px 40px;border-radius:50px;" target="_blank">Request a demo</a>`;
+          return `<a href="${href}" style="display:inline-block;background:#FFFFFF;color:${brandColor};font-family:Arial,sans-serif;font-size:16px;font-weight:bold;line-height:130%;margin:0;text-decoration:none;padding:10px 40px 15px 40px;border-radius:50px;" target="_blank">Request a demo</a>`;
         });
         // Emma: wrap standalone "Discover more." and product title text in <a href="product_url"> (template often uses <div> not <a>)
         let discoverIndex = 0;

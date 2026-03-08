@@ -130,6 +130,9 @@ Runs exist and jobs may be queued, but the Artifacts tab stays empty. Usually th
 3. **Re-run or start a new run:** In Console open the run → **Re-run**, or create a new initiative → Compile plan → Start run. Then open the run → **Artifacts** tab; after jobs complete you should see artifacts and “Open preview” for landing_page.
 4. **If still no artifacts:** See “Runner not claiming jobs” above and [RUNNERS_DEPLOYMENT.md](RUNNERS_DEPLOYMENT.md). For a structured debug (hypotheses + logs), see [DEBUG_ARTIFACTS_HYPOTHESES.md](DEBUG_ARTIFACTS_HYPOTHESES.md) (used with Cursor debug-mode instrumentation).
 
+### Log-based validations (Validations tab)
+When log mirror is enabled (`ENABLE_RENDER_LOG_INGEST=true` or one-off **Refresh logs** on a run), the Control Plane parses runner log messages and inserts **runner_log_check:*** validations (e.g. `runner_log_check:logo_missing`, `runner_log_check:campaign_copy_missing`). These are **visibility only**: they show up in the run’s Validations tab so you see "logo not loading" or "campaign copy not found" without pasting logs. **No automatic fix:** self-heal does not change brand data or templates. Fix the cause manually (e.g. set logo URL in Brand edit, fix campaign prompt) and **Re-run** the run. Optional future: suggested-fix links in the UI or webhook/ticket.
+
 ### Evals failing in CI
 1. Check GitHub Actions → "Evals (Prompt CI)" workflow.
 2. Download eval report artifact for details.

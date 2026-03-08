@@ -86,6 +86,24 @@ async function startNoArtifactsScanLoop(): Promise<void> {
   }, NO_ARTIFACTS_SCAN_INTERVAL_MS);
 }
 
+const LOG_INGEST_INTERVAL_MS = 2 * 60_000; // 2 minutes
+
+function startRenderLogIngestLoop(): void {
+  if (process.env.ENABLE_RENDER_LOG_INGEST !== "true") return;
+  setInterval(async () => {
+    try {
+      const { runScheduledLogIngest } = await import("./render-log-ingest");
+      const result = await runScheduledLogIngest();
+      if (result.linesInserted > 0) {
+        console.log(`[log-ingest] Ingested ${result.linesInserted} lines for ${result.runsTouched} run(s)`);
+      }
+    } catch (err) {
+      console.error("[log-ingest] Error:", err);
+    }
+  }, LOG_INGEST_INTERVAL_MS);
+  console.log("[control-plane] Render log ingest started (every 2 min)");
+}
+
 async function main(): Promise<void> {
   console.log("[control-plane] Starting AI Factory Control Plane...");
 
@@ -97,6 +115,8 @@ async function main(): Promise<void> {
 
   await startNoArtifactsScanLoop();
   console.log("[control-plane] No-artifacts self-heal scan started");
+
+  startRenderLogIngestLoop();
 
   startApi();
   console.log("[control-plane] API started");

@@ -36,6 +36,9 @@ const migrations = [
   },
   { path: "supabase/migrations/20250307100000_image_assignment_and_template_contracts.sql", name: "image_assignment_and_template_contracts" },
   { path: "supabase/migrations/20250308100000_template_image_contracts_constraints.sql", name: "template_image_contracts_constraints" },
+  { path: "supabase/migrations/20250311100000_email_templates_generic_builder_names.sql", name: "email_templates_generic_builder_names" },
+  { path: "supabase/migrations/20250312000000_run_log_entries.sql", name: "run_log_entries" },
+  { path: "supabase/migrations/20250312000001_template_proof.sql", name: "template_proof" },
 ];
 
 async function run() {

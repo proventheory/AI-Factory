@@ -654,6 +654,58 @@ app.get("/v1/runs/:id/status", async (req, res) => {
   }
 });
 
+/** GET /v1/runs/:id/log_entries — list log entries for a run (paginated). Query: limit, offset, source, order=asc|desc. */
+app.get("/v1/runs/:id/log_entries", async (req, res) => {
+  try {
+    const runId = req.params.id;
+    const exists = await pool.query("SELECT id FROM runs WHERE id = $1", [runId]);
+    if (exists.rows.length === 0) return res.status(404).json({ error: "Run not found" });
+    const limit = Math.min(parseInt(String(req.query.limit || DEFAULT_LIMIT), 10) || DEFAULT_LIMIT, MAX_LIMIT);
+    const offset = Math.max(0, parseInt(String(req.query.offset || 0), 10) || 0);
+    const source = typeof req.query.source === "string" && req.query.source.trim() ? req.query.source.trim() : null;
+    const order = String(req.query.order || "desc").toLowerCase() === "asc" ? "ASC" : "DESC";
+    const countResult = await pool.query(
+      "SELECT COUNT(*)::int AS total FROM run_log_entries WHERE run_id = $1" + (source ? " AND source = $2" : ""),
+      source ? [runId, source] : [runId]
+    );
+    const total = (countResult.rows[0] as { total: number }).total;
+    const q = source
+      ? "SELECT id, run_id, job_run_id, source, level, message, logged_at FROM run_log_entries WHERE run_id = $1 AND source = $2 ORDER BY logged_at " + order + " LIMIT $3 OFFSET $4"
+      : "SELECT id, run_id, job_run_id, source, level, message, logged_at FROM run_log_entries WHERE run_id = $1 ORDER BY logged_at " + order + " LIMIT $2 OFFSET $3";
+    const params = source ? [runId, source, limit, offset] : [runId, limit, offset];
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit, offset, total });
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err.code === "42P01" || (typeof err.message === "string" && err.message.includes("run_log_entries"))) {
+      return res.status(503).json({
+        error: "run_log_entries table not present. Run migration 20250312000000_run_log_entries.sql to enable log mirror.",
+      });
+    }
+    res.status(500).json({ error: String(err.message ?? e) });
+  }
+});
+
+/** POST /v1/runs/:id/ingest_logs — trigger one-off log ingest for this run's time window (for Logs tab). */
+app.post("/v1/runs/:id/ingest_logs", async (req, res) => {
+  try {
+    const runId = req.params.id;
+    const runRow = await pool.query("SELECT id, created_at, updated_at FROM runs WHERE id = $1", [runId]);
+    if (runRow.rows.length === 0) return res.status(404).json({ error: "Run not found" });
+    const { ingestRunLogsOneOff } = await import("./render-log-ingest");
+    const result = await ingestRunLogsOneOff(runId, runRow.rows[0] as { created_at: Date; updated_at: Date });
+    res.status(200).json({ ok: true, ingested: result.ingested, message: result.message });
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err.code === "42P01" || (typeof err.message === "string" && err.message.includes("run_log_entries"))) {
+      return res.status(503).json({
+        error: "run_log_entries table not present. Run migration 20250312000000_run_log_entries.sql to enable log mirror.",
+      });
+    }
+    res.status(500).json({ error: String(err.message ?? e) });
+  }
+});
+
 /** POST /v1/runs/:id/image_assignment — persist image assignment from runner (email_generate_mjml). Body: ImageAssignment JSON. */
 app.post("/v1/runs/:id/image_assignment", async (req, res) => {
   try {
@@ -1516,6 +1568,102 @@ app.get("/v1/validations", async (req, res) => {
     res.json({ items: r.rows, limit, offset });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/template_proof/start — start a template proof batch (Sticky Green + all templates). Body: brand_profile_id, duration_minutes, optional template_ids. Returns 202 with batch_id. */
+app.post("/v1/template_proof/start", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as { brand_profile_id?: string; duration_minutes?: number; template_ids?: string[] };
+    const brandProfileId = body?.brand_profile_id;
+    const durationMinutes = Math.min(Math.max(Number(body?.duration_minutes) || 30, 1), 120);
+    if (!brandProfileId) return res.status(400).json({ error: "brand_profile_id is required" });
+    const r = await pool.query(
+      `INSERT INTO template_proof_batches (brand_profile_id, status, end_at) VALUES ($1, 'running', now() + ($2 || ' minutes')::interval) RETURNING id, status, started_at, end_at`,
+      [brandProfileId, durationMinutes]
+    );
+    const batch = r.rows[0] as { id: string; status: string; started_at: string; end_at: string };
+    setImmediate(async () => {
+      try {
+        const { runProofLoop } = await import("./template-proof-job");
+        await runProofLoop({
+          batchId: batch.id,
+          brandProfileId,
+          durationMinutes,
+          templateIds: body?.template_ids,
+        });
+      } catch (e) {
+        console.error("[template-proof] Loop error:", e);
+        await pool.query(
+          "UPDATE template_proof_batches SET status = 'failed', completed_at = now() WHERE id = $1",
+          [batch.id]
+        );
+      }
+    });
+    res.status(202).json({ batch_id: batch.id, status: batch.status, started_at: batch.started_at, end_at: batch.end_at });
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err.code === "42P01" || (typeof err.message === "string" && err.message.includes("template_proof"))) {
+      return res.status(503).json({ error: "template_proof_batches table not present. Run migration 20250312000001_template_proof.sql." });
+    }
+    res.status(500).json({ error: String(err.message ?? e) });
+  }
+});
+
+/** GET /v1/template_proof — list proof runs (latest per template or by batch_id). Query: batch_id, template_id, limit, latest_per_template=1. */
+app.get("/v1/template_proof", async (req, res) => {
+  try {
+    const batchId = req.query.batch_id as string | undefined;
+    const templateId = req.query.template_id as string | undefined;
+    const latestPerTemplate = req.query.latest_per_template === "1" || req.query.latest_per_template === "true";
+    const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+    if (batchId) {
+      const r = await pool.query(
+        "SELECT * FROM template_proof_runs WHERE batch_id = $1 ORDER BY created_at",
+        [batchId]
+      );
+      return res.json({ items: r.rows, batch_id: batchId });
+    }
+    const r = latestPerTemplate
+      ? await pool.query(
+          "SELECT DISTINCT ON (template_id) * FROM template_proof_runs ORDER BY template_id, created_at DESC"
+        )
+      : templateId
+        ? await pool.query("SELECT * FROM template_proof_runs WHERE template_id = $1 ORDER BY created_at DESC LIMIT $2", [templateId, limit])
+        : await pool.query("SELECT * FROM template_proof_runs ORDER BY created_at DESC LIMIT $1", [limit]);
+    res.json({ items: r.rows });
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err.code === "42P01" || (typeof err.message === "string" && err.message.includes("template_proof"))) {
+      return res.status(503).json({ error: "template_proof_runs table not present. Run migration 20250312000001_template_proof.sql." });
+    }
+    res.status(500).json({ error: String(err.message ?? e) });
+  }
+});
+
+/** GET /v1/template_proof/:batchId — batch detail and summary. */
+app.get("/v1/template_proof/:batchId", async (req, res) => {
+  try {
+    const batchId = req.params.batchId;
+    const batchRow = await pool.query("SELECT * FROM template_proof_batches WHERE id = $1", [batchId]);
+    if (batchRow.rows.length === 0) return res.status(404).json({ error: "Batch not found" });
+    const runs = await pool.query("SELECT * FROM template_proof_runs WHERE batch_id = $1 ORDER BY created_at", [batchId]);
+    const items = runs.rows as { status: string; artifact_count: number }[];
+    const passed = items.filter((i) => i.status === "succeeded").length;
+    const failed = items.filter((i) => i.status === "failed" || i.status === "timed_out").length;
+    res.json({
+      batch: batchRow.rows[0],
+      summary: { total_templates: items.length, passed, failed, remaining: items.length - passed - failed },
+      items: runs.rows,
+    });
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err.code === "42P01" || (typeof err.message === "string" && err.message.includes("template_proof"))) {
+      return res.status(503).json({ error: "template_proof tables not present. Run migration 20250312000001_template_proof.sql." });
+    }
+    res.status(500).json({ error: String(err.message ?? e) });
   }
 });
 
