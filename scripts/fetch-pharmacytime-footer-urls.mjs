@@ -15,19 +15,19 @@
 
 const BASE_URL = (process.argv[2] ?? "https://pharmac7dev.wpenginepowered.com").replace(/\/$/, "");
 
-/** Slug map for Pharmacy Time footer: placeholder key -> path (no leading slash). */
+/** Slug map for Pharmacy Time footer: placeholder key -> path (no leading slash). All POPULAR are WooCommerce product-category. */
 const PHARMACY_TIME_SLUGS = {
-  // POPULAR
-  popularWeightManagementUrl: "weight-management",
-  popularHormoneReplacementUrl: "hormone-replacement",
-  popularIvTherapyUrl: "iv-therapy-supplements",
+  // POPULAR (WooCommerce product categories)
+  popularWeightManagementUrl: "product-category/weight-management",
+  popularHormoneReplacementUrl: "product-category/hormone-replacement",
+  popularIvTherapyUrl: "product-category/iv-therapy-supplements",
   popularSexualWellnessUrl: "product-category/sexual-wellness",
-  popularThyroidUrl: "thyroid",
-  popularGlp1Url: "glp-1-treatments",
-  popularOzempicUrl: "ozempic",
-  popularWegovyUrl: "wegovy",
-  popularSermorelinUrl: "sermorelin",
-  popularNadUrl: "nad-plus",
+  popularThyroidUrl: "product-category/thyroid",
+  popularGlp1Url: "product-category/glp-1-treatments",
+  popularOzempicUrl: "product-category/ozempic",
+  popularWegovyUrl: "product-category/wegovy",
+  popularSermorelinUrl: "product-category/sermorelin",
+  popularNadUrl: "product-category/nad-plus",
   // COMPANY
   howItWorksUrl: "how-it-works",
   faqUrl: "faq",

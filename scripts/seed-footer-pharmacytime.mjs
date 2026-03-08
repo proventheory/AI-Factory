@@ -139,7 +139,7 @@ const FOOTER_CSS = `<style>
 .footer-site-title { font-size: clamp(1.25rem, 2vw, 1.5rem); font-weight: 600; margin: 0; color: #fff; line-height: 1.2; }
 .footer-site-title a { color: inherit; text-decoration: none; }
 .footer-site-title .logo-pharmacy { color: #fff; }
-.footer-site-title .logo-time { color: #a78bfa; font-weight: 300; }
+.footer-site-title .logo-time { color: #a78bfa; font-weight: 400; text-decoration: none; }
 .footer-site-title img { height: 1.5em; max-height: 2rem; width: auto; vertical-align: middle; }
 .footer-tagline { font-size: var(--footer-font-size); color: rgba(255, 255, 255, 0.9); margin: 0; line-height: 1.4; }
 .footer-email-signup { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; min-width: 0; }
@@ -214,12 +214,10 @@ const FOOTER_CSS = `<style>
 .footer-copyright p { font-size: 0.875rem; color: rgba(255, 255, 255, 0.6); margin: 0; }
 .screen-reader-text { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 @media (max-width: 1024px) {
-	.footer-main { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; }
-	.footer-column--popular { grid-column: 1 / -1; order: -1; }
+	.footer-main { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 2rem; }
 }
 @media (max-width: 768px) {
 	.footer-main { grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 1.5rem; padding-bottom: 1.5rem; }
-	.footer-column--popular { grid-column: 1; order: 0; }
 	.footer-bottom-content { flex-direction: column; align-items: flex-start; gap: 1rem; }
 	.footer-social { order: 1; }
 	.footer-badges { order: 2; flex-direction: column; align-items: flex-start; width: 100%; }
