@@ -10,7 +10,7 @@
     "dev:control-plane": "npx tsx control-plane/src/index.ts",
     "start:runner": "node dist/runners/src/index.js",
     "dev:runner": "npx tsx runners/src/index.ts",
-    "db:migrate": "node scripts/run-migrate.mjs",
+    "db:migrate": "node --env-file=.env scripts/run-migrate.mjs",
     "db:migrate:new": "node scripts/run-migrate-supabase-only.mjs",
     "lint": "tsc --noEmit",
     "test": "npx tsx --test runners/tests/*.test.ts scripts/*.test.ts",
@@ -27,7 +27,9 @@
     "self-heal:openhands": "npx tsx scripts/self-heal.ts --agent openhands",
     "self-heal:swe": "npx tsx scripts/self-heal.ts --agent swe-agent",
     "preview-landing": "npx tsx scripts/preview-landing.ts",
-    "seed:brand-sticky-green": "node scripts/seed-brand-sticky-green.mjs"
+    "seed:brand-sticky-green": "node scripts/seed-brand-sticky-green.mjs",
+    "seed:email-component-library": "node scripts/seed-email-component-library.mjs",
+    "seed:sticky-green-composed": "node scripts/seed-sticky-green-composed-template.mjs"
   },
   "dependencies": {
     "@sentry/node": "^8.49.0",

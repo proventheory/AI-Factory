@@ -23,7 +23,7 @@ const client = new pg.Client({ connectionString: url });
 const migrations = [
   { path: "schemas/001_core_schema.sql", name: "001_core_schema", skipIfErrorCode: "42710", skipMessage: "objects already exist" },
   { path: "schemas/002_state_machines_and_constraints.sql", name: "002_state_machines_and_constraints", skipIfErrorCode: "42710", skipMessage: "objects already exist" },
-  { path: "supabase/migrations/20250303000004_email_marketing_factory.sql", name: "email_campaign_metadata" },
+  { path: "supabase/migrations/20250303000004_email_marketing_factory.sql", name: "email_campaign_metadata", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
   { path: "supabase/migrations/20250303100000_webhook_outbox.sql", name: "webhook_outbox" },
   { path: "supabase/migrations/20250303100002_console_required_tables.sql", name: "console_required_tables" },
   { path: "supabase/migrations/20250303100003_brand_embeddings.sql", name: "brand_embeddings" },
@@ -39,6 +39,8 @@ const migrations = [
   { path: "supabase/migrations/20250311100000_email_templates_generic_builder_names.sql", name: "email_templates_generic_builder_names" },
   { path: "supabase/migrations/20250312000000_run_log_entries.sql", name: "run_log_entries" },
   { path: "supabase/migrations/20250312000001_template_proof.sql", name: "template_proof" },
+  { path: "supabase/migrations/20250313000000_email_component_library.sql", name: "email_component_library" },
+  { path: "supabase/migrations/20250313000001_email_templates_component_sequence.sql", name: "email_templates_component_sequence" },
 ];
 
 async function run() {

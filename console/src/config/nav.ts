@@ -50,7 +50,7 @@ export const BRANCH_GROUP_IDS: Record<BranchId, string[]> = {
   "data-config": ["CONFIG"],
   studio: ["BRAND & DESIGN"],
   system: ["MONITORING", "OTHER"],
-  builder: ["BUILDER"],
+  builder: [],
 };
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -93,6 +93,10 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/brands", label: "Brands", branchId: "studio" },
       { href: "/document-templates", label: "Document Templates", branchId: "studio" },
+      { href: "/template-proofing", label: "Template Proofing", branchId: "studio" },
+      { href: "/tokens", label: "Token Registry", branchId: "studio" },
+      { href: "/components", label: "Component Registry", branchId: "studio" },
+      { href: "/brand-themes", label: "Brand Themes", branchId: "studio" },
     ],
   },
   {
@@ -118,13 +122,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/agent-memory", label: "Agent Memory", branchId: "system" },
     ],
   },
-  {
-    title: "BUILDER",
-    items: [
-      { href: "/tokens", label: "Token Registry", branchId: "builder" },
-      { href: "/components", label: "Component Registry", branchId: "builder" },
-    ],
-  },
 ];
 
 export const BRANCHES: BranchDef[] = [
@@ -133,7 +130,6 @@ export const BRANCHES: BranchDef[] = [
   { id: "studio", label: "Studio", icon: "palette" },
   { id: "data-config", label: "Data & config", icon: "database" },
   { id: "system", label: "System", icon: "shield" },
-  { id: "builder", label: "Builder", icon: "layers" },
 ];
 
 /** Breadcrumb segment -> label map (covers all nav routes + common segments). */
@@ -161,6 +157,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "mcp-servers": "MCP Servers",
   brands: "Brands",
   "document-templates": "Document Templates",
+  "template-proofing": "Template Proofing",
   analytics: "Analytics",
   incidents: "Incidents",
   audit: "Audit",
@@ -179,6 +176,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "agent-memory": "Agent Memory",
   tokens: "Token Registry",
   components: "Component Registry",
+  "brand-themes": "Brand Themes",
 };
 
 export function getAllNavItems(): NavItem[] {

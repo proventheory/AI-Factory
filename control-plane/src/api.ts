@@ -2993,7 +2993,7 @@ function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content
   (row as Record<string, unknown>).layout_style = `${typeLabel} (email template)`;
 }
 
-/** GET /v1/email_templates/:id — includes image_slots, product_slots, layout_style for wizard validation. */
+/** GET /v1/email_templates/:id — includes image_slots, product_slots, layout_style for wizard validation. When component_sequence is set, mjml is assembled from email_component_library fragments. */
 app.get("/v1/email_templates/:id", async (req, res) => {
   try {
     const id = req.params.id;
@@ -3020,6 +3020,20 @@ app.get("/v1/email_templates/:id", async (req, res) => {
       if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
       row = r.rows[0] as Record<string, unknown>;
       enrichTemplateRow(row, null);
+    }
+    const seq = row.component_sequence;
+    if (Array.isArray(seq) && seq.length > 0 && seq.every((x): x is string => typeof x === "string")) {
+      const ids = seq.filter((s) => isValidUuid(s));
+      if (ids.length > 0) {
+        const fragRes = await pool.query(
+          "SELECT mjml_fragment FROM email_component_library WHERE id = ANY($1::uuid[]) ORDER BY array_position($1::uuid[], id)",
+          [ids]
+        );
+        const fragments = (fragRes.rows as { mjml_fragment: string }[]).map((r) => r.mjml_fragment ?? "").filter(Boolean);
+        if (fragments.length > 0) {
+          row.mjml = `<mjml>\n<mj-body>\n${fragments.join("\n")}\n</mj-body>\n</mjml>`;
+        }
+      }
     }
     res.json(row);
   } catch (e) {
@@ -3103,10 +3117,11 @@ app.post("/v1/email_templates", async (req, res) => {
       sections_json?: unknown;
       img_count?: number;
       brand_profile_id?: string | null;
+      component_sequence?: string[] | null;
     };
     const r = await pool.query(
-      `INSERT INTO email_templates (type, name, image_url, mjml, template_json, sections_json, img_count, brand_profile_id)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8) RETURNING *`,
+      `INSERT INTO email_templates (type, name, image_url, mjml, template_json, sections_json, img_count, brand_profile_id, component_sequence)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9::jsonb) RETURNING *`,
       [
         body.type ?? "newsletter",
         body.name ?? "Untitled",
@@ -3116,6 +3131,7 @@ app.post("/v1/email_templates", async (req, res) => {
         body.sections_json ?? null,
         body.img_count ?? 0,
         body.brand_profile_id ?? null,
+        body.component_sequence != null ? JSON.stringify(body.component_sequence) : null,
       ]
     );
     res.status(201).json(r.rows[0]);
@@ -3132,13 +3148,13 @@ app.patch("/v1/email_templates/:id", async (req, res) => {
     const id = req.params.id;
     const body = req.body as Record<string, unknown>;
     const lintOnSave = body.lint_on_save === true;
-    const allowed = ["type", "name", "image_url", "mjml", "template_json", "sections_json", "img_count", "brand_profile_id"];
+    const allowed = ["type", "name", "image_url", "mjml", "template_json", "sections_json", "img_count", "brand_profile_id", "component_sequence"];
     const sets: string[] = [];
     const params: unknown[] = [];
     let i = 1;
     for (const field of allowed) {
       if (body[field] !== undefined) {
-        if (field === "template_json" || field === "sections_json") {
+        if (field === "template_json" || field === "sections_json" || field === "component_sequence") {
           sets.push(`${field} = $${i++}::jsonb`);
         } else {
           sets.push(`${field} = $${i++}`);
@@ -3194,6 +3210,153 @@ app.delete("/v1/email_templates/:id", async (req, res) => {
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const id = req.params.id;
     const r = await pool.query("DELETE FROM email_templates WHERE id = $1 RETURNING id", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.status(200).json({ deleted: true, id });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+// ---------- Email component library (reusable MJML fragments for composing templates) ----------
+
+/** GET /v1/email_component_library/assembled?ids=uuid1,uuid2,... — wrap fragments in mjml/mj-body and return full MJML (for preview). */
+app.get("/v1/email_component_library/assembled", async (req, res) => {
+  try {
+    const idsParam = (req.query.ids as string) ?? "";
+    const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean);
+    if (ids.length === 0) return res.status(400).json({ error: "ids query required (comma-separated UUIDs)" });
+    for (const id of ids) {
+      if (!isValidUuid(id)) return res.status(400).json({ error: `Invalid UUID: ${id}` });
+    }
+    const r = await pool.query(
+      `SELECT id, mjml_fragment, position FROM email_component_library WHERE id = ANY($1::uuid[]) ORDER BY array_position($1::uuid[], id)`,
+      [ids]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "No components found" });
+    const fragments = (r.rows as { mjml_fragment: string }[]).map((row) => row.mjml_fragment ?? "").filter(Boolean);
+    const body = fragments.join("\n");
+    const mjml = `<mjml>\n<mj-body>\n${body}\n</mj-body>\n</mjml>`;
+    if (req.query.format === "html") {
+      const { html } = mjml2html(mjml, { validationLevel: "skip" });
+      res.type("text/html").send(html);
+      return;
+    }
+    res.type("application/json").json({ mjml });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/email_component_library — list all, ordered by position. */
+app.get("/v1/email_component_library", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+    const offset = Number(req.query.offset) || 0;
+    const r = await pool.query(
+      "SELECT * FROM email_component_library ORDER BY position ASC, created_at ASC LIMIT $1 OFFSET $2",
+      [limit, offset]
+    );
+    const count = await pool.query("SELECT count(*)::int AS total FROM email_component_library");
+    const total = (count.rows[0] as { total: number })?.total ?? 0;
+    res.json({ items: r.rows, total, limit, offset });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/email_component_library/:id */
+app.get("/v1/email_component_library/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
+    const r = await pool.query("SELECT * FROM email_component_library WHERE id = $1", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/email_component_library */
+app.post("/v1/email_component_library", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as {
+      component_type?: string;
+      name?: string;
+      description?: string;
+      mjml_fragment?: string;
+      placeholder_docs?: unknown;
+      position?: number;
+    };
+    if (!body.component_type?.trim() || !body.name?.trim() || body.mjml_fragment == null)
+      return res.status(400).json({ error: "component_type, name, and mjml_fragment required" });
+    const r = await pool.query(
+      `INSERT INTO email_component_library (component_type, name, description, mjml_fragment, placeholder_docs, position, updated_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, now()) RETURNING *`,
+      [
+        body.component_type.trim(),
+        body.name.trim(),
+        body.description?.trim() ?? null,
+        body.mjml_fragment,
+        body.placeholder_docs != null ? JSON.stringify(body.placeholder_docs) : "[]",
+        typeof body.position === "number" ? body.position : 0,
+      ]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** PATCH /v1/email_component_library/:id */
+app.patch("/v1/email_component_library/:id", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const id = req.params.id;
+    if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
+    const body = req.body as Record<string, unknown>;
+    const allowed = ["component_type", "name", "description", "mjml_fragment", "placeholder_docs", "position"];
+    const sets: string[] = ["updated_at = now()"];
+    const params: unknown[] = [];
+    let i = 1;
+    for (const field of allowed) {
+      if (body[field] !== undefined) {
+        if (field === "placeholder_docs") {
+          sets.push(`${field} = $${i++}::jsonb`);
+          params.push(JSON.stringify(body[field]));
+        } else if (field === "position" && typeof body[field] === "number") {
+          sets.push(`${field} = $${i++}`);
+          params.push(body[field]);
+        } else if (typeof body[field] === "string") {
+          sets.push(`${field} = $${i++}`);
+          params.push(body[field]);
+        }
+      }
+    }
+    if (params.length === 0) return res.status(400).json({ error: "No updatable fields" });
+    params.push(id);
+    const r = await pool.query(
+      `UPDATE email_component_library SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
+      params
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** DELETE /v1/email_component_library/:id */
+app.delete("/v1/email_component_library/:id", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const id = req.params.id;
+    if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
+    const r = await pool.query("DELETE FROM email_component_library WHERE id = $1 RETURNING id", [id]);
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
     res.status(200).json({ deleted: true, id });
   } catch (e) {
