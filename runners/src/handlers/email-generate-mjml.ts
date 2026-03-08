@@ -961,7 +961,6 @@ export async function handleEmailGenerateMjml(request: {
     console.log("[MJML] no campaign images provided; hero will be logo or blank. Save selected assets in campaign metadata (images) for hero/content.", { run_id: runId });
   }
   console.log("[MJML] image_assignment", { run_id: runId, sourceSummary: imageAssignment.sourceSummary, campaignOnlyCount: campaignImages.length, heroFirst: !!heroUrl, campaignImagesCount: campaignImagesRaw.length, heroUrl: heroUrl?.slice(-60) ?? "(none)", productImageCount: productImageUrls.length });
-  console.log("[MJML] font_resolution", { run_id: runId, fontFamily, hasFonts: !!fonts, hasTypoObj: !!typoObj, headingFont: fonts?.heading, bodyFont: (typoObj?.fonts as Record<string, string> | undefined)?.body });
 
   const typo = mergedTokens && typeof mergedTokens === "object" ? (mergedTokens as Record<string, unknown>).typography : undefined;
   const typoObj = typo && typeof typo === "object" ? (typo as Record<string, unknown>) : undefined;
@@ -971,6 +970,7 @@ export async function handleEmailGenerateMjml(request: {
     (fonts?.heading || typoObj?.font_headings || fontFamilyObj?.sans || fontFamilyObj?.body) && typeof (fonts?.heading ?? typoObj?.font_headings ?? fontFamilyObj?.sans ?? fontFamilyObj?.body) === "string"
       ? String(fonts?.heading ?? typoObj?.font_headings ?? fontFamilyObj?.sans ?? fontFamilyObj?.body ?? "system-ui, sans-serif")
       : "system-ui, sans-serif";
+  console.log("[MJML] font_resolution", { run_id: runId, fontFamily: fontFamily.slice(0, 40), hasFonts: !!fonts, hasTypoObj: !!typoObj, headingFont: fonts?.heading, bodyFont: (typoObj?.fonts as Record<string, string> | undefined)?.body });
 
   // Use preselected MJML template with brand tokens whenever we have template + fetch succeeded (products optional).
   if (templateMjml) {
