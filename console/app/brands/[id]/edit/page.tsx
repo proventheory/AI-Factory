@@ -22,8 +22,10 @@ import {
   type SocialLink,
   type ContactItem,
   type DesignTokensExtended,
-  type GradientEntry,
 } from "../../token-helpers";
+
+/** Linear gradient for container backgrounds (matches token-helpers.GradientEntry). */
+type GradientEntry = { name: string; type: "linear"; stops: string[] };
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { copyCampaignImageToCdn } from "@/lib/api";
 
