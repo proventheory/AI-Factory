@@ -2803,6 +2803,10 @@ function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content
   } else if (id === "281f9f46-aca7-43ed-bb5f-85114234f210") {
     imageSlots = 6;
     productSlots = 3;
+  } else if (typeLabel === "newsletter" && /^newsletter\s*1$/i.test(name)) {
+    // Newsletter 1 (e.g. United Sodas / 12 reasons): 2 images, 0 products
+    imageSlots = 2;
+    productSlots = 0;
   } else {
     imageSlots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
     productSlots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
