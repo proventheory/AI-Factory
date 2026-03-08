@@ -16,14 +16,32 @@ import {
   useBrandEmbeddings,
   useBrandAssets,
 } from "@/hooks/use-api";
+import {
+  getBrandPalette,
+  getBrandTypography,
+  getBrandCompleteness,
+  getResolvedTokenEntries,
+  type BrandCompleteness,
+  type BrandPalette,
+  type BrandTypography,
+} from "../token-helpers";
 
-function ColorSwatch({ hex, label }: { hex: string; label: string }) {
+function ColorSwatch({ hex, label, large }: { hex: string; label: string; large?: boolean }) {
   return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="h-8 w-8 rounded border" style={{ backgroundColor: hex }} />
+    <div className="flex flex-col items-center gap-1.5">
+      <span
+        className={`rounded border border-border ${large ? "h-12 w-12" : "h-8 w-8"}`}
+        style={{ backgroundColor: hex }}
+      />
       <span className="text-[10px] text-text-secondary">{label}</span>
+      <span className="text-[10px] font-mono text-text-muted">{hex}</span>
     </div>
   );
+}
+
+function CompletenessBadge({ level }: { level: string }) {
+  const variant = level === "Complete" || level === "Ready" ? "success" : level === "Standard" ? "info" : "neutral";
+  return <Badge variant={variant as "success" | "info" | "neutral"}>{level}</Badge>;
 }
 
 export default function BrandDetailPage() {
@@ -69,11 +87,28 @@ export default function BrandDetailPage() {
   const vs = (brand.visual_style ?? {}) as Record<string, any>;
   const cs = (brand.copy_style ?? {}) as Record<string, any>;
   const dt = (brand.design_tokens ?? {}) as Record<string, any>;
-  const brandColors: Record<string, string> = dt?.color?.brand ?? {};
+  const deckTheme = (brand.deck_theme ?? {}) as Record<string, unknown>;
+  const reportTheme = (brand.report_theme ?? {}) as Record<string, unknown>;
   const logoUrl = dt?.logo?.url ?? dt?.logo_url ?? "";
   const contactEmailDisplay: string | undefined =
     identity.contact_email ||
     (Array.isArray(dt?.contact_info) ? dt.contact_info.find((c: { type?: string }) => (c.type ?? "").toLowerCase() === "email")?.value : undefined);
+
+  const palette: BrandPalette = getBrandPalette(dt);
+  const typography: BrandTypography = getBrandTypography(dt);
+  const completeness: BrandCompleteness = getBrandCompleteness(dt, deckTheme, reportTheme);
+  const resolvedPaths = ["color.brand.500", "color.brand.600", "typography.fonts.heading", "typography.fonts.body", "logo.url"];
+  const resolvedEntries = getResolvedTokenEntries(dt, resolvedPaths);
+  const brandColors: Record<string, string> = palette.brand ?? {};
+  const neutralColors: Record<string, string> = palette.neutral ?? {};
+  const sortScale = (a: [string, string], b: [string, string]) => {
+    const na = Number(a[0]);
+    const nb = Number(b[0]);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    if (a[0] === "primary" || a[0] === "primary_dark") return 1;
+    if (b[0] === "primary" || b[0] === "primary_dark") return -1;
+    return String(a[0]).localeCompare(String(b[0]));
+  };
 
   return (
     <PageFrame>
@@ -99,6 +134,38 @@ export default function BrandDetailPage() {
             </div>
           }
         />
+
+        <CardSection title="Brand system">
+          <p className="text-body-small text-text-secondary mb-4">
+            Token registry and downstream readiness. Used across emails, pitch decks, reports, and content.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-4">
+            <div>
+              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Color system</span>
+              <div className="mt-1"><CompletenessBadge level={completeness.color} /></div>
+            </div>
+            <div>
+              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Typography</span>
+              <div className="mt-1"><CompletenessBadge level={completeness.typography} /></div>
+            </div>
+            <div>
+              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Deck readiness</span>
+              <div className="mt-1"><CompletenessBadge level={completeness.deck} /></div>
+            </div>
+            <div>
+              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Report readiness</span>
+              <div className="mt-1"><CompletenessBadge level={completeness.report} /></div>
+            </div>
+            <div>
+              <span className="text-xs font-medium uppercase tracking-wider text-fg-muted">Email readiness</span>
+              <div className="mt-1"><CompletenessBadge level={completeness.email} /></div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-4 text-body-small text-text-muted border-t border-border pt-4">
+            <span>Last updated: {brand.updated_at ? new Date(brand.updated_at).toLocaleDateString() : "—"}</span>
+            <span>Source: manual</span>
+          </div>
+        </CardSection>
 
         {logoUrl && (
           <CardSection title="Logo">
@@ -266,6 +333,161 @@ export default function BrandDetailPage() {
           </div>
         </CardSection>
 
+        <CardSection title="Color palette">
+          <p className="text-body-small text-text-secondary mb-4">
+            Used in emails, pitch decks, reports, and UI. Scale keys (50–900) and legacy primary/secondary.
+          </p>
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Brand</h4>
+              <div className="flex flex-wrap gap-4">
+                {Object.entries(brandColors)
+                  .sort(sortScale)
+                  .map(([shade, hex]) => (
+                    <ColorSwatch key={shade} hex={hex} label={shade} large />
+                  ))}
+                {Object.keys(brandColors).length === 0 && (
+                  <p className="text-body-small text-text-muted">No brand color tokens. Add in Edit.</p>
+                )}
+              </div>
+            </div>
+            {Object.keys(neutralColors).length > 0 && (
+              <div>
+                <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Neutral</h4>
+                <div className="flex flex-wrap gap-4">
+                  {Object.entries(neutralColors)
+                    .sort(sortScale)
+                    .map(([shade, hex]) => (
+                      <ColorSwatch key={shade} hex={hex} label={shade} large />
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardSection>
+
+        <CardSection title="Typography">
+          <p className="text-body-small text-text-secondary mb-4">
+            Type scale and weights used across emails, pitch decks, reports, and content.
+          </p>
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Families</h4>
+              <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3 text-body-small">
+                <div><dt className="text-fg-muted">Heading</dt><dd className="font-medium" style={{ fontFamily: typography.fontHeadings }}>{typography.fontHeadings}</dd></div>
+                <div><dt className="text-fg-muted">Body</dt><dd className="font-medium" style={{ fontFamily: typography.fontBody }}>{typography.fontBody}</dd></div>
+                <div><dt className="text-fg-muted">Mono</dt><dd className="font-medium font-mono">{typography.fontMono}</dd></div>
+              </dl>
+            </div>
+            {Object.keys(typography.heading).length > 0 && (
+              <div>
+                <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Type scale (specimens)</h4>
+                <div className="space-y-2">
+                  {(["h1", "h2", "h3", "h4", "h5", "h6"] as const).filter((h) => typography.heading[h]).map((h) => {
+                    const spec = typography.heading[h];
+                    if (!spec) return null;
+                    return (
+                      <div key={h} className="flex items-baseline gap-3">
+                        <span className="text-fg-muted w-12 shrink-0 text-body-small">{h}</span>
+                        <span style={{ fontSize: spec.size, fontWeight: spec.weight, lineHeight: spec.lineHeight, fontFamily: typography.fontHeadings }}>
+                          {brand.name}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-fg-muted w-12 shrink-0 text-body-small">Body</span>
+                    <span style={{ fontSize: typography.body.default.size, fontWeight: typography.body.default.weight, fontFamily: typography.fontBody }}>
+                      The quick brown fox jumps over the lazy dog.
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-fg-muted w-12 shrink-0 text-body-small">Caption</span>
+                    <span style={{ fontSize: typography.caption.size, fontWeight: typography.caption.weight, fontFamily: typography.fontBody }}>
+                      Caption and metadata text
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div>
+              <h4 className="text-xs font-medium uppercase tracking-wider text-fg-muted mb-2">Weights</h4>
+              <div className="flex flex-wrap gap-4">
+                {Object.entries(typography.fontWeight).map(([name, w]) => (
+                  <span key={name} className="text-body-small" style={{ fontWeight: w }}>
+                    {name} ({w})
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </CardSection>
+
+        <CardSection title="Resolved tokens">
+          <p className="text-body-small text-text-secondary mb-4">
+            Where each value comes from: explicit on this brand, or default. Use for debugging.
+          </p>
+          <div className="rounded border border-border overflow-hidden">
+            <table className="w-full text-body-small">
+              <thead className="bg-fg-muted/10">
+                <tr>
+                  <th className="text-left p-2 font-medium text-fg-muted">Path</th>
+                  <th className="text-left p-2 font-medium text-fg-muted">Source</th>
+                  <th className="text-left p-2 font-medium text-fg-muted">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resolvedEntries.map((e) => (
+                  <tr key={e.path} className="border-t border-border">
+                    <td className="p-2 font-mono text-xs">{e.path}</td>
+                    <td className="p-2"><CompletenessBadge level={e.source} /></td>
+                    <td className="p-2 truncate max-w-[200px]">
+                      {typeof e.value === "string" && e.value.startsWith("#") ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="inline-block h-4 w-4 rounded border" style={{ backgroundColor: e.value }} />
+                          {e.value}
+                        </span>
+                      ) : (
+                        String(e.value ?? "—")
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardSection>
+
+        <CardSection title="Where these tokens are used">
+          <p className="text-body-small text-text-secondary mb-4">
+            This brand system drives output across the factory. v1: static links; later: template counts and last used.
+          </p>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            <li>
+              <a href="/document-templates" className="text-body font-medium text-brand-600 hover:underline">
+                Email templates
+              </a>
+              <span className="text-body-small text-fg-muted ml-1">— templates, campaigns</span>
+            </li>
+            <li>
+              <a href="/document-templates" className="text-body font-medium text-brand-600 hover:underline">
+                Pitch decks
+              </a>
+              <span className="text-body-small text-fg-muted ml-1">— slide master, charts</span>
+            </li>
+            <li>
+              <a href="/document-templates" className="text-body font-medium text-brand-600 hover:underline">
+                Report decks
+              </a>
+              <span className="text-body-small text-fg-muted ml-1">— reports, PDFs</span>
+            </li>
+            <li>
+              <span className="text-body font-medium text-fg">Graphics & content</span>
+              <span className="text-body-small text-fg-muted ml-1">— image generation, social</span>
+            </li>
+          </ul>
+        </CardSection>
+
         <CardSection title="Tone & Voice">
           <div className="flex flex-wrap gap-6 text-sm">
             {tone.voice_descriptors?.length > 0 && (
@@ -361,19 +583,6 @@ export default function BrandDetailPage() {
                 <span className="text-text-secondary">CTA Style</span>
                 <p className="font-medium">{cs.cta_style}</p>
               </div>
-            )}
-          </div>
-        </CardSection>
-
-        <CardSection title="Design Tokens — Color Palette">
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(brandColors)
-              .sort(([a], [b]) => Number(a) - Number(b))
-              .map(([shade, hex]) => (
-                <ColorSwatch key={shade} hex={hex} label={shade} />
-              ))}
-            {Object.keys(brandColors).length === 0 && (
-              <p className="text-sm text-text-secondary">No color tokens defined.</p>
             )}
           </div>
         </CardSection>

@@ -1,0 +1,71 @@
+{
+  "name": "Example Brand",
+  "design_tokens": {
+    "color": {
+      "brand": {
+        "50": "#eff6ff",
+        "100": "#dbeafe",
+        "200": "#bfdbfe",
+        "300": "#93c5fd",
+        "400": "#60a5fa",
+        "500": "#3b82f6",
+        "600": "#2563eb",
+        "700": "#1d4ed8",
+        "800": "#1e40af",
+        "900": "#1e3a8a",
+        "primary": "#3b82f6",
+        "primary_dark": "#2563eb"
+      },
+      "neutral": {
+        "50": "#f8fafc",
+        "500": "#64748b",
+        "900": "#0f172a"
+      }
+    },
+    "colors": {
+      "brand": {
+        "500": "#3b82f6",
+        "600": "#2563eb",
+        "primary": "#3b82f6",
+        "primary_dark": "#2563eb"
+      }
+    },
+    "typography": {
+      "fonts": {
+        "heading": "Inter",
+        "body": "Inter",
+        "mono": "ui-monospace, monospace"
+      },
+      "font_headings": "Inter",
+      "font_body": "Inter",
+      "heading": {
+        "h1": { "size": "2.25rem", "weight": 700, "lineHeight": 1.2 },
+        "h2": { "size": "1.875rem", "weight": 700, "lineHeight": 1.25 },
+        "h3": { "size": "1.5rem", "weight": 600, "lineHeight": 1.3 },
+        "h4": { "size": "1.25rem", "weight": 600, "lineHeight": 1.35 },
+        "h5": { "size": "1.125rem", "weight": 600, "lineHeight": 1.4 },
+        "h6": { "size": "1rem", "weight": 600, "lineHeight": 1.5 }
+      },
+      "body": { "default": { "size": "1rem", "weight": 400, "lineHeight": 1.5 }, "small": { "size": "0.875rem", "weight": 400, "lineHeight": 1.5 } },
+      "caption": { "size": "0.875rem", "weight": 400, "lineHeight": 1.4 },
+      "fontWeight": { "normal": 400, "medium": 500, "semibold": 600, "bold": 700 }
+    },
+    "logo": { "url": "https://example.com/logo.png" },
+    "logo_url": "https://example.com/logo.png",
+    "cta_text": "Learn more",
+    "cta_link": "https://example.com",
+    "contact_info": [],
+    "sitemap_url": "",
+    "sitemap_type": "ecommerce",
+    "social_media": [],
+    "asset_urls": []
+  },
+  "deck_theme": {
+    "chart_color_sequence": ["#3b82f6", "#2563eb", "#1d4ed8", "#1e40af"],
+    "font_config": { "heading": "Inter", "body": "Inter" }
+  },
+  "report_theme": {
+    "header_style": {},
+    "section_spacing": "1.5rem"
+  }
+}
