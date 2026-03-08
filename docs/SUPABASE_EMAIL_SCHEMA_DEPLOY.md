@@ -1,6 +1,6 @@
 # Deploying Supabase / Postgres email campaign schema
 
-Email campaign flow and Cultura-style templates need:
+Email design flow (Console: **Email Design Generator**) uses initiatives with **`intent_type = 'email_design_generator'`** and the following schema. Cultura-style templates need:
 
 - `email_templates` (with `template_json`, `sections_json`, optional `brand_profile_id`)
 - `initiatives.template_id`

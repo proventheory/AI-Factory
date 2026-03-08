@@ -329,7 +329,7 @@ CREATE INDEX idx_artifacts_class     ON artifacts (artifact_class);
 -- ============================================================
 -- 5.9b email_campaign_metadata (Email Marketing Factory)
 -- ============================================================
--- One row per initiative with intent_type = 'email_campaign'.
+-- One row per initiative with intent_type = 'email_design_generator'.
 
 CREATE TABLE email_campaign_metadata (
   initiative_id        uuid PRIMARY KEY REFERENCES initiatives(id) ON DELETE CASCADE,

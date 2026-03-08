@@ -61,7 +61,7 @@ const nextConfig = {
 
 ### 2.6 Schema alignment (AI Factory)
 
-- Campaigns can map to **initiatives** with **`intent_type = 'email_campaign'`**.
+- Campaigns can map to **initiatives** with **`intent_type = 'email_design_generator'`** (Console: **Email Design Generator**).
 - Email templates can be stored as **artifacts** with **`artifact_class = 'email_template'`**.
 - Campaign-level fields: **`email_campaign_metadata`** table (see `supabase/migrations/20250303000004_email_marketing_factory.sql`). Optionally wire the Email Marketing Factory to read/write this table when using the shared DB.
 
@@ -73,7 +73,7 @@ const nextConfig = {
 AI Factory (repo root)
 ├── control-plane/
 ├── runners/
-├── console/                         # ProfessorX; nav includes "Email Marketing" → /email-marketing
+├── console/                         # ProfessorX; nav includes "Email Design Generator" → /email-marketing
 ├── email-marketing-factory/          # Full copied app (after clone); apply framework changes above
 │   ├── src/
 │   ├── next.config.mjs              # basePath: '/email-marketing', port 3002
@@ -103,7 +103,7 @@ Clicking **Email Marketing** in the Console opens `/email-marketing` on the same
 
 | Email Marketing Factory | AI Factory |
 |-------------------------|------------|
-| Campaign / flow | **Initiative** (`intent_type = 'email_campaign'`) |
+| Campaign / flow | **Initiative** (`intent_type = 'email_design_generator'`) |
 | Email template | **Artifact** (`artifact_class = 'email_template'`) |
 | Send / dispatch | **Run** or job_run |
 | Approvals | **Approvals** table + Console Approvals page |
@@ -111,7 +111,20 @@ Clicking **Email Marketing** in the Console opens `/email-marketing` on the same
 
 ---
 
-## 6. References
+## 6. API (Control Plane)
+
+The Control Plane exposes **`/v1/email_campaigns`** for initiatives with **`intent_type = 'email_design_generator'`** (Console label: **Email Design Generator**). The table name remains `email_campaign_metadata`; the intent type value is `email_design_generator`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/email_campaigns` | List initiatives where `intent_type = 'email_design_generator'` (optional `campaign_kind=landing_page`) |
+| GET | `/v1/email_campaigns/:id` | Single campaign (initiative + metadata) |
+| POST | `/v1/email_campaigns` | Create initiative with `intent_type = 'email_design_generator'` and a row in `email_campaign_metadata` |
+| PATCH | `/v1/email_campaigns/:id` | Update campaign metadata |
+
+---
+
+## 7. References
 
 - Source repo: https://github.com/cultura-company/CULTURA-AI  
 - AI Factory stack: `docs/STACK_AND_DECISIONS.md`  

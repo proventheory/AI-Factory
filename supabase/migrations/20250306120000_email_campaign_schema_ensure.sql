@@ -2,9 +2,9 @@
 -- Safe to run on Supabase or Render; idempotent so can re-run.
 -- Required for: POST/GET email_campaigns (template_id, campaign_prompt in metadata), runner template resolution.
 
--- initiatives.template_id: references email_templates.id (or slug) for email_campaign initiatives.
+-- initiatives.template_id: references email_templates.id (or slug) for email_design_generator initiatives.
 ALTER TABLE initiatives ADD COLUMN IF NOT EXISTS template_id text;
-COMMENT ON COLUMN initiatives.template_id IS 'Optional template reference (e.g. email_templates.id for email_campaign).';
+COMMENT ON COLUMN initiatives.template_id IS 'Optional template reference (e.g. email_templates.id for email_design_generator).';
 
 -- email_campaign_metadata.metadata_json: store template_id, campaign_prompt, products when initiative row lacks template_id (e.g. 4-column fallback).
 DO $$
