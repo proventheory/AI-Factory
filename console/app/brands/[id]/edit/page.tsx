@@ -22,6 +22,7 @@ import {
   type SocialLink,
   type ContactItem,
   type DesignTokensExtended,
+  type GradientEntry,
 } from "../../token-helpers";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { copyCampaignImageToCdn } from "@/lib/api";
@@ -91,6 +92,7 @@ export default function EditBrandPage() {
   const [ctaLink, setCtaLink] = useState("");
   const [footerUrls, setFooterUrls] = useState<Record<string, string>>({});
   const [headingHighlightColor, setHeadingHighlightColor] = useState("");
+  const [gradients, setGradients] = useState<GradientEntry[]>([]);
   const [submitError, setSubmitError] = useState("");
   const [brandScale, setBrandScale] = useState<Record<string, string>>({});
   const [headingScale, setHeadingScale] = useState<Record<string, { size: string; weight: number }>>({});
@@ -141,7 +143,10 @@ export default function EditBrandPage() {
     const t = tokens as unknown as Record<string, unknown>;
     setCtaText(typeof t.ctaText === "string" ? t.ctaText : "");
     setFooterUrls(typeof tokens.footerUrls === "object" && tokens.footerUrls !== null ? { ...tokens.footerUrls } : {});
-    setHeadingHighlightColor(typeof (tokens as Record<string, unknown>).headingHighlightColor === "string" ? (tokens as Record<string, unknown>).headingHighlightColor as string : "");
+    const tokensExt = tokens as unknown as { headingHighlightColor?: string; gradients?: unknown[] };
+    setHeadingHighlightColor(typeof tokensExt.headingHighlightColor === "string" ? tokensExt.headingHighlightColor : "");
+    const g = tokensExt.gradients;
+    setGradients(Array.isArray(g) ? g.filter((e): e is GradientEntry => e != null && typeof e === "object" && (e as GradientEntry).type === "linear" && Array.isArray((e as GradientEntry).stops)) : []);
     setCtaLink(typeof t.ctaLink === "string" ? t.ctaLink : "");
 
     const colors = (dt.colors ?? dt.color) as Record<string, Record<string, string>> | undefined;
@@ -283,6 +288,7 @@ export default function EditBrandPage() {
         ctaLink,
         footerUrls: Object.keys(footerUrls).length ? footerUrls : undefined,
         headingHighlightColor: headingHighlightColor.trim() || undefined,
+        gradients: gradients.length > 0 ? gradients : undefined,
       });
       const extended: DesignTokensExtended = {};
       const scaleFiltered = Object.fromEntries(Object.entries(brandScale).filter(([, v]) => v && v.trim()));
@@ -507,8 +513,8 @@ export default function EditBrandPage() {
                 </div>
               </div>
               <div>
-                <label className={labelCls}>Heading highlight (H1/H2)</label>
-                <p className="text-body-small text-text-secondary mb-1">Used to highlight text in headings (e.g. #c2b6f8).</p>
+                <label className={labelCls}>Title highlight color (H1/H2)</label>
+                <p className="text-body-small text-text-secondary mb-1">Design touch: color applied to part of a title (e.g. #c2b6f8). Not for links. When you don’t use color, titles often use bold on a keyword instead since H1/H2 are not bold weight.</p>
                 <div className="flex items-center gap-2">
                   <input
                     type="color"
@@ -522,6 +528,66 @@ export default function EditBrandPage() {
                     placeholder="#c2b6f8"
                   />
                 </div>
+              </div>
+              <div>
+                <h4 className="text-body font-medium text-text-primary mb-2 mt-4">Gradients (container backgrounds)</h4>
+                <p className="text-body-small text-text-secondary mb-3">Linear gradients used for hero/container backgrounds. Exposed as gradient_0, gradient_1, gradientContainer1, gradientContainer2, gradient_&lt;name&gt;.</p>
+                {gradients.map((grad, gi) => (
+                  <div key={gi} className="mb-4 p-4 rounded-lg border border-border bg-card/50">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="rounded border border-border h-8 w-16 shrink-0" style={{ background: grad.stops.length >= 2 ? `linear-gradient(135deg, ${grad.stops.join(", ")})` : "#ccc" }} />
+                      <Input
+                        placeholder="Name (e.g. Linear 2)"
+                        value={grad.name}
+                        onChange={(e) => {
+                          const next = [...gradients];
+                          next[gi] = { ...next[gi], name: e.target.value };
+                          setGradients(next);
+                        }}
+                        className="max-w-[200px]"
+                      />
+                      <span className="text-body-small text-text-secondary">Linear gradient</span>
+                      <Button type="button" variant="secondary" className="shrink-0 ml-auto" onClick={() => setGradients(gradients.filter((_, j) => j !== gi))}>Remove</Button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      {grad.stops.map((stop, si) => (
+                        <div key={si} className="flex items-center gap-1">
+                          <input
+                            type="color"
+                            value={/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(stop) ? stop : "#000000"}
+                            onChange={(e) => {
+                              const next = [...gradients];
+                              const stops = [...next[gi].stops];
+                              stops[si] = e.target.value;
+                              next[gi] = { ...next[gi], stops };
+                              setGradients(next);
+                            }}
+                            className="h-8 w-8 cursor-pointer rounded border border-border"
+                          />
+                          <Input
+                            value={stop}
+                            onChange={(e) => {
+                              const next = [...gradients];
+                              const stops = [...next[gi].stops];
+                              stops[si] = e.target.value;
+                              next[gi] = { ...next[gi], stops };
+                              setGradients(next);
+                            }}
+                            placeholder="#hex"
+                            className="w-24 font-mono text-body-small"
+                          />
+                          {grad.stops.length > 2 && (
+                            <Button type="button" variant="secondary" className="shrink-0 h-8 w-8 p-0" onClick={() => setGradients(gradients.map((g, j) => j !== gi ? g : { ...g, stops: g.stops.filter((_, s) => s !== si) }))}>−</Button>
+                          )}
+                        </div>
+                      ))}
+                      <Button type="button" variant="secondary" size="sm" onClick={() => setGradients(gradients.map((g, j) => j !== gi ? g : { ...g, stops: [...g.stops, "#6b7280"] }))}>Add stop</Button>
+                    </div>
+                  </div>
+                ))}
+                <Button type="button" variant="secondary" onClick={() => setGradients([...gradients, { name: "Linear " + (gradients.length + 1), type: "linear", stops: ["#2F2A3C", "#3B3350"] }])}>
+                  Add gradient
+                </Button>
               </div>
               <div>
                 <label className={labelCls}>Font (Headings)</label>

@@ -177,11 +177,10 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   swe_agent: TEMPLATE_SWE_AGENT,
   marketing: TEMPLATE_MARKETING,
   landing: TEMPLATE_LANDING,
-  email_campaign: TEMPLATE_EMAIL_CAMPAIGN,
   email_design_generator: TEMPLATE_EMAIL_CAMPAIGN,
 };
 
-/** Load initiative; includes template_id when present for email_campaign and other template-driven flows. */
+/** Load initiative; includes template_id when present for email_design_generator and other template-driven flows. */
 export async function loadInitiative(db: DbClient, initiativeId: string): Promise<Initiative | null> {
   const fullSelect = "SELECT id, intent_type, title, risk_level, created_at, template_id FROM initiatives WHERE id = $1";
   const minimalSelect = "SELECT id, intent_type, title, risk_level, created_at FROM initiatives WHERE id = $1";
@@ -230,10 +229,10 @@ export function computePlanHash(initiativeId: string, intentType: string, prdHas
 }
 
 export function decomposeToDAG(initiative: Initiative): { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } {
-  // intent_type "email_design_generator" must map to plan template "email_design_generator" (single email_mjml node).
+  // intent_type "email_design_generator" (legacy "email_campaign" accepted) maps to plan template "email_design_generator" (single email_mjml node).
   // initiative.template_id is the MJML template selection (e.g. UUID), not a plan template key.
   const templateId =
-    initiative.intent_type === "email_design_generator" || initiative.intent_type === "email_campaign"
+    initiative.intent_type === "email_design_generator" || initiative.intent_type === "email_campaign" /* backward compat */
       ? "email_design_generator"
       : (initiative.template_id ?? initiative.intent_type ?? "software");
   const t = TEMPLATES[templateId] ?? TEMPLATE_SOFTWARE;
