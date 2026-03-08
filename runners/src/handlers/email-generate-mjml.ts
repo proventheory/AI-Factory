@@ -38,11 +38,38 @@ const SOCIAL_ICON_BY_NAME: Record<string, string> = {
   facebook: "https://cdn-icons-png.flaticon.com/512/1312/1312139.png",
   twitter: "https://cdn-icons-png.flaticon.com/512/2504/2504947.png",
   x: "https://cdn-icons-png.flaticon.com/512/2504/2504947.png",
-  youtube: "https://cdn-icons-png.flaticon.com/512/2504/2504947.png",
+  youtube: "https://cdn-icons-png.flaticon.com/512/1384/1384060.png",
   tiktok: "https://cdn-icons-png.freepik.com/512/15789/15789316.png",
+  pinterest: "https://cdn-icons-png.flaticon.com/512/145/145808.png",
 };
 
-/** Visible fallback for missing social icon (24x24 white-friendly link icon) so footer icons aren't invisible. */
+/** Detect social platform from a URL (e.g. "https://instagram.com/brand" → "instagram"). */
+function detectPlatformFromUrl(url: string): string | null {
+  if (!url) return null;
+  const lower = url.toLowerCase();
+  if (lower.includes("facebook.com") || lower.includes("fb.com")) return "facebook";
+  if (lower.includes("instagram.com")) return "instagram";
+  if (lower.includes("linkedin.com")) return "linkedin";
+  if (lower.includes("twitter.com") || lower.includes("x.com")) return "x";
+  if (lower.includes("youtube.com") || lower.includes("youtu.be")) return "youtube";
+  if (lower.includes("tiktok.com")) return "tiktok";
+  if (lower.includes("pinterest.com")) return "pinterest";
+  return null;
+}
+
+/** Resolve the icon URL for a social entry: explicit icon → name lookup → URL detection → null (skip). */
+function resolveSocialIcon(entry: { url?: string; icon?: string; name?: string }): string | null {
+  const iconUrl = (entry?.icon ?? "").trim();
+  if (iconUrl && iconUrl !== EMPTY_IMAGE_DATA_URI) return iconUrl;
+  if (entry?.name) {
+    const byName = SOCIAL_ICON_BY_NAME[String(entry.name).toLowerCase()];
+    if (byName) return byName;
+  }
+  const platform = detectPlatformFromUrl((entry?.url ?? "").trim());
+  if (platform) return SOCIAL_ICON_BY_NAME[platform] ?? null;
+  return null;
+}
+
 const SOCIAL_ICON_FALLBACK_URL = "https://cdn-icons-png.flaticon.com/512/2991/2991148.png";
 
 /** Map product letter A–Z to product index 1–11 (wraps). */
@@ -123,7 +150,12 @@ function getBracketPlaceholderValue(
     const linkKey = `social_media_${n}_link`;
     const iconKey = `social_media_${n}_icon`;
     const v = (sectionJson as Record<string, unknown>)[kind === "link" ? linkKey : iconKey];
-    if (kind === "icon") return (v && String(v).trim() && String(v) !== EMPTY_IMAGE_DATA_URI) ? String(v).trim() : SOCIAL_ICON_FALLBACK_URL;
+    if (kind === "icon") {
+      if (v && String(v).trim() && String(v) !== EMPTY_IMAGE_DATA_URI) return String(v).trim();
+      const socialLink = String((sectionJson as Record<string, unknown>)[linkKey] ?? "").trim();
+      const detected = detectPlatformFromUrl(socialLink);
+      return detected ? (SOCIAL_ICON_BY_NAME[detected] ?? EMPTY_IMAGE_DATA_URI) : EMPTY_IMAGE_DATA_URI;
+    }
     return String(v ?? (sectionJson.siteUrl ?? "#"));
   }
   const socialFirstMatch = /^social\s+media\s+(link|icon)$/i.exec(k);
@@ -292,44 +324,52 @@ async function generateEmailCopyViaLlm(
     content: `Brand context: ${brandBrief}. Campaign theme: ${trimmed}.${productLine} Generate email copy that fits this brand and campaign. Return only valid JSON. Remember: hero section gets headline+body; secondary CTA section gets ctaSectionHeadline+ctaSectionBody (never repeat body in the CTA block).`,
   });
 
-  try {
-    const result = await chat({
-      model: "auto/chat",
-      messages,
-      context: {
-        run_id: request.run_id,
-        job_run_id: request.job_run_id,
-        job_type: request.job_type,
-        initiative_id: initiativeId,
-      },
-      brandContext: brandCtx ? { id: brandCtx.id, name: brandCtx.name, systemPrompt: brandPrompt } : undefined,
-      useGateway: request.llm_source !== "openai_direct",
-    });
-
-    if (request.recordLlmCall) {
-      await request.recordLlmCall(
-        "auto/chat",
-        result.model_id ?? "unknown",
-        result.tokens_in,
-        result.tokens_out,
-        result.latency_ms,
-      );
-    }
-
-    let raw = (result.content ?? "").trim();
-    const codeBlock = /```(?:json)?\s*([\s\S]*?)```/.exec(raw);
-    if (codeBlock) raw = codeBlock[1].trim();
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+  const parseCopyResult = (raw: string): GeneratedEmailCopy | null => {
+    let cleaned = raw.trim();
+    const codeBlock = /```(?:json)?\s*([\s\S]*?)```/.exec(cleaned);
+    if (codeBlock) cleaned = codeBlock[1].trim();
+    const parsed = JSON.parse(cleaned) as Record<string, unknown>;
     const headline = typeof parsed.headline === "string" ? parsed.headline.trim() : "";
     const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
     const ctaText = typeof parsed.ctaText === "string" ? parsed.ctaText.trim() : "Learn more";
     const ctaSectionHeadline = typeof parsed.ctaSectionHeadline === "string" ? parsed.ctaSectionHeadline.trim() : undefined;
     const ctaSectionBody = typeof parsed.ctaSectionBody === "string" ? parsed.ctaSectionBody.trim() : undefined;
-    if (headline.length > 0 && body.length > 0) {
-      return { headline, body, ctaText, ctaSectionHeadline, ctaSectionBody };
-    }
+    if (headline.length > 0 && body.length > 0) return { headline, body, ctaText, ctaSectionHeadline, ctaSectionBody };
+    return null;
+  };
+
+  const useGateway = request.llm_source !== "openai_direct";
+  const chatOpts: LLMChatOptions = {
+    model: "auto/chat",
+    messages,
+    context: { run_id: request.run_id, job_run_id: request.job_run_id, job_type: request.job_type, initiative_id: initiativeId },
+    brandContext: brandCtx ? { id: brandCtx.id, name: brandCtx.name, systemPrompt: brandPrompt } : undefined,
+    useGateway,
+  };
+
+  try {
+    const result = await chat(chatOpts);
+    if (request.recordLlmCall) await request.recordLlmCall("auto/chat", result.model_id ?? "unknown", result.tokens_in, result.tokens_out, result.latency_ms);
+    const parsed = parseCopyResult(result.content ?? "");
+    if (parsed) return parsed;
   } catch (_e) {
-    console.log("[MJML] LLM copy generation failed", { run_id: request.run_id, err: String((_e as Error).message).slice(0, 80) });
+    const errMsg = String((_e as Error).message).slice(0, 120);
+    console.log("[MJML] LLM copy via gateway failed, retrying with OpenAI direct", { run_id: request.run_id, err: errMsg });
+  }
+
+  // Retry with OpenAI direct if gateway failed (404, timeout, etc.)
+  if (useGateway) {
+    try {
+      const result = await chat({ ...chatOpts, useGateway: false });
+      if (request.recordLlmCall) await request.recordLlmCall("auto/chat", result.model_id ?? "unknown", result.tokens_in, result.tokens_out, result.latency_ms);
+      const parsed = parseCopyResult(result.content ?? "");
+      if (parsed) {
+        console.log("[MJML] LLM copy via OpenAI direct succeeded (gateway fallback)", { run_id: request.run_id });
+        return parsed;
+      }
+    } catch (_e2) {
+      console.log("[MJML] LLM copy generation failed (both gateway and direct)", { run_id: request.run_id, err: String((_e2 as Error).message).slice(0, 120) });
+    }
   }
   return null;
 }
@@ -827,7 +867,7 @@ export async function handleEmailGenerateMjml(request: {
   if ((campaignImagesRaw ?? []).length === 0) {
     console.log("[MJML] no campaign images provided; hero will be logo or blank. Save selected assets in campaign metadata (images) for hero/content.", { run_id: runId });
   }
-  console.log("[MJML] image_assignment", { run_id: runId, sourceSummary: imageAssignment.sourceSummary, campaignOnlyCount: campaignImages.length, heroFirst: !!heroUrl });
+  console.log("[MJML] image_assignment", { run_id: runId, sourceSummary: imageAssignment.sourceSummary, campaignOnlyCount: campaignImages.length, heroFirst: !!heroUrl, campaignImagesCount: campaignImagesRaw.length, heroUrl: heroUrl?.slice(-60) ?? "(none)", productImageCount: productImageUrls.length });
 
   const typo = mergedTokens && typeof mergedTokens === "object" ? (mergedTokens as Record<string, unknown>).typography : undefined;
   const typoObj = typo && typeof typo === "object" ? (typo as Record<string, unknown>) : undefined;
@@ -905,7 +945,8 @@ export async function handleEmailGenerateMjml(request: {
         : "";
       const emailPart = identity.contact_email?.trim() ? `email: ${identity.contact_email.trim()}` : "";
       const contactInfoForTemplate = [emailPart, otherContactStr].filter(Boolean).join(", ") || "";
-      const socialMediaFromTokens = (Array.isArray(mt?.social_media) ? mt.social_media : []) as Array<{ name?: string; url?: string }>;
+      const socialMediaFromTokens = (Array.isArray(mt?.social_media) ? mt.social_media : []) as Array<{ name?: string; url?: string; icon?: string }>;
+      console.log("[MJML] social_media_from_tokens", { run_id: runId, count: socialMediaFromTokens.length, entries: socialMediaFromTokens.slice(0, 5).map((s) => ({ name: s?.name, url: (s?.url ?? "").slice(0, 50), hasIcon: !!(s?.icon) })) });
       const brandCtaText = (typeof mt?.cta_text === "string" && mt.cta_text.trim() !== "" ? mt.cta_text.trim() : undefined) ?? "Learn more";
       const brandCtaLink = (typeof mt?.cta_link === "string" && mt.cta_link.trim() !== "" ? mt.cta_link.trim() : undefined) ?? "#";
       const campaignImageEntries = Object.fromEntries(
@@ -970,10 +1011,11 @@ export async function handleEmailGenerateMjml(request: {
         ...Object.fromEntries(
           (socialMediaFromTokens as Array<{ url?: string; icon?: string; name?: string }>).flatMap((s, i) => {
             const n = i + 1;
-            const iconUrl = (s?.icon ?? "").trim();
-            const icon = iconUrl || (s?.name ? SOCIAL_ICON_BY_NAME[String(s.name).toLowerCase()] : "") || SOCIAL_ICON_FALLBACK_URL;
+            const link = (s?.url ?? "").trim();
+            const icon = resolveSocialIcon(s) ?? "";
+            if (!link || link === "#" || !icon) return [];
             return [
-              [`social_media_${n}_link`, (s?.url ?? "").trim() || "#"],
+              [`social_media_${n}_link`, link],
               [`social_media_${n}_icon`, icon],
             ];
           }),
@@ -1137,14 +1179,25 @@ export async function handleEmailGenerateMjml(request: {
       if (heroUrlForReplace && isHeroFromCampaign) {
         const bodyEnd = htmlInput.indexOf("#292929");
         const bodyOnly = bodyEnd !== -1 ? htmlInput.slice(0, bodyEnd) : htmlInput;
-        const firstProductImg = bodyOnly.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i);
-        if (firstProductImg) {
-          const src = firstProductImg[1];
+        const allImgs = [...bodyOnly.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi)];
+        let heroReplaced = false;
+        for (const imgMatch of allImgs) {
+          const src = imgMatch[1];
+          if (!src) continue;
+          const isLogo = isOurCdnUrl(src) && !productImages.some((p) => p && (src === p || src.includes(p.slice(-50)) || p.includes(src.slice(-50))));
+          const isTinyPlaceholder = /data:image|1x1|spacer/i.test(src);
+          if (isLogo || isTinyPlaceholder) continue;
           const isProductSrc = productImages.some((p) => p && (src === p || src.includes(p.slice(-50)) || p.includes(src.slice(-50)))) || /cdn\.shopify\.com|shopify\.com\/files\//i.test(src);
           if (isProductSrc) {
             const safeHero = heroUrlForReplace.replace(/"/g, "&quot;");
-            htmlInput = htmlInput.replace(firstProductImg[0], firstProductImg[0].replace(/src=["'][^"']*["']/i, `src="${safeHero}"`));
+            htmlInput = htmlInput.replace(imgMatch[0], imgMatch[0].replace(/src=["'][^"']*["']/i, `src="${safeHero}"`));
+            heroReplaced = true;
+            console.log("[MJML] hero replaced product img in HTML", { run_id: runId, replacedSrc: src.slice(-60), heroUrl: heroUrlForReplace.slice(-60) });
+            break;
           }
+        }
+        if (!heroReplaced) {
+          console.log("[MJML] hero NOT replaced: no product img found in body", { run_id: runId, heroUrl: heroUrlForReplace.slice(-60), imgCount: allImgs.length, firstSrcs: allImgs.slice(0, 3).map((m) => (m[1] ?? "").slice(-50)) });
         }
       }
       const isEmmaTemplate = /emma/i.test(templateName);
@@ -1244,8 +1297,11 @@ export async function handleEmailGenerateMjml(request: {
           for (let n = 1; n <= 5; n++) {
             const link = String(sj[`social_media_${n}_link`] ?? "").trim();
             let icon = String(sj[`social_media_${n}_icon`] ?? "").trim();
-            if (!icon || icon === EMPTY_IMAGE_DATA_URI) icon = SOCIAL_ICON_FALLBACK_URL;
-            if (link && link !== "#") {
+            if (!icon || icon === EMPTY_IMAGE_DATA_URI) {
+              const detected = detectPlatformFromUrl(link);
+              icon = detected ? (SOCIAL_ICON_BY_NAME[detected] ?? "") : "";
+            }
+            if (link && link !== "#" && icon) {
               socialEntries.push({ link, icon });
             }
           }
@@ -1280,27 +1336,35 @@ export async function handleEmailGenerateMjml(request: {
           });
           htmlInput = beforeFooter + darkFooter;
         }
-        // Remove any unreplaced bracket placeholders in footer (e.g. [social media 5 icon]) so no literal text shows; use visible fallback icon.
+        // Remove any unreplaced bracket placeholders in footer (e.g. [social media 5 icon]) so no literal text shows; hide missing slots.
         htmlInput = htmlInput.replace(/src="\[social media \d+ (icon|link)\]"/gi, (_, kind) =>
-          kind === "icon" ? `src="${SOCIAL_ICON_FALLBACK_URL}"` : 'src="#"',
+          kind === "icon" ? `src="${EMPTY_IMAGE_DATA_URI}"` : 'src="#"',
         );
+        // Remove social <a> tags whose icon is the transparent 1x1 gif (missing slot) so they don't show as blank links.
+        htmlInput = htmlInput.replace(/<a\s+href="[^"]*"\s+[^>]*style="display:inline-block[^"]*"[^>]*>\s*<img\s+src="data:image\/gif;base64,[^"]*"[^>]*>\s*<\/a>/gi, "");
       }
       // For any template with dark footer (#292929): ensure social icons are visible (white filter) and replace any remaining [social media N icon] placeholders.
-      const footerStartForSocial = htmlInput.indexOf("#292929");
-      if (footerStartForSocial !== -1) {
-        let darkFooter = htmlInput.slice(footerStartForSocial);
-        darkFooter = darkFooter.replace(/<img(\s[^>]*?)>/gi, (match) => {
-          if (!/width=["']24["']/i.test(match) || !/height=["']24["']/i.test(match) || /filter:\s*brightness/i.test(match)) return match;
-          const whiteFilter = "filter:brightness(0) invert(1);";
-          if (/style=["']([^"']*)["']/.test(match)) {
-            return match.replace(/style=["']([^"']*)["']/i, (_, s) => `style="${s}${s.trim().endsWith(";") ? "" : " "}${whiteFilter}"`);
-          }
-          return match.replace(/<img(\s)/i, `<img$1style="${whiteFilter}" `);
-        });
-        htmlInput = htmlInput.slice(0, footerStartForSocial) + darkFooter;
-        htmlInput = htmlInput.replace(/src="\[social media \d+ (icon|link)\]"/gi, (_, kind) =>
-          kind === "icon" ? `src="${SOCIAL_ICON_FALLBACK_URL}"` : 'src="#"',
-        );
+      {
+        const footerStartForSocial = htmlInput.indexOf("#292929");
+        if (footerStartForSocial !== -1) {
+          let darkFooter = htmlInput.slice(footerStartForSocial);
+          darkFooter = darkFooter.replace(/<img(\s[^>]*?)>/gi, (match) => {
+            if (!/width=["']24["']/i.test(match) || !/height=["']24["']/i.test(match) || /filter:\s*brightness/i.test(match)) return match;
+            if (/data:image/i.test(match)) return match;
+            const whiteFilter = "filter:brightness(0) invert(1);";
+            if (/style=["']([^"']*)["']/.test(match)) {
+              return match.replace(/style=["']([^"']*)["']/i, (_, s) => `style="${s}${s.trim().endsWith(";") ? "" : " "}${whiteFilter}"`);
+            }
+            return match.replace(/<img(\s)/i, `<img$1style="${whiteFilter}" `);
+          });
+          htmlInput = htmlInput.slice(0, footerStartForSocial) + darkFooter;
+          // Hide any remaining unreplaced social placeholders
+          htmlInput = htmlInput.replace(/src="\[social media \d+ (icon|link)\]"/gi, (_, kind) =>
+            kind === "icon" ? `src="${EMPTY_IMAGE_DATA_URI}"` : 'src="#"',
+          );
+          // Remove social <a> tags whose icon is the transparent gif (empty slot)
+          htmlInput = htmlInput.replace(/<a\s+href="[^"]*"\s+[^>]*style="display:inline-block[^"]*"[^>]*>\s*<img\s+src="data:image\/gif;base64,[^"]*"[^>]*>\s*<\/a>/gi, "");
+        }
       }
       const html = applyBrandColorsAndCampaignCopy(
         htmlInput,
