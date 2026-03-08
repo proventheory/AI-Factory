@@ -743,6 +743,13 @@ export async function fetchEmailTemplatePreviewHtml(id: string): Promise<string>
   return res.text();
 }
 
+/** Delete an email template. */
+export async function deleteEmailTemplate(id: string): Promise<{ deleted: boolean; id: string }> {
+  const res = await fetch(`${API}/v1/email_templates/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 // -- Brand Engine --
 
 export type BrandProfileRow = {

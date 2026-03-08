@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import {
   Badge,
   PageFrame,
@@ -12,9 +13,18 @@ import {
   DataTable,
   LoadingSkeleton,
   EmptyState,
+  Button,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
-import { useDocumentTemplates, useEmailTemplates, useBrandProfiles } from "@/hooks/use-api";
+import { useDocumentTemplates, useEmailTemplates, useBrandProfiles, useDeleteEmailTemplate } from "@/hooks/use-api";
 import { fetchEmailTemplatePreviewHtml, type DocumentTemplateRow, type EmailTemplateRow } from "@/lib/api";
 
 /** Live preview thumbnail for email templates that have no stored image_url (e.g. composed templates). */
@@ -83,9 +93,11 @@ function typeVariant(t: string): "info" | "success" | "warning" | "neutral" {
 
 export default function DocumentTemplatesPage() {
   const router = useRouter();
+  const [templateToDelete, setTemplateToDelete] = useState<TemplateListRow | null>(null);
   const { data: docData, isLoading: docLoading, error } = useDocumentTemplates();
   const { data: emailData, isLoading: emailLoading } = useEmailTemplates({ limit: 500 });
   const { data: brandsData } = useBrandProfiles();
+  const deleteTemplate = useDeleteEmailTemplate();
 
   const brandsMap = useMemo(
     () => new Map((brandsData?.items ?? []).map((b) => [b.id, b.name])),
@@ -182,6 +194,27 @@ export default function DocumentTemplatesPage() {
       header: "Created",
       render: (row) => new Date(row.created_at).toLocaleDateString(),
     },
+    {
+      key: "actions",
+      header: "",
+      render: (row) =>
+        row.source === "email" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 min-w-8 p-0 text-fg-muted hover:text-state-danger"
+            aria-label={`Delete ${row.name}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setTemplateToDelete(row);
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ) : (
+          "—"
+        ),
+    },
   ];
 
   const isLoading = docLoading || emailLoading;
@@ -234,6 +267,35 @@ export default function DocumentTemplatesPage() {
             </TableFrame>
           )}
         </CardSection>
+
+        <AlertDialog open={!!templateToDelete} onOpenChange={(open) => !open && setTemplateToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete template</AlertDialogTitle>
+              <AlertDialogDescription>
+                Delete &quot;{templateToDelete?.name}&quot;? This cannot be undone. Campaigns that used this template will keep their copy; you will no longer be able to select this template for new campaigns.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-state-danger text-white hover:bg-state-danger/90"
+                onClick={async () => {
+                  if (!templateToDelete) return;
+                  try {
+                    await deleteTemplate.mutateAsync(templateToDelete.id);
+                    setTemplateToDelete(null);
+                  } catch {
+                    // Error surfaced via mutation state / toast if you add one
+                  }
+                }}
+                disabled={deleteTemplate.isPending}
+              >
+                {deleteTemplate.isPending ? "Deleting…" : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Stack>
     </PageFrame>
   );

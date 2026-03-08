@@ -301,6 +301,14 @@ export function useEmailTemplate(id: string | null) {
   });
 }
 
+export function useDeleteEmailTemplate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteEmailTemplate(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["email_templates"] }),
+  });
+}
+
 export function useRoutingPolicies() {
   return useQuery({
     queryKey: ["routing_policies"],
