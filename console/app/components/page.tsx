@@ -145,29 +145,17 @@ export default function ComponentRegistryPage() {
     }
     setPreviewLoading(true);
     setPreviewError(null);
-    fetch(`${API}/v1/email_component_library/${previewId}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Not found"))))
-      .then((row: { html_fragment?: string | null; mjml_fragment?: string | null; use_context?: string | null }) => {
-        const useContext = (row.use_context ?? "email").toLowerCase();
-        const hasHtml = row.html_fragment != null && String(row.html_fragment).trim() !== "";
-        if (useContext === "landing_page" && hasHtml) {
-          const html = String(row.html_fragment).trim();
-          setPreviewHtml(`<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head><body>${html}</body></html>`);
-          setPreviewLoading(false);
-          return;
-        }
-        const params = new URLSearchParams({ ids: previewId, format: "html" });
-        if (previewBrandId && previewBrandId.trim()) params.set("brand_profile_id", previewBrandId.trim());
-        return fetch(`${API}/v1/email_component_library/assembled?${params.toString()}`)
-          .then(async (r) => {
-            const text = await r.text();
-            if (!r.ok) throw new Error(text);
-            return text;
-          })
-          .then((text) => {
-            setPreviewHtml(text);
-            setPreviewLoading(false);
-          });
+    const params = new URLSearchParams({ ids: previewId, format: "html" });
+    if (previewBrandId && previewBrandId.trim()) params.set("brand_profile_id", previewBrandId.trim());
+    fetch(`${API}/v1/email_component_library/assembled?${params.toString()}`)
+      .then(async (r) => {
+        const text = await r.text();
+        if (!r.ok) throw new Error(text);
+        return text;
+      })
+      .then((text) => {
+        setPreviewHtml(text);
+        setPreviewLoading(false);
       })
       .catch((e) => {
         setPreviewError(e instanceof Error ? e.message : String(e));

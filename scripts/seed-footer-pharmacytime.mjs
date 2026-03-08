@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Seed the Pharmacy Time landing-page footer into email_component_library.
+ * Seed the Pharmacy Time landing-page footer (staging/new) into email_component_library.
+ * Dark purple background, POPULAR + COMPANY + LEGAL columns, email signup, social, badges, copyright.
  * Uses html_fragment (no MJML). Run after migration 20250316100000_email_component_library_html_fragment.sql.
  *
  * Usage: node scripts/seed-footer-pharmacytime.mjs [CONTROL_PLANE_URL]
@@ -12,11 +13,13 @@ const API = (process.argv[2] ?? process.env.CONTROL_PLANE_URL ?? "http://localho
   ""
 );
 
-const FOOTER_HTML = `<footer id="colophon" class="site-footer">
+const FOOTER_HTML = `<footer id="colophon" class="site-footer site-footer--staging">
 	<div class="footer-container">
 		<div class="footer-main">
 			<div class="footer-branding">
-				<h3 class="footer-site-title"><a href="{{siteUrl}}"><img src="{{logoUrl}}" alt="{{companyName}}" /></a></h3>
+				<h3 class="footer-site-title">
+					<a href="{{siteUrl}}"><span class="logo-pharmacy">{{logoPharmacyText}}</span><span class="logo-time">{{logoTimeText}}</span></a>
+				</h3>
 				<p class="footer-tagline">{{tagline}}</p>
 				<form class="footer-email-signup" method="post" action="{{emailSignupAction}}">
 					<label for="footer-email-input" class="screen-reader-text">Email address</label>
@@ -25,6 +28,23 @@ const FOOTER_HTML = `<footer id="colophon" class="site-footer">
 				</form>
 				<p class="footer-email-disclaimer">{{disclaimerText}} <a href="{{privacyUrl}}">Privacy Policy</a> and provide consent to receive updates from our company.</p>
 			</div>
+
+			<div class="footer-column footer-column--popular">
+				<h4 class="footer-column-title">POPULAR</h4>
+				<ul class="footer-links">
+					<li><a href="{{popularWeightManagementUrl}}">Weight Management</a></li>
+					<li><a href="{{popularHormoneReplacementUrl}}">Hormone Replacement</a></li>
+					<li><a href="{{popularIvTherapyUrl}}">IV Therapy &amp; Supplements</a></li>
+					<li><a href="{{popularSexualWellnessUrl}}">Sexual Wellness</a></li>
+					<li><a href="{{popularThyroidUrl}}">Thyroid</a></li>
+					<li><a href="{{popularGlp1Url}}">GLP-1 Treatments</a></li>
+					<li><a href="{{popularOzempicUrl}}">Ozempic®</a></li>
+					<li><a href="{{popularWegovyUrl}}">Wegovy®</a></li>
+					<li><a href="{{popularSermorelinUrl}}">Sermorelin</a></li>
+					<li><a href="{{popularNadUrl}}">NAD+</a></li>
+				</ul>
+			</div>
+
 			<div class="footer-column">
 				<h4 class="footer-column-title">COMPANY</h4>
 				<ul class="footer-links">
@@ -33,15 +53,17 @@ const FOOTER_HTML = `<footer id="colophon" class="site-footer">
 					<li><a href="{{contactUrl}}">Contact Us</a></li>
 				</ul>
 			</div>
+
 			<div class="footer-column">
 				<h4 class="footer-column-title">LEGAL</h4>
 				<ul class="footer-links">
-					<li><a href="{{termsUrl}}">Terms & Conditions</a></li>
+					<li><a href="{{termsUrl}}">Terms &amp; Conditions</a></li>
 					<li><a href="{{privacyUrl}}">Privacy Policy</a></li>
 					<li><a href="{{hipaaUrl}}">HIPAA Privacy Statement</a></li>
 				</ul>
 			</div>
 		</div>
+
 		<div class="footer-bottom">
 			<div class="footer-bottom-content">
 				<div class="footer-social">
@@ -63,7 +85,7 @@ const FOOTER_HTML = `<footer id="colophon" class="site-footer">
 				</div>
 				<div class="footer-badges">
 					<a href="{{legitscriptUrl}}" class="footer-badge footer-badge-legitscript" target="_blank" rel="noopener noreferrer">
-						<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 12l2 2 4-4" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="10" stroke="#0066cc" stroke-width="1.5"/></svg>
+						<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 12l2 2 4-4" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/></svg>
 						<span>LegitScript Certified</span>
 					</a>
 					<div class="footer-badge footer-badge-usa">
@@ -80,15 +102,17 @@ const FOOTER_HTML = `<footer id="colophon" class="site-footer">
 </footer>`;
 
 const FOOTER_CSS = `<style>
-.site-footer { --footer-container-max: 72rem; --footer-padding: 32px; --footer-font-size: 16px; --color-primary: #0066cc; }
-.site-footer { background-color: #1a1a1a; color: #fff; padding: 4rem 0 2rem; margin-top: 0; }
+.site-footer--staging,
+.site-footer { --footer-container-max: 72rem; --footer-padding: 32px; --footer-font-size: 16px; --color-primary: #6D2C91; }
+.site-footer--staging,
+.site-footer { background-color: #241437; color: #fff; padding: 4rem 0 2rem; margin-top: 0; }
 .footer-container { max-width: var(--footer-container-max); margin: 0 auto; padding: 0 var(--footer-padding); }
-.footer-main { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 3rem; margin-bottom: 3rem; padding-bottom: 3rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+.footer-main { display: grid; grid-template-columns: 2fr 1.5fr 1fr 1fr; gap: 3rem; margin-bottom: 3rem; padding-bottom: 3rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
 .footer-branding { display: flex; flex-direction: column; gap: 1rem; }
 .footer-site-title { font-size: 1.5rem; font-weight: 600; margin: 0; color: #fff; }
 .footer-site-title a { color: inherit; text-decoration: none; }
 .footer-site-title .logo-pharmacy { color: #fff; }
-.footer-site-title .logo-time { color: #2b65c5; font-weight: 300; }
+.footer-site-title .logo-time { color: #a78bfa; font-weight: 300; }
 .footer-site-title img { height: 1.5em; width: auto; vertical-align: middle; }
 .footer-tagline { font-size: var(--footer-font-size); color: rgba(255, 255, 255, 0.9); margin: 0; }
 .footer-email-signup { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
@@ -114,7 +138,7 @@ const FOOTER_CSS = `<style>
 .footer-social-link svg, .footer-social-icon { width: 24px; height: 24px; fill: currentColor; }
 .footer-badges { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; }
 .footer-badge { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background-color: rgba(255, 255, 255, 0.05); border-radius: 0.5rem; border: 1px solid rgba(255, 255, 255, 0.1); min-height: 56px; box-sizing: border-box; }
-.footer-badge-legitscript { background-color: rgba(0, 102, 204, 0.1); border-color: rgba(0, 102, 204, 0.3); }
+.footer-badge-legitscript { background-color: rgba(109, 44, 145, 0.25); border-color: rgba(109, 44, 145, 0.4); }
 .footer-badge-legitscript svg { width: 24px; height: 24px; flex-shrink: 0; }
 .footer-badge-legitscript span { font-size: 0.875rem; font-weight: 600; color: #fff; white-space: nowrap; line-height: 1.2; }
 .footer-badge-usa { background-color: rgba(255, 255, 255, 0.05); }
@@ -124,8 +148,13 @@ const FOOTER_CSS = `<style>
 .footer-copyright { text-align: center; padding-top: 1.5rem; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .footer-copyright p { font-size: 0.875rem; color: rgba(255, 255, 255, 0.6); margin: 0; }
 .screen-reader-text { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+@media (max-width: 1024px) {
+	.footer-main { grid-template-columns: 2fr 1fr 1fr; }
+	.footer-column--popular { grid-column: 1 / -1; order: -1; }
+}
 @media (max-width: 768px) {
 	.footer-main { grid-template-columns: 1fr; gap: 2rem; margin-bottom: 2rem; padding-bottom: 2rem; }
+	.footer-column--popular { grid-column: auto; order: 0; }
 	.footer-bottom-content { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
 	.footer-social { order: 1; }
 	.footer-badges { order: 2; flex-direction: column; align-items: flex-start; width: 100%; }
@@ -138,7 +167,7 @@ const PAYLOAD = {
   component_type: "footer_pharmacytime",
   name: "Pharmacy Time Footer",
   description:
-    "Pharmacy Time site footer: logo, tagline, email signup, company and legal links, social icons (Instagram, TikTok, X, Facebook, YouTube), LegitScript and USA badges, and copyright.",
+    "Pharmacy Time staging footer: dark purple background, logo (pharmacytime), tagline, email signup, POPULAR (Weight Management, Hormone Replacement, IV Therapy & Supplements, Sexual Wellness, Thyroid, GLP-1, Ozempic®, Wegovy®, Sermorelin, NAD+), COMPANY, LEGAL, social icons, LegitScript and USA badges, copyright.",
   mjml_fragment: null,
   html_fragment: FOOTER_CSS + "\n" + FOOTER_HTML,
   use_context: "landing_page",
@@ -155,6 +184,16 @@ const PAYLOAD = {
     "emailSignupAction",
     "disclaimerText",
     "privacyUrl",
+    "popularWeightManagementUrl",
+    "popularHormoneReplacementUrl",
+    "popularIvTherapyUrl",
+    "popularSexualWellnessUrl",
+    "popularThyroidUrl",
+    "popularGlp1Url",
+    "popularOzempicUrl",
+    "popularWegovyUrl",
+    "popularSermorelinUrl",
+    "popularNadUrl",
     "howItWorksUrl",
     "faqUrl",
     "contactUrl",

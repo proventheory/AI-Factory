@@ -554,10 +554,11 @@ export type EmailCampaignRow = {
   metadata_updated_at?: string | null;
 };
 
-export async function getEmailCampaigns(params?: { limit?: number; offset?: number }): Promise<{ items: EmailCampaignRow[]; limit: number; offset: number }> {
+export async function getEmailCampaigns(params?: { limit?: number; offset?: number; campaign_kind?: string }): Promise<{ items: EmailCampaignRow[]; limit: number; offset: number }> {
   const searchParams = new URLSearchParams();
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
+  if (params?.campaign_kind) searchParams.set("campaign_kind", params.campaign_kind);
   const res = await fetch(`${API}/v1/email_campaigns?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();

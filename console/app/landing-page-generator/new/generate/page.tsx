@@ -80,6 +80,7 @@ function GeneratePageContent() {
         brand_profile_id: brandProfileId,
         template_id: templateId,
         metadata_json: {
+          campaign_kind: "landing_page",
           products,
           images: selectedImages,
           selected_images: selectedImages,

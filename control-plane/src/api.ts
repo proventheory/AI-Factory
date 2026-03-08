@@ -209,19 +209,26 @@ app.get("/v1/initiatives/:id", async (req, res) => {
   }
 });
 
-/** GET /v1/email_campaigns — list initiatives with intent_type = email_campaign + metadata */
+/** GET /v1/email_campaigns — list initiatives with intent_type = email_campaign + metadata. Optional campaign_kind=landing_page to list only landing-page campaigns. */
 app.get("/v1/email_campaigns", async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
     const offset = Number(req.query.offset) || 0;
+    const campaign_kind = req.query.campaign_kind as string | undefined;
+    const conditions = ["i.intent_type = 'email_campaign'"];
+    const params: unknown[] = [limit, offset];
+    if (campaign_kind === "landing_page") {
+      conditions.push("(m.metadata_json->>'campaign_kind') = 'landing_page'");
+    }
+    const whereClause = conditions.join(" AND ");
     const r = await pool.query(
       `SELECT i.id, i.title, i.intent_type, i.risk_level, i.created_at,
               m.subject_line, m.from_name, m.from_email, m.template_artifact_id, m.audience_segment_ref, m.updated_at AS metadata_updated_at
        FROM initiatives i
        LEFT JOIN email_campaign_metadata m ON m.initiative_id = i.id
-       WHERE i.intent_type = 'email_campaign'
+       WHERE ${whereClause}
        ORDER BY i.created_at DESC LIMIT $1 OFFSET $2`,
-      [limit, offset]
+      params
     );
     res.json({ items: r.rows, limit, offset });
   } catch (e) {
@@ -2936,13 +2943,15 @@ app.get("/v1/email_templates", async (req, res) => {
   }
 });
 
-/** Build a placeholder map from a brand profile row for substituting [key] in MJML. Keys match BRAND_EMAIL_FIELD_MAPPING. */
+/** Build a placeholder map from a brand profile row for substituting [key] in MJML and {{key}} in HTML (e.g. landing footer). */
 function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, string> {
   const name = typeof brandRow.name === "string" ? brandRow.name : "Brand";
   const identity = (brandRow.identity as Record<string, unknown>) ?? {};
   const design_tokens = (brandRow.design_tokens as Record<string, unknown>) ?? {};
   const website = typeof identity.website === "string" ? identity.website : "https://example.com";
+  const baseUrl = website.replace(/\/$/, "");
   const contactEmail = typeof identity.contact_email === "string" ? identity.contact_email : "";
+  const tagline = typeof identity.tagline === "string" ? identity.tagline : "";
   let logo = "";
   if (design_tokens.logo && typeof (design_tokens.logo as Record<string, unknown>).url === "string") {
     logo = (design_tokens.logo as Record<string, unknown>).url as string;
@@ -2956,13 +2965,44 @@ function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, 
   const ctaText = typeof design_tokens.cta_text === "string" ? design_tokens.cta_text : "Learn more";
   const ctaLink = typeof design_tokens.cta_link === "string" ? design_tokens.cta_link : website;
   const contactInfo = typeof design_tokens.contact_info === "string" ? design_tokens.contact_info : contactEmail;
-  const year = new Date().getFullYear();
-  return {
+  const year = String(new Date().getFullYear());
+
+  const socialMedia = Array.isArray(design_tokens.social_media) ? design_tokens.social_media as Array<{ name?: string; url?: string }> : [];
+  const socialByKey: Record<string, string> = {};
+  for (const s of socialMedia) {
+    const n = (s.name ?? "").toLowerCase();
+    const u = typeof s.url === "string" ? s.url : "";
+    if (n.includes("instagram")) socialByKey.instagramUrl = u;
+    else if (n.includes("tiktok")) socialByKey.tiktokUrl = u;
+    else if (n.includes("twitter") || n === "x") socialByKey.twitterUrl = u;
+    else if (n.includes("facebook")) socialByKey.facebookUrl = u;
+    else if (n.includes("youtube")) socialByKey.youtubeUrl = u;
+  }
+  if (!socialByKey.instagramUrl) socialByKey.instagramUrl = website;
+  if (!socialByKey.tiktokUrl) socialByKey.tiktokUrl = website;
+  if (!socialByKey.twitterUrl) socialByKey.twitterUrl = website;
+  if (!socialByKey.facebookUrl) socialByKey.facebookUrl = website;
+  if (!socialByKey.youtubeUrl) socialByKey.youtubeUrl = website;
+
+  const disclaimerText = typeof identity.disclaimer_text === "string" ? identity.disclaimer_text : "By signing up you agree to our";
+
+  const footerUrls = design_tokens.footer_urls && typeof design_tokens.footer_urls === "object"
+    ? (design_tokens.footer_urls as Record<string, string>)
+    : {};
+  const logoPharmacyText = typeof design_tokens.logo_pharmacy_text === "string"
+    ? design_tokens.logo_pharmacy_text
+    : (typeof identity.logo_pharmacy_text === "string" ? identity.logo_pharmacy_text : (name.split(/\s+/)[0] ?? "Brand"));
+  const logoTimeText = typeof design_tokens.logo_time_text === "string"
+    ? design_tokens.logo_time_text
+    : (typeof identity.logo_time_text === "string" ? identity.logo_time_text : (name.split(/\s+/).slice(1).join(" ") || "Time"));
+
+  const base = {
     logo: logo || "https://via.placeholder.com/120x40?text=Logo",
     siteUrl: website,
     site_url: website,
     brandName: name,
     brand_name: name,
+    companyName: name,
     headline: "Premium quality you can trust",
     body: "Discover our bestsellers and limited drops. Free shipping on orders over $70.",
     cta_text: ctaText,
@@ -2980,7 +3020,38 @@ function brandPlaceholderMap(brandRow: Record<string, unknown>): Record<string, 
     "product B src": "https://via.placeholder.com/280x280?text=Product+B",
     "product B title": "Best seller",
     "product B productUrl": website,
+    year,
+    tagline: tagline || "Quality you can trust.",
+    logoUrl: logo || "https://via.placeholder.com/120x40?text=Logo",
+    logoPharmacyText,
+    logoTimeText,
+    disclaimerText,
+    privacyUrl: `${baseUrl}/privacy-policy/`,
+    termsUrl: `${baseUrl}/terms-conditions/`,
+    hipaaUrl: `${baseUrl}/hipaa-privacy-statement/`,
+    howItWorksUrl: `${baseUrl}/how-it-works/`,
+    faqUrl: `${baseUrl}/faq/`,
+    contactUrl: `${baseUrl}/contact-us/`,
+    emailPlaceholder: "Enter your email",
+    emailSignupAction: `${baseUrl}/newsletter/`,
+    legitscriptUrl: "https://legitscript.com",
+    popularWeightManagementUrl: `${baseUrl}/weight-management/`,
+    popularHormoneReplacementUrl: `${baseUrl}/hormone-replacement/`,
+    popularIvTherapyUrl: `${baseUrl}/iv-therapy-supplements/`,
+    popularSexualWellnessUrl: `${baseUrl}/sexual-wellness/`,
+    popularThyroidUrl: `${baseUrl}/thyroid/`,
+    popularGlp1Url: `${baseUrl}/glp-1-treatments/`,
+    popularOzempicUrl: `${baseUrl}/ozempic/`,
+    popularWegovyUrl: `${baseUrl}/wegovy/`,
+    popularSermorelinUrl: `${baseUrl}/sermorelin/`,
+    popularNadUrl: `${baseUrl}/nad-plus/`,
+    ...socialByKey,
   };
+  const result: Record<string, string> = { ...base };
+  for (const [k, v] of Object.entries(footerUrls)) {
+    if (typeof v === "string" && v.trim()) result[k] = v.trim();
+  }
+  return result;
 }
 
 /** Substitute [placeholder] in mjml with values from map; leave unknown placeholders as-is. */
@@ -2988,6 +3059,14 @@ function substitutePlaceholders(mjml: string, map: Record<string, string>): stri
   return mjml.replace(/\[([^\]]+)\]/g, (_, key: string) => {
     const k = key.trim();
     return k in map ? map[k] : `[${key}]`;
+  });
+}
+
+/** Substitute {{placeholder}} in HTML (e.g. landing footer) with values from map; leave unknown as-is. */
+function substitutePlaceholdersDoubleCurly(html: string, map: Record<string, string>): string {
+  return html.replace(/\{\{([^}]+)\}\}/g, (_, key: string) => {
+    const k = key.trim();
+    return k in map ? map[k] : `{{${key}}}`;
   });
 }
 
@@ -3363,7 +3442,7 @@ app.delete("/v1/email_templates/:id", async (req, res) => {
 
 // ---------- Email component library (reusable MJML fragments for composing templates) ----------
 
-/** GET /v1/email_component_library/assembled?ids=uuid1,uuid2,...&format=html&brand_profile_id=uuid — wrap fragments, optional brand substitution, return MJML or HTML. */
+/** GET /v1/email_component_library/assembled?ids=uuid1,uuid2,...&format=html&brand_profile_id=uuid — wrap fragments, optional brand substitution, return MJML or HTML. When a single id has html_fragment and use_context=landing_page, returns substituted HTML. */
 app.get("/v1/email_component_library/assembled", async (req, res) => {
   try {
     const idsParam = (req.query.ids as string) ?? "";
@@ -3373,19 +3452,35 @@ app.get("/v1/email_component_library/assembled", async (req, res) => {
       if (!isValidUuid(id)) return res.status(400).json({ error: `Invalid UUID: ${id}` });
     }
     const r = await pool.query(
-      `SELECT id, mjml_fragment, position FROM email_component_library WHERE id = ANY($1::uuid[]) ORDER BY array_position($1::uuid[], id)`,
+      `SELECT id, mjml_fragment, html_fragment, use_context, position FROM email_component_library WHERE id = ANY($1::uuid[]) ORDER BY array_position($1::uuid[], id)`,
       [ids]
     );
     if (r.rows.length === 0) return res.status(404).json({ error: "No components found" });
-    const fragments = (r.rows as { mjml_fragment: string }[]).map((row) => row.mjml_fragment ?? "").filter(Boolean);
-    let mjml = `<mjml>\n<mj-body>\n${fragments.join("\n")}\n</mj-body>\n</mjml>`;
     const brandProfileId = req.query.brand_profile_id as string | undefined;
+    let brandMap: Record<string, string> = {};
     if (brandProfileId && isValidUuid(brandProfileId)) {
       const brandR = await pool.query("SELECT name, identity, design_tokens FROM brand_profiles WHERE id = $1", [brandProfileId]);
       if (brandR.rows.length > 0) {
-        const map = brandPlaceholderMap(brandR.rows[0] as Record<string, unknown>);
-        mjml = substitutePlaceholders(mjml, map);
+        brandMap = brandPlaceholderMap(brandR.rows[0] as Record<string, unknown>);
       }
+    }
+    if (ids.length === 1 && req.query.format === "html") {
+      const row = r.rows[0] as { html_fragment?: string | null; use_context?: string | null };
+      const useContext = (row.use_context ?? "").toLowerCase();
+      const htmlFragment = row.html_fragment != null && String(row.html_fragment).trim() !== "" ? String(row.html_fragment).trim() : null;
+      if (useContext === "landing_page" && htmlFragment) {
+        const substituted = Object.keys(brandMap).length > 0
+          ? substitutePlaceholdersDoubleCurly(htmlFragment, brandMap)
+          : htmlFragment;
+        const wrapped = `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head><body>${substituted}</body></html>`;
+        res.type("text/html").send(wrapped);
+        return;
+      }
+    }
+    const fragments = (r.rows as { mjml_fragment: string }[]).map((row) => row.mjml_fragment ?? "").filter(Boolean);
+    let mjml = `<mjml>\n<mj-body>\n${fragments.join("\n")}\n</mj-body>\n</mjml>`;
+    if (Object.keys(brandMap).length > 0) {
+      mjml = substitutePlaceholders(mjml, brandMap);
     }
     if (req.query.format === "html") {
       const { html } = mjml2html(mjml, { validationLevel: "skip" });

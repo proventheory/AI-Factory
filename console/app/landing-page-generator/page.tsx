@@ -8,14 +8,14 @@ import { useEmailCampaigns, useCreateEmailCampaign } from "@/hooks/use-api";
 import { formatApiError } from "@/lib/api";
 
 export default function LandingPageGeneratorPage() {
-  const { data, isLoading, error } = useEmailCampaigns({ limit: 100 });
+  const { data, isLoading, error } = useEmailCampaigns({ limit: 100, campaign_kind: "landing_page" });
   const createCampaign = useCreateEmailCampaign();
   const [creating, setCreating] = useState(false);
 
   const handleCreate = async () => {
     setCreating(true);
     try {
-      await createCampaign.mutateAsync({ title: "New landing page" });
+      await createCampaign.mutateAsync({ title: "New landing page", metadata_json: { campaign_kind: "landing_page" } });
     } finally {
       setCreating(false);
     }

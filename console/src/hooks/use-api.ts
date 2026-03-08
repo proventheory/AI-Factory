@@ -240,9 +240,9 @@ export function useAnalytics(params?: { from?: string; to?: string }) {
   });
 }
 
-export function useEmailCampaigns(params?: { limit?: number; offset?: number }) {
+export function useEmailCampaigns(params?: { limit?: number; offset?: number; campaign_kind?: string }) {
   return useQuery({
-    queryKey: ["email_campaigns", params?.limit, params?.offset],
+    queryKey: ["email_campaigns", params?.limit, params?.offset, params?.campaign_kind],
     queryFn: () => api.getEmailCampaigns(params),
   });
 }
