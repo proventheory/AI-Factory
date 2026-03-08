@@ -428,17 +428,37 @@ async function enrichProductDescriptionsIfEnabled(
 }
 
 /**
- * Design polish: apply brand fonts throughout inline styles, make hero image full-width,
- * deduplicate CTA section text, and improve visual hierarchy for professional appearance.
+ * Design polish: apply brand fonts, hero→homepage links, full-width hero, mobile padding, etc.
  */
 function applyDesignPolish(
   html: string,
   fontFamily: string,
   brandColor: string,
   generatedCopy?: GeneratedEmailCopy | null,
+  siteUrl?: string,
 ): string {
   let out = html;
   const ff = fontFamily.trim();
+  const homeUrl = (siteUrl ?? "").trim().replace(/\/$/, "") || "#";
+
+  // 0. Hero section: point hero image and hero CTA button to homepage (not a product).
+  //    Hero block = first #F2F2F2 section; only replace the first two /products/ links there.
+  if (homeUrl !== "#") {
+    const heroBlockStart = out.indexOf("background:#F2F2F2");
+    if (heroBlockStart !== -1) {
+      const heroBlockEnd = out.indexOf('background:#ffffff', heroBlockStart + 1);
+      const heroSlice = heroBlockEnd !== -1 ? out.slice(heroBlockStart, heroBlockEnd) : out.slice(heroBlockStart);
+      const safeHome = homeUrl.replace(/"/g, "&quot;");
+      const productLinkRe = /<a\s+href="[^"]*\/products\/[^"]*"/;
+      let heroFixed = heroSlice.replace(productLinkRe, `<a href="${safeHome}"`);
+      heroFixed = heroFixed.replace(productLinkRe, `<a href="${safeHome}"`);
+      if (heroFixed !== heroSlice) {
+        out = heroBlockEnd !== -1
+          ? out.slice(0, heroBlockStart) + heroFixed + out.slice(heroBlockEnd)
+          : out.slice(0, heroBlockStart) + heroFixed;
+      }
+    }
+  }
 
   // 1. Replace hardcoded inline font-families with brand font so the email matches the brand.
   //    Email clients ignore <style> rules and only read inline styles, so we must patch each one.
@@ -506,16 +526,22 @@ function applyDesignPolish(
     (_, pre, _h) => `${pre}height:auto;`,
   );
 
-  // 6. Mobile-responsive: add responsive CSS for better mobile rendering
+  // 6. Mobile-responsive: add responsive CSS and consistent padding in green CTA block on mobile
   const mobileStyles = `
     @media only screen and (max-width:479px) {
       .crop-image img { height:auto !important; width:100% !important; }
       .mj-column-per-50 { width:100% !important; max-width:100% !important; }
       .mj-column-per-33-33 { width:50% !important; max-width:50% !important; }
+      .email-cta-green td { padding-left: 20px !important; padding-right: 20px !important; }
     }`;
   if (out.includes("</style>")) {
     out = out.replace(/<\/style>/, mobileStyles + "</style>");
   }
+  // Add class to green CTA section so mobile padding rule applies (fix inconsistent 20px vs 35px on mobile)
+  out = out.replace(
+    /(<div\s+style="[^"]*background:#16a34a[^"]*")>/i,
+    "$1 class=\"email-cta-green\">",
+  );
 
   return out;
 }
@@ -1482,8 +1508,8 @@ export async function handleEmailGenerateMjml(request: {
         brandFooter,
       );
 
-      // ── Design polish: brand fonts, full-width hero, tighter spacing ──
-      html = applyDesignPolish(html, fontFamily, brandColor, generatedCopy);
+      // ── Design polish: brand fonts, hero→homepage links, full-width hero, mobile padding ──
+      html = applyDesignPolish(html, fontFamily, brandColor, generatedCopy, siteUrl);
 
       // #region agent log
       console.log("[MJML] compile success (H9)", { run_id: runId, htmlLen: html?.length ?? 0, campaignPromptSnippet: campaignPrompt.slice(0, 40), fontFamily: fontFamily.slice(0, 30) });
