@@ -2791,25 +2791,29 @@ function normalizeTemplateType(type: string | null | undefined): string {
 function enrichTemplateRow(row: Record<string, unknown>, contract: { max_content_slots?: number; max_product_slots?: number } | null): void {
   const mjml = row.mjml as string | null;
   const typeLabel = normalizeTemplateType(row.type as string);
-  let imageSlots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
-  let productSlots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
   const name = String(row.name ?? "").trim();
   const id = row.id as string | undefined;
-  // Emma template: 1 hero image, 5 products (by name; survives rename from "introducing emma" to "Product - Emma")
-  if (/introducing\s+emma/i.test(name) || /product\s*-\s*emma/i.test(name)) {
+
+  // Known templates: apply slots first so contract 0/0 doesn't override (list + detail must show correct counts)
+  let imageSlots: number;
+  let productSlots: number;
+  if (typeLabel === "product" && /emma/i.test(name)) {
     imageSlots = 1;
     productSlots = 5;
   } else if (id === "281f9f46-aca7-43ed-bb5f-85114234f210") {
-    // Complex newsletter (Azure-style): hero, product block, ads, footer image, etc. = 6 images, 3 products
     imageSlots = 6;
     productSlots = 3;
-  } else if (typeLabel === "newsletter" && imageSlots === 0 && mjml) {
-    // Newsletter with 0 detected slots: count image-like placeholders so "2 images" shows correctly
-    const imageLike = mjml.match(/\{\{[^}]*image[^}]*\}\}|\[image\s*\d*\][^\]]*|\[hero\]|\[banner\]/gi);
-    const count = imageLike ? Math.min(imageLike.length, 2) : 0;
-    if (count >= 2) imageSlots = 2;
-    else if (count === 1) imageSlots = 1;
+  } else {
+    imageSlots = contract?.max_content_slots ?? contentSlotsFromMjml(mjml) ?? 0;
+    productSlots = contract?.max_product_slots ?? productSlotsFromMjml(mjml) ?? 0;
+    if (typeLabel === "newsletter" && imageSlots === 0 && mjml) {
+      const imageLike = mjml.match(/\{\{[^}]*image[^}]*\}\}|\[image\s*\d*\][^\]]*|\[hero\]|\[banner\]/gi);
+      const count = imageLike ? Math.min(imageLike.length, 2) : 0;
+      if (count >= 2) imageSlots = 2;
+      else if (count === 1) imageSlots = 1;
+    }
   }
+
   (row as Record<string, unknown>).image_slots = imageSlots;
   (row as Record<string, unknown>).product_slots = productSlots;
   (row as Record<string, unknown>).layout_style = `${typeLabel} (email template)`;
