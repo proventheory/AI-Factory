@@ -16,7 +16,7 @@ export default function LandingPageGeneratorNewPage() {
             <Link href="/landing-page-generator/new/brand">Start: Brand</Link>
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/landing-page-generator">Back to Landing page generator</Link>
+            <Link href="/landing-page-generator">Back to Landing Page Generator</Link>
           </Button>
         </div>
       </Stack>

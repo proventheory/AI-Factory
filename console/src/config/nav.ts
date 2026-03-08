@@ -68,7 +68,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/initiatives", label: "Initiatives", branchId: "orchestration" },
       { href: "/email-marketing", label: "Email Generator", branchId: "orchestration" },
-      { href: "/landing-page-generator", label: "Landing page generator", branchId: "orchestration" },
+      { href: "/landing-page-generator", label: "Landing Page Generator", branchId: "orchestration" },
       { href: "/plans", label: "Plans", branchId: "orchestration" },
       { href: "/runs", label: "Pipeline Runs", branchId: "orchestration" },
       { href: "/jobs", label: "Jobs", branchId: "orchestration" },
@@ -164,7 +164,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "webhook-outbox": "Webhook Outbox",
   secrets: "Secrets",
   "email-marketing": "Email Generator",
-  "landing-page-generator": "Landing page generator",
+  "landing-page-generator": "Landing Page Generator",
   "new": "New",
   "brand": "Brand",
   "products": "Products",

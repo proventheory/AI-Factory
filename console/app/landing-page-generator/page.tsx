@@ -25,7 +25,7 @@ export default function LandingPageGeneratorPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Landing page generator" />
+          <PageHeader title="Landing Page Generator" />
           <p className="text-state-danger">Error: {formatApiError(error)}</p>
         </Stack>
       </PageFrame>
@@ -57,7 +57,7 @@ export default function LandingPageGeneratorPage() {
     <PageFrame>
       <Stack>
         <PageHeader
-          title="Landing page generator"
+          title="Landing Page Generator"
           description="Create landing pages from brand, template, and content. Same flow as Email Generator for now; workflow will use pre-built landing page templates next."
         />
         {isLoading ? (
