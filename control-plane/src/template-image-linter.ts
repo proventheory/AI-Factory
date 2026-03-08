@@ -22,7 +22,8 @@ export interface LintResult {
 
 /** Approved hero placeholders (canonical hero). */
 const HERO_PLACEHOLDERS = new Set([
-  "[hero]", "[hero image]", "[banner]", "{{hero_image}}", "{{hero_image_url}}", "{{imageUrl}}",
+  "[hero]", "[hero image]", "[banner]", "[image_url]", "[hero_image_url]",
+  "{{hero_image}}", "{{hero_image_url}}", "{{imageUrl}}", "{{image_url}}",
 ]);
 /** Any [bracket] or {{handlebars}} that looks like image. */
 const ANY_IMAGE_LIKE = /\[([^\]]+)\]|\{\{([^}]+)\}\}/g;
@@ -83,7 +84,7 @@ export function lintTemplateMjml(mjml: string, contract: Contract, templateId?: 
   const optionalModules = Array.isArray(contract.optional_modules) ? contract.optional_modules : [];
 
   // Collect all placeholder-like tokens
-  const tokens: { raw: string; normalized: string; num?: number; kind: "hero" | "content" | "product" | "other" }[] = [];
+  const tokens: { raw: string; normalized: string; num?: number; kind: "hero" | "content" | "product" | "logo" | "other" }[] = [];
   const contentNums: number[] = [];
   const productNums: number[] = [];
   let m: RegExpExecArray | null;
@@ -92,9 +93,9 @@ export function lintTemplateMjml(mjml: string, contract: Contract, templateId?: 
     const raw = m[0];
     const insideBracket = m[1] ?? "";
     const insideHandlebars = m[2] ?? "";
-    const content = (insideBracket || insideHandlebars).trim().toLowerCase();
+    const content = (insideBracket || insideHandlebars).trim().toLowerCase().replace(/\s+/g, " ");
     const heroNorm = raw.replace(/\s+/g, " ").toLowerCase();
-    if (HERO_PLACEHOLDERS.has(heroNorm) || content === "hero image" || content === "hero_image" || content === "hero_image_url" || content === "imageurl" || content === "banner") {
+    if (HERO_PLACEHOLDERS.has(heroNorm) || content === "hero image" || content === "hero_image" || content === "hero_image_url" || content === "imageurl" || content === "image_url" || content === "banner") {
       tokens.push({ raw, normalized: "hero", kind: "hero" });
     } else if (/^image\s*\d+$/.test(content) || /^image_\d+$/.test(content)) {
       const num = parseInt(content.replace(/\D/g, ""), 10) || 1;
@@ -104,6 +105,13 @@ export function lintTemplateMjml(mjml: string, contract: Contract, templateId?: 
       const num = parseInt(content.replace(/\D/g, ""), 10) || 1;
       productNums.push(num);
       tokens.push({ raw, normalized: `product:${num}`, num, kind: "product" });
+    } else if (/^product\s+[a-z]\s+(src|title|producturl|description)$/.test(content)) {
+      const letter = content.replace(/^product\s+([a-z]).*$/, "$1");
+      const num = letter.charCodeAt(0) - 97 + 1; // a=1, b=2, ...
+      productNums.push(num);
+      tokens.push({ raw, normalized: `product:${num}`, num, kind: "product" });
+    } else if (content === "logo" || content === "logo_white_url" || content === "logourl" || content === "logo_url") {
+      tokens.push({ raw, normalized: "logo", kind: "logo" });
     } else if (/image|img|hero|banner|logo|product/.test(content)) {
       tokens.push({ raw, normalized: raw, kind: "other" });
     }
@@ -126,6 +134,7 @@ export function lintTemplateMjml(mjml: string, contract: Contract, templateId?: 
 
   const hasHeroInTop =
     topBlock.includes("[hero]") || topBlock.includes("[hero image]") || topBlock.includes("[banner]")
+    || topBlock.includes("[image_url]") || topBlock.includes("[hero_image_url]")
     || topBlock.includes("{{hero_image}}") || topBlock.includes("{{hero_image_url}}") || topBlock.includes("{{imageUrl}}");
   const hasContentPlaceholderInTop = /\[image\s+1\]/i.test(topBlock) || /\{\{.*image.*1.*\}\}/.test(topBlock);
 

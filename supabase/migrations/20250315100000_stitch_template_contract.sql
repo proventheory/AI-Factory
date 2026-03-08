@@ -16,7 +16,7 @@ SELECT
   t.id,
   'v1',
   true,
-  false,
+  true,
   false,
   1,
   2,
