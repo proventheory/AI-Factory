@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /**
  * Seed email templates (MJML) for Email Marketing wizard.
- * Includes defaults + Cultura-style layouts (hero, product grid, CTA).
+ * Includes defaults + Cultura-style layouts (hero, product grid, CTA) + "Dark hero (1 image)".
  *
  * Usage: node scripts/seed-email-templates.mjs [CONTROL_PLANE_URL]
  * Env: CONTROL_PLANE_URL or pass as first arg. Default: http://localhost:3001
+ *
+ * To see templates (and the new "Dark hero (1 image)") in the console Document Templates page,
+ * run this against the same Control Plane URL your console uses (e.g. staging API URL).
  *
  * If you get "relation email_templates does not exist", run the migration on the
  * same DB the Control Plane uses (e.g. Render DATABASE_URL):

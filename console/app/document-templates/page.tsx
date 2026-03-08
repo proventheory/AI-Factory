@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
@@ -15,7 +15,42 @@ import {
 } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { useDocumentTemplates, useEmailTemplates, useBrandProfiles } from "@/hooks/use-api";
-import type { DocumentTemplateRow, EmailTemplateRow } from "@/lib/api";
+import { fetchEmailTemplatePreviewHtml, type DocumentTemplateRow, type EmailTemplateRow } from "@/lib/api";
+
+/** Live preview thumbnail for email templates that have no stored image_url (e.g. composed templates). */
+function EmailTemplatePreviewThumb({ templateId }: { templateId: string }) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    fetchEmailTemplatePreviewHtml(templateId)
+      .then(setHtml)
+      .catch(() => setHtml(null))
+      .finally(() => setLoading(false));
+  }, [templateId]);
+  if (loading) {
+    return (
+      <div className="h-9 w-14 shrink-0 rounded border border-border bg-bg-muted flex items-center justify-center text-[10px] text-fg-muted">
+        …
+      </div>
+    );
+  }
+  if (!html) {
+    return (
+      <div className="h-9 w-14 shrink-0 rounded border border-border bg-bg-muted flex items-center justify-center text-[10px] text-fg-muted">
+        Preview
+      </div>
+    );
+  }
+  return (
+    <iframe
+      title="Preview"
+      srcDoc={html}
+      className="h-9 w-14 shrink-0 rounded border border-border object-cover overflow-hidden min-w-[3.5rem]"
+      sandbox="allow-same-origin"
+    />
+  );
+}
 
 /** Unified row for document + email templates so both render in one table. */
 type TemplateListRow = {
@@ -91,13 +126,15 @@ export default function DocumentTemplatesPage() {
       header: "Name",
       render: (row) => (
         <div className="flex items-center gap-3">
-          {row.source === "email" && row.image_url && (
+          {row.source === "email" && (row.image_url ? (
             <img
               src={row.image_url}
               alt=""
               className="h-9 w-14 shrink-0 rounded border border-border object-cover"
             />
-          )}
+          ) : (
+            <EmailTemplatePreviewThumb templateId={row.id} />
+          ))}
           <span className="font-medium text-fg">{row.name}</span>
         </div>
       ),

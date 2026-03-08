@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Create one email template composed from component library: header_logo → hero_1 → product_block_2 → footer_logo.
- * Uses Sticky Green as brand_profile_id (resolved by slug). Run after: migration 20250313000001, seed-email-component-library.mjs, seed-brand-sticky-green.mjs
+ * Create one email template composed from component library: header_logo → hero_1 (no image) → product_block_2 → footer_logo.
+ * 0 content images, 2 products. Uses Sticky Green as brand_profile_id (resolved by slug).
+ * Run after: migration 20250313000001, seed-email-component-library.mjs, seed-brand-sticky-green.mjs
  *
  * Usage: node scripts/seed-sticky-green-composed-template.mjs [CONTROL_PLANE_URL]
  */
@@ -10,7 +11,7 @@ import "dotenv/config";
 const API = process.argv[2] ?? process.env.CONTROL_PLANE_URL ?? "http://localhost:3001";
 const base = API.replace(/\/$/, "");
 const TEMPLATE_NAME = "Sticky Green - Composed";
-const SEQUENCE = ["header_logo", "hero_2", "product_block_2", "footer_logo"];
+const SEQUENCE = ["header_logo", "hero_1", "product_block_2", "footer_logo"];
 
 async function resolveStickyGreenBrandId() {
   const res = await fetch(`${base}/v1/brand_profiles?search=sticky-green&limit=5`);
@@ -41,7 +42,7 @@ async function main() {
     const patchRes = await fetch(`${base}/v1/email_templates/${existing.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ component_sequence: ids, img_count: 1 }),
+      body: JSON.stringify({ component_sequence: ids, img_count: 0 }),
     });
     if (!patchRes.ok) throw new Error(`Failed to update template: ${await patchRes.text()}`);
     console.log("Updated email template:", existing.id, TEMPLATE_NAME);
@@ -52,7 +53,7 @@ async function main() {
       brand_profile_id: brandProfileId,
       component_sequence: ids,
       mjml: null,
-      img_count: 1,
+      img_count: 0,
     };
     const createRes = await fetch(`${base}/v1/email_templates`, {
       method: "POST",
@@ -64,7 +65,7 @@ async function main() {
     console.log("Created email template:", template.id, template.name);
   }
   console.log("Component sequence:", SEQUENCE.join(" → "));
-  console.log("Slots: 1 content image (hero), 2 products.");
+  console.log("Slots: 0 content images, 2 products.");
 }
 
 main().catch((e) => {

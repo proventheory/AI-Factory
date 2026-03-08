@@ -354,7 +354,8 @@ async function generateEmailCopyViaLlm(
     const parsed = parseCopyResult(result.content ?? "");
     if (parsed) return parsed;
   } catch (_e) {
-    const errMsg = String((_e as Error).message).slice(0, 120);
+    const raw = String((_e as Error).message);
+    const errMsg = raw.includes("404") ? "gateway 404 (retrying with OpenAI direct)" : raw.slice(0, 120);
     console.log("[MJML] LLM copy via gateway failed, retrying with OpenAI direct", { run_id: request.run_id, err: errMsg });
   }
 

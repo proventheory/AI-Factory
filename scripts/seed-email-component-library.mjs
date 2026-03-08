@@ -21,7 +21,7 @@ const COMPONENTS = [
     placeholder_docs: ["logo", "siteUrl", "brandName"],
     mjml_fragment: `<mj-section background-color="#ffffff" padding="28px 40px 24px" css-class="header-section">
   <mj-column>
-    <mj-image src="[logo]" alt="[brandName]" href="[siteUrl]" width="140px" align="left" padding="0" fluid-on-mobile="true" />
+    <mj-image src="[logo]" alt="[brandName]" href="[siteUrl]" width="140px" align="center" padding="0" fluid-on-mobile="true" />
   </mj-column>
 </mj-section>
 <mj-section padding="0 40px">
@@ -156,7 +156,7 @@ const COMPONENTS = [
     name: "Footer with logo",
     description: "Copyright, site link (brandColor), contact, social. Clear hierarchy.",
     position: 7,
-    placeholder_docs: ["footerRights", "siteUrl", "contactInfo", "social media link", "social media icon", "brandColor"],
+    placeholder_docs: ["footerRights", "siteUrl", "contactInfo", "logo_white_url", "social media link", "social media icon", "brandColor"],
     mjml_fragment: `<mj-section padding="0 40px 16px">
   <mj-column>
     <mj-divider border-color="#e2e8f0" border-width="1px" padding-bottom="24px" padding-top="0" />
@@ -164,6 +164,7 @@ const COMPONENTS = [
 </mj-section>
 <mj-section background-color="#0f172a" padding="32px 40px">
   <mj-column width="100%">
+    <mj-image src="[logo_white_url]" alt="[brandName]" href="[siteUrl]" width="120px" align="center" padding="0 0 16px 0" />
     <mj-text font-size="13px" color="#94a3b8" align="center" line-height="1.5">[footerRights]</mj-text>
     <mj-text font-size="13px" align="center" padding-top="8px"><a href="[siteUrl]" style="color:[brandColor];font-weight:600;text-decoration:none">Visit our site</a></mj-text>
     <mj-text font-size="12px" color="#64748b" align="center" padding-top="12px">[contactInfo]</mj-text>
@@ -176,30 +177,52 @@ const COMPONENTS = [
 ];
 
 async function main() {
+  const listRes = await fetch(`${base}/v1/email_component_library?limit=200`);
+  if (!listRes.ok) throw new Error(`Failed to list components: ${await listRes.text()}`);
+  const { items: existing } = await listRes.json();
+  const byType = new Map((existing ?? []).map((x) => [x.component_type, x]));
+
   let created = 0;
+  let updated = 0;
   for (const c of COMPONENTS) {
-    const res = await fetch(`${base}/v1/email_component_library`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        component_type: c.component_type,
-        name: c.name,
-        description: c.description,
-        mjml_fragment: c.mjml_fragment,
-        placeholder_docs: c.placeholder_docs,
-        position: c.position,
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      console.error(`Failed to create ${c.component_type}:`, res.status, err);
-      process.exitCode = 1;
-      continue;
+    const existingRow = byType.get(c.component_type);
+    const payload = {
+      component_type: c.component_type,
+      name: c.name,
+      description: c.description,
+      mjml_fragment: c.mjml_fragment,
+      placeholder_docs: c.placeholder_docs,
+      position: c.position,
+    };
+    if (existingRow) {
+      const res = await fetch(`${base}/v1/email_component_library/${existingRow.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        console.error(`Failed to update ${c.component_type}:`, res.status, await res.text());
+        process.exitCode = 1;
+        continue;
+      }
+      updated += 1;
+      console.log(`Updated: ${c.component_type} (${c.name})`);
+    } else {
+      const res = await fetch(`${base}/v1/email_component_library`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        console.error(`Failed to create ${c.component_type}:`, res.status, await res.text());
+        process.exitCode = 1;
+        continue;
+      }
+      created += 1;
+      console.log(`Created: ${c.component_type} (${c.name})`);
     }
-    created += 1;
-    console.log(`Created: ${c.component_type} (${c.name})`);
   }
-  console.log(`Done. Created ${created}/${COMPONENTS.length} components.`);
+  console.log(`Done. Created ${created}, updated ${updated}, total ${COMPONENTS.length} components.`);
 }
 
 main().catch((e) => {
