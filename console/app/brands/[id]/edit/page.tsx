@@ -61,7 +61,6 @@ export default function EditBrandPage() {
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
   const [googleDisconnectBusy, setGoogleDisconnectBusy] = useState(false);
   const [googleConnectError, setGoogleConnectError] = useState<string | null>(null);
-  const [googleConnectLoading, setGoogleConnectLoading] = useState(false);
 
   const fetchGoogleConnected = useCallback(() => {
     if (!id) return;
@@ -77,35 +76,16 @@ export default function EditBrandPage() {
     const err = searchParams.get("error");
     if (connected === "1" || err) {
       setGoogleConnected(connected === "1");
+      setGoogleConnectError(err ? decodeURIComponent(err) : null);
       router.replace(`/brands/${id}/edit`, { scroll: false });
     }
   }, [id, router, searchParams]);
 
-  function handleConnectGoogle() {
-    setGoogleConnectError(null);
-    setGoogleConnectLoading(true);
-    const redirectUri = typeof window !== "undefined" ? `${window.location.origin}/brands/${id}/edit` : "";
-    const url = `${CONTROL_PLANE_API}/v1/seo/google/auth?brand_id=${encodeURIComponent(id!)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-    fetch(url)
-      .then(async (res) => {
-        const j = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error((j as { error?: string }).error ?? res.statusText ?? "Failed to get Google auth URL");
-        }
-        return j as { url?: string; error?: string };
-      })
-      .then((j) => {
-        if (j.url) {
-          window.location.href = j.url;
-          return;
-        }
-        throw new Error((j as { error?: string }).error ?? "No redirect URL returned");
-      })
-      .catch((err: Error) => {
-        setGoogleConnectError(err?.message ?? "Could not reach the API. Check NEXT_PUBLIC_CONTROL_PLANE_API and CORS.");
-        setGoogleConnectLoading(false);
-      });
-  }
+  /** Direct link so browser navigates to API → API 302 to Google. Avoids fetch-then-redirect being blocked. */
+  const connectGoogleHref =
+    typeof window !== "undefined" && id
+      ? `${CONTROL_PLANE_API}/v1/seo/google/auth?brand_id=${encodeURIComponent(id)}&redirect_uri=${encodeURIComponent(`${window.location.origin}/brands/${id}/edit`)}&redirect=1`
+      : "#";
 
   async function handleDisconnectGoogle() {
     if (!id) return;
@@ -459,9 +439,9 @@ export default function EditBrandPage() {
                     </Button>
                   </>
                 ) : (
-                  <Button type="button" variant="secondary" size="sm" onClick={handleConnectGoogle} disabled={googleConnectLoading} title="Connect Search Console & GA4 for this brand">
-                    {googleConnectLoading ? "Redirecting…" : "Connect Google"}
-                  </Button>
+                  <a href={connectGoogleHref} className="inline-flex items-center justify-center rounded-md border border-border bg-bg px-3 py-1.5 text-sm font-medium text-fg hover:bg-fg-muted/10" title="Connect Search Console & GA4 for this brand">
+                    Connect Google
+                  </a>
                 )}
                 <Button type="button" variant="secondary" onClick={() => router.back()}>
                   Cancel
@@ -495,9 +475,9 @@ export default function EditBrandPage() {
                 </Button>
               </div>
             ) : (
-              <Button type="button" variant="primary" onClick={handleConnectGoogle} disabled={googleConnectLoading}>
-                {googleConnectLoading ? "Redirecting to Google…" : "Connect Google"}
-              </Button>
+              <a href={connectGoogleHref} className="inline-flex items-center justify-center rounded-md bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+                Connect Google
+              </a>
             )}
           </CardSection>
 

@@ -10,7 +10,20 @@ import { triggerNoArtifactsRemediationForRun, triggerBadArtifactsRemediationForR
 import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
 import { productsFromUrl, type ProductsFromUrlType } from "./products-from-url.js";
 import { tokenizeBrandFromUrl } from "./brand-tokenize-from-url.js";
+import { fetchGscReport, fetchGa4Report } from "../../runners/src/lib/seo/gsc-ga-api.js";
+import {
+  getGoogleAuthUrl,
+  handleOAuthCallback,
+  getAccessTokenForInitiative,
+  hasGoogleCredentials,
+  deleteGoogleCredentials,
+  hasGoogleCredentialsForBrand,
+  deleteGoogleCredentialsForBrand,
+} from "./seo-google-oauth.js";
 import type { Contract } from "./template-image-validators.js";
+
+const CONTROL_PLANE_BASE = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
+const SEO_GOOGLE_CALLBACK_PATH = "/v1/seo/google/callback";
 
 const app = express();
 // CORS: allow comma-separated origins (e.g. multiple Vercel URLs) or "*"
@@ -501,13 +514,133 @@ app.post("/v1/products/from_url", async (req, res) => {
   }
 });
 
+/** POST /v1/seo/gsc_report — fetch GSC Search Analytics (top pages + queries). Requires GOOGLE_APPLICATION_CREDENTIALS and site in Search Console. */
+app.post("/v1/seo/gsc_report", async (req, res) => {
+  try {
+    const body = req.body as { site_url?: string; date_range?: string; row_limit?: number };
+    const site_url = body.site_url ?? "";
+    if (!site_url) return res.status(400).json({ error: "site_url is required" });
+    const report = await fetchGscReport(site_url, {
+      dateRange: body.date_range ?? "last28days",
+      rowLimit: Math.min(1000, Math.max(1, Number(body.row_limit) || 500)),
+    });
+    res.json(report);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/seo/ga4_report — fetch GA4 top pages (sessions, page views). Requires GOOGLE_APPLICATION_CREDENTIALS and GA4 property access. */
+app.post("/v1/seo/ga4_report", async (req, res) => {
+  try {
+    const body = req.body as { property_id?: string; row_limit?: number };
+    const property_id = body.property_id ?? "";
+    if (!property_id) return res.status(400).json({ error: "property_id is required" });
+    const report = await fetchGa4Report(property_id, {
+      rowLimit: Math.min(1000, Math.max(1, Number(body.row_limit) || 500)),
+    });
+    res.json(report);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/seo/google/auth — return Google OAuth URL or redirect. Pass brand_id (preferred) or initiative_id (legacy), and redirect_uri. If redirect=1, respond with 302 to Google (avoids browser blocking async redirects). */
+app.get("/v1/seo/google/auth", async (req, res) => {
+  try {
+    const brand_id = req.query.brand_id as string | undefined;
+    const initiative_id = req.query.initiative_id as string | undefined;
+    const redirect_uri = req.query.redirect_uri as string;
+    const doRedirect = req.query.redirect === "1" || req.query.redirect === "true";
+    if (!redirect_uri) return res.status(400).json({ error: "redirect_uri is required (e.g. brand or initiative page URL)" });
+    if (!brand_id && !initiative_id) return res.status(400).json({ error: "brand_id or initiative_id is required" });
+    const callbackUrl = `${CONTROL_PLANE_BASE}${SEO_GOOGLE_CALLBACK_PATH}`;
+    const url = await getGoogleAuthUrl(callbackUrl, redirect_uri, { brand_id, initiative_id });
+    if (doRedirect) return res.redirect(302, url);
+    res.json({ url });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/seo/google/callback — OAuth callback: exchange code, store refresh_token, redirect to redirect_uri from state. */
+app.get("/v1/seo/google/callback", async (req, res) => {
+  const code = req.query.code as string;
+  const state = req.query.state as string;
+  const callbackRedirectUri = `${CONTROL_PLANE_BASE}${SEO_GOOGLE_CALLBACK_PATH}`;
+  if (!code || !state) {
+    return res.redirect(callbackRedirectUri + "?error=missing_code_or_state");
+  }
+  try {
+    const result = await withTransaction((client) => handleOAuthCallback(client, code, state, callbackRedirectUri));
+    const target = result.redirect_uri || "/";
+    const err = result.error ? `&error=${encodeURIComponent(result.error)}` : "&google_connected=1";
+    return res.redirect(target.includes("?") ? `${target}${err}` : `${target}?${err.slice(1)}`);
+  } catch (e) {
+    const msg = encodeURIComponent(String((e as Error).message));
+    return res.redirect(`${callbackRedirectUri}?error=${msg}`);
+  }
+});
+
+/** GET /v1/initiatives/:id/google_access_token — for runner: return short-lived access_token (uses stored refresh_token). */
+app.get("/v1/initiatives/:id/google_access_token", async (req, res) => {
+  try {
+    const initiativeId = req.params.id;
+    const token = await withTransaction((client) => getAccessTokenForInitiative(client, initiativeId));
+    if (!token) return res.status(404).json({ error: "Google not connected for this initiative" });
+    res.json(token);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/initiatives/:id/google_connected — for console: whether initiative has Google credentials. */
+app.get("/v1/initiatives/:id/google_connected", async (req, res) => {
+  try {
+    const connected = await withTransaction((client) => hasGoogleCredentials(client, req.params.id));
+    res.json({ connected: !!connected });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** DELETE /v1/initiatives/:id/google_credentials — disconnect Google for this initiative (legacy per-initiative credentials only). */
+app.delete("/v1/initiatives/:id/google_credentials", async (req, res) => {
+  try {
+    await withTransaction((client) => deleteGoogleCredentials(client, req.params.id));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/brand_profiles/:id/google_connected — whether brand has Google credentials (for brand page "Connect Google"). */
+app.get("/v1/brand_profiles/:id/google_connected", async (req, res) => {
+  try {
+    const connected = await withTransaction((client) => hasGoogleCredentialsForBrand(client, req.params.id));
+    res.json({ connected: !!connected });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** DELETE /v1/brand_profiles/:id/google_credentials — disconnect Google for this brand. */
+app.delete("/v1/brand_profiles/:id/google_credentials", async (req, res) => {
+  try {
+    await withTransaction((client) => deleteGoogleCredentialsForBrand(client, req.params.id));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** PATCH /v1/initiatives/:id — update initiative (Operator+) */
 app.patch("/v1/initiatives/:id", async (req, res) => {
   try {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const body = req.body as Record<string, unknown>;
-    const allowed = ["intent_type", "title", "risk_level", "goal_state", "source_ref", "template_id", "priority", "brand_profile_id"];
+    const allowed = ["intent_type", "title", "risk_level", "goal_state", "goal_metadata", "source_ref", "template_id", "priority", "brand_profile_id"];
     const sets: string[] = [];
     const params: unknown[] = [];
     let i = 1;

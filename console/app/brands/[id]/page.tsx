@@ -101,7 +101,6 @@ export default function BrandDetailPage() {
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
   const [googleDisconnectBusy, setGoogleDisconnectBusy] = useState(false);
   const [googleConnectError, setGoogleConnectError] = useState<string | null>(null);
-  const [googleConnectLoading, setGoogleConnectLoading] = useState(false);
 
   const fetchGoogleConnected = useCallback(() => {
     if (!id) return;
@@ -117,35 +116,16 @@ export default function BrandDetailPage() {
     const err = searchParams.get("error");
     if (connected === "1" || err) {
       setGoogleConnected(connected === "1");
+      setGoogleConnectError(err ? decodeURIComponent(err) : null);
       router.replace(`/brands/${id}`, { scroll: false });
     }
   }, [id, router, searchParams]);
 
-  function handleConnectGoogle() {
-    setGoogleConnectError(null);
-    setGoogleConnectLoading(true);
-    const redirectUri = typeof window !== "undefined" ? `${window.location.origin}/brands/${id}` : "";
-    const url = `${API}/v1/seo/google/auth?brand_id=${encodeURIComponent(id!)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-    fetch(url)
-      .then(async (res) => {
-        const j = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error((j as { error?: string }).error ?? res.statusText ?? "Failed to get Google auth URL");
-        }
-        return j as { url?: string; error?: string };
-      })
-      .then((j) => {
-        if (j.url) {
-          window.location.href = j.url;
-          return;
-        }
-        throw new Error((j as { error?: string }).error ?? "No redirect URL returned");
-      })
-      .catch((err: Error) => {
-        setGoogleConnectError(err?.message ?? "Could not reach the API. Check NEXT_PUBLIC_CONTROL_PLANE_API and CORS.");
-        setGoogleConnectLoading(false);
-      });
-  }
+  /** Direct link so browser navigates to API → API 302 to Google. Avoids fetch-then-redirect being blocked. */
+  const connectGoogleHref =
+    typeof window !== "undefined" && id
+      ? `${API}/v1/seo/google/auth?brand_id=${encodeURIComponent(id)}&redirect_uri=${encodeURIComponent(`${window.location.origin}/brands/${id}`)}&redirect=1`
+      : "#";
 
   async function handleDisconnectGoogle() {
     if (!id) return;
@@ -261,9 +241,9 @@ export default function BrandDetailPage() {
               </Button>
             </div>
           ) : (
-            <Button variant="primary" onClick={handleConnectGoogle} disabled={googleConnectLoading}>
-              {googleConnectLoading ? "Redirecting to Google…" : "Connect Google"}
-            </Button>
+            <a href={connectGoogleHref} className="inline-flex items-center justify-center rounded-md bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
+              Connect Google
+            </a>
           )}
         </CardSection>
 
