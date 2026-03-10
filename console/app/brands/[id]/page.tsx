@@ -100,6 +100,8 @@ export default function BrandDetailPage() {
   const archiveMut = useDeleteBrandProfile();
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
   const [googleDisconnectBusy, setGoogleDisconnectBusy] = useState(false);
+  const [googleConnectError, setGoogleConnectError] = useState<string | null>(null);
+  const [googleConnectLoading, setGoogleConnectLoading] = useState(false);
 
   const fetchGoogleConnected = useCallback(() => {
     if (!id) return;
@@ -120,14 +122,29 @@ export default function BrandDetailPage() {
   }, [id, router, searchParams]);
 
   function handleConnectGoogle() {
+    setGoogleConnectError(null);
+    setGoogleConnectLoading(true);
     const redirectUri = typeof window !== "undefined" ? `${window.location.origin}/brands/${id}` : "";
     const url = `${API}/v1/seo/google/auth?brand_id=${encodeURIComponent(id!)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
     fetch(url)
-      .then((res) => res.json())
-      .then((j: { url?: string }) => {
-        if (j.url) window.location.href = j.url;
+      .then(async (res) => {
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error((j as { error?: string }).error ?? res.statusText ?? "Failed to get Google auth URL");
+        }
+        return j as { url?: string; error?: string };
       })
-      .catch(() => {});
+      .then((j) => {
+        if (j.url) {
+          window.location.href = j.url;
+          return;
+        }
+        throw new Error((j as { error?: string }).error ?? "No redirect URL returned");
+      })
+      .catch((err: Error) => {
+        setGoogleConnectError(err?.message ?? "Could not reach the API. Check NEXT_PUBLIC_CONTROL_PLANE_API and CORS.");
+        setGoogleConnectLoading(false);
+      });
   }
 
   async function handleDisconnectGoogle() {
@@ -231,6 +248,11 @@ export default function BrandDetailPage() {
           <p className="text-body-small text-text-secondary mb-3">
             Connect the Google account that has access to Search Console and GA4 for this brand. SEO initiatives that use this brand will use this connection.
           </p>
+          {googleConnectError && (
+            <div className="mb-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
+              {googleConnectError}
+            </div>
+          )}
           {googleConnected === true ? (
             <div className="flex items-center gap-3 flex-wrap">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-sm">Google connected</span>
@@ -239,8 +261,8 @@ export default function BrandDetailPage() {
               </Button>
             </div>
           ) : (
-            <Button variant="primary" onClick={handleConnectGoogle}>
-              Connect Google
+            <Button variant="primary" onClick={handleConnectGoogle} disabled={googleConnectLoading}>
+              {googleConnectLoading ? "Redirecting to Google…" : "Connect Google"}
             </Button>
           )}
         </CardSection>
