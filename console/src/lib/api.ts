@@ -132,7 +132,10 @@ export async function getInitiative(id: string): Promise<InitiativeRow> {
   return res.json();
 }
 
-export async function updateInitiative(id: string, body: Partial<{ intent_type: string; title: string | null; risk_level: string; source_ref: string }>): Promise<InitiativeRow> {
+export async function updateInitiative(
+  id: string,
+  body: Partial<{ intent_type: string; title: string | null; risk_level: string; source_ref: string; goal_metadata: Record<string, unknown> }>,
+): Promise<InitiativeRow> {
   const res = await fetch(`${API}/v1/initiatives/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
@@ -140,6 +143,32 @@ export async function updateInitiative(id: string, body: Partial<{ intent_type: 
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+/** GET /v1/initiatives/:id/google_connected — whether initiative has Google OAuth credentials (for SEO). */
+export async function getInitiativeGoogleConnected(id: string): Promise<{ connected: boolean }> {
+  const res = await fetch(`${API}/v1/initiatives/${id}/google_connected`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** DELETE /v1/initiatives/:id/google_credentials — disconnect Google for this initiative (legacy only). */
+export async function deleteInitiativeGoogleCredentials(id: string): Promise<void> {
+  const res = await fetch(`${API}/v1/initiatives/${id}/google_credentials`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+/** GET /v1/brand_profiles/:id/google_connected — whether brand has Google OAuth credentials (GSC/GA4). */
+export async function getBrandGoogleConnected(id: string): Promise<{ connected: boolean }> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/google_connected`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** DELETE /v1/brand_profiles/:id/google_credentials — disconnect Google for this brand. */
+export async function deleteBrandGoogleCredentials(id: string): Promise<void> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/google_credentials`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
 }
 
 export async function createInitiative(body: { intent_type: string; title?: string | null; risk_level: string; source_ref?: string; brand_profile_id?: string | null }): Promise<InitiativeRow> {
