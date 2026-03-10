@@ -871,7 +871,7 @@ export async function handleEmailGenerateMjml(request: {
           const meta = camp.metadata_json as { products?: unknown[]; images?: string[]; selected_images?: string[]; campaign_prompt?: string; sitemap_url?: string; sitemap_type?: string };
           if (meta.products && Array.isArray(meta.products) && meta.products.length > 0 && !input.products?.length) {
             input.products = meta.products as EmailGenerateMjmlInput["products"];
-            console.log("[MJML] products from campaign metadata", { run_id: runId, initiative_id: initiativeId, count: input.products.length });
+            console.log("[MJML] products from campaign metadata", { run_id: runId, initiative_id: initiativeId, count: input.products?.length ?? meta.products.length });
           } else if (!input.products?.length && (!meta.products || !Array.isArray(meta.products) || meta.products.length === 0)) {
             console.log("[MJML] campaign metadata has no products; will try sitemap/brand fallbacks", { run_id: runId, initiative_id: initiativeId, hasMetaProducts: !!meta.products, metaProductsLength: Array.isArray(meta.products) ? meta.products.length : 0 });
           }

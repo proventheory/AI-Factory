@@ -74,6 +74,22 @@ function getRole(_req: express.Request): "viewer" | "operator" | "approver" | "a
   return "operator";
 }
 
+/** Keys that must not be written into email_design_generator_metadata.metadata_json; use columns or child table. See docs/SCHEMA_JSON_GUARDRAILS.md. */
+const EMAIL_DESIGN_METADATA_JSON_BLOCKLIST = ["scheduled_at", "segment_id", "proof_status"] as const;
+
+function checkEmailDesignMetadataJsonBlocklist(meta: Record<string, unknown>): string | null {
+  for (const key of EMAIL_DESIGN_METADATA_JSON_BLOCKLIST) {
+    if (Object.prototype.hasOwnProperty.call(meta, key)) return key;
+  }
+  return null;
+}
+
+/** Documented allowed top-level keys for artifacts.metadata_json. See docs/SCHEMA_JSON_GUARDRAILS.md. */
+const ARTIFACT_METADATA_JSON_ALLOWLIST = new Set(["content", "mjml", "error_signature", "type"]);
+
+/** design_tokens keys that are campaign/asset refs and should live in initiative or email metadata. See docs/SCHEMA_JSON_GUARDRAILS.md. */
+const DESIGN_TOKENS_NON_TOKEN_KEYS = ["products", "selected_images"] as const;
+
 /** Flatten design_tokens for brand_design_tokens_flat. Returns { path, value_text, value_json, type, group }[] */
 function flattenDesignTokens(obj: unknown, prefix = ""): { path: string; value_text: string | null; value_json: unknown; type: string; group: string }[] {
   const out: { path: string; value_text: string | null; value_json: unknown; type: string; group: string }[] = [];
@@ -325,6 +341,14 @@ app.post("/v1/email_designs", async (req, res) => {
     const metadataForDb = body.metadata_json != null && typeof body.metadata_json === "object"
       ? { ...(body.metadata_json as Record<string, unknown>), template_id: body.template_id ?? (body.metadata_json as Record<string, unknown>).template_id }
       : (body.template_id ? { template_id: body.template_id } : null);
+    if (metadataForDb != null && typeof metadataForDb === "object") {
+      const blocked = checkEmailDesignMetadataJsonBlocklist(metadataForDb as Record<string, unknown>);
+      if (blocked) {
+        return res.status(400).json({
+          error: `metadata_json must not contain "${blocked}". Use columns or a child table. See docs/SCHEMA_JSON_GUARDRAILS.md.`,
+        });
+      }
+    }
     await pool.query(
       `INSERT INTO email_design_generator_metadata (initiative_id, subject_line, from_name, from_email, template_artifact_id, metadata_json) VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
       [
@@ -357,6 +381,14 @@ app.patch("/v1/email_designs/:id", async (req, res) => {
     const exists = await pool.query("SELECT id FROM initiatives WHERE id = $1 AND intent_type = 'email_design_generator'", [id]);
     if (exists.rows.length === 0) return res.status(404).json({ error: "Not found" });
     const body = req.body as Record<string, unknown>;
+    if (body.metadata_json != null && typeof body.metadata_json === "object") {
+      const blocked = checkEmailDesignMetadataJsonBlocklist(body.metadata_json as Record<string, unknown>);
+      if (blocked) {
+        return res.status(400).json({
+          error: `metadata_json must not contain "${blocked}". Use columns or a child table. See docs/SCHEMA_JSON_GUARDRAILS.md.`,
+        });
+      }
+    }
     const allowed = [
       "subject_line",
       "from_name",
@@ -1261,6 +1293,14 @@ app.patch("/v1/artifacts/:id", async (req, res) => {
     if (body.metadata !== undefined) {
       if (typeof body.metadata !== "object" || body.metadata === null || Array.isArray(body.metadata)) return res.status(400).json({ error: "metadata must be a plain object" });
       if (Object.getPrototypeOf(body.metadata) !== Object.prototype) return res.status(400).json({ error: "metadata must be a plain object" });
+      for (const key of Object.keys(body.metadata)) {
+        if (!ARTIFACT_METADATA_JSON_ALLOWLIST.has(key)) {
+          console.warn(
+            `[PATCH artifact] metadata key "${key}" is not in the documented allowlist (content, mjml, error_signature, type). See docs/SCHEMA_JSON_GUARDRAILS.md.`,
+            { artifact_id: req.params.id }
+          );
+        }
+      }
     }
 
     const id = req.params.id;
@@ -2418,6 +2458,17 @@ app.post("/v1/brand_profiles", async (req, res) => {
       design_tokens?: unknown; deck_theme?: unknown; report_theme?: unknown;
     };
     if (!body.name) return res.status(400).json({ error: "name required" });
+    if (body.design_tokens != null && typeof body.design_tokens === "object" && !Array.isArray(body.design_tokens)) {
+      const dt = body.design_tokens as Record<string, unknown>;
+      for (const key of DESIGN_TOKENS_NON_TOKEN_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(dt, key)) {
+          console.warn(
+            `[brand_profiles] design_tokens should not contain "${key}"; use initiative or email_design_generator_metadata. See docs/SCHEMA_JSON_GUARDRAILS.md.`
+          );
+          break;
+        }
+      }
+    }
     const slug =
       (typeof body.slug === "string" && body.slug.trim())
         ? body.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
@@ -2453,6 +2504,18 @@ app.put("/v1/brand_profiles/:id", async (req, res) => {
     const id = req.params.id;
     if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
     const body = req.body as Record<string, unknown>;
+    if (body.design_tokens != null && typeof body.design_tokens === "object" && !Array.isArray(body.design_tokens)) {
+      const dt = body.design_tokens as Record<string, unknown>;
+      for (const key of DESIGN_TOKENS_NON_TOKEN_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(dt, key)) {
+          console.warn(
+            `[brand_profiles] design_tokens should not contain "${key}"; use initiative or email_design_generator_metadata. See docs/SCHEMA_JSON_GUARDRAILS.md.`,
+            { brand_id: id }
+          );
+          break;
+        }
+      }
+    }
     const jsonbFields = ["identity", "tone", "visual_style", "copy_style", "design_tokens", "deck_theme", "report_theme"];
     const scalarFields = ["name", "slug", "brand_theme_id", "status"];
     const sets: string[] = [];

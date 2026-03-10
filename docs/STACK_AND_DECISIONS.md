@@ -305,3 +305,12 @@ We take **best features** from Lovable, Base44, Replit AI, etc., and implement t
 | OpenHands | **Yes** | Real integration: Docker/CLI/LLM fallback. `openhands_resolver` handler + `self_heal` template. |
 | SWE-agent | **Yes** | Real integration: CLI/Docker/LLM fallback. `swe_agent` handler + `swe_agent` template. |
 - **Widget stack decisions:** [docs/WIDGET_STACK_DECISIONS.md](docs/WIDGET_STACK_DECISIONS.md) — which charting, form, editor, and visualization libraries were adopted and why.
+
+---
+
+## 10. Schema growth and JSON guardrails
+
+The database is domain-grouped with a relational core; JSON/JSONB is used for **config and metadata** only. New behavioral or queryable data should use **columns or child tables**, not additional keys in JSON blobs.
+
+- **Canonical guardrails:** [docs/SCHEMA_JSON_GUARDRAILS.md](docs/SCHEMA_JSON_GUARDRAILS.md) — payload contracts for `job_events.payload_json`, allowed keys for `artifacts.metadata_json`, contracts for `document_templates.component_sequence`, and decision rules for when to add columns vs extend JSON.
+- **High-risk areas:** `brand_profiles.design_tokens` (keep design tokens only; do not store campaign/asset refs), `email_design_generator_metadata.metadata_json` (campaign payload only; add columns or child table for scheduling/segmentation/proofing), `job_events.payload_json` (documented payload per event_type; avoid ad-hoc keys).
