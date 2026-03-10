@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Button,
   Input,
@@ -28,7 +28,7 @@ import {
 /** Linear gradient for container backgrounds (matches token-helpers.GradientEntry). */
 type GradientEntry = { name: string; type: "linear"; stops: string[] };
 import { createSupabaseBrowserClient } from "@/lib/supabase";
-import { copyCampaignImageToCdn } from "@/lib/api";
+import * as api from "@/lib/api";
 
 const FOOTER_LINK_KEYS: { key: string; label: string; group: "popular" | "company" | "legal" }[] = [
   { key: "popularWeightManagementUrl", label: "Featured link 1", group: "popular" },
@@ -50,11 +50,56 @@ const FOOTER_LINK_KEYS: { key: string; label: string; group: "popular" | "compan
   { key: "hipaaUrl", label: "Other legal / compliance", group: "legal" },
 ];
 
+const CONTROL_PLANE_API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
+
 export default function EditBrandPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: brand, isLoading, error: loadError } = useBrandProfile(id);
   const update = useUpdateBrandProfile();
+  const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
+  const [googleDisconnectBusy, setGoogleDisconnectBusy] = useState(false);
+
+  const fetchGoogleConnected = useCallback(() => {
+    if (!id) return;
+    api.getBrandGoogleConnected(id).then((r) => setGoogleConnected(r.connected)).catch(() => setGoogleConnected(false));
+  }, [id]);
+
+  useEffect(() => {
+    fetchGoogleConnected();
+  }, [fetchGoogleConnected]);
+
+  useEffect(() => {
+    const connected = searchParams.get("google_connected");
+    const err = searchParams.get("error");
+    if (connected === "1" || err) {
+      setGoogleConnected(connected === "1");
+      router.replace(`/brands/${id}/edit`, { scroll: false });
+    }
+  }, [id, router, searchParams]);
+
+  function handleConnectGoogle() {
+    const redirectUri = typeof window !== "undefined" ? `${window.location.origin}/brands/${id}/edit` : "";
+    const url = `${CONTROL_PLANE_API}/v1/seo/google/auth?brand_id=${encodeURIComponent(id!)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    fetch(url)
+      .then((res) => res.json())
+      .then((j: { url?: string }) => {
+        if (j.url) window.location.href = j.url;
+      })
+      .catch(() => {});
+  }
+
+  async function handleDisconnectGoogle() {
+    if (!id) return;
+    setGoogleDisconnectBusy(true);
+    try {
+      await api.deleteBrandGoogleCredentials(id);
+      setGoogleConnected(false);
+    } finally {
+      setGoogleDisconnectBusy(false);
+    }
+  }
 
   const [name, setName] = useState("");
   const [archetype, setArchetype] = useState("");
@@ -256,7 +301,7 @@ export default function EditBrandPage() {
       let resolvedLogoUrl = logoUrl.trim();
       if (resolvedLogoUrl && !/supabase\.co\/storage\/v1\/object\/public\/upload\//.test(resolvedLogoUrl)) {
         try {
-          const { cdn_url } = await copyCampaignImageToCdn(resolvedLogoUrl);
+          const { cdn_url } = await api.copyCampaignImageToCdn(resolvedLogoUrl);
           resolvedLogoUrl = cdn_url;
         } catch (logoErr) {
           setSubmitError(logoErr instanceof Error ? logoErr.message : "Failed to copy logo to CDN");
@@ -266,7 +311,7 @@ export default function EditBrandPage() {
       let resolvedLogoUrlWhite = logoUrlWhite.trim();
       if (resolvedLogoUrlWhite && !/supabase\.co\/storage\/v1\/object\/public\/upload\//.test(resolvedLogoUrlWhite)) {
         try {
-          const { cdn_url } = await copyCampaignImageToCdn(resolvedLogoUrlWhite);
+          const { cdn_url } = await api.copyCampaignImageToCdn(resolvedLogoUrlWhite);
           resolvedLogoUrlWhite = cdn_url;
         } catch (logoErr) {
           setSubmitError(logoErr instanceof Error ? logoErr.message : "Failed to copy white logo to CDN");
@@ -388,7 +433,19 @@ export default function EditBrandPage() {
           <PageHeader
             title={`Edit — ${brand.name}`}
             actions={
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {googleConnected === true ? (
+                  <>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-100 text-emerald-800 text-sm font-medium">Google connected</span>
+                    <Button type="button" variant="secondary" size="sm" onClick={handleDisconnectGoogle} disabled={googleDisconnectBusy}>
+                      {googleDisconnectBusy ? "Disconnecting…" : "Disconnect Google"}
+                    </Button>
+                  </>
+                ) : (
+                  <Button type="button" variant="secondary" size="sm" onClick={handleConnectGoogle} title="Connect Search Console & GA4 for this brand">
+                    Connect Google
+                  </Button>
+                )}
                 <Button type="button" variant="secondary" onClick={() => router.back()}>
                   Cancel
                 </Button>
@@ -403,6 +460,24 @@ export default function EditBrandPage() {
               {submitError}
             </div>
           )}
+
+          <CardSection title="Google (GSC / GA4)">
+            <p className="text-body-small text-text-secondary mb-3">
+              Connect the Google account that has access to Search Console and GA4 for this brand. SEO initiatives that use this brand will use this connection.
+            </p>
+            {googleConnected === true ? (
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-sm">Google connected</span>
+                <Button type="button" variant="secondary" onClick={handleDisconnectGoogle} disabled={googleDisconnectBusy}>
+                  {googleDisconnectBusy ? "Disconnecting…" : "Disconnect"}
+                </Button>
+              </div>
+            ) : (
+              <Button type="button" variant="primary" onClick={handleConnectGoogle}>
+                Connect Google
+              </Button>
+            )}
+          </CardSection>
 
           <CardSection title="Basic Info">
             <div className="grid gap-4 md:grid-cols-2">

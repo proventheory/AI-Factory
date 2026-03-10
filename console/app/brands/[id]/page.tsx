@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Button,
   Badge,
@@ -28,6 +28,9 @@ import {
   type BrandPalette,
   type BrandTypography,
 } from "../token-helpers";
+import * as api from "@/lib/api";
+
+const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
 function ColorSwatch({ hex, label, large, usage }: { hex: string; label: string; large?: boolean; usage?: string }) {
   return (
@@ -89,11 +92,54 @@ function ReadinessRow({
 export default function BrandDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: brand, isLoading, error } = useBrandProfile(id);
   const { data: embeddings } = useBrandEmbeddings(id);
   const { data: assets } = useBrandAssets(id);
   const { data: usage } = useBrandUsage(id ?? null);
   const archiveMut = useDeleteBrandProfile();
+  const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
+  const [googleDisconnectBusy, setGoogleDisconnectBusy] = useState(false);
+
+  const fetchGoogleConnected = useCallback(() => {
+    if (!id) return;
+    api.getBrandGoogleConnected(id).then((r) => setGoogleConnected(r.connected)).catch(() => setGoogleConnected(false));
+  }, [id]);
+
+  useEffect(() => {
+    fetchGoogleConnected();
+  }, [fetchGoogleConnected]);
+
+  useEffect(() => {
+    const connected = searchParams.get("google_connected");
+    const err = searchParams.get("error");
+    if (connected === "1" || err) {
+      setGoogleConnected(connected === "1");
+      router.replace(`/brands/${id}`, { scroll: false });
+    }
+  }, [id, router, searchParams]);
+
+  function handleConnectGoogle() {
+    const redirectUri = typeof window !== "undefined" ? `${window.location.origin}/brands/${id}` : "";
+    const url = `${API}/v1/seo/google/auth?brand_id=${encodeURIComponent(id!)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    fetch(url)
+      .then((res) => res.json())
+      .then((j: { url?: string }) => {
+        if (j.url) window.location.href = j.url;
+      })
+      .catch(() => {});
+  }
+
+  async function handleDisconnectGoogle() {
+    if (!id) return;
+    setGoogleDisconnectBusy(true);
+    try {
+      await api.deleteBrandGoogleCredentials(id);
+      setGoogleConnected(false);
+    } finally {
+      setGoogleDisconnectBusy(false);
+    }
+  }
 
   if (error) {
     return (
@@ -180,6 +226,24 @@ export default function BrandDetailPage() {
             </div>
           }
         />
+
+        <CardSection title="Google (GSC / GA4)">
+          <p className="text-body-small text-text-secondary mb-3">
+            Connect the Google account that has access to Search Console and GA4 for this brand. SEO initiatives that use this brand will use this connection.
+          </p>
+          {googleConnected === true ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-sm">Google connected</span>
+              <Button variant="secondary" onClick={handleDisconnectGoogle} disabled={googleDisconnectBusy}>
+                {googleDisconnectBusy ? "Disconnecting…" : "Disconnect"}
+              </Button>
+            </div>
+          ) : (
+            <Button variant="primary" onClick={handleConnectGoogle}>
+              Connect Google
+            </Button>
+          )}
+        </CardSection>
 
         <CardSection title="Brand system">
           <p className="text-body-small text-text-secondary mb-4">
