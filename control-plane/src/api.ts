@@ -5,6 +5,12 @@ import { v4 as uuid } from "uuid";
 import mjml2html from "mjml";
 import { pool, withTransaction } from "./db.js";
 import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
+import {
+  getExecutableFrontier,
+  getUpstreamNodes,
+  getDownstreamNodes,
+  pathToNode,
+} from "./graph/traversal.js";
 import { executeRollback, routeRun } from "./release-manager.js";
 import { triggerNoArtifactsRemediationForRun, triggerBadArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
 import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
@@ -24,6 +30,9 @@ import type { Contract } from "./template-image-validators.js";
 
 const CONTROL_PLANE_BASE = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const SEO_GOOGLE_CALLBACK_PATH = "/v1/seo/google/callback";
+/** Where to send the user on OAuth error (avoid redirect loop). If unset, we return 400 + HTML. */
+const _corsFirst = process.env.CORS_ORIGIN?.split(",")[0]?.trim();
+const CONSOLE_ORIGIN = process.env.CONSOLE_URL ?? (_corsFirst && _corsFirst !== "*" ? _corsFirst : "");
 
 const app = express();
 // CORS: allow comma-separated origins (e.g. multiple Vercel URLs) or "*"
@@ -568,17 +577,27 @@ app.get("/v1/seo/google/callback", async (req, res) => {
   const code = req.query.code as string;
   const state = req.query.state as string;
   const callbackRedirectUri = `${CONTROL_PLANE_BASE}${SEO_GOOGLE_CALLBACK_PATH}`;
+
+  const sendOAuthError = (error: string) => {
+    if (CONSOLE_ORIGIN) {
+      const safe = encodeURIComponent(error);
+      return res.redirect(`${CONSOLE_ORIGIN.replace(/\/$/, "")}/brands?google_oauth_error=${safe}`);
+    }
+    res.status(400).contentType("text/html").send(
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Google sign-in</title></head><body><p>OAuth error: ${error.replace(/</g, "&lt;")}</p><p>Close this tab and return to the app to try again.</p></body></html>`
+    );
+  };
+
   if (!code || !state) {
-    return res.redirect(callbackRedirectUri + "?error=missing_code_or_state");
+    return sendOAuthError("missing_code_or_state");
   }
   try {
     const result = await withTransaction((client) => handleOAuthCallback(client, code, state, callbackRedirectUri));
-    const target = result.redirect_uri || "/";
+    const target = result.redirect_uri || (CONSOLE_ORIGIN ? `${CONSOLE_ORIGIN.replace(/\/$/, "")}/brands` : "/");
     const err = result.error ? `&error=${encodeURIComponent(result.error)}` : "&google_connected=1";
     return res.redirect(target.includes("?") ? `${target}${err}` : `${target}?${err.slice(1)}`);
   } catch (e) {
-    const msg = encodeURIComponent(String((e as Error).message));
-    return res.redirect(`${callbackRedirectUri}?error=${msg}`);
+    return sendOAuthError(String((e as Error).message));
   }
 });
 
@@ -729,6 +748,173 @@ app.get("/v1/plans/:id", async (req, res) => {
     ]);
     if (!plan) return res.status(404).json({ error: "Plan not found" });
     res.json({ plan, nodes, edges });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+// ---------- Graph Self-Heal V1 RPCs ----------
+
+/** GET /v1/graph/topology/:planId — nodes, edges, status (for graph view). */
+app.get("/v1/graph/topology/:planId", async (req, res) => {
+  try {
+    const planId = req.params.planId;
+    const [plan, nodes, edges] = await Promise.all([
+      pool.query("SELECT id FROM plans WHERE id = $1", [planId]).then(r => r.rows[0]),
+      pool.query("SELECT * FROM plan_nodes WHERE plan_id = $1 ORDER BY sequence NULLS LAST, node_key", [planId]).then(r => r.rows),
+      pool.query("SELECT * FROM plan_edges WHERE plan_id = $1", [planId]).then(r => r.rows),
+    ]);
+    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    res.json({ plan_id: planId, nodes, edges, status: "compiled" });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/frontier/:runId — executable frontier (nodes eligible and queued). */
+app.get("/v1/graph/frontier/:runId", async (req, res) => {
+  try {
+    const runId = req.params.runId;
+    const run = await pool.query("SELECT id, plan_id FROM runs WHERE id = $1", [runId]).then(r => r.rows[0]);
+    if (!run) return res.status(404).json({ error: "Run not found" });
+    const nodeIds = await getExecutableFrontier(pool, runId);
+    res.json({ run_id: runId, plan_id: run.plan_id, executable_node_ids: nodeIds });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/upstream/:planId/:nodeId — upstream (ancestor) nodes. */
+app.get("/v1/graph/upstream/:planId/:nodeId", async (req, res) => {
+  try {
+    const { planId, nodeId } = req.params;
+    const plan = await pool.query("SELECT id FROM plans WHERE id = $1", [planId]).then(r => r.rows[0]);
+    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    const nodeIds = await getUpstreamNodes(pool, planId, nodeId);
+    res.json({ plan_id: planId, node_id: nodeId, upstream_node_ids: nodeIds });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/downstream/:planId/:nodeId — downstream (dependent) nodes. */
+app.get("/v1/graph/downstream/:planId/:nodeId", async (req, res) => {
+  try {
+    const { planId, nodeId } = req.params;
+    const plan = await pool.query("SELECT id FROM plans WHERE id = $1", [planId]).then(r => r.rows[0]);
+    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    const nodeIds = await getDownstreamNodes(pool, planId, nodeId);
+    res.json({ plan_id: planId, node_id: nodeId, downstream_node_ids: nodeIds });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/path/:planId — path from root to target. Query: root_node_id, target_node_id. */
+app.get("/v1/graph/path/:planId", async (req, res) => {
+  try {
+    const planId = req.params.planId;
+    const rootNodeId = req.query.root_node_id as string;
+    const targetNodeId = req.query.target_node_id as string;
+    if (!rootNodeId || !targetNodeId) return res.status(400).json({ error: "root_node_id and target_node_id required" });
+    const plan = await pool.query("SELECT id FROM plans WHERE id = $1", [planId]).then(r => r.rows[0]);
+    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    const path = await pathToNode(pool, planId, rootNodeId, targetNodeId);
+    res.json({ plan_id: planId, root_node_id: rootNodeId, target_node_id: targetNodeId, path });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/audit/:runId — graph audit: missing handlers, dangling edges, nodes without outputs. */
+app.get("/v1/graph/audit/:runId", async (req, res) => {
+  try {
+    const runId = req.params.runId;
+    const run = await pool.query("SELECT id, plan_id FROM runs WHERE id = $1", [runId]).then(r => r.rows[0]);
+    if (!run) return res.status(404).json({ error: "Run not found" });
+    const planId = run.plan_id as string;
+    const [nodes, edges, artifacts] = await Promise.all([
+      pool.query("SELECT * FROM plan_nodes WHERE plan_id = $1", [planId]).then(r => r.rows),
+      pool.query("SELECT * FROM plan_edges WHERE plan_id = $1", [planId]).then(r => r.rows),
+      pool.query("SELECT producer_plan_node_id FROM artifacts WHERE run_id = $1 AND producer_plan_node_id IS NOT NULL", [runId]).then(r => r.rows),
+    ]);
+    const nodeIds = new Set((nodes as { id: string }[]).map(n => n.id));
+    const artifactProducerNodes = new Set((artifacts as { producer_plan_node_id: string }[]).map(a => a.producer_plan_node_id));
+    const dangling: string[] = [];
+    for (const e of edges as { from_node_id: string; to_node_id: string; id: string }[]) {
+      if (!nodeIds.has(e.from_node_id) || !nodeIds.has(e.to_node_id)) dangling.push(e.id);
+    }
+    const nodesWithoutOutputs = (nodes as { id: string }[]).filter(n => !artifactProducerNodes.has(n.id)).map(n => n.id);
+    res.json({
+      run_id: runId,
+      plan_id: planId,
+      dangling_edge_ids: dangling,
+      nodes_without_artifact_outputs: nodesWithoutOutputs,
+      missing_handlers: [], // V1: could compare job_type to runner registry if exposed
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/lineage/:artifactId — producer and consumers (requires artifact_consumption). */
+app.get("/v1/graph/lineage/:artifactId", async (req, res) => {
+  try {
+    const artifactId = req.params.artifactId;
+    const artifact = await pool.query(
+      "SELECT id, run_id, job_run_id, producer_plan_node_id, artifact_type FROM artifacts WHERE id = $1",
+      [artifactId]
+    ).then(r => r.rows[0]);
+    if (!artifact) return res.status(404).json({ error: "Artifact not found" });
+    let consumers: { job_run_id: string; plan_node_id: string }[] = [];
+    try {
+      const c = await pool.query(
+        "SELECT job_run_id, plan_node_id FROM artifact_consumption WHERE artifact_id = $1",
+        [artifactId]
+      );
+      consumers = c.rows as { job_run_id: string; plan_node_id: string }[];
+    } catch {
+      // artifact_consumption table may not exist yet
+    }
+    res.json({
+      artifact_id: artifactId,
+      run_id: artifact.run_id,
+      producer_plan_node_id: artifact.producer_plan_node_id ?? null,
+      consumers,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/repair_plan/:runId/:nodeId — repair plan for a failed node. */
+app.get("/v1/graph/repair_plan/:runId/:nodeId", async (req, res) => {
+  try {
+    const runId = req.params.runId;
+    const nodeId = req.params.nodeId;
+    const run = await pool.query("SELECT id, plan_id FROM runs WHERE id = $1", [runId]).then(r => r.rows[0]);
+    if (!run) return res.status(404).json({ error: "Run not found" });
+    const planId = run.plan_id as string;
+    const [upstream, downstream] = await Promise.all([
+      getUpstreamNodes(pool, planId, nodeId),
+      getDownstreamNodes(pool, planId, nodeId),
+    ]);
+    const jobRun = await pool.query(
+      "SELECT id, status, error_signature FROM job_runs WHERE run_id = $1 AND plan_node_id = $2 ORDER BY attempt DESC LIMIT 1",
+      [runId, nodeId]
+    ).then(r => r.rows[0]);
+    const failureCause = jobRun?.error_signature ?? "unknown";
+    res.json({
+      run_id: runId,
+      node_id: nodeId,
+      plan_id: planId,
+      failure_cause: failureCause,
+      upstream_node_ids: upstream,
+      downstream_node_ids: downstream,
+      recommended_repair: "replay_subgraph",
+      replay_scope: downstream,
+      confidence: 0.8,
+    });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
