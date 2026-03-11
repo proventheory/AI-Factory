@@ -64,6 +64,8 @@ adapters/src/               MCP Adapter layer
 
 **Migrations:** `npm run db:migrate` (core); `npm run db:migrate:pipeline-v2`; `npm run db:migrate:dev-kernel`; `npm run db:migrate:ads-commerce`; Airtable/taxonomy migrations in `supabase/migrations/20250331*.sql`. **Verification:** `npm run doctor`, `npm run test:pipeline-v2-api`, `npm run test:dev-kernel-api`, `npm run verify:taxonomy-db`, `npm run test:taxonomy-catalog-api`. Full runbook: **docs/OPERATIONS_RUNBOOK.md**.
 
+**Deploys:** Before or after any heavy deploy or DB change, follow **[docs/DEPLOY_AND_DATA_SAFETY.md](docs/DEPLOY_AND_DATA_SAFETY.md)** so the Console stays populated and work is traceable.
+
 ---
 
 ## Quick Start

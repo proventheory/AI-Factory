@@ -2,6 +2,8 @@
 
 One-page overview so the structure is easy to grasp.
 
+**Data safety:** The Console must not be left empty after a deploy or infra change; we must always be able to trace back and restore. Before/after heavy changes, follow **[DEPLOY_AND_DATA_SAFETY.md](DEPLOY_AND_DATA_SAFETY.md)**.
+
 ---
 
 ## The three pieces
@@ -64,9 +66,11 @@ You (browser)  →  Console (Vercel)  →  Control Plane API (Render)  →  Post
 
 ## Deploy checklist
 
-1. **DB:** Run migrations on the DB the Control Plane uses (`npm run db:migrate` with that `DATABASE_URL`).
-2. **Control Plane:** Deploy from a commit that has the API routes you need (e.g. `/v1/launches`, `/v1/initiatives`). Restart after DB migrations.
-3. **Console:** Deploy from a commit that has the layouts and nav you expect (Vercel usually auto-deploys on push).
-4. **Env:** Console needs `NEXT_PUBLIC_CONTROL_PLANE_API` pointing at the deployed Control Plane URL.
+1. **Data safety (before deploy):** Export templates and commit the snapshot; commit Cultura mapping if used. See **[DEPLOY_AND_DATA_SAFETY.md](DEPLOY_AND_DATA_SAFETY.md)** — the Console must not be left empty and we must be able to trace back.
+2. **DB:** Run migrations on the DB the Control Plane uses (`npm run db:migrate` with that `DATABASE_URL`).
+3. **Control Plane:** Deploy from a commit that has the API routes you need (e.g. `/v1/launches`, `/v1/initiatives`). Restart after DB migrations.
+4. **Console:** Deploy from a commit that has the layouts and nav you expect (Vercel usually auto-deploys on push).
+5. **Env:** Console needs `NEXT_PUBLIC_CONTROL_PLANE_API` pointing at the deployed Control Plane URL.
+6. **Data safety (after deploy):** Repopulate so the Console is not empty (seeds + import templates from export if you have it). Verify Component Registry, Document Templates, and Brands. See [runbooks/console-data-safety-and-traceability.md](runbooks/console-data-safety-and-traceability.md).
 
-See [ENABLEMENT_ENV_VARS.md](ENABLEMENT_ENV_VARS.md) and [STACK_AND_DECISIONS.md](STACK_AND_DECISIONS.md) for more.
+See [ENABLEMENT_ENV_VARS.md](ENABLEMENT_ENV_VARS.md) and [STACK_AND_DECISIONS.md](STACK_AND_DECISIONS.md) for more. If components, email templates, or First Capital brands seem missing, see [WHERE_EMAIL_AND_BRANDS_LIVE.md](WHERE_EMAIL_AND_BRANDS_LIVE.md).

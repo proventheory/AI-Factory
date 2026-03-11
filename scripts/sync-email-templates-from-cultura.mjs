@@ -3,25 +3,60 @@
  * Pull email templates from Cultura/Focuz Supabase and push to our Control Plane.
  *
  * Env:
- *   CULTURA_SUPABASE_URL   - e.g. https://aimferclcnvhawzpruzn.supabase.co
- *   CULTURA_SUPABASE_ANON  - publishable/anon key
- *   CONTROL_PLANE_URL      - our API base (e.g. https://ai-factory-api-staging.onrender.com)
+ *   CULTURA_SUPABASE_URL        - e.g. https://aimferclcnvhawzpruzn.supabase.co
+ *   CULTURA_SUPABASE_ANON       - publishable/anon key
+ *   CONTROL_PLANE_URL           - our API base (e.g. https://ai-factory-api-staging.onrender.com)
+ *   CULTURA_TEMPLATE_MAPPING    - optional path to JSON mapping (cultura id -> { name?, type?, img_count? })
  *
  * Usage:
  *   CULTURA_SUPABASE_URL=... CULTURA_SUPABASE_ANON=... CONTROL_PLANE_URL=... node scripts/sync-email-templates-from-cultura.mjs
+ *   node scripts/sync-email-templates-from-cultura.mjs --mapping data/cultura-templates/template-mapping.json
  *
  * Cultura templates table: id, type, img_count, imageUrl, mjml, json, sections (camelCase).
  * We only sync rows that have mjml set. Re-run skips templates that already exist (same name+type).
+ * Mapping file: { "<cultura_id>": { "name": "Display Name", "type": "newsletter", "img_count": 1 }, ... }
+ * so you can commit your name/type adjustments and re-apply them on every sync.
  */
 import "dotenv/config";
+import { readFileSync, existsSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, "..");
 
 const SUPABASE_URL = (process.env.CULTURA_SUPABASE_URL ?? "").replace(/\/$/, "");
 const SUPABASE_ANON = process.env.CULTURA_SUPABASE_ANON ?? "";
 const CONTROL_PLANE = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 
+const mappingArg = process.argv.find((a) => a.startsWith("--mapping="))?.split("=")[1] ?? process.argv[process.argv.indexOf("--mapping") + 1];
+const MAPPING_PATH = process.env.CULTURA_TEMPLATE_MAPPING || mappingArg;
+
 if (!SUPABASE_URL || !SUPABASE_ANON) {
   console.error("Set CULTURA_SUPABASE_URL and CULTURA_SUPABASE_ANON.");
   process.exit(1);
+}
+
+/** Load optional mapping: cultura id -> { name?, type?, img_count? } */
+function loadMapping() {
+  if (!MAPPING_PATH) return {};
+  const path = resolve(root, MAPPING_PATH);
+  if (!existsSync(path)) {
+    console.warn("Mapping file not found:", path);
+    return {};
+  }
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8"));
+    return typeof raw === "object" && raw !== null ? raw : {};
+  } catch (e) {
+    console.warn("Failed to load mapping:", e.message);
+    return {};
+  }
+}
+
+const mapping = loadMapping();
+if (Object.keys(mapping).length > 0) {
+  console.log("Using mapping file:", MAPPING_PATH, "(" + Object.keys(mapping).length, "entries)");
 }
 
 const headers = {
@@ -96,8 +131,12 @@ async function main() {
   let failed = 0;
 
   for (const t of templates) {
-    const name = nameFromImageUrl(t.imageUrl, t.type, t.id);
-    const type = t.type ?? "newsletter";
+    const override = mapping[t.id] || {};
+    const baseName = nameFromImageUrl(t.imageUrl, t.type, t.id);
+    const name = override.name ?? baseName;
+    const type = override.type ?? t.type ?? "newsletter";
+    const img_count = override.img_count !== undefined ? Number(override.img_count) : (t.img_count != null ? Number(t.img_count) : 0);
+
     if (existing.has(`${type}\t${name.toLowerCase()}`)) {
       skipped++;
       console.log("Skip (exists):", name);
@@ -109,7 +148,7 @@ async function main() {
       name,
       image_url: t.imageUrl ?? null,
       mjml: typeof t.mjml === "string" ? t.mjml.replace(/\r\n/g, "\n") : t.mjml,
-      img_count: t.img_count != null ? Number(t.img_count) : 0,
+      img_count,
       template_json: t.json ?? null,
       sections_json: t.sections ?? null,
     };

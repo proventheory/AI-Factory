@@ -25,6 +25,7 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 
 | Document | Purpose |
 |----------|---------|
+| **[WHERE_EMAIL_AND_BRANDS_LIVE.md](WHERE_EMAIL_AND_BRANDS_LIVE.md)** | **Where components, email templates, and First Capital brands live** — DB vs repo, seeds, why the UI can be empty, how to get data back. |
 | **[BRAND_EMAIL_FIELD_MAPPING.md](BRAND_EMAIL_FIELD_MAPPING.md)** | **Single source of truth** for email placeholders (e.g. `[product A title]`, `[image_url]`), template contracts, and placeholder vs contract semantics. |
 | **[EMAIL_IMAGE_ASSIGNMENT_AND_TEMPLATE_CONTRACT_SPEC.md](EMAIL_IMAGE_ASSIGNMENT_AND_TEMPLATE_CONTRACT_SPEC.md)** | Template contract spec: content images, product slots, logo_safe_hero, schema and Control Plane behavior. |
 | **[EMAIL_SEED_AND_DELETE.md](EMAIL_SEED_AND_DELETE.md)** | How to seed email templates and delete them (scripts, API, Console). |
@@ -64,6 +65,7 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 |----------|---------|
 | **[OPERATIONS_RUNBOOK.md](OPERATIONS_RUNBOOK.md)** | **AI Factory Operator Runbook:** commands at a glance, playbooks (run failure, migration, artifact), mental model, how to use Cursor with debug bundles. Start here when something breaks or before/after a migration. |
 | **[CURSOR_AND_OPERATIONS.md](CURSOR_AND_OPERATIONS.md)** | Why Cursor is driven by **commands and APIs** (not the Vercel URL); three layers (state → RPCs → Cursor); debug packet; CLI + ProfessorX split; folder structure. |
+| **[runbooks/console-data-safety-and-traceability.md](runbooks/console-data-safety-and-traceability.md)** | **Console data safety:** Never leave Console empty; traceability for templates, components, brands. Pre-deploy export, post-deploy repopulate, recovery steps. |
 | **[runbooks/run-failure.md](runbooks/run-failure.md)** | When a pipeline run fails: doctor:run → bundle → repair-plan → give Cursor bundle → replay. |
 | **[runbooks/migration-workflow.md](runbooks/migration-workflow.md)** | Before/after migrations: migration:guard → fix risks → apply → post-migration:audit. |
 | **[runbooks/artifact-debugging.md](runbooks/artifact-debugging.md)** | Artifact lineage and consumers: graph:lineage, use in bundle or Console. |
@@ -76,6 +78,8 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 
 | Document | Purpose |
 |----------|---------|
+| **[DEPLOY_AND_DATA_SAFETY.md](DEPLOY_AND_DATA_SAFETY.md)** | **Mandatory:** Avoid empty Console and lost work. Before/after deploy: export templates, commit mapping, repopulate, verify. The Console must not be left empty; we must be able to trace back. |
+| **[runbooks/console-data-safety-and-traceability.md](runbooks/console-data-safety-and-traceability.md)** | Runbook: source of truth for each data type, pre-deploy export/commit, post-deploy repopulate, recovery when Console is empty. |
 | **[DEPLOY_ENV_SETUP.md](DEPLOY_ENV_SETUP.md)** | Deploy environment setup. |
 | **[DEPLOYMENT_PLAN_WITH_MCP.md](DEPLOYMENT_PLAN_WITH_MCP.md)** | Steps to put the factory on the web: Supabase, Control Plane, Console, LLM Gateway, MCP, Email Marketing Factory. |
 | **[DEPLOY_PHASE3_CHECKLIST.md](DEPLOY_PHASE3_CHECKLIST.md)** | Phase 3 checklist: GitHub Actions secrets/variables, workflow env check. |
