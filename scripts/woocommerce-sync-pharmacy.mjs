@@ -14,6 +14,11 @@
  */
 
 import pg from "pg";
+import { readFileSync, existsSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const SCOPE_KEY = "pharmacy-time";
 const BRAND_SLUG = "pharmacytime-com";
@@ -21,6 +26,38 @@ const BRAND_SLUG = "pharmacytime-com";
 function getEnv(name, alt) {
   return process.env[name] || process.env[alt] || "";
 }
+
+/** Load WOOCOMMERCE_* and CONSUMER_KEY/SECRET from Pharmacy Repo .env if not already set. */
+function loadPharmacyRepoEnv() {
+  const need = !getEnv("WOOCOMMERCE_CONSUMER_KEY", "CONSUMER_KEY") || !getEnv("WOOCOMMERCE_CONSUMER_SECRET", "CONSUMER_SECRET");
+  if (!need) return;
+  const candidates = [
+    process.env.PHARMACY_REPO_PATH,
+    join(process.cwd(), "Pharmacy Repo", "Pharmacy", ".env"),
+    join(process.cwd(), "..", "Pharmacy Repo", "Pharmacy", ".env"),
+    join(__dirname, "..", "..", "Pharmacy Repo", "Pharmacy", ".env"),
+  ].filter(Boolean);
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      try {
+        const content = readFileSync(p, "utf8");
+        for (const line of content.split("\n")) {
+          const m = line.match(/^\s*(WOOCOMMERCE_[A-Z_]+|CONSUMER_KEY|CONSUMER_SECRET)\s*=\s*(.*)$/);
+          if (m && process.env[m[1]] == null) {
+            const val = m[2].replace(/^["']|["']$/g, "").trim();
+            if (val) process.env[m[1]] = val;
+          }
+        }
+        console.log("  Loaded WooCommerce credentials from", p);
+        return;
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  }
+}
+
+loadPharmacyRepoEnv();
 
 const WOO_URL = getEnv("WOOCOMMERCE_URL", "WOOCOMMERCE_URL").replace(/\/$/, "") || "https://pharmac7dev.wpenginepowered.com";
 const CONSUMER_KEY = getEnv("WOOCOMMERCE_CONSUMER_KEY", "CONSUMER_KEY");
@@ -155,18 +192,37 @@ async function main() {
   const categories = await fetchAllCategories();
   console.log("  Categories:", categories.length);
 
-  const pool = new pg.Pool({ connectionString: databaseUrl });
+  const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
   const client = await pool.connect();
 
   try {
     let brandId = (await client.query("SELECT id FROM brand_profiles WHERE slug = $1", [BRAND_SLUG])).rows[0]?.id;
     if (!brandId) {
-      const ins = await client.query(
-        `INSERT INTO brand_profiles (name, slug, status) VALUES ('Pharmacy Time', $1, 'active') RETURNING id`,
-        [BRAND_SLUG]
-      );
-      brandId = ins.rows[0].id;
-      console.log("  Created Pharmacy Time brand (pharmacytime-com):", brandId);
+      const brandJsonPath = join(__dirname, "brands", "pharmacytime-com.brand.json");
+      if (existsSync(brandJsonPath)) {
+        const payload = JSON.parse(readFileSync(brandJsonPath, "utf8"));
+        const ins = await client.query(
+          `INSERT INTO brand_profiles (name, slug, status, identity, tone, visual_style, copy_style, design_tokens, deck_theme, report_theme)
+           VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb) RETURNING id`,
+          [
+            payload.name || "Pharmacy Time",
+            payload.slug || BRAND_SLUG,
+            payload.status || "active",
+            JSON.stringify(payload.identity || {}),
+            JSON.stringify(payload.tone || {}),
+            JSON.stringify(payload.visual_style || {}),
+            JSON.stringify(payload.copy_style || {}),
+            JSON.stringify(payload.design_tokens || {}),
+            JSON.stringify(payload.deck_theme || {}),
+            JSON.stringify(payload.report_theme || {}),
+          ]
+        );
+        brandId = ins.rows[0].id;
+        console.log("  Created Pharmacy Time brand from scripts/brands/pharmacytime-com.brand.json:", brandId);
+      } else {
+        console.error("Pharmacy Time brand (pharmacytime-com) not found. Create it first: node scripts/create-brand-from-json.mjs scripts/brands/pharmacytime-com.brand.json (with CONTROL_PLANE_API), or run npm run airtable:import:pharmacy.");
+        process.exit(1);
+      }
     }
 
     await client.query("BEGIN");
@@ -177,7 +233,8 @@ async function main() {
       [SCOPE_KEY, storeExtRef, brandId]
     );
     const storeRow = await client.query("SELECT id FROM stores WHERE channel = 'woocommerce' AND external_ref = $1", [storeExtRef]);
-    const storeId = storeRow.rows[0].id;
+    const storeId = storeRow.rows[0]?.id;
+    if (!storeId) throw new Error("Store insert/select failed — no store id.");
 
     await client.query(
       `INSERT INTO raw_woocommerce_snapshots (scope_key, store_url, entity_type, payload) VALUES ($1, $2, 'products', $3)`,
@@ -188,6 +245,15 @@ async function main() {
       [SCOPE_KEY, WOO_URL, JSON.stringify({ categories, fetched_at: new Date().toISOString() })]
     );
     console.log("  Raw snapshots stored.");
+    await client.query("COMMIT");
+
+    await client.query("BEGIN");
+    const storeRowAgain = await client.query("SELECT id FROM stores WHERE channel = 'woocommerce' AND external_ref = $1", [storeExtRef]);
+    let storeIdForProducts = storeRowAgain.rows[0]?.id;
+    if (!storeIdForProducts) {
+      await client.query("ROLLBACK");
+      throw new Error("Store not found after commit. Check that DATABASE_URL is the same and stores row was committed.");
+    }
 
     const wcKeyToIds = new Map();
     for (const p of productsWithVariations) {
@@ -208,8 +274,14 @@ async function main() {
         [brandId]
       );
     } catch (e) {
-      if (e.code === "42P01") console.warn("  brand_catalog_products missing — run airtable:import:pharmacy for cross-reference.");
-      else throw e;
+      if (e.code === "42P01") {
+        console.warn("  brand_catalog_products table missing — run Airtable import (npm run airtable:import:pharmacy) for catalog cross-reference.");
+        await client.query("ROLLBACK");
+        await client.query("BEGIN");
+        const storeRowAgain2 = await client.query("SELECT id FROM stores WHERE channel = 'woocommerce' AND external_ref = $1", [storeExtRef]);
+        storeIdForProducts = storeRowAgain2.rows[0]?.id;
+        if (!storeIdForProducts) throw new Error("Store not found after rollback.");
+      } else throw e;
     }
 
     const wcKeys = [...wcKeyToIds.keys()];
@@ -248,16 +320,15 @@ async function main() {
     }
     console.log("  Catalog cross-reference: linked", linked, "of", catalogRows.rows.length);
 
-    await client.query("COMMIT");
-
-    await client.query("BEGIN");
     let productsUpserted = 0;
+    let firstErr = null;
     for (const p of products) {
       try {
+        const nameVal = p.name != null && typeof p.name === "string" ? p.name : "";
         await client.query(
-          `INSERT INTO products (store_id, external_ref, name) VALUES ($1, $2, $3)
+          `INSERT INTO products (store_id, external_ref, name) VALUES ($1::uuid, $2::text, $3::text)
            ON CONFLICT (store_id, external_ref) DO UPDATE SET name = EXCLUDED.name`,
-          [storeId, String(p.id), p.name || ""]
+          [storeIdForProducts, String(p.id), nameVal]
         );
         productsUpserted++;
         const priceCents = p.price ? Math.round(parseFloat(p.price) * 100) : null;
@@ -265,9 +336,13 @@ async function main() {
         const desc = (p.short_description || p.description || "").slice(0, 10000);
         await client.query(
           `UPDATE products SET price_cents = COALESCE($4, price_cents), currency = COALESCE($5, currency), image_url = COALESCE($6, image_url), description = COALESCE($7, description) WHERE store_id = $1 AND external_ref = $2`,
-          [storeId, String(p.id), null, priceCents, p.currency || "USD", imageUrl, desc || null]
+          [storeIdForProducts, String(p.id), null, priceCents, p.currency || "USD", imageUrl, desc || null]
         );
       } catch (e) {
+        if (!firstErr) {
+          firstErr = e;
+          console.error("  First product insert failed (productId=%s):", p.id, e.message);
+        }
         console.warn("  Products row skip:", p.id, e.message);
       }
     }

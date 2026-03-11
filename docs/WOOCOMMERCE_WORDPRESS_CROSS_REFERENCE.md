@@ -50,7 +50,14 @@ This doc is the single reference for how WooCommerce and WordPress data are stor
 
 ---
 
-## 5. Why the sync might have failed (and how to fix)
+## 5. Pharmacy Time brand (same pattern as First Capital Group)
+- The **Pharmacy Time** brand (slug `pharmacytime-com`) is defined in the repo: **scripts/brands/pharmacytime-com.brand.json**. Create it the same way as other brands: **node scripts/create-brand-from-json.mjs scripts/brands/pharmacytime-com.brand.json** (with CONTROL_PLANE_API and same DB), or run **npm run airtable:import:pharmacy** (which also creates/links the brand). The WooCommerce sync will **create the brand from that JSON** if it doesn’t exist yet, so you can run the sync without running the Airtable import first.
+
+## 6. Credentials from Pharmacy Repo
+
+- If `WOOCOMMERCE_CONSUMER_KEY` / `WOOCOMMERCE_CONSUMER_SECRET` (or `CONSUMER_KEY` / `CONSUMER_SECRET`) are not set in AI Factory `.env`, the sync script **loads them from Pharmacy Repo** automatically: it looks for **Pharmacy Repo/Pharmacy/.env** (relative to repo root or `PHARMACY_REPO_PATH`) and sets `WOOCOMMERCE_*` and `CONSUMER_*` vars. So you can run **npm run woocommerce:sync:pharmacy** with only `DATABASE_URL` in AI Factory `.env` and the script will pull WC credentials from the Pharmacy Repo.
+
+## 7. Why the sync might have failed (and how to fix)
 
 - **“relation stores does not exist”** or **“relation products does not exist”**  
   Run **`npm run db:migrate:ads-commerce`** so that `supabase/migrations/20250329000000_ads_commerce_canonical.sql` is applied (creates `stores` and `products`).
@@ -58,15 +65,18 @@ This doc is the single reference for how WooCommerce and WordPress data are stor
 - **“brand_profiles does not exist”** or **Pharmacy Time brand not found**  
   Use the **same database** where you ran the Pharmacy Airtable import (`npm run airtable:import:pharmacy`). That DB has `brand_profiles` and the Pharmacy Time brand (slug `pharmacytime-com`).
 
-- **Catalog cross-reference: linked 0 of N**  
+- **Catalog cross-reference: linked 0 of N**
   Key matching uses the same idea as the Pharmacy Repo Python script (compound|form|category and strength|size). If Airtable metadata uses different field names, extend the key builder in `catalogVariationKey()` and/or ensure WooCommerce products have `_product_key` (and `_strength_key` where applicable) set. After a successful run you should see:
   - Raw WooCommerce products/categories in **raw_woocommerce_snapshots**
   - **stores** and **products** populated for Pharmacy Time WooCommerce
-  - **brand_catalog_products** rows updated with **woocommerce_product_id**, **woocommerce_variation_id**, **woocommerce_permalink** where keys match.
+  - **brand_catalog_products** rows updated with **woocommerce_product_id**, **woocommerce_variation_id**, **woocommerce_permalink** where keys match (requires Airtable import first).
+
+- **MaxClientsInSessionMode / max clients reached**
+  Your database (e.g. Supabase/Neon) limits connection pool size. Run the sync when no other processes are holding many connections, or increase pool size in the DB dashboard.
 
 ---
 
-## 6. Related
+## 8. Related
 
 - [PHARMACY_IMPORT.md](PHARMACY_IMPORT.md) — Pharmacy Airtable import + WooCommerce section.
 - [AIRTABLE_METADATA_AND_PAGE_MAPPING.md](AIRTABLE_METADATA_AND_PAGE_MAPPING.md) — How catalog and taxonomy rows map 1:1 to product/compound/category pages.
