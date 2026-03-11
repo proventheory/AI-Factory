@@ -94,7 +94,21 @@ async function main() {
   const termsTable = schema ? tableByName(schema, ["Terms", "Term"]) : null;
 
   const client = new pg.Client({ connectionString: databaseUrl });
-  await client.connect();
+  const maxConnectAttempts = 10;
+  const connectDelayMs = 15000;
+  for (let attempt = 1; attempt <= maxConnectAttempts; attempt++) {
+    try {
+      await client.connect();
+      break;
+    } catch (err) {
+      if (err.code === "XX000" && err.message?.includes("MaxClientsInSessionMode") && attempt < maxConnectAttempts) {
+        console.warn(`[attempt ${attempt}/${maxConnectAttempts}] DB pool full (MaxClientsInSessionMode), waiting ${connectDelayMs / 1000}s...`);
+        await new Promise((r) => setTimeout(r, connectDelayMs));
+        continue;
+      }
+      throw err;
+    }
+  }
   let importBatchId;
 
   try {
@@ -157,6 +171,7 @@ async function main() {
       [orgId]
     );
     console.log("Taxonomy websites:", webRows.rows.length);
+    console.log("Linking brands to websites...");
 
     for (const web of webRows.rows) {
       const brandSlug = slugify(web.name) || `brand-${web.airtable_record_id?.slice(0, 8) || web.id}`;
@@ -179,15 +194,18 @@ async function main() {
     }
 
 if (vocabTable && termsTable) {
+      console.log("Fetching Vocabulary and Terms from Airtable...");
       const vocabTableId = vocabTable.id || vocabTable.name;
       const termsTableId = termsTable.id || termsTable.name;
       let vocabs = [];
       try {
         vocabs = await fetchTable(BASE_ID, vocabTableId, token);
+        console.log("Vocabularies:", vocabs.length);
       } catch (_) {}
       let terms = [];
       try {
         terms = await fetchTable(BASE_ID, termsTableId, token);
+        console.log("Terms:", terms.length);
       } catch (_) {}
       for (const web of webRows.rows) {
         const webAirtableId = web.airtable_record_id;
