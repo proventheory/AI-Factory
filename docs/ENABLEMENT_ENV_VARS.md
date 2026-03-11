@@ -21,7 +21,7 @@ Set these in `.env` (local), Render/Vercel env (deployed), or GitHub Actions sec
 |----------|------------|
 | **RENDER_API_KEY** | Self-heal no-artifacts remediation (Control Plane calls Render API to fix worker env). Set in Control Plane env. |
 | **LLM_GATEWAY_URL** or **OPENAI_API_KEY** | Runners: LLM job types (copy_generate, plan_compile, etc.). |
-| **DATABASE_URL** | Control Plane and Runner: same DB so runners see jobs. |
+| **DATABASE_URL** | Control Plane and Runner: same DB so runners see jobs. **You must run migrations** against this DB (`pnpm db:migrate`) or the Console will show "relation initiatives does not exist" and Cost Dashboard / Launches will fail. See [runbooks/console-db-relation-does-not-exist.md](runbooks/console-db-relation-does-not-exist.md). |
 | **CONTROL_PLANE_URL** | Runner | Control Plane base URL (e.g. `http://localhost:3001`). Used to call `POST /v1/job_failures` on job failure so control-plane can classify and record incident_memory. |
 | **SENTRY_DSN** | Optional: error reporting in Control Plane, Runner, Console. |
 

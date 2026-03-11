@@ -1,5 +1,5 @@
 import AppShell from "@/components/AppShell";
 
-export default function GraphLayout({ children }: { children: React.ReactNode }) {
+export default function LaunchesLayout({ children }: { children: React.ReactNode }) {
   return <AppShell>{children}</AppShell>;
 }

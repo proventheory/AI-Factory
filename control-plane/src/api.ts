@@ -3993,6 +3993,183 @@ app.delete("/v1/email_component_library/:id", async (req, res) => {
   }
 });
 
+// ——— Launch kernel: build_specs & launches ———
+
+/** GET /v1/build_specs?initiative_id= — list build specs for an initiative */
+app.get("/v1/build_specs", async (req, res) => {
+  try {
+    const initiativeId = req.query.initiative_id as string | undefined;
+    if (!initiativeId || !isValidUuid(initiativeId)) {
+      return res.status(400).json({ error: "initiative_id (UUID) required" });
+    }
+    const r = await pool.query(
+      "SELECT id, initiative_id, spec_json, created_at, updated_at FROM build_specs WHERE initiative_id = $1 ORDER BY created_at DESC",
+      [initiativeId]
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/build_specs/:id */
+app.get("/v1/build_specs/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
+    const r = await pool.query("SELECT id, initiative_id, spec_json, created_at, updated_at FROM build_specs WHERE id = $1", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/build_specs — create build spec and a launch for the initiative */
+app.post("/v1/build_specs", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as { initiative_id?: string; spec?: Record<string, unknown>; extended?: boolean };
+    const initiativeId = body?.initiative_id;
+    const spec = body?.spec ?? {};
+    if (!initiativeId || !isValidUuid(initiativeId)) {
+      return res.status(400).json({ error: "initiative_id (UUID) required" });
+    }
+    const specJson = typeof spec === "object" && spec !== null ? spec : {};
+    const bid = uuid();
+    const lid = uuid();
+    await withTransaction(async (client) => {
+      await client.query(
+        "INSERT INTO build_specs (id, initiative_id, spec_json, updated_at) VALUES ($1, $2, $3, now())",
+        [bid, initiativeId, JSON.stringify(specJson)]
+      );
+      await client.query(
+        "INSERT INTO launches (id, initiative_id, status, build_spec_id, updated_at) VALUES ($1, $2, 'draft', $3, now())",
+        [lid, initiativeId, bid]
+      );
+    });
+    const launchRow = await pool.query(
+      "SELECT id, initiative_id, status, build_spec_id, artifact_id, deploy_url, deploy_id, domain, verification_status, created_at, updated_at FROM launches WHERE id = $1",
+      [lid]
+    );
+    res.status(201).json({
+      build_spec_id: bid,
+      launch_id: lid,
+      launch: launchRow.rows[0] ?? { id: lid, initiative_id: initiativeId, status: "draft", build_spec_id: bid, artifact_id: null, deploy_url: null, deploy_id: null, domain: null, verification_status: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/build_specs/from_strategy — create build spec + launch from strategy doc (stub: same as POST /v1/build_specs with spec from doc) */
+app.post("/v1/build_specs/from_strategy", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as { initiative_id?: string; strategy_doc?: string };
+    const initiativeId = body?.initiative_id;
+    const strategyDoc = body?.strategy_doc ?? "";
+    if (!initiativeId || !isValidUuid(initiativeId)) {
+      return res.status(400).json({ error: "initiative_id (UUID) required" });
+    }
+    const spec: Record<string, unknown> = { strategy_doc: strategyDoc };
+    const bid = uuid();
+    const lid = uuid();
+    await withTransaction(async (client) => {
+      await client.query(
+        "INSERT INTO build_specs (id, initiative_id, spec_json, updated_at) VALUES ($1, $2, $3, now())",
+        [bid, initiativeId, JSON.stringify(spec)]
+      );
+      await client.query(
+        "INSERT INTO launches (id, initiative_id, status, build_spec_id, updated_at) VALUES ($1, $2, 'draft', $3, now())",
+        [lid, initiativeId, bid]
+      );
+    });
+    const launchRow = await pool.query(
+      "SELECT id, initiative_id, status, build_spec_id, artifact_id, deploy_url, deploy_id, domain, verification_status, created_at, updated_at FROM launches WHERE id = $1",
+      [lid]
+    );
+    res.status(201).json({
+      build_spec_id: bid,
+      launch_id: lid,
+      launch: launchRow.rows[0] ?? { id: lid, initiative_id: initiativeId, status: "draft", build_spec_id: bid, artifact_id: null, deploy_url: null, deploy_id: null, domain: null, verification_status: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/launches?initiative_id=&limit= — list launches */
+app.get("/v1/launches", async (req, res) => {
+  try {
+    const initiativeId = req.query.initiative_id as string | undefined;
+    const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+    const conditions: string[] = ["1=1"];
+    const params: unknown[] = [];
+    let i = 1;
+    if (initiativeId && isValidUuid(initiativeId)) {
+      conditions.push(`initiative_id = $${i++}`);
+      params.push(initiativeId);
+    }
+    params.push(limit);
+    const r = await pool.query(
+      `SELECT id, initiative_id, status, build_spec_id, artifact_id, deploy_url, deploy_id, domain, verification_status, created_at, updated_at FROM launches WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${i}`,
+      params
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/launches/actions/:action — trigger launch action (preview_deploy, domain_attach, etc.); stub returns ok */
+app.post("/v1/launches/actions/:action", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const action = req.params.action;
+    const inputs = (req.body ?? {}) as Record<string, unknown>;
+    if (!action) return res.status(400).json({ error: "action required" });
+    // Stub: no-op; in production this would call launch kernel (e.g. request deploy preview, domain attach).
+    res.json({ ok: true, action, inputs });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/launches/:id */
+app.get("/v1/launches/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
+    const r = await pool.query(
+      "SELECT id, initiative_id, status, build_spec_id, artifact_id, deploy_url, deploy_id, domain, verification_status, created_at, updated_at FROM launches WHERE id = $1",
+      [id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/launches/:id/validate — run validation checks for a launch; stub returns passed */
+app.post("/v1/launches/:id/validate", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const id = req.params.id;
+    if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
+    const r = await pool.query("SELECT id FROM launches WHERE id = $1", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
+    res.json({ passed: true, checks: [] });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 export function startApi(port: number = Number(process.env.PORT) || 3001): void {
   if (process.env.SENTRY_DSN?.trim()) {
     Sentry.setupExpressErrorHandler(app);

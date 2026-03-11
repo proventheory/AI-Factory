@@ -34,7 +34,7 @@ const migrations = [
     skipIfErrorCode: "42P01",
     skipMessage: "brand_profiles not found (run Supabase migration 20250303000007_brand_engine.sql first)",
   },
-  { path: "supabase/migrations/20250305100000_email_templates.sql", name: "email_templates" },
+  { path: "supabase/migrations/20250305100000_email_templates.sql", name: "email_templates", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
   { path: "supabase/migrations/20250306110000_email_templates_brand_profile.sql", name: "email_templates_brand_profile", skipIfErrorCode: "42701", skipMessage: "column already exists" },
   { path: "supabase/migrations/20250307100000_image_assignment_and_template_contracts.sql", name: "image_assignment_and_template_contracts" },
   { path: "supabase/migrations/20250308100000_template_image_contracts_constraints.sql", name: "template_image_contracts_constraints" },
@@ -68,6 +68,7 @@ const migrations = [
   { path: "supabase/migrations/20250331000003_taxonomy_websites_upsert_constraint.sql", name: "taxonomy_websites_upsert_constraint", skipIfErrorCode: "42710", skipMessage: "constraint already exists" },
   { path: "supabase/migrations/20250331000004_taxonomy_terms_url_value.sql", name: "taxonomy_terms_url_value", skipIfErrorCode: "42701", skipMessage: "column already exists" },
   { path: "supabase/migrations/20250331000005_raw_woocommerce_snapshots.sql", name: "raw_woocommerce_snapshots", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250318100000_build_specs_launches.sql", name: "build_specs_launches", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
 ];
 
 async function run() {

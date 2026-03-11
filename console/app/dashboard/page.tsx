@@ -104,7 +104,7 @@ export default function DashboardPage() {
       <Stack>
         <PageHeader title="Overview" description="Scheduler and pipeline health at a glance." />
         <p className="text-body-small text-text-muted mb-2">
-          <Link href="/health" className="text-brand-600 hover:underline">Scheduler Health</Link> · <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/planner" className="text-brand-600 hover:underline">Planner</Link> · <Link href="/graph/explorer" className="text-brand-600 hover:underline">Graph Explorer</Link>
+          <Link href="/health" className="text-brand-600 hover:underline">Scheduler Health</Link> · <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/planner" className="text-brand-600 hover:underline">Planner</Link> · <Link href="/graph/explorer" className="text-brand-600 hover:underline">Graph Explorer</Link> · <Link href="/operator-guide" className="text-brand-600 hover:underline">How it works</Link>
         </p>
 
         {/* Stat cards */}
