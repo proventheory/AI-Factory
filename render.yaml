@@ -30,7 +30,7 @@ services:
       # Set in Dashboard: DATABASE_URL (staging), CORS_ORIGIN (staging console URL)
     healthCheckPath: /health
 
-  - type: worker
+  - type: web
     name: ai-factory-runner-staging
     runtime: docker
     dockerContext: .
@@ -39,7 +39,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Set in Dashboard: DATABASE_URL (same as API), CONTROL_PLANE_URL, and either LLM_GATEWAY_URL or OPENAI_API_KEY
+      # Render sets PORT for web services; runner listens for GET /health so service check (and MCP) can pass. Set in Dashboard: DATABASE_URL (same as API), CONTROL_PLANE_URL, and either LLM_GATEWAY_URL or OPENAI_API_KEY
+    healthCheckPath: /health
 
   - type: web
     name: ai-factory-api-prod

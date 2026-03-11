@@ -51,6 +51,7 @@
     "airtable:discovery": "node scripts/airtable-discovery.mjs",
     "airtable:import": "node scripts/airtable-import.mjs",
     "airtable:import:pharmacy": "node --env-file=.env scripts/airtable-import-pharmacy.mjs",
+    "airtable:import:first-capital": "node --env-file=.env scripts/airtable-import-first-capital.mjs",
     "woocommerce:sync:pharmacy": "node --env-file=.env scripts/woocommerce-sync-pharmacy.mjs"
   },
   "dependencies": {

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import * as Sentry from "@sentry/node";
+import { createServer } from "node:http";
 
 if (process.env.SENTRY_DSN?.trim()) {
   Sentry.init({
@@ -239,6 +240,27 @@ async function pollAndExecute(): Promise<void> {
   }
 }
 
+/** Start a minimal HTTP server for GET /health when PORT is set (e.g. Render web service check / MCP). */
+function startHealthServer(): void {
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 0;
+  if (!port || port <= 0) {
+    console.log("[runner] PORT not set — health server skipped (worker-only mode)");
+    return;
+  }
+  const server = createServer((req, res) => {
+    if (req.method === "GET" && (req.url === "/health" || req.url === "/health/readiness")) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", service: "runner" }));
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`[runner] Health server listening on port ${port} (GET /health)`);
+  });
+}
+
 async function main(): Promise<void> {
   console.log(`[runner] Starting worker ${config.workerId} (v${config.runnerVersion})`);
   await registerWorker(pool, config);
@@ -252,6 +274,7 @@ async function main(): Promise<void> {
     }
   }, POLL_INTERVAL_MS);
 
+  startHealthServer();
   console.log("[runner] Polling for jobs...");
 }
 

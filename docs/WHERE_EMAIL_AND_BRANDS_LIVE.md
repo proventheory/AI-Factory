@@ -42,13 +42,13 @@ So: **templates** are in the DB. If Document Templates is empty or missing “St
 
 So: **First Capital Group** the org = one row, created by migration. The **brands and websites** you had from Airtable = rows in `brand_profiles` and `taxonomy_websites` created when you ran an import (or seed). To get them back you must either restore the DB that had them or re-run the Airtable import for First Capital (with the right base ID and scope key `first-capital-group`). There is no “file of brands” in the repo — only schema, migrations, and docs.
 
-**Taxonomy/Airtable schema applied directly in Supabase:** The migration files `20250331000000_airtable_import_and_brand_catalog.sql` through `20250331000004_taxonomy_terms_url_value.sql` are **not in the repo** (only `20250331000005_raw_woocommerce_snapshots.sql` is). They are referenced in `scripts/run-migrate.mjs`, so if you ran migrations from an older branch or a different source, those tables may exist. It’s also common to **apply the equivalent SQL directly in the Supabase SQL editor** (paste or run from a script). If you did that, your Supabase DB already has `organizations`, `import_batches`, `raw_airtable_bases`, `raw_airtable_tables`, `raw_airtable_batches`, `raw_airtable_rows`, `taxonomy_websites`, `taxonomy_vocabularies`, `taxonomy_terms`, etc. The First Capital import script (`scripts/airtable-import.mjs`) expects that schema. To re-run the import: use the same DB (e.g. `DATABASE_URL` from Supabase), run discovery to get `docs/airtable-discovery/schema_<baseId>.json`, then `node scripts/airtable-import.mjs --base-id app6pjOKnxdrZsDWR --scope-key first-capital-group --live` with `AIRTABLE_TOKEN` set (see [AIRTABLE_AND_PRODUCT_IMPORT_PLUGIN_ANALYSIS.md](AIRTABLE_AND_PRODUCT_IMPORT_PLUGIN_ANALYSIS.md) and [TAXONOMY_SCHEMA_AND_MAPPING.md](TAXONOMY_SCHEMA_AND_MAPPING.md)).
+**Taxonomy/Airtable schema:** The migration files `20250331000000_airtable_import_and_brand_catalog.sql` through `20250331000004_taxonomy_terms_url_value.sql` are **in the repo** and run with `npm run db:migrate`; they create `organizations`, `import_batches`, `raw_airtable_*`, `taxonomy_websites`, `taxonomy_vocabularies`, `taxonomy_terms`, `brand_catalog_products`, and the First Capital org seed. If you previously applied equivalent SQL directly in the Supabase SQL editor, those tables already exist and you can skip re-running those migrations. The First Capital import script (`scripts/airtable-import-first-capital.mjs`) expects that schema. To run or re-run the import: same DB as Control Plane, optional discovery, then `npm run airtable:import:first-capital` with `AIRTABLE_TOKEN` set (see [AIRTABLE_AND_PRODUCT_IMPORT_PLUGIN_ANALYSIS.md](AIRTABLE_AND_PRODUCT_IMPORT_PLUGIN_ANALYSIS.md) and [TAXONOMY_SCHEMA_AND_MAPPING.md](TAXONOMY_SCHEMA_AND_MAPPING.md)).
 
 ---
 
 ## 4. Quick “everything’s empty” checklist
 
-1. **Migrations** — Same DB the Control Plane uses: `DATABASE_URL=<that_url> npm run db:migrate`. Fixes “relation initiatives does not exist” and creates all tables (initiatives, email_templates, email_component_library, organizations, brand_profiles, etc.).  
+1. **Migrations** — Same DB the Control Plane uses: `DATABASE_URL=<that_url> npm run db:migrate`. Fixes “relation … does not exist (e.g. brand_profiles)” and creates all tables (initiatives, email_templates, email_component_library, organizations, brand_profiles, etc.). Use the same DATABASE_URL as your Control Plane / app.  
 2. **Email components** — `node scripts/seed-email-component-library.mjs <CONTROL_PLANE_URL>`.  
 3. **Templates** — Restore from repo snapshot: `node scripts/import-email-templates-from-export.mjs` (reads `data/cultura-templates/exported-templates.json`). Or run `seed-email-templates.mjs` or Cultura sync with mapping.  
 4. **Sticky Green brand + template** — `node scripts/seed-brand-sticky-green.mjs <CONTROL_PLANE_URL>` then `node scripts/seed-sticky-green-composed-template.mjs <CONTROL_PLANE_URL>`.  
@@ -58,13 +58,15 @@ See also: [DEPLOY_AND_DATA_SAFETY.md](DEPLOY_AND_DATA_SAFETY.md), [runbooks/cons
 
 ---
 
-## 5. Still applicable and not finished (First Capital Group / Airtable)
+## 5. First Capital Group / Airtable (finished in repo)
 
 | Item | Status | What to do |
 |------|--------|------------|
-| **Migrations 20250331000000–000004** | **Were missing from repo** (only 20250331000005 was present). They are now added so `npm run db:migrate` creates `organizations`, `import_batches`, `import_issues`, `raw_airtable_*`, `taxonomy_websites`, `taxonomy_vocabularies`, `taxonomy_terms`, `brand_catalog_products`, and the First Capital org row. | If your DB was set up by applying SQL directly in Supabase, you can skip running these (tables already exist). Otherwise run `npm run db:migrate`. |
-| **First Capital Airtable import script** | The generic script **`scripts/airtable-import.mjs`** (base `app6pjOKnxdrZsDWR`, scope `first-capital-group`) was **not in the repo**. A dedicated **`scripts/airtable-import-first-capital.mjs`** is provided instead: it uses your token and base ID to fetch the base schema, then imports Websites → `taxonomy_websites`, and optionally Vocabularies/Terms → `taxonomy_vocabularies` / `taxonomy_terms`, and creates/links brands. | Run discovery then import: see [§ First Capital import steps](#first-capital-import-steps) below. |
-| **`data/first-capital-group/`** | No mapping or discovery files in repo for First Capital. | Discovery is run by the script and written to `docs/airtable-discovery/schema_<baseId>.json`. Optional: add `data/first-capital-group/mapping/base-to-entity.json` later for custom table→entity mapping. |
+| **Migrations 20250331000000–000004** | **Done.** In repo; `npm run db:migrate` creates `organizations`, `import_batches`, `import_issues`, `raw_airtable_*`, `taxonomy_websites`, `taxonomy_vocabularies`, `taxonomy_terms`, `brand_catalog_products`, and the First Capital org row. | If your DB already has these tables (e.g. applied in Supabase), skip. Otherwise run `npm run db:migrate`. |
+| **First Capital Airtable import script** | **Done.** `scripts/airtable-import-first-capital.mjs` (base `app6pjOKnxdrZsDWR`, scope `first-capital-group`) imports Websites → `taxonomy_websites`, optionally Vocabularies/Terms → `taxonomy_vocabularies` / `taxonomy_terms`, and creates/links `brand_profiles`. Discovery: `scripts/airtable-discovery.mjs`. | Run the [First Capital import steps](#first-capital-import-steps) below. |
+| **`data/first-capital-group/`** | **Optional.** Discovery output lives in `docs/airtable-discovery/schema_<baseId>.json`. Custom mapping can go in `data/first-capital-group/mapping/base-to-entity.json` later. | No action required for basic import. |
+
+Once you run `db:migrate` (if needed) and the First Capital import steps, First Capital brands and taxonomy will be in the DB.
 
 ### First Capital import steps
 
@@ -74,7 +76,8 @@ See also: [DEPLOY_AND_DATA_SAFETY.md](DEPLOY_AND_DATA_SAFETY.md), [runbooks/cons
    `npm run airtable:discovery -- --base-id app6pjOKnxdrZsDWR`  
    Writes `docs/airtable-discovery/schema_app6pjOKnxdrZsDWR.json`. The First Capital import script can use this to know table names (Websites, Vocabulary, Terms, etc.).
 4. **Import:**  
-   `node --env-file=.env scripts/airtable-import-first-capital.mjs`  
+   `npm run airtable:import:first-capital`  
+   Or: `node --env-file=.env scripts/airtable-import-first-capital.mjs`  
    Or with token inline:  
    `AIRTABLE_TOKEN=pat... node scripts/airtable-import-first-capital.mjs`  
    This creates/updates the First Capital org, taxonomy websites (and optionally vocabularies/terms) from the base, and links or creates brand_profiles.

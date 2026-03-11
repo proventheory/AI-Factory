@@ -49,7 +49,9 @@ If these are set, the control plane can push DATABASE_URL, CONTROL_PLANE_URL, an
 
 ---
 
-## ai-factory-runner-staging (Worker)
+## ai-factory-runner-staging (Web + job loop)
+
+The runner is deployed as a **web** service so Render can run a health check (GET /health). It still runs the job-poll loop; it also listens on PORT and responds 200 to /health so the service check (and Render MCP) passes.
 
 | Variable | Required | You have | Notes |
 |----------|----------|----------|--------|
