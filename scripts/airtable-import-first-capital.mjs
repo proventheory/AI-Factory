@@ -93,8 +93,8 @@ async function main() {
   const vocabTable = schema ? tableByName(schema, ["Vocabulary", "Vocabularies", "Vocabularies"]) : null;
   const termsTable = schema ? tableByName(schema, ["Terms", "Term"]) : null;
 
-  const pool = new pg.Pool({ connectionString: databaseUrl });
-  const client = await pool.connect();
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
   let importBatchId;
 
   try {
@@ -134,14 +134,22 @@ async function main() {
       const name = fields.Name || fields["Website Name"] || fields["Site Name"] || rec.id;
       const url = fields.URL || fields.Url || fields["Website URL"] || "";
       const airtableRecordId = rec.id;
-      await client.query(
-        `INSERT INTO taxonomy_websites (organization_id, airtable_base_id, airtable_table_id, airtable_record_id, name, status, url, metadata_json)
-         VALUES ($1, $2, $3, $4, $5, 'active', $6, $7::jsonb)
-         ON CONFLICT (airtable_base_id, airtable_table_id, airtable_record_id) DO UPDATE SET
-           organization_id = COALESCE(EXCLUDED.organization_id, taxonomy_websites.organization_id),
-           name = EXCLUDED.name, url = COALESCE(NULLIF(EXCLUDED.url,''), taxonomy_websites.url), updated_at = now()`,
-        [orgId, BASE_ID, tableId, airtableRecordId, String(name), url || null, JSON.stringify(fields)]
+      const existing = await client.query(
+        `SELECT id FROM taxonomy_websites WHERE airtable_base_id = $1 AND airtable_table_id = $2 AND airtable_record_id = $3`,
+        [BASE_ID, tableId, airtableRecordId]
       );
+      if (existing.rows[0]) {
+        await client.query(
+          `UPDATE taxonomy_websites SET organization_id = $2, name = $3, status = 'active', url = COALESCE(NULLIF($4,''), url), metadata_json = $5::jsonb, updated_at = now() WHERE id = $1`,
+          [existing.rows[0].id, orgId, String(name), url || null, JSON.stringify(fields)]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO taxonomy_websites (organization_id, airtable_base_id, airtable_table_id, airtable_record_id, name, status, url, metadata_json)
+           VALUES ($1, $2, $3, $4, $5, 'active', $6, $7::jsonb)`,
+          [orgId, BASE_ID, tableId, airtableRecordId, String(name), url || null, JSON.stringify(fields)]
+        );
+      }
     }
 
     const webRows = await client.query(
@@ -194,15 +202,25 @@ if (vocabTable && termsTable) {
         const vFields = v.fields || {};
         const vName = vFields.Name || vFields.Vocabulary || v.id;
         const visibility = vFields.Visibility || vFields.visibility || null;
-        const vocabRes = await client.query(
-          `INSERT INTO taxonomy_vocabularies (website_id, airtable_record_id, name, visibility, metadata_json)
-           VALUES ($1, $2, $3, $4, $5::jsonb)
-           ON CONFLICT (website_id, airtable_record_id) DO UPDATE SET name = EXCLUDED.name, visibility = EXCLUDED.visibility RETURNING id`,
-          [web.id, v.id, String(vName), visibility, JSON.stringify(vFields)]
+        let vocabId = null;
+        const exVocab = await client.query(
+          `SELECT id FROM taxonomy_vocabularies WHERE website_id = $1 AND airtable_record_id = $2`,
+          [web.id, v.id]
         );
-        const vocabId = vocabRes.rows[0]?.id;
+        if (exVocab.rows[0]) {
+          await client.query(
+            `UPDATE taxonomy_vocabularies SET name = $2, visibility = $3, metadata_json = $4::jsonb WHERE id = $1`,
+            [exVocab.rows[0].id, String(vName), visibility, JSON.stringify(vFields)]
+          );
+          vocabId = exVocab.rows[0].id;
+        } else {
+          const ins = await client.query(
+            `INSERT INTO taxonomy_vocabularies (website_id, airtable_record_id, name, visibility, metadata_json) VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id`,
+            [web.id, v.id, String(vName), visibility, JSON.stringify(vFields)]
+          );
+          vocabId = ins.rows[0]?.id;
+        }
         if (!vocabId) continue;
-        const vocabLink = v.fields?.Vocabulary || v.fields?.vocabulary;
         for (const t of terms) {
           const tFields = t.fields || {};
           const termVocabLinks = tFields.Vocabulary || tFields.vocabulary || [];
@@ -210,12 +228,22 @@ if (vocabTable && termsTable) {
           if (linked.length && !linked.includes(v.id)) continue;
           const termName = tFields.Name || tFields.Term || tFields.term_name || t.id;
           const urlValue = tFields["Url Value"] ?? tFields.url_value ?? tFields.URL ?? null;
-          await client.query(
-            `INSERT INTO taxonomy_terms (vocabulary_id, website_id, airtable_record_id, term_name, url_value, metadata_json)
-             VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-             ON CONFLICT (website_id, airtable_record_id) DO UPDATE SET vocabulary_id = EXCLUDED.vocabulary_id, term_name = EXCLUDED.term_name, url_value = COALESCE(EXCLUDED.url_value, taxonomy_terms.url_value)`,
-            [vocabId, web.id, t.id, String(termName), urlValue, JSON.stringify(tFields)]
+          const exTerm = await client.query(
+            `SELECT id FROM taxonomy_terms WHERE website_id = $1 AND airtable_record_id = $2`,
+            [web.id, t.id]
           );
+          if (exTerm.rows[0]) {
+            await client.query(
+              `UPDATE taxonomy_terms SET vocabulary_id = $2, term_name = $3, url_value = COALESCE(NULLIF($4,''), url_value), metadata_json = $5::jsonb WHERE id = $1`,
+              [exTerm.rows[0].id, vocabId, String(termName), urlValue, JSON.stringify(tFields)]
+            );
+          } else {
+            await client.query(
+              `INSERT INTO taxonomy_terms (vocabulary_id, website_id, airtable_record_id, term_name, url_value, metadata_json)
+               VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+              [vocabId, web.id, t.id, String(termName), urlValue, JSON.stringify(tFields)]
+            );
+          }
         }
       }
       }
@@ -247,8 +275,7 @@ if (vocabTable && termsTable) {
     console.error(err);
     process.exit(1);
   } finally {
-    client.release();
-    await pool.end();
+    await client.end();
   }
 }
 
