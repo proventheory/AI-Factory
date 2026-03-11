@@ -159,11 +159,14 @@ async function main() {
   const client = await pool.connect();
 
   try {
-    const brandRow = await client.query("SELECT id FROM brand_profiles WHERE slug = $1", [BRAND_SLUG]);
-    const brandId = brandRow.rows[0]?.id;
+    let brandId = (await client.query("SELECT id FROM brand_profiles WHERE slug = $1", [BRAND_SLUG])).rows[0]?.id;
     if (!brandId) {
-      console.error("Pharmacy Time brand (pharmacytime-com) not found. Run airtable:import:pharmacy first.");
-      process.exit(1);
+      const ins = await client.query(
+        `INSERT INTO brand_profiles (name, slug, status) VALUES ('Pharmacy Time', $1, 'active') RETURNING id`,
+        [BRAND_SLUG]
+      );
+      brandId = ins.rows[0].id;
+      console.log("  Created Pharmacy Time brand (pharmacytime-com):", brandId);
     }
 
     await client.query("BEGIN");
@@ -198,10 +201,16 @@ async function main() {
       }
     }
 
-    const catalogRows = await client.query(
-      `SELECT id, external_ref, metadata_json FROM brand_catalog_products WHERE brand_profile_id = $1 AND source_system = 'airtable'`,
-      [brandId]
-    );
+    let catalogRows = { rows: [] };
+    try {
+      catalogRows = await client.query(
+        `SELECT id, external_ref, metadata_json FROM brand_catalog_products WHERE brand_profile_id = $1 AND source_system = 'airtable'`,
+        [brandId]
+      );
+    } catch (e) {
+      if (e.code === "42P01") console.warn("  brand_catalog_products missing — run airtable:import:pharmacy for cross-reference.");
+      else throw e;
+    }
 
     const wcKeys = [...wcKeyToIds.keys()];
     const catalogKeyToWc = new Map();

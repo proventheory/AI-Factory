@@ -39,9 +39,7 @@ This doc is the single reference for how WooCommerce and WordPress data are stor
    export $(grep -E '^WOOCOMMERCE_|^CONSUMER_KEY=|^CONSUMER_SECRET=' "/path/to/Pharmacy Repo/Pharmacy/.env" | xargs)
    npm run woocommerce:sync:pharmacy
    ```
-3. **Migrations:** Use the **same database** that has `brand_profiles` (e.g. after core + Pharmacy Airtable import). Then ensure:
-   - `20250331000005_raw_woocommerce_snapshots.sql` (raw_woocommerce_snapshots) — e.g. `npm run db:migrate` or run that file.
-   - `20250329000000_ads_commerce_canonical.sql` (stores, products) — run **`npm run db:migrate:ads-commerce`** before first sync. Requires `brand_profiles` to exist (same DB as Airtable import).
+3. **Migrations:** Run **`npm run db:migrate`** once. It creates `brand_profiles` (and other core tables), then **stores** and **products** (ads_commerce_canonical), then **raw_woocommerce_snapshots**. No separate `db:migrate:ads-commerce` step needed. (If you use only the ads-commerce runner, `npm run db:migrate:ads-commerce` still works and requires `brand_profiles` to already exist.)
 
 ---
 
