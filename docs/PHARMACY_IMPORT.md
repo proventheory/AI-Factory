@@ -53,9 +53,31 @@ Import has been run successfully: **222 Products**, **703 Variations** → **724
   `GET /v1/catalog/products?brand_profile_id=<pharmacy_time_brand_uuid>`  
   (get uuid from `SELECT id FROM brand_profiles WHERE slug = 'pharmacytime-com'`).
 
+## WooCommerce cross-reference and sync
+
+To have **100% of data** (Airtable + WordPress/WooCommerce) in AI Factory for later actions:
+
+1. **Run the WooCommerce sync** (after Airtable import and with the **same** DATABASE_URL that has `brand_profiles` and Pharmacy Time data):
+   ```bash
+   # WooCommerce credentials from Pharmacy Repo .env
+   export $(grep -E '^WOOCOMMERCE_|^CONSUMER_KEY=|^CONSUMER_SECRET=' "/path/to/Pharmacy Repo/Pharmacy/.env" | xargs)
+   npm run woocommerce:sync:pharmacy
+   ```
+   Or: copy `WOOCOMMERCE_URL`, `WOOCOMMERCE_CONSUMER_KEY`, `WOOCOMMERCE_CONSUMER_SECRET` (or `CONSUMER_KEY`/`CONSUMER_SECRET`) into AI Factory `.env` and run `npm run woocommerce:sync:pharmacy`.
+
+2. **What the sync does:**
+   - Fetches all **products** and **variations** from the Pharmacy Time WooCommerce store (e.g. pharmac7dev.wpenginepowered.com).
+   - Fetches all **categories**.
+   - Stores full payloads in **raw_woocommerce_snapshots** (entity_type `products`, `categories`) for replay and audit.
+   - Ensures a **stores** row (channel `woocommerce`, scope_key `pharmacy-time`, linked to Pharmacy Time brand) and upserts **products** in the ads commerce table (store_id, external_ref = WC product id, name, price_cents, etc.).
+   - **Cross-references** catalog ↔ WooCommerce: matches catalog rows to WC by product/variation key (compound|form|category|strength from Airtable metadata vs. WC meta `_product_key`, `_strength_key`). For each match, sets **brand_catalog_products.metadata_json** → `woocommerce_product_id`, `woocommerce_variation_id`, `woocommerce_permalink` so you can take actions (e.g. update WC, link to storefront) from a single record.
+
+3. **Migration:** Run `supabase/migrations/20250331000005_raw_woocommerce_snapshots.sql` (adds `raw_woocommerce_snapshots`) before the first sync.
+
 ## Pharmacy Repo location
 
-The project and Airtable usage live under:
+The project and Airtable/WooCommerce usage live under:
 
 - **Path:** `Pharmacy Repo/Pharmacy/` (e.g. on this machine: `~/Documents/Pharmacy Repo/Pharmacy/`).
-- **Import script (WooCommerce):** `project/scripts/core/import-from-airtable-enhanced.py` (reads Products + Variations, pushes to WooCommerce). The AI Factory import **only** pulls from Airtable into AI Factory DB; it does not touch WooCommerce.
+- **Airtable → WooCommerce:** `project/scripts/core/import-from-airtable-enhanced.py` (reads Products + Variations from Airtable, pushes to WooCommerce).
+- **AI Factory:** Airtable import fills **brand_catalog_products**; WooCommerce sync fills **raw_woocommerce_snapshots**, **stores**, **products**, and cross-links catalog rows to WC via `metadata_json.woocommerce_*`.

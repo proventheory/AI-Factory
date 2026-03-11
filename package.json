@@ -50,7 +50,8 @@
     "update:stitch-template": "node scripts/update-stitch-template-mjml.mjs",
     "airtable:discovery": "node scripts/airtable-discovery.mjs",
     "airtable:import": "node scripts/airtable-import.mjs",
-    "airtable:import:pharmacy": "node --env-file=.env scripts/airtable-import-pharmacy.mjs"
+    "airtable:import:pharmacy": "node --env-file=.env scripts/airtable-import-pharmacy.mjs",
+    "woocommerce:sync:pharmacy": "node --env-file=.env scripts/woocommerce-sync-pharmacy.mjs"
   },
   "dependencies": {
     "@sentry/node": "^8.49.0",

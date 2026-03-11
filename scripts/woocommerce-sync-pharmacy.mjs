@@ -110,9 +110,11 @@ function catalogVariationKey(metadata) {
   if (!metadata || typeof metadata !== "object") return null;
   const compound = metadata.compound_display || metadata["Compound Name"] || metadata.compound_name || "";
   const form = metadata.form_display || metadata.Form || metadata.form || "";
+  const category = metadata.category || metadata.therapeutic_area || metadata["Therapeutic Area"] || metadata["Category"] || "";
   const strength = metadata["Strength (mg/g)"] || metadata.strength_mg_per_g || metadata.strength_mg || "";
   const size = metadata.Size || metadata.size;
-  const productKey = [slugify(compound), slugify(form)].filter(Boolean).join("|");
+  const productKeyParts = [slugify(compound), slugify(form), slugify(category)].filter(Boolean);
+  const productKey = productKeyParts.join("|") || [slugify(compound), slugify(form)].filter(Boolean).join("|");
   if (!productKey) return null;
   const strengthKey = slugify(strength);
   const parts = [productKey];
@@ -153,16 +155,14 @@ async function main() {
   const client = await pool.connect();
 
   try {
-    await client.query("BEGIN");
-
     const brandRow = await client.query("SELECT id FROM brand_profiles WHERE slug = $1", [BRAND_SLUG]);
     const brandId = brandRow.rows[0]?.id;
     if (!brandId) {
-      await client.query("ROLLBACK");
       console.error("Pharmacy Time brand (pharmacytime-com) not found. Run airtable:import:pharmacy first.");
       process.exit(1);
     }
 
+    await client.query("BEGIN");
     const storeExtRef = WOO_URL;
     await client.query(
       `INSERT INTO stores (scope_key, channel, external_ref, name, brand_profile_id) VALUES ($1, 'woocommerce', $2, 'Pharmacy Time', $3)
@@ -213,8 +213,13 @@ async function main() {
       const normalized = key.toLowerCase().replace(/\s/g, "");
       let wc = wcKeyToIds.get(key) || catalogKeyToWc.get(normalized);
       if (!wc && key.includes("|")) {
-        const twoPart = key.split("|").slice(0, 2).join("|");
+        const parts = key.split("|");
+        const twoPart = parts.slice(0, 2).join("|");
         wc = wcKeyToIds.get(twoPart) || catalogKeyToWc.get(twoPart.toLowerCase());
+        if (!wc && parts.length >= 3) {
+          const threePart = parts.slice(0, 3).join("|");
+          wc = wcKeyToIds.get(threePart) || catalogKeyToWc.get(threePart.toLowerCase());
+        }
       }
       if (!wc) continue;
       const nextMeta = { ...(row.metadata_json || {}), woocommerce_product_id: wc.productId, woocommerce_variation_id: wc.variationId, woocommerce_permalink: wc.permalink };
@@ -230,6 +235,9 @@ async function main() {
     }
     console.log("  Catalog cross-reference: linked", linked, "of", catalogRows.rows.length);
 
+    await client.query("COMMIT");
+
+    await client.query("BEGIN");
     let productsUpserted = 0;
     for (const p of products) {
       try {
@@ -251,8 +259,8 @@ async function main() {
       }
     }
     console.log("  Commerce products (stores):", productsUpserted);
-
     await client.query("COMMIT");
+
     console.log("\nWooCommerce sync succeeded.");
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});

@@ -64,6 +64,7 @@ const migrations = [
   { path: "supabase/migrations/20250331000002_organizations_and_brand_website.sql", name: "organizations_and_brand_website", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250331000003_taxonomy_websites_upsert_constraint.sql", name: "taxonomy_websites_upsert_constraint", skipIfErrorCode: "42710", skipMessage: "constraint already exists" },
   { path: "supabase/migrations/20250331000004_taxonomy_terms_url_value.sql", name: "taxonomy_terms_url_value", skipIfErrorCode: "42701", skipMessage: "column already exists" },
+  { path: "supabase/migrations/20250331000005_raw_woocommerce_snapshots.sql", name: "raw_woocommerce_snapshots", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
 ];
 
 async function run() {
