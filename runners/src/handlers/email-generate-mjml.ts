@@ -873,12 +873,32 @@ export async function handleEmailGenerateMjml(request: {
             input.products = meta.products as EmailGenerateMjmlInput["products"];
             console.log("[MJML] products from campaign metadata", { run_id: runId, initiative_id: initiativeId, count: input.products?.length ?? meta.products.length });
           } else if (!input.products?.length && (!meta.products || !Array.isArray(meta.products) || meta.products.length === 0)) {
-            console.log("[MJML] campaign metadata has no products; will try sitemap/brand fallbacks", { run_id: runId, initiative_id: initiativeId, hasMetaProducts: !!meta.products, metaProductsLength: Array.isArray(meta.products) ? meta.products.length : 0 });
+            console.log("[MJML] campaign metadata has no products; will try catalog/sitemap/brand fallbacks", { run_id: runId, initiative_id: initiativeId, hasMetaProducts: !!meta.products, metaProductsLength: Array.isArray(meta.products) ? meta.products.length : 0 });
           }
           if (Array.isArray(meta.images)) input.images = meta.images.slice(0);
           else if (Array.isArray(meta.selected_images) && !input.images?.length) input.images = meta.selected_images.slice(0);
           // Console sends images with first = hero; buildImageAssignmentV1 uses campaign[0] as hero.
           if (meta.campaign_prompt) input.campaign_prompt = input.campaign_prompt ?? meta.campaign_prompt;
+          // Canonical catalog: products belong to a brand — try GET /v1/catalog/products by brand_profile_id before sitemap/URL.
+          if (!input.products?.length && brandCtx?.id) {
+            try {
+              const catalogRes = await fetch(`${CONTROL_PLANE_URL}/v1/catalog/products?brand_profile_id=${encodeURIComponent(brandCtx.id)}&limit=8`);
+              if (catalogRes.ok) {
+                const catalogData = (await catalogRes.json()) as { items?: Array<{ image_url?: string; name?: string; description?: string }> };
+                if (catalogData.items?.length) {
+                  input.products = catalogData.items.map((p) => ({
+                    src: p.image_url ?? "",
+                    title: p.name ?? "",
+                    product_url: "",
+                    description: p.description ?? "",
+                  })) as EmailGenerateMjmlInput["products"];
+                  console.log("[MJML] products from canonical catalog (brand)", { run_id: runId, initiative_id: initiativeId, brand_profile_id: brandCtx.id, count: catalogData.items.length });
+                }
+              }
+            } catch (_e) {
+              console.log("[MJML] catalog/products fallback failed", { run_id: runId, err: String((_e as Error).message).slice(0, 60) });
+            }
+          }
           if (!input.products?.length && meta.sitemap_url && meta.sitemap_type) {
             try {
               const isJson = meta.sitemap_type === "shopify_json";

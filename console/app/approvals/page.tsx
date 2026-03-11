@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, Badge, Button, EmptyState } from "@/components/ui";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, Button, EmptyState, LoadingSkeleton } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
+import { OperatorActionBar, MetricCard } from "@/components/crm";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
@@ -98,8 +99,10 @@ export default function ApprovalsPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Pending Approvals" />
-          <p className="text-state-danger">Error: {error}</p>
+          <PageHeader title="Pending Approvals" description="When a run hits an approval node, it will appear here." />
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {error}
+          </div>
         </Stack>
       </PageFrame>
     );
@@ -112,9 +115,19 @@ export default function ApprovalsPage() {
           title="Pending Approvals"
           description="When a run hits an approval node, it will appear here. Use Approve or Reject to continue."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/planner" className="text-brand-600 hover:underline">Planner</Link>
+        </p>
+        <OperatorActionBar
+          metrics={
+            <>
+              <MetricCard label="Pending" value={items.length} sublabel="awaiting action" />
+            </>
+          }
+        />
         <CardSection>
           {loading ? (
-            <p className="text-text-muted">Loading...</p>
+            <LoadingSkeleton className="h-48 rounded-lg" />
           ) : items.length === 0 ? (
             <EmptyState title="No pending approvals" description="When a run hits an approval node, it will appear here. Use Approve or Reject to continue." />
           ) : (

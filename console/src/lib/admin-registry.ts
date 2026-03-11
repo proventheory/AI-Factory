@@ -151,3 +151,25 @@ export const ADMIN_RESOURCES: AdminResource[] = [
 export function getResource(key: string): AdminResource | undefined {
   return ADMIN_RESOURCES.find((r) => r.key === key);
 }
+
+export function getAllResources(): AdminResource[] {
+  return ADMIN_RESOURCES;
+}
+
+/**
+ * Refine-style resource routes for list / show / edit / create.
+ * Use for nav links, redirects, and generated CRM pages. See docs/CRM_UI_REFERENCE.md.
+ */
+export function getResourceRoutes(
+  resourceKey: string,
+  options?: { basePath?: string }
+): { list: string; show: (id: string) => string; edit: (id: string) => string; create: string } {
+  const base = options?.basePath ?? "/admin";
+  const prefix = `${base}/${resourceKey}`;
+  return {
+    list: prefix,
+    show: (id: string) => `${prefix}/${id}`,
+    edit: (id: string) => `${prefix}/${id}/edit`,
+    create: `${prefix}/new`,
+  };
+}

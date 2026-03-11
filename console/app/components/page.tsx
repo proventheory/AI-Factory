@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import Link from "next/link";
 import {
   PageFrame,
   Stack,
@@ -281,6 +282,9 @@ export default function ComponentRegistryPage() {
           title="Component Registry"
           description="Reusable building blocks for emails, decks, or reports. Each component has a “For” (use context). Email components use placeholders per BRAND_EMAIL_FIELD_MAPPING. Use Preview to see a component with or without a brand; brand embeddings: open a brand → Brand Embeddings → Manage."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link> · <Link href="/document-templates" className="text-brand-600 hover:underline">Document Templates</Link> · <Link href="/tokens" className="text-brand-600 hover:underline">Token Registry</Link>
+        </p>
         <CardSection>
           <div className="mb-4 flex items-center gap-2">
             <Button variant="secondary" size="sm" onClick={fetchList} disabled={loading}>

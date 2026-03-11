@@ -80,6 +80,9 @@ export default function PlansPage() {
           title="Plans"
           description="Structured roadmaps from initiatives. Create an initiative and generate a plan to see entries here."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/initiatives" className="text-brand-600 hover:underline">Initiatives</Link> · <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/graph/explorer" className="text-brand-600 hover:underline">Graph Explorer</Link> · <Link href="/graph/schema-contracts" className="text-brand-600 hover:underline">Schema & contracts</Link>
+        </p>
         <CardSection>
           {items.length === 0 ? (
             <EmptyState

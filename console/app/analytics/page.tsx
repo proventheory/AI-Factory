@@ -28,8 +28,10 @@ export default function AnalyticsPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Analytics" />
-          <p className="text-state-danger">Error: {formatApiError(error)}</p>
+          <PageHeader title="Analytics" description="Visual breakdown of run activity and cost." />
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {formatApiError(error)}
+          </div>
         </Stack>
       </PageFrame>
     );

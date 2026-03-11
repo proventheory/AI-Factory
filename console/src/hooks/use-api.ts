@@ -50,7 +50,7 @@ export function useCreateInitiative() {
 export function useUpdateInitiative() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<{ intent_type: string; title: string | null; risk_level: string; source_ref: string }> }) => api.updateInitiative(id, body),
+    mutationFn: ({ id, body }: { id: string; body: Partial<{ intent_type: string; title: string | null; risk_level: string; source_ref: string; goal_metadata: Record<string, unknown> }> }) => api.updateInitiative(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["initiatives"] });
       queryClient.invalidateQueries({ queryKey: ["initiative"] });
@@ -70,6 +70,171 @@ export function usePlan(id: string | null) {
     queryKey: ["plan", id],
     queryFn: () => api.getPlan(id!),
     enabled: !!id,
+  });
+}
+
+export function useBuildSpecs(initiativeId: string | null) {
+  return useQuery({
+    queryKey: ["build_specs", initiativeId],
+    queryFn: () => api.getBuildSpecs(initiativeId!),
+    enabled: !!initiativeId,
+  });
+}
+
+export function useBuildSpec(id: string | null) {
+  return useQuery({
+    queryKey: ["build_spec", id],
+    queryFn: () => api.getBuildSpec(id!),
+    enabled: !!id,
+  });
+}
+
+export function useLaunches(params?: { initiative_id?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ["launches", params?.initiative_id, params?.limit],
+    queryFn: () => api.getLaunches(params),
+  });
+}
+
+export function useLaunch(id: string | null) {
+  return useQuery({
+    queryKey: ["launch", id],
+    queryFn: () => api.getLaunch(id!),
+    enabled: !!id,
+  });
+}
+
+export function useCreateBuildSpec() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { initiative_id: string; spec: Record<string, unknown>; extended?: boolean }) => api.createBuildSpec(body),
+    onSuccess: (_, v) => {
+      queryClient.invalidateQueries({ queryKey: ["build_specs", v.initiative_id] });
+      queryClient.invalidateQueries({ queryKey: ["launches"] });
+      queryClient.invalidateQueries({ queryKey: ["launch"] });
+    },
+  });
+}
+
+export function useCreateBuildSpecFromStrategy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { initiative_id: string; strategy_doc: string }) => api.createBuildSpecFromStrategy(body),
+    onSuccess: (_, v) => {
+      queryClient.invalidateQueries({ queryKey: ["build_specs", v.initiative_id] });
+      queryClient.invalidateQueries({ queryKey: ["launches"] });
+      queryClient.invalidateQueries({ queryKey: ["launch"] });
+    },
+  });
+}
+
+export function useLaunchAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, inputs }: { action: string; inputs: Record<string, unknown> }) => api.postLaunchAction(action, inputs),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["launches"] });
+      queryClient.invalidateQueries({ queryKey: ["launch"] });
+    },
+  });
+}
+
+export function useLaunchValidate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (launchId: string) => api.postLaunchValidate(launchId),
+    onSuccess: (_, launchId) => {
+      queryClient.invalidateQueries({ queryKey: ["launch", launchId] });
+      queryClient.invalidateQueries({ queryKey: ["launches"] });
+    },
+  });
+}
+
+export function useV1SliceFunnel() {
+  return useQuery({
+    queryKey: ["v1_slice_funnel"],
+    queryFn: () => api.getV1SliceFunnel(),
+  });
+}
+
+export function useDecisionLoopObserve() {
+  return useQuery({
+    queryKey: ["decision_loop_observe"],
+    queryFn: () => api.getDecisionLoopObserve(),
+  });
+}
+
+export function useDecisionLoopTick() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body?: { auto_act?: boolean; compute_baselines?: boolean }) => api.postDecisionLoopTick(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["decision_loop_observe"] });
+      queryClient.invalidateQueries({ queryKey: ["memory_entries"] });
+    },
+  });
+}
+
+export function useDeployEvents(params?: { service_id?: string; status?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ["deploy_events", params?.service_id, params?.status, params?.limit],
+    queryFn: () => api.getDeployEvents(params),
+  });
+}
+
+export function useDeployEventRepairPlan(deployId: string | null) {
+  return useQuery({
+    queryKey: ["deploy_event_repair_plan", deployId],
+    queryFn: () => api.getDeployEventRepairPlan(deployId!),
+    enabled: !!deployId,
+  });
+}
+
+export function useDeployEventsSync() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.postDeployEventsSync(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["deploy_events"] }),
+  });
+}
+
+export function useDeployEventsSyncGitHub() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.postDeployEventsSyncGitHub(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["deploy_events"] }),
+  });
+}
+
+export function useImportGraph(serviceId: string | null) {
+  return useQuery({
+    queryKey: ["import_graph", serviceId],
+    queryFn: () => api.getImportGraph(serviceId!),
+    enabled: !!serviceId,
+  });
+}
+
+export function useSchemaDrift(params?: { environment_a?: string; environment_b?: string }) {
+  return useQuery({
+    queryKey: ["schema_drift", params?.environment_a, params?.environment_b],
+    queryFn: () => api.getSchemaDrift(params),
+  });
+}
+
+export function useContractBreakageScan(params?: { scope_key?: string }) {
+  return useQuery({
+    queryKey: ["contract_breakage_scan", params?.scope_key],
+    queryFn: () => api.getContractBreakageScan(params),
+  });
+}
+
+export function useBaselinesCompute() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.postBaselinesCompute(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["decision_loop_observe"] });
+    },
   });
 }
 
@@ -306,6 +471,55 @@ export function useDeleteEmailTemplate() {
   return useMutation({
     mutationFn: (id: string) => api.deleteEmailTemplate(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["email_templates"] }),
+  });
+}
+
+// ——— Klaviyo operator pack ———
+export function useKlaviyoTemplates(brand_profile_id?: string) {
+  return useQuery({
+    queryKey: ["klaviyo_templates", brand_profile_id],
+    queryFn: () => api.getKlaviyoTemplates(brand_profile_id),
+  });
+}
+
+export function useKlaviyoCampaigns(brand_profile_id?: string) {
+  return useQuery({
+    queryKey: ["klaviyo_campaigns", brand_profile_id],
+    queryFn: () => api.getKlaviyoCampaigns(brand_profile_id),
+  });
+}
+
+export function useKlaviyoFlows(brand_profile_id?: string) {
+  return useQuery({
+    queryKey: ["klaviyo_flows", brand_profile_id],
+    queryFn: () => api.getKlaviyoFlows(brand_profile_id),
+  });
+}
+
+export function useKlaviyoCampaignsPush() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.postKlaviyoCampaignsPush>[0]) => api.postKlaviyoCampaignsPush(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["klaviyo_campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["klaviyo_templates"] });
+    },
+  });
+}
+
+export function useKlaviyoFlowsCreate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.postKlaviyoFlows>[0]) => api.postKlaviyoFlows(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["klaviyo_flows"] }),
+  });
+}
+
+export function useKlaviyoFlowSetStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ flowId, body }: { flowId: string; body: Parameters<typeof api.patchKlaviyoFlowStatus>[1] }) => api.patchKlaviyoFlowStatus(flowId, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["klaviyo_flows"] }),
   });
 }
 

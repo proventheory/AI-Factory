@@ -2,10 +2,16 @@
  * Self-Heal Runner: local repair loop for the AI Factory monorepo.
  *
  * Usage: npx tsx scripts/self-heal.ts [flags]
- * Requires: OPENAI_API_KEY env (no cloud, no gateway, no DB)
+ * Requires: OPENAI_API_KEY in env or .env (no cloud, no gateway, no DB)
  *
  * Flow: stash -> branch -> doctor -> parse -> context -> LLM -> patch -> rerun -> repeat
  */
+import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -168,7 +174,9 @@ WORKSPACE CONTEXT:
 // ---------------------------------------------------------------------------
 
 async function main() {
+  const hasKey = Boolean(process.env.OPENAI_API_KEY?.trim());
   console.log("Self-Heal Runner v2");
+  console.log(`  OPENAI_API_KEY: ${hasKey ? "set" : "NOT SET (required for LLM step)"}`);
   console.log(`  Model: ${MODEL} | Max iterations: ${MAX_ITERATIONS} | Max cost: $${MAX_COST}`);
   console.log(`  Dry run: ${DRY_RUN} | Step filter: ${STEP_FILTER} | Agent: ${AGENT}`);
   console.log("");

@@ -153,7 +153,7 @@ Each session will return:
 
 ## 6. Current repo vs target repos
 
-- **Current (monorepo):** `console/` (Next.js + shadcn/ui, ProfessorX, layout primitives), `control-plane/` (REST API, plan compiler, scheduler), `runners/` (ExecutorRegistry, handlers), `supabase/` (migrations), `email-marketing-factory/` (at `/email-marketing`), `docs/`.
+- **Current (monorepo):** `console/` (Next.js + shadcn/ui, ProfessorX — AI Factory Operator Console: pipelines, brands, graph ops, change impact, repair, migration guard, lineage), `control-plane/` (REST API, plan compiler, scheduler, graph RPCs, migration guard, impact analysis), `runners/` (ExecutorRegistry, handlers, artifact consumption), `supabase/` (migrations), `email-marketing-factory/` (at `/email-marketing`), `docs/`.
 - **Target (optional later):** Separate repos `ai-factory-console`, `ai-factory-control-plane`, `ai-factory-runner`. All features ship in this monorepo today.
 
 All application code lives in this repo; splitting into separate repos is optional when scaling.

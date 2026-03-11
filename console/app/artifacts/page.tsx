@@ -34,7 +34,7 @@ export default function ArtifactsPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Artifacts" />
+          <PageHeader title="Artifacts" description="Outputs produced by pipeline runs." />
           <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
             Error: {formatApiError(error)}
           </div>
@@ -48,8 +48,11 @@ export default function ArtifactsPage() {
       <Stack>
         <PageHeader
           title="Artifacts"
-          description="Outputs produced by pipeline runs."
+          description="Outputs produced by pipeline runs (logs, docs, schema bundles, build outputs)."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/graph/lineage" className="text-brand-600 hover:underline">Lineage viewer</Link>
+        </p>
         <div className="flex flex-wrap items-center gap-3">
           <Select
             value={classFilter}

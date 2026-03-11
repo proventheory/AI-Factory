@@ -33,6 +33,12 @@ export declare function completeApprovalAndAdvance(db: DbClient, runId: string, 
  */
 export declare function checkRunCompletion(db: DbClient, runId: string): Promise<boolean>;
 /**
+ * When a job fails, mark the run as failed if there are no more queued or running
+ * job_runs for this run. So the run status stops being "running" and pollers (e.g.
+ * the email wizard) see "failed" instead of timing out.
+ */
+export declare function markRunFailedIfNoPendingJobs(db: DbClient, runId: string): Promise<void>;
+/**
  * Acquire the scheduler lock for a run (prevents duplicate schedulers).
  */
 export declare function acquireRunLock(db: DbClient, runId: string, lockDurationMs?: number): Promise<string | null>;

@@ -55,6 +55,9 @@ export default function IncidentsPage() {
           title="Incidents"
           description="Clustered by error signature. Click a signature to see affected runs."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/graph/memory" className="text-brand-600 hover:underline">Memory (incidents)</Link> · <Link href="/graph/failure-clusters" className="text-brand-600 hover:underline">Failure clusters</Link>
+        </p>
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <label htmlFor="incidents-env" className="text-body-small text-text-muted">Environment</label>
           <select

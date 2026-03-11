@@ -27,6 +27,8 @@ export interface JobContext {
     config?: {
         phase?: string;
     };
+    /** Initiative goal_metadata (e.g. for seo_migration_audit: source_url, target_url, crawl options). */
+    goal_metadata?: Record<string, unknown> | null;
 }
 /**
  * Build full job context for a claimed job run.
@@ -36,4 +38,10 @@ export declare function getJobContext(client: pg.PoolClient, jobRun: {
     run_id: string;
     plan_node_id: string;
 }): Promise<JobContext | null>;
+/**
+ * Record artifact consumption for graph lineage (V1 self-heal).
+ * Call after a job run succeeds; inserts into artifact_consumption for each artifact used as input.
+ * Table may not exist in older DBs — safe to no-op on error.
+ */
+export declare function recordArtifactConsumption(client: pg.PoolClient, runId: string, jobRunId: string, planNodeId: string, artifactIds: string[], role?: string): Promise<void>;
 //# sourceMappingURL=job-context.d.ts.map

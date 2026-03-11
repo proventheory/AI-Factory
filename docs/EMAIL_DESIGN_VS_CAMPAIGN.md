@@ -9,15 +9,15 @@ This doc clarifies naming so we don’t block the future “email campaign” (s
 - **API:** `/v1/email_designs` — list, get, create, and update these *design* initiatives and their metadata (subject, from, template).
 - **Table:** `email_design_generator_metadata` — one row per design initiative (subject_line, from_name, template ref, metadata_json). The product term "email campaign" is reserved for future sent campaigns (e.g. Klaviyo).
 
-## Future: Email campaign (sent)
+## Email campaign (sent) — Klaviyo operator pack
 
-- **Reserved:** The term **email campaign** is reserved for the future concept: an email *design* (from the generator) that is sent or scheduled as a campaign, e.g. to Klaviyo.
-- **Do not:** Use `email_campaign` as an `initiatives.intent_type` value. That would collide with the future “sent campaign” idea.
-- **When we add it:** We may introduce a separate table (e.g. sent campaigns, Klaviyo sync) and/or API for “design sent as campaign” and keep `email_design_generator` + `email_design_generator_metadata` for the design side only.
+- **Implemented:** The **Klaviyo operator pack** (Phases 1–4) implements design sent as campaign: push artifact to template and campaign (optional schedule), plus flow drafting and status. See **KLAVIYO_OPERATOR_PACK.md** for API, Console `/klaviyo`, migrations, and testing.
+- **Do not:** Use `email_campaign` as an `initiatives.intent_type` value; use Klaviyo APIs or Console **Push to Klaviyo** instead.
+- **Tables:** `klaviyo_template_sync`, `klaviyo_sent_campaigns`, `klaviyo_flow_sync`, and related tables plus the Klaviyo API/Console handle design-sent-as-campaign; `email_design_generator` and `email_design_generator_metadata` remain for the design side only.
 
 ## Summary
 
 | Concept              | Intent type / usage        | Notes                                      |
 |----------------------|----------------------------|--------------------------------------------|
 | Email design         | `email_design_generator`   | Initiative in the generator; current flow. |
-| Email campaign (future) | Reserved                | Design sent as campaign (e.g. Klaviyo).    |
+| Email campaign (sent) | Klaviyo operator pack     | Design sent as campaign via Klaviyo; see KLAVIYO_OPERATOR_PACK.md. |

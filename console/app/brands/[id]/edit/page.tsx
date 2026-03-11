@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Button,
@@ -61,15 +62,30 @@ export default function EditBrandPage() {
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
   const [googleDisconnectBusy, setGoogleDisconnectBusy] = useState(false);
   const [googleConnectError, setGoogleConnectError] = useState<string | null>(null);
+  const [klaviyoConnected, setKlaviyoConnected] = useState<boolean | null>(null);
+  const [klaviyoDisconnectBusy, setKlaviyoDisconnectBusy] = useState(false);
+  const [klaviyoConnectError, setKlaviyoConnectError] = useState<string | null>(null);
+  const [klaviyoApiKey, setKlaviyoApiKey] = useState("");
+  const [klaviyoDefaultListId, setKlaviyoDefaultListId] = useState("");
+  const [klaviyoConnectBusy, setKlaviyoConnectBusy] = useState(false);
 
   const fetchGoogleConnected = useCallback(() => {
     if (!id) return;
     api.getBrandGoogleConnected(id).then((r) => setGoogleConnected(r.connected)).catch(() => setGoogleConnected(false));
   }, [id]);
 
+  const fetchKlaviyoConnected = useCallback(() => {
+    if (!id) return;
+    api.getBrandKlaviyoConnected(id).then((r) => setKlaviyoConnected(r.connected)).catch(() => setKlaviyoConnected(false));
+  }, [id]);
+
   useEffect(() => {
     fetchGoogleConnected();
   }, [fetchGoogleConnected]);
+
+  useEffect(() => {
+    fetchKlaviyoConnected();
+  }, [fetchKlaviyoConnected]);
 
   useEffect(() => {
     const connected = searchParams.get("google_connected");
@@ -95,6 +111,37 @@ export default function EditBrandPage() {
       setGoogleConnected(false);
     } finally {
       setGoogleDisconnectBusy(false);
+    }
+  }
+
+  async function handleConnectKlaviyo(e: React.FormEvent) {
+    e.preventDefault();
+    if (!id || !klaviyoApiKey.trim()) return;
+    setKlaviyoConnectBusy(true);
+    setKlaviyoConnectError(null);
+    try {
+      await api.putBrandKlaviyoCredentials(id, {
+        api_key: klaviyoApiKey.trim(),
+        default_list_id: klaviyoDefaultListId.trim() || undefined,
+      });
+      setKlaviyoConnected(true);
+      setKlaviyoApiKey("");
+      setKlaviyoDefaultListId("");
+    } catch (err) {
+      setKlaviyoConnectError(err instanceof Error ? err.message : "Failed to connect");
+    } finally {
+      setKlaviyoConnectBusy(false);
+    }
+  }
+
+  async function handleDisconnectKlaviyo() {
+    if (!id) return;
+    setKlaviyoDisconnectBusy(true);
+    try {
+      await api.deleteBrandKlaviyoCredentials(id);
+      setKlaviyoConnected(false);
+    } finally {
+      setKlaviyoDisconnectBusy(false);
     }
   }
 
@@ -478,6 +525,51 @@ export default function EditBrandPage() {
               <a href={connectGoogleHref} className="inline-flex items-center justify-center rounded-md bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
                 Connect Google
               </a>
+            )}
+          </CardSection>
+
+          <CardSection title="Klaviyo">
+            <p className="text-body-small text-text-secondary mb-3">
+              Connect Klaviyo for this brand to push email templates and campaigns from the Email Design Generator. After connecting, use <strong>Orchestration → Klaviyo</strong> to push campaigns and create flows.
+            </p>
+            {klaviyoConnectError && (
+              <div className="mb-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
+                {klaviyoConnectError}
+              </div>
+            )}
+            {klaviyoConnected === true ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-sm font-medium">Klaviyo connected</span>
+                <Button type="button" variant="secondary" onClick={handleDisconnectKlaviyo} disabled={klaviyoDisconnectBusy}>
+                  {klaviyoDisconnectBusy ? "Disconnecting…" : "Disconnect Klaviyo"}
+                </Button>
+                <Link href="/klaviyo" className="text-body-small text-brand-600 hover:underline">Go to Klaviyo page →</Link>
+              </div>
+            ) : (
+              <form onSubmit={handleConnectKlaviyo} className="space-y-4 max-w-md">
+                <div>
+                  <label className={labelCls}>Private API key <span className="text-state-danger">*</span></label>
+                  <p className="text-body-small text-text-muted mb-1">Get your key from Klaviyo → Settings → API Keys (create a Private key with Campaigns and Templates scope).</p>
+                  <Input
+                    type="password"
+                    value={klaviyoApiKey}
+                    onChange={(e) => setKlaviyoApiKey(e.target.value)}
+                    placeholder="pk_…"
+                    autoComplete="off"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Default list ID (optional)</label>
+                  <Input
+                    value={klaviyoDefaultListId}
+                    onChange={(e) => setKlaviyoDefaultListId(e.target.value)}
+                    placeholder="Used as default audience when scheduling campaigns"
+                  />
+                </div>
+                <Button type="submit" variant="primary" disabled={klaviyoConnectBusy || !klaviyoApiKey.trim()}>
+                  {klaviyoConnectBusy ? "Connecting…" : "Connect Klaviyo"}
+                </Button>
+              </form>
             )}
           </CardSection>
 

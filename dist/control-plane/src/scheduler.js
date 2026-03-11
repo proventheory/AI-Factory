@@ -2,6 +2,7 @@ import { v4 as uuid } from "uuid";
 export async function createRun(db, params) {
     const runId = uuid();
     const llmSource = params.llmSource === "openai_direct" ? "openai_direct" : "gateway";
+    await db.query("SAVEPOINT before_runs_insert");
     try {
         await db.query(`INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
          status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
@@ -16,6 +17,7 @@ export async function createRun(db, params) {
     }
     catch (err) {
         if (err.code === "42703") {
+            await db.query("ROLLBACK TO SAVEPOINT before_runs_insert");
             await db.query(`INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
            status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
            prompt_template_version, adapter_contract_version)
@@ -29,6 +31,9 @@ export async function createRun(db, params) {
         else {
             throw err;
         }
+    }
+    finally {
+        await db.query("RELEASE SAVEPOINT before_runs_insert").catch(() => { });
     }
     await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'queued')`, [runId]);
     const nodes = await db.query(`SELECT * FROM plan_nodes WHERE plan_id = $1`, [params.planId]);
@@ -68,7 +73,7 @@ export async function createRun(db, params) {
         }
     }
     if (hasQueuedJob) {
-        await db.query(`UPDATE runs SET status = 'running' WHERE id = $1`, [runId]);
+        await db.query(`UPDATE runs SET status = 'running', started_at = COALESCE(started_at, now()) WHERE id = $1`, [runId]);
         await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'started')`, [runId]).catch(() => { });
     }
     // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
@@ -139,7 +144,7 @@ export async function completeApprovalAndAdvance(db, runId, planNodeId) {
      VALUES ($1, $2, $3, now())
      ON CONFLICT (run_id, from_node_id) DO NOTHING`, [runId, planNodeId, jobRunId]);
     await db.query(`UPDATE node_progress SET status = 'succeeded' WHERE run_id = $1 AND plan_node_id = $2`, [runId, planNodeId]);
-    await db.query(`UPDATE runs SET status = 'running' WHERE id = $1 AND status = 'queued'`, [runId]);
+    await db.query(`UPDATE runs SET status = 'running', started_at = COALESCE(started_at, now()) WHERE id = $1 AND status = 'queued'`, [runId]);
     await advanceSuccessors(db, runId, planNodeId, jobRunId);
     await checkRunCompletion(db, runId);
 }
@@ -158,6 +163,18 @@ export async function checkRunCompletion(db, runId) {
         return true;
     }
     return false;
+}
+/**
+ * When a job fails, mark the run as failed if there are no more queued or running
+ * job_runs for this run. So the run status stops being "running" and pollers (e.g.
+ * the email wizard) see "failed" instead of timing out.
+ */
+export async function markRunFailedIfNoPendingJobs(db, runId) {
+    const pending = await db.query(`SELECT count(*)::text AS c FROM job_runs WHERE run_id = $1 AND status IN ('queued', 'running')`, [runId]);
+    if (Number(pending.rows[0]?.c ?? 0) > 0)
+        return;
+    await db.query(`UPDATE runs SET status = 'failed', ended_at = now() WHERE id = $1 AND status = 'running'`, [runId]);
+    await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`, [runId]).catch(() => { });
 }
 /**
  * Acquire the scheduler lock for a run (prevents duplicate schedulers).

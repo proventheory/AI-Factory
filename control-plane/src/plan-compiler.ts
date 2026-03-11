@@ -166,6 +166,65 @@ const TEMPLATE_EMAIL_CAMPAIGN: { nodes: PlanTemplateNode[]; edges: PlanTemplateE
   edges: [],
 };
 
+/** SEO migration audit: optional GSC/GA/backlink snapshots; source + target inventory → url matcher → redirect verifier, content_parity, technical_diff → risk_scorer → audit report. */
+const TEMPLATE_SEO_MIGRATION_AUDIT: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
+  nodes: [
+    { node_key: "source_inventory", job_type: "seo_source_inventory", agent_role: "engineer", node_type: "job" },
+    { node_key: "target_inventory", job_type: "seo_target_inventory", agent_role: "engineer", node_type: "job" },
+    { node_key: "gsc_snapshot", job_type: "seo_gsc_snapshot", agent_role: "engineer", node_type: "job" },
+    { node_key: "ga4_snapshot", job_type: "seo_ga4_snapshot", agent_role: "engineer", node_type: "job" },
+    { node_key: "backlink_snapshot", job_type: "seo_backlink_snapshot", agent_role: "engineer", node_type: "job" },
+    { node_key: "url_matcher", job_type: "seo_url_matcher", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["seo_url_inventory"] },
+    { node_key: "redirect_verifier", job_type: "seo_redirect_verifier", agent_role: "qa", node_type: "job", consumes_artifact_types: ["seo_url_match_report"] },
+    { node_key: "content_parity", job_type: "seo_content_parity", agent_role: "qa", node_type: "job", consumes_artifact_types: ["seo_url_inventory", "seo_url_match_report"] },
+    { node_key: "technical_diff", job_type: "seo_technical_diff", agent_role: "qa", node_type: "job", consumes_artifact_types: ["seo_url_inventory", "seo_url_match_report"] },
+    { node_key: "risk_scorer", job_type: "seo_risk_scorer", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["seo_url_match_report", "seo_redirect_verification", "seo_content_parity_report", "seo_technical_diff_report"] },
+    { node_key: "internal_graph_builder", job_type: "seo_internal_graph_builder", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["seo_url_inventory"] },
+    { node_key: "internal_graph_diff", job_type: "seo_internal_graph_diff", agent_role: "qa", node_type: "job", consumes_artifact_types: ["seo_url_match_report", "seo_internal_link_graph"] },
+    { node_key: "audit_report", job_type: "seo_audit_report", agent_role: "product_manager", node_type: "job", consumes_artifact_types: ["seo_url_match_report", "seo_redirect_verification", "seo_ranking_risk_report"] },
+  ],
+  edges: [
+    { from_key: "source_inventory", to_key: "url_matcher", condition: "success" },
+    { from_key: "target_inventory", to_key: "url_matcher", condition: "success" },
+    { from_key: "url_matcher", to_key: "redirect_verifier", condition: "success" },
+    { from_key: "source_inventory", to_key: "content_parity", condition: "success" },
+    { from_key: "target_inventory", to_key: "content_parity", condition: "success" },
+    { from_key: "url_matcher", to_key: "content_parity", condition: "success" },
+    { from_key: "source_inventory", to_key: "technical_diff", condition: "success" },
+    { from_key: "target_inventory", to_key: "technical_diff", condition: "success" },
+    { from_key: "url_matcher", to_key: "technical_diff", condition: "success" },
+    { from_key: "url_matcher", to_key: "risk_scorer", condition: "success" },
+    { from_key: "redirect_verifier", to_key: "risk_scorer", condition: "success" },
+    { from_key: "content_parity", to_key: "risk_scorer", condition: "success" },
+    { from_key: "technical_diff", to_key: "risk_scorer", condition: "success" },
+    { from_key: "gsc_snapshot", to_key: "risk_scorer", condition: "success" },
+    { from_key: "ga4_snapshot", to_key: "risk_scorer", condition: "success" },
+    { from_key: "backlink_snapshot", to_key: "risk_scorer", condition: "success" },
+    { from_key: "source_inventory", to_key: "internal_graph_builder", condition: "success" },
+    { from_key: "target_inventory", to_key: "internal_graph_builder", condition: "success" },
+    { from_key: "url_matcher", to_key: "internal_graph_diff", condition: "success" },
+    { from_key: "internal_graph_builder", to_key: "internal_graph_diff", condition: "success" },
+    { from_key: "url_matcher", to_key: "audit_report", condition: "success" },
+    { from_key: "redirect_verifier", to_key: "audit_report", condition: "success" },
+    { from_key: "risk_scorer", to_key: "audit_report", condition: "success" },
+  ],
+};
+
+/** Deployment pipeline: migration guard → build → preview deploy → smoke test (Stage 2 Prompt-Built Pipelines). */
+const TEMPLATE_SOFTWARE_DEPLOY: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
+  nodes: [
+    { node_key: "migration_guard", job_type: "migration_guard", agent_role: "architect", node_type: "job" },
+    { node_key: "build", job_type: "build_validate", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["migration_report"] },
+    { node_key: "deploy_preview", job_type: "deploy_preview", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["build_artifact"] },
+    { node_key: "smoke_test", job_type: "smoke_test", agent_role: "qa", node_type: "job", consumes_artifact_types: ["deploy_url"] },
+  ],
+  edges: [
+    { from_key: "migration_guard", to_key: "build", condition: "success" },
+    { from_key: "build", to_key: "deploy_preview", condition: "success" },
+    { from_key: "deploy_preview", to_key: "smoke_test", condition: "success" },
+  ],
+};
+
 const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] }> = {
   software: TEMPLATE_SOFTWARE,
   issue_fix: TEMPLATE_ISSUE_FIX,
@@ -178,44 +237,38 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   marketing: TEMPLATE_MARKETING,
   landing: TEMPLATE_LANDING,
   email_design_generator: TEMPLATE_EMAIL_CAMPAIGN,
+  seo_migration_audit: TEMPLATE_SEO_MIGRATION_AUDIT,
+  software_deploy: TEMPLATE_SOFTWARE_DEPLOY,
 };
+
+/** Return template nodes/edges for an intent type (for prompt-built pipelines). */
+export function getTemplateByIntentType(intentType: string): { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } | null {
+  const t = TEMPLATES[intentType] ?? null;
+  return t ? { nodes: t.nodes, edges: t.edges } : null;
+}
 
 /** Load initiative; includes template_id when present for email_design_generator and other template-driven flows. */
 export async function loadInitiative(db: DbClient, initiativeId: string): Promise<Initiative | null> {
-  const fullSelect = "SELECT id, intent_type, title, risk_level, created_at, template_id FROM initiatives WHERE id = $1";
   const minimalSelect = "SELECT id, intent_type, title, risk_level, created_at FROM initiatives WHERE id = $1";
   const params = [initiativeId];
 
-  await db.query("SAVEPOINT before_load_initiative");
+  // Try minimal first to avoid aborting the transaction when DB has no template_id (core schema).
   let r: { rows: Record<string, unknown>[] };
-  let didRollback = false;
   try {
-    r = await db.query(fullSelect, params);
+    r = await db.query(minimalSelect, params);
   } catch (err: unknown) {
-    if ((err as { code?: string }).code === "42703") {
-      await db.query("ROLLBACK TO SAVEPOINT before_load_initiative");
-      didRollback = true;
-      r = await db.query(minimalSelect, params);
-    } else {
-      await db.query("ROLLBACK TO SAVEPOINT before_load_initiative").catch(() => {});
-      throw err;
-    }
-  } finally {
-    if (!didRollback) {
-      await db.query("RELEASE SAVEPOINT before_load_initiative");
-    }
+    throw err;
   }
-
-  const row = r.rows[0] as Record<string, unknown> | undefined;
-  if (!row) return null;
+  if (r.rows.length === 0) return null;
+  const row = r.rows[0] as Record<string, unknown>;
   return {
     id: row.id as string,
     intent_type: row.intent_type as string,
     title: (row.title as string | null) ?? null,
     risk_level: row.risk_level as Initiative["risk_level"],
     created_by: (row.created_by as string | null) ?? null,
-    created_at: row.created_at as Date,
-    template_id: (row.template_id as string | null) ?? null,
+    created_at: (row.created_at as Date) ?? null,
+    template_id: null,
   };
 }
 
@@ -234,7 +287,9 @@ export function decomposeToDAG(initiative: Initiative): { nodes: PlanTemplateNod
   const templateId =
     initiative.intent_type === "email_design_generator" || initiative.intent_type === "email_campaign" /* backward compat */
       ? "email_design_generator"
-      : (initiative.template_id ?? initiative.intent_type ?? "software");
+      : initiative.intent_type === "seo_migration_audit"
+        ? "seo_migration_audit"
+        : (initiative.template_id ?? initiative.intent_type ?? "software");
   const t = TEMPLATES[templateId] ?? TEMPLATE_SOFTWARE;
   return { nodes: t.nodes, edges: t.edges };
 }
@@ -300,6 +355,19 @@ export async function compilePlan(
   }
 
   const { nodes: templateNodes, edges: templateEdges } = decomposeToDAG(initiative);
+  const { detectCycleFromTemplate } = await import("./graph/traversal.js");
+  const { isKnownJobType, isValidEdgeCondition } = await import("./graph/schema.js");
+  if (detectCycleFromTemplate(templateEdges)) {
+    throw new Error("Plan template contains a cycle; cannot compile.");
+  }
+  const unknownJobTypes = templateNodes.filter((n) => !isKnownJobType(n.job_type)).map((n) => n.job_type);
+  if (unknownJobTypes.length > 0) {
+    throw new Error(`Plan template has nodes with unknown job_type (no handler): ${[...new Set(unknownJobTypes)].join(", ")}`);
+  }
+  const invalidEdges = templateEdges.filter((e) => !isValidEdgeCondition(e.condition ?? "success"));
+  if (invalidEdges.length > 0) {
+    throw new Error(`Plan template has edges with invalid condition; allowed: success, failure.`);
+  }
   const { v4: uuid } = await import("uuid");
   const planId = uuid();
   let version = 1;
@@ -333,7 +401,10 @@ export async function compilePlan(
         await db.query("ROLLBACK TO SAVEPOINT before_plans_insert");
         didRollbackPlans = true;
         await db.query("INSERT INTO plans (id, initiative_id, plan_hash) VALUES ($1, $2, $3)", [planId, initiativeId, planHash]);
-      } else throw err;
+      } else {
+        didRollbackPlans = true;
+        throw err;
+      }
     }
   } finally {
     if (!didRollbackPlans) await db.query("RELEASE SAVEPOINT before_plans_insert").catch(() => {});
@@ -394,6 +465,174 @@ export async function compilePlan(
       }
     } finally {
       if (!didRollbackEdge) await db.query(`RELEASE SAVEPOINT ${edgeSp}`).catch(() => {});
+    }
+  }
+
+  return { planId, nodeIds, planHash };
+}
+
+/** PipelineDraft shape used by compilePlanFromDraft (avoids importing pipeline-draft in this file). */
+export type DraftNodeLike = {
+  node_key: string;
+  job_type: string;
+  node_type?: "job" | "gate" | "approval" | "validator";
+  agent_role?: AgentRole;
+  consumes_artifact_types?: string[];
+};
+export type DraftEdgeLike = { from_key: string; to_key: string; condition?: string };
+
+/**
+ * Compile a plan from a pipeline draft (prompt-built pipeline).
+ * Caller should run lintPipelineDraft first.
+ */
+export async function compilePlanFromDraft(
+  db: DbClient,
+  initiativeId: string,
+  draft: { nodes: DraftNodeLike[]; edges: DraftEdgeLike[]; summary?: string },
+  options?: { force?: boolean }
+): Promise<CompiledPlan> {
+  const initiative = await loadInitiative(db, initiativeId);
+  if (!initiative) throw new Error("Initiative not found");
+
+  const draftPayload = JSON.stringify({ n: draft.nodes, e: draft.edges });
+  const planHash = createHash("sha256").update(draftPayload).digest("hex");
+
+  if (!options?.force) {
+    const existing = await db.query(
+      "SELECT id FROM plans WHERE initiative_id = $1 AND plan_hash = $2",
+      [initiativeId, planHash]
+    );
+    if (existing.rows.length > 0) {
+      const planId = existing.rows[0].id as string;
+      const nodes = await db.query<{ id: string; node_key: string }>("SELECT id, node_key FROM plan_nodes WHERE plan_id = $1", [planId]);
+      const nodeIds = new Map<string, string>();
+      for (const r of nodes.rows) nodeIds.set(r.node_key, r.id);
+      return { planId, nodeIds, planHash };
+    }
+  }
+
+  const { detectCycleFromTemplate } = await import("./graph/traversal.js");
+  const { isKnownJobType, isValidEdgeCondition } = await import("./graph/schema.js");
+
+  const templateNodes: PlanTemplateNode[] = draft.nodes.map((n) => ({
+    node_key: n.node_key,
+    job_type: n.job_type,
+    agent_role: (n.agent_role as AgentRole) ?? "engineer",
+    node_type: n.node_type ?? "job",
+    consumes_artifact_types: n.consumes_artifact_types,
+  }));
+  const templateEdges: PlanTemplateEdge[] = draft.edges.map((e) => ({
+    from_key: e.from_key,
+    to_key: e.to_key,
+    condition: e.condition ?? "success",
+  }));
+
+  if (detectCycleFromTemplate(templateEdges)) {
+    throw new Error("Pipeline draft contains a cycle; cannot compile.");
+  }
+  const unknownJobTypes = templateNodes.filter((n) => !isKnownJobType(n.job_type)).map((n) => n.job_type);
+  if (unknownJobTypes.length > 0) {
+    throw new Error(`Draft has unknown job_type: ${[...new Set(unknownJobTypes)].join(", ")}`);
+  }
+
+  const { v4: uuid } = await import("uuid");
+  const planId = uuid();
+  let version = 1;
+  await db.query("SAVEPOINT before_version");
+  let versionRolledBack = false;
+  try {
+    const versionResult = await db.query(
+      "SELECT coalesce(max(version), 0) + 1 AS v FROM plans WHERE initiative_id = $1",
+      [initiativeId]
+    );
+    version = (versionResult.rows[0]?.v as number) ?? 1;
+  } catch {
+    versionRolledBack = true;
+    await db.query("ROLLBACK TO SAVEPOINT before_version").catch(() => {});
+  }
+  if (!versionRolledBack) await db.query("RELEASE SAVEPOINT before_version").catch(() => {});
+
+  let didRollbackPlans = false;
+  try {
+    await db.query("SAVEPOINT before_plans_insert");
+    try {
+      await db.query(
+        "INSERT INTO plans (id, initiative_id, plan_hash, name, version) VALUES ($1, $2, $3, $4, $5)",
+        [planId, initiativeId, planHash, initiative.title ?? null, version]
+      );
+    } catch (err: unknown) {
+      if ((err as { code?: string }).code === "42703") {
+        await db.query("ROLLBACK TO SAVEPOINT before_plans_insert");
+        didRollbackPlans = true;
+        await db.query("INSERT INTO plans (id, initiative_id, plan_hash) VALUES ($1, $2, $3)", [planId, initiativeId, planHash]);
+      } else {
+        didRollbackPlans = true;
+        throw err;
+      }
+    }
+  } finally {
+    if (!didRollbackPlans) await db.query("RELEASE SAVEPOINT before_plans_insert").catch(() => {});
+  }
+
+  const nodeIds = new Map<string, string>();
+  for (let i = 0; i < templateNodes.length; i++) {
+    const tn = templateNodes[i];
+    const nodeId = uuid();
+    nodeIds.set(tn.node_key, nodeId);
+    let didRollbackNode = false;
+    try {
+      await db.query(`SAVEPOINT before_node_${i}`);
+      try {
+        await db.query(
+          `INSERT INTO plan_nodes (id, plan_id, node_key, job_type, node_type, agent_role, consumes_artifact_types, sequence)
+           VALUES ($1, $2, $3, $4, $5::node_type, $6, $7, $8)`,
+          [nodeId, planId, tn.node_key, tn.job_type, tn.node_type, tn.agent_role, tn.consumes_artifact_types ?? null, i + 1]
+        );
+      } catch (err: unknown) {
+        if ((err as { code?: string }).code === "42703") {
+          await db.query(`ROLLBACK TO SAVEPOINT before_node_${i}`);
+          didRollbackNode = true;
+          await db.query(
+            "INSERT INTO plan_nodes (id, plan_id, node_key, job_type, node_type) VALUES ($1, $2, $3, $4, $5::node_type)",
+            [nodeId, planId, tn.node_key, tn.job_type, tn.node_type]
+          );
+        } else {
+          didRollbackNode = true;
+          throw err;
+        }
+      }
+    } finally {
+      if (!didRollbackNode) await db.query(`RELEASE SAVEPOINT before_node_${i}`).catch(() => {});
+    }
+  }
+
+  for (const e of templateEdges) {
+    const fromId = nodeIds.get(e.from_key);
+    const toId = nodeIds.get(e.to_key);
+    if (!fromId || !toId) continue;
+    let didRollbackEdge = false;
+    try {
+      await db.query(`SAVEPOINT before_edge_${e.from_key}_${e.to_key}`);
+      try {
+        await db.query(
+          "INSERT INTO plan_edges (id, plan_id, from_node_id, to_node_id, condition) VALUES ($1, $2, $3, $4, $5)",
+          [uuid(), planId, fromId, toId, e.condition ?? "success"]
+        );
+      } catch (err: unknown) {
+        if ((err as { code?: string }).code === "42703") {
+          await db.query(`ROLLBACK TO SAVEPOINT before_edge_${e.from_key}_${e.to_key}`);
+          didRollbackEdge = true;
+          await db.query(
+            "INSERT INTO plan_edges (id, plan_id, from_node_id, to_node_id) VALUES ($1, $2, $3, $4)",
+            [uuid(), planId, fromId, toId]
+          );
+        } else {
+          didRollbackEdge = true;
+          throw err;
+        }
+      }
+    } finally {
+      if (!didRollbackEdge) await db.query(`RELEASE SAVEPOINT before_edge_${e.from_key}_${e.to_key}`).catch(() => {});
     }
   }
 

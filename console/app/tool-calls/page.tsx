@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DataTable } from "@/components/ui";
-import { Badge } from "@/components/ui";
+import Link from "next/link";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, Badge, LoadingSkeleton, EmptyState } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
@@ -38,46 +38,61 @@ export default function ToolCallsPage() {
   }, [statusFilter, jobRunFilter]);
 
   const columns: Column<ToolCallRow>[] = [
-    { key: "id", header: "ID", render: (r) => <span className="font-mono text-xs">{r.id.slice(0, 8)}…</span> },
-    { key: "job_run_id", header: "Job run", render: (r) => <span className="font-mono text-xs">{r.job_run_id.slice(0, 8)}…</span> },
+    { key: "id", header: "ID", render: (r) => <span className="font-mono text-caption-small">{r.id.slice(0, 8)}…</span> },
+    { key: "job_run_id", header: "Job run", render: (r) => <Link href="/jobs" className="font-mono text-caption-small text-brand-600 hover:underline">{r.job_run_id.slice(0, 8)}…</Link> },
     { key: "capability", header: "Capability" },
     { key: "operation_key", header: "Operation" },
     { key: "status", header: "Status", render: (r) => <Badge variant={r.status === "succeeded" ? "success" : r.status === "failed" ? "error" : "neutral"}>{r.status}</Badge> },
     { key: "started_at", header: "Started", render: (r) => r.started_at ? new Date(r.started_at).toLocaleString() : "—" },
   ];
 
-  if (error) return <p className="text-red-600">Error: {error}</p>;
-
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-slate-900 mb-6">Tool Calls</h1>
-      <div className="flex gap-4 mb-4">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm"
-        >
-          <option value="">All statuses</option>
-          <option value="pending">pending</option>
-          <option value="running">running</option>
-          <option value="succeeded">succeeded</option>
-          <option value="failed">failed</option>
-        </select>
-        <input
-          type="text"
-          placeholder="Job run ID"
-          value={jobRunFilter}
-          onChange={(e) => setJobRunFilter(e.target.value)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm w-48"
+    <PageFrame>
+      <Stack>
+        <PageHeader
+          title="Tool Calls"
+          description="Adapter tool invocations from job runs (e.g. third-party APIs)."
         />
-      </div>
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        {loading ? (
-          <p className="p-6 text-slate-500">Loading...</p>
-        ) : (
-          <DataTable columns={columns} data={items} keyExtractor={(r) => r.id} />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/jobs" className="text-brand-600 hover:underline">Jobs</Link> · <Link href="/adapters" className="text-brand-600 hover:underline">Adapters</Link>
+        </p>
+        {error && (
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {error}
+          </div>
         )}
-      </div>
-    </div>
+        <div className="flex flex-wrap items-center gap-4 mb-4">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-md border border-border-default bg-surface-default px-3 py-1.5 text-body-small"
+          >
+            <option value="">All statuses</option>
+            <option value="pending">pending</option>
+            <option value="running">running</option>
+            <option value="succeeded">succeeded</option>
+            <option value="failed">failed</option>
+          </select>
+          <input
+            type="text"
+            placeholder="Job run ID"
+            value={jobRunFilter}
+            onChange={(e) => setJobRunFilter(e.target.value)}
+            className="rounded-md border border-border-default bg-surface-default px-3 py-1.5 text-body-small w-48 font-mono"
+          />
+        </div>
+        <CardSection>
+          {loading ? (
+            <LoadingSkeleton className="h-64 rounded-lg" />
+          ) : items.length === 0 ? (
+            <EmptyState title="No tool calls" description="Tool calls are recorded when job runs use adapters. Run a pipeline that invokes external tools." />
+          ) : (
+            <TableFrame>
+              <DataTable columns={columns} data={items} keyExtractor={(r) => r.id} />
+            </TableFrame>
+          )}
+        </CardSection>
+      </Stack>
+    </PageFrame>
   );
 }

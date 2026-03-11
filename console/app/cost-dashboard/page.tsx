@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   PageFrame,
   Stack,
@@ -73,6 +74,9 @@ export default function CostDashboardPage() {
           title="Cost Dashboard"
           description="LLM usage and cost by job type and model. Tracks credits only when runs execute LLM-backed nodes (e.g. email generation, copy, plan compile)."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          Configure limits in <Link href="/llm-budgets" className="text-brand-600 hover:underline">LLM Budgets</Link>. <Link href="/ai-calls" className="text-brand-600 hover:underline">AI Calls</Link> for raw call log.
+        </p>
         <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-body-small text-slate-700">
           <strong>What is tracked here:</strong> Only runs that execute nodes which call the LLM (email campaigns, copywriting, deck/report generation, etc.) insert into{" "}
           <code className="rounded bg-slate-200 px-1">llm_calls</code>. &quot;Prefill from URL&quot; (brand tokenizer) does <strong>not</strong> use the LLM—it fetches and parses HTML—so it uses no credits. &quot;Error count&quot; is failed <em>job runs</em> in the period, not failed LLM calls. <strong>Estimated cost</strong> is computed from token counts and published list prices (OpenAI / Anthropic) and may differ from your actual bill.

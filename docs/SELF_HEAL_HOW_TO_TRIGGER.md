@@ -83,7 +83,7 @@ npm run baseline    # writes .self-heal-baseline.json
 
 ## What self-heal covers (using existing integrations)
 
-ProfessorX is wired to **Render** (API key), **GitHub** (webhook), and **Supabase** (Postgres) via env keys and config. Self-heal uses these same integrations; no separate “hypothesis” or MCP is required for normal operation.
+The Operator Console (ProfessorX) is wired to **Render** (API key), **GitHub** (webhook), and **Supabase** (Postgres) via env keys and config. Self-heal uses these same integrations; no separate “hypothesis” or MCP is required for normal operation.
 
 - **Self-heal fixes:**  
   (1) **Local** — build/type/lint errors (doctor → LLM patches → re-run).  
@@ -147,4 +147,6 @@ If the Control Plane build fails on Render and you want an AI to read the logs a
 
 ## See also
 
+- [OPERATIONS_RUNBOOK.md](OPERATIONS_RUNBOOK.md) — **Operator runbook:** when a run fails or before/after a migration, use CLI commands and debug bundles; give Cursor a structured case file instead of “check the logs.” Console: **Operator guide** (`/operator-guide`).
+- [CURSOR_AND_OPERATIONS.md](CURSOR_AND_OPERATIONS.md) — Why Cursor is driven by **commands and APIs** (not the Vercel URL); debug bundle and prompt templates.
 - [EMAIL_COMPONENTS_AND_STICKY_GREEN](EMAIL_COMPONENTS_AND_STICKY_GREEN.md) — Build email templates from the Component Registry; placeholders align with BRAND_EMAIL_FIELD_MAPPING; use Sticky Green as the reference brand for testing.

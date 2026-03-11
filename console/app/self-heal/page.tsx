@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   PageFrame,
   Stack,
@@ -13,8 +14,24 @@ export default function SelfHealPage() {
       <Stack>
         <PageHeader
           title="Self-heal"
-          description="How to trigger auto-debug and self-healing."
+          description="How to trigger auto-debug and self-healing: local CLI, platform (GitHub + Control Plane), and graph-driven decision loop."
         />
+        <p className="text-body-small text-text-secondary mb-4">
+          To give Cursor a <strong>repeatable entrypoint</strong> (debug bundle + commands instead of &quot;check the logs&quot;), see{" "}
+          <Link href="/operator-guide" className="text-brand-600 hover:underline">Operator guide</Link>.
+        </p>
+        <CardSection title="Graph & deploy observability">
+          <p className="text-body-small text-text-secondary mb-2">
+            The platform can observe KPIs, detect anomalies, and run a <strong>decision loop</strong> (observe → diagnose → decide → act → learn).
+            Deploy and build outcomes are tracked so repair plans and similar incidents are available.
+          </p>
+          <ul className="list-disc list-inside space-y-1 text-body-small text-text-secondary mb-2">
+            <li><Link href="/graph/decision-loop" className="text-brand-600 hover:underline">Decision loop</Link> — Run a tick, compute baselines, view anomalies; optional auto-act (e.g. open_incident).</li>
+            <li><Link href="/graph/deploys" className="text-brand-600 hover:underline">Deploy events</Link> — List builds; sync from Render or GitHub Actions; open a deploy to see repair plan and suggested file actions.</li>
+            <li><Link href="/graph/import-graph" className="text-brand-600 hover:underline">Import graph</Link> — Per-service module graph used for deploy repair (e.g. missing file → files to commit).</li>
+            <li><Link href="/graph/memory" className="text-brand-600 hover:underline">Memory (incidents)</Link> — Incident resolutions used by the decision loop and repair planning.</li>
+          </ul>
+        </CardSection>
         <CardSection title="1. Local (repo on your machine)">
           <p className="text-body-small text-text-secondary mb-2">
             Run in the AI Factory repo root with <code className="bg-surface-sunken px-1 rounded">OPENAI_API_KEY</code> set:

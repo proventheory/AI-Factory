@@ -237,6 +237,20 @@ export async function handleLandingPageGenerate({
   }
   // #endregion
   await writeArtifact(client, context, params, "landing_page", html, "docs");
+
+  // Launch Kernel V1: also emit launch_artifact (static bundle contract: index.html + launch.json manifest).
+  const launchManifest = {
+    version: "1",
+    product_type: "landing" as const,
+    build_strategy: "static" as const,
+    health_path: "/",
+    required_env: [] as string[],
+  };
+  await writeArtifact(client, context, params, "launch_artifact", "", "build_outputs", {
+    manifest: launchManifest,
+    index_html: html,
+  });
+
   // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
   if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
     fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/handlers/landing-page-generate.ts:after_write", message: "writeArtifact landing_page done", data: {}, timestamp: Date.now(), hypothesisId: "H4" }) }).catch(() => {});

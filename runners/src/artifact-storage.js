@@ -17,7 +17,6 @@ async function getClient() {
     if (!url || !key)
         return null;
     try {
-        // @ts-expect-error — dynamic import; package may not be installed at build time
         const mod = await import("@supabase/supabase-js");
         _client = mod.createClient(url, key);
         return _client;

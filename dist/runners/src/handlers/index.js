@@ -11,13 +11,23 @@ export function registerHandler(jobType, handler) {
 export function getHandler(jobType) {
     return registry.get(jobType);
 }
-async function writeArtifact(client, context, params, artifactType, content, artifactClass = "docs") {
+async function writeArtifact(client, context, params, artifactType, content, artifactClass = "docs", metadata) {
     const uri = `mem://${artifactType}/${context.run_id}/${context.plan_node_id}`;
     const maxContent = artifactType === "landing_page" || artifactType === "email_template" ? 2_000_000 : 10_000;
-    const payload = JSON.stringify({ content: content.slice(0, maxContent) });
+    const contentSliced = content.slice(0, maxContent);
+    const payloadObj = { content: contentSliced };
+    if (metadata != null && typeof metadata === "object" && !Array.isArray(metadata)) {
+        for (const [k, v] of Object.entries(metadata)) {
+            if (k !== "content")
+                payloadObj[k] = v;
+        }
+    }
+    const payload = JSON.stringify(payloadObj);
     // Use minimal columns (no producer_plan_node_id) so INSERT never fails on core schema and never aborts the transaction.
-    await client.query(`INSERT INTO artifacts (id, run_id, job_run_id, artifact_type, artifact_class, uri, metadata_json)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::jsonb)`, [params.runId, params.jobRunId, artifactType, artifactClass, uri, payload]);
+    const r = await client.query(`INSERT INTO public.artifacts (id, run_id, job_run_id, artifact_type, artifact_class, uri, metadata_json)
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::jsonb)
+     RETURNING id`, [params.runId, params.jobRunId, artifactType, artifactClass, uri, payload]);
+    return r.rows[0]?.id ?? null;
 }
 async function recordLlmCall(client, runId, jobRunId, tier, modelId, tokensIn, tokensOut, latencyMs) {
     await client.query(`INSERT INTO llm_calls (run_id, job_run_id, model_tier, model_id, tokens_in, tokens_out, latency_ms)
@@ -288,11 +298,51 @@ export function registerAllHandlers() {
             recordLlmCall: (tier, modelId, tokensIn, tokensOut, latencyMs) => recordLlmCall(client, context.run_id, params.jobRunId, tier, modelId, tokensIn, tokensOut, latencyMs),
         };
         const out = await handleEmailGenerateMjml(request);
-        if (out?.content != null) {
+        if (out?.content == null || out.content.length === 0) {
+            throw new Error("email_generate_mjml produced no content (template and LLM path both failed or returned empty)");
+        }
+        {
             const len = out.content.length;
             if (len > 10_000)
                 console.log("[runner] email_template content length exceeds 10KB, storing full length", { run_id: context.run_id, contentLen: len });
-            await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template");
+            const artifactId = await writeArtifact(client, context, params, out.artifact_type, out.content, out.artifact_class ?? "email_template", out.metadata);
+            // Commit the artifact immediately so it is never rolled back by a later failure (e.g. "transaction is aborted" from verification)
+            if (artifactId) {
+                await client.query("COMMIT");
+            }
+            // Post-write verification and optional artifact_verifications: run in a new transaction; never throw
+            if (artifactId) {
+                try {
+                    const r = await client.query("SELECT metadata_json FROM public.artifacts WHERE id = $1", [artifactId]);
+                    const storedContent = r.rows[0]?.metadata_json?.content;
+                    const storedLen = typeof storedContent === "string" ? storedContent.length : 0;
+                    const generatedLen = out.content.length;
+                    const postWritePassed = generatedLen === 0 || storedLen >= generatedLen * 0.95;
+                    if (!postWritePassed) {
+                        console.warn("[runner] post-write check: stored length less than 95% of generated; artifact kept", {
+                            run_id: context.run_id,
+                            generated_len: generatedLen,
+                            stored_len: storedLen,
+                        });
+                        await client.query(`INSERT INTO public.artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
+               VALUES ($1, $2, $3, 'post_write', false, $4::jsonb)`, [artifactId, context.run_id, params.jobRunId, JSON.stringify({ generated_len: generatedLen, stored_len: storedLen })]).catch(() => { });
+                    }
+                    else {
+                        await client.query(`INSERT INTO public.artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
+               VALUES ($1, $2, $3, 'post_write', true, $4::jsonb)`, [artifactId, context.run_id, params.jobRunId, JSON.stringify({ generated_len: generatedLen, stored_len: storedLen })]).catch(() => { });
+                        const preWrite = out.metadata?.pre_write_verification;
+                        if (preWrite?.passed && preWrite.details != null) {
+                            await client.query(`INSERT INTO public.artifact_verifications (artifact_id, run_id, job_run_id, verification_type, passed, details)
+                 VALUES ($1, $2, $3, 'pre_write', true, $4::jsonb)`, [artifactId, context.run_id, params.jobRunId, JSON.stringify(preWrite.details)]).catch(() => { });
+                        }
+                    }
+                    const preCommitCount = await client.query("SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1", [context.run_id]);
+                    console.log("[runner] email_generate_mjml pre-commit artifact count", { run_id: context.run_id, count: preCommitCount.rows[0]?.c ?? 0 });
+                }
+                catch (err) {
+                    console.warn("[runner] post-write verification failed (artifact will still be committed)", { run_id: context.run_id, error: err.message });
+                }
+            }
         }
     });
     registry.set("brand_compile", async (client, context, params) => {
@@ -336,6 +386,71 @@ export function registerAllHandlers() {
     registry.set("landing_page_generate", async (client, context, params) => {
         const { handleLandingPageGenerate } = await import("./landing-page-generate.js");
         await handleLandingPageGenerate({ client, context, params, writeArtifact });
+    });
+    /** Runner-triggered launch action: proxy to control-plane (deploy.preview, etc.). Requires goal_metadata.launch_id and predecessor launch_artifact. */
+    registry.set("deploy_preview", async (client, context, params) => {
+        const { handleLaunchActionProxy, resolveDeployPreviewInputs } = await import("./launch-action-proxy.js");
+        const pred = (context.predecessor_artifacts ?? []).map((a) => ({ id: a.id, artifact_type: a.artifact_type }));
+        const resolved = resolveDeployPreviewInputs(context, pred);
+        if (!resolved)
+            throw new Error("deploy_preview requires goal_metadata.launch_id and a predecessor launch_artifact");
+        const out = await handleLaunchActionProxy({ context, action: "deploy.preview", inputs: resolved });
+        if (!out.ok)
+            throw new Error(out.error ?? "deploy.preview failed");
+        await writeArtifact(client, context, params, "deploy_url", JSON.stringify(out.result), "external_object_refs", out.result);
+    });
+    // SEO migration audit (MVP)
+    registry.set("seo_source_inventory", async (client, context, params) => {
+        const { handleSeoSourceInventory } = await import("./seo-source-inventory.js");
+        await handleSeoSourceInventory(client, context, params);
+    });
+    registry.set("seo_target_inventory", async (client, context, params) => {
+        const { handleSeoTargetInventory } = await import("./seo-target-inventory.js");
+        await handleSeoTargetInventory(client, context, params);
+    });
+    registry.set("seo_url_matcher", async (client, context, params) => {
+        const { handleSeoUrlMatcher } = await import("./seo-url-matcher.js");
+        await handleSeoUrlMatcher(client, context, params);
+    });
+    registry.set("seo_redirect_verifier", async (client, context, params) => {
+        const { handleSeoRedirectVerifier } = await import("./seo-redirect-verifier.js");
+        await handleSeoRedirectVerifier(client, context, params);
+    });
+    registry.set("seo_audit_report", async (client, context, params) => {
+        const { handleSeoAuditReport } = await import("./seo-audit-report.js");
+        await handleSeoAuditReport(client, context, params);
+    });
+    registry.set("seo_content_parity", async (client, context, params) => {
+        const { handleSeoContentParity } = await import("./seo-content-parity.js");
+        await handleSeoContentParity(client, context, params);
+    });
+    registry.set("seo_technical_diff", async (client, context, params) => {
+        const { handleSeoTechnicalDiff } = await import("./seo-technical-diff.js");
+        await handleSeoTechnicalDiff(client, context, params);
+    });
+    registry.set("seo_risk_scorer", async (client, context, params) => {
+        const { handleSeoRiskScorer } = await import("./seo-risk-scorer.js");
+        await handleSeoRiskScorer(client, context, params);
+    });
+    registry.set("seo_gsc_snapshot", async (client, context, params) => {
+        const { handleSeoGscSnapshot } = await import("./seo-gsc-snapshot.js");
+        await handleSeoGscSnapshot(client, context, params);
+    });
+    registry.set("seo_ga4_snapshot", async (client, context, params) => {
+        const { handleSeoGa4Snapshot } = await import("./seo-ga4-snapshot.js");
+        await handleSeoGa4Snapshot(client, context, params);
+    });
+    registry.set("seo_backlink_snapshot", async (client, context, params) => {
+        const { handleSeoBacklinkSnapshot } = await import("./seo-backlink-snapshot.js");
+        await handleSeoBacklinkSnapshot(client, context, params);
+    });
+    registry.set("seo_internal_graph_builder", async (client, context, params) => {
+        const { handleSeoInternalGraphBuilder } = await import("./seo-internal-graph-builder.js");
+        await handleSeoInternalGraphBuilder(client, context, params);
+    });
+    registry.set("seo_internal_graph_diff", async (client, context, params) => {
+        const { handleSeoInternalGraphDiff } = await import("./seo-internal-graph-diff.js");
+        await handleSeoInternalGraphDiff(client, context, params);
     });
 }
 //# sourceMappingURL=index.js.map

@@ -494,4 +494,69 @@ export function registerAllHandlers(): void {
     const { handleLandingPageGenerate } = await import("./landing-page-generate.js");
     await handleLandingPageGenerate({ client, context, params, writeArtifact });
   });
+
+  /** Runner-triggered launch action: proxy to control-plane (deploy.preview, etc.). Requires goal_metadata.launch_id and predecessor launch_artifact. */
+  registry.set("deploy_preview", async (client, context, params) => {
+    const { handleLaunchActionProxy, resolveDeployPreviewInputs } = await import("./launch-action-proxy.js");
+    const pred = (context.predecessor_artifacts ?? []).map((a) => ({ id: a.id, artifact_type: a.artifact_type }));
+    const resolved = resolveDeployPreviewInputs(context, pred);
+    if (!resolved) throw new Error("deploy_preview requires goal_metadata.launch_id and a predecessor launch_artifact");
+    const out = await handleLaunchActionProxy({ context, action: "deploy.preview", inputs: resolved });
+    if (!out.ok) throw new Error(out.error ?? "deploy.preview failed");
+    await writeArtifact(client, context, params, "deploy_url", JSON.stringify(out.result), "external_object_refs", out.result as Record<string, unknown>);
+  });
+
+  // SEO migration audit (MVP)
+  registry.set("seo_source_inventory", async (client, context, params) => {
+    const { handleSeoSourceInventory } = await import("./seo-source-inventory.js");
+    await handleSeoSourceInventory(client, context, params);
+  });
+  registry.set("seo_target_inventory", async (client, context, params) => {
+    const { handleSeoTargetInventory } = await import("./seo-target-inventory.js");
+    await handleSeoTargetInventory(client, context, params);
+  });
+  registry.set("seo_url_matcher", async (client, context, params) => {
+    const { handleSeoUrlMatcher } = await import("./seo-url-matcher.js");
+    await handleSeoUrlMatcher(client, context, params);
+  });
+  registry.set("seo_redirect_verifier", async (client, context, params) => {
+    const { handleSeoRedirectVerifier } = await import("./seo-redirect-verifier.js");
+    await handleSeoRedirectVerifier(client, context, params);
+  });
+  registry.set("seo_audit_report", async (client, context, params) => {
+    const { handleSeoAuditReport } = await import("./seo-audit-report.js");
+    await handleSeoAuditReport(client, context, params);
+  });
+  registry.set("seo_content_parity", async (client, context, params) => {
+    const { handleSeoContentParity } = await import("./seo-content-parity.js");
+    await handleSeoContentParity(client, context, params);
+  });
+  registry.set("seo_technical_diff", async (client, context, params) => {
+    const { handleSeoTechnicalDiff } = await import("./seo-technical-diff.js");
+    await handleSeoTechnicalDiff(client, context, params);
+  });
+  registry.set("seo_risk_scorer", async (client, context, params) => {
+    const { handleSeoRiskScorer } = await import("./seo-risk-scorer.js");
+    await handleSeoRiskScorer(client, context, params);
+  });
+  registry.set("seo_gsc_snapshot", async (client, context, params) => {
+    const { handleSeoGscSnapshot } = await import("./seo-gsc-snapshot.js");
+    await handleSeoGscSnapshot(client, context, params);
+  });
+  registry.set("seo_ga4_snapshot", async (client, context, params) => {
+    const { handleSeoGa4Snapshot } = await import("./seo-ga4-snapshot.js");
+    await handleSeoGa4Snapshot(client, context, params);
+  });
+  registry.set("seo_backlink_snapshot", async (client, context, params) => {
+    const { handleSeoBacklinkSnapshot } = await import("./seo-backlink-snapshot.js");
+    await handleSeoBacklinkSnapshot(client, context, params);
+  });
+  registry.set("seo_internal_graph_builder", async (client, context, params) => {
+    const { handleSeoInternalGraphBuilder } = await import("./seo-internal-graph-builder.js");
+    await handleSeoInternalGraphBuilder(client, context, params);
+  });
+  registry.set("seo_internal_graph_diff", async (client, context, params) => {
+    const { handleSeoInternalGraphDiff } = await import("./seo-internal-graph-diff.js");
+    await handleSeoInternalGraphDiff(client, context, params);
+  });
 }

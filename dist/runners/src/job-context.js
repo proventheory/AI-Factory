@@ -65,6 +65,19 @@ export async function getJobContext(client, jobRun) {
     const predecessorIds = await getPredecessorPlanNodeIds(client, jobRun.run_id, jobRun.plan_node_id);
     const predecessorArtifacts = await loadPredecessorArtifacts(client, jobRun.run_id, predecessorIds);
     const predecessorArtifactIds = predecessorArtifacts.map((a) => a.id);
+    let goal_metadata = null;
+    if (initiative_id) {
+        try {
+            const metaResult = await client.query("SELECT goal_metadata FROM initiatives WHERE id = $1", [initiative_id]);
+            const row = metaResult.rows[0];
+            if (row?.goal_metadata != null && typeof row.goal_metadata === "object" && !Array.isArray(row.goal_metadata)) {
+                goal_metadata = row.goal_metadata;
+            }
+        }
+        catch {
+            // initiatives may not have goal_metadata column in older migrations
+        }
+    }
     return {
         run_id: jobRun.run_id,
         initiative_id,
@@ -77,6 +90,26 @@ export async function getJobContext(client, jobRun) {
         predecessor_artifact_ids: predecessorArtifactIds,
         predecessor_artifacts: predecessorArtifacts,
         llm_source,
+        goal_metadata: goal_metadata ?? undefined,
     };
+}
+/**
+ * Record artifact consumption for graph lineage (V1 self-heal).
+ * Call after a job run succeeds; inserts into artifact_consumption for each artifact used as input.
+ * Table may not exist in older DBs — safe to no-op on error.
+ */
+export async function recordArtifactConsumption(client, runId, jobRunId, planNodeId, artifactIds, role = "input") {
+    if (artifactIds.length === 0)
+        return;
+    for (const artifactId of artifactIds) {
+        try {
+            await client.query(`INSERT INTO artifact_consumption (id, artifact_id, run_id, job_run_id, plan_node_id, role)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+         ON CONFLICT (artifact_id, job_run_id) DO NOTHING`, [artifactId, runId, jobRunId, planNodeId, role]);
+        }
+        catch {
+            // artifact_consumption table may not exist yet (migration not applied)
+        }
+    }
 }
 //# sourceMappingURL=job-context.js.map

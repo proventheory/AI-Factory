@@ -19,6 +19,7 @@ export const INTENT_TYPES = [
   { value: "crew", label: "Crew (research → design → codegen → test)" },
   { value: "self_heal", label: "Self-heal (analyze → resolve → review → PR)" },
   { value: "swe_agent", label: "SWE agent (analyze → swe_agent → test → review → PR)" },
+  { value: "seo_migration_audit", label: "SEO migration audit (GSC/GA4 → compare source/target)" },
 ] as const;
 
 export type IntentTypeValue = (typeof INTENT_TYPES)[number]["value"];

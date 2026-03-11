@@ -48,6 +48,8 @@ The database is domain-grouped with a relational core; JSON/JSONB is used for **
 
 **Enforcement:** Control Plane API (PATCH /v1/artifacts/:id) logs a warning when `metadata` includes keys not in the allowlist (`content`, `mjml`, `error_signature`, `type`). Add new keys to the allowlist in `control-plane/src/api.ts` and to this doc when introducing them.
 
+**SEO migration audit artifacts:** When `artifact_type` is one of `seo_url_inventory`, `seo_url_match_report`, `seo_redirect_verification`, `seo_content_parity_report`, `seo_technical_diff_report`, `seo_ranking_risk_report`, `seo_audit_summary`, `seo_gsc_snapshot`, `seo_ga4_snapshot`, `seo_backlink_snapshot`, `seo_internal_link_graph`, `seo_internal_graph_diff_report`, the full report payload is stored in `metadata_json` (e.g. `urls`, `matches`, `comparisons`, `stats`). See [docs/seo-migration/artifact-schemas.md](seo-migration/artifact-schemas.md) for canonical shapes. Do not use these artifact types for queryable relational data without adding a dedicated table (e.g. `seo_url_risk_snapshots`).
+
 ---
 
 ## 3. document_templates.component_sequence

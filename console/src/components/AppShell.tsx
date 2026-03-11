@@ -98,7 +98,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <IconBar activeBranchId={activeBranchId} onSelect={setActiveBranchId} branches={BRANCHES} />
       <aside className="hidden md:flex w-56 flex-col shrink-0 border-r border-slate-800 bg-slate-900 text-white">
         <div className="p-4 border-b border-slate-700">
-          <Link href="/" className="text-xl font-bold">
+          <Link href="/" className="text-xl font-bold" title="AI Factory Operator Console">
             ProfessorX
           </Link>
         </div>

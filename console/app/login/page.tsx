@@ -11,6 +11,7 @@ export default function LoginPage() {
   return (
     <div className="max-w-md mx-auto">
       <h1 className="text-3xl font-bold text-slate-900 mb-1">ProfessorX</h1>
+      <p className="text-slate-500 text-sm mb-1">AI Factory Operator Console</p>
       <p className="text-slate-600 mb-6">When an individual acquires great power, the use or misuse of that power is everything.</p>
       <p className="text-lg text-slate-700 mb-6">Sign in to your account</p>
 

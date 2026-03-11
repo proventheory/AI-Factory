@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { PageFrame, Stack, CardSection, TableFrame, PageHeader } from "@/components/ui";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, LoadingSkeleton, EmptyState } from "@/components/ui";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
@@ -46,8 +46,10 @@ export default function JobsPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Jobs" />
-          <p className="text-red-600">Error: {error}</p>
+          <PageHeader title="Jobs" description="Job run history and status." />
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {error}
+          </div>
         </Stack>
       </PageFrame>
     );
@@ -58,8 +60,11 @@ export default function JobsPage() {
       <Stack>
         <PageHeader
           title="Jobs"
-          description="Job run history and status."
+          description="Individual job runs within pipeline runs. Filter by environment and status."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/health" className="text-brand-600 hover:underline">Scheduler Health</Link> · <Link href="/graph/diagnostics" className="text-brand-600 hover:underline">Graph health</Link>
+        </p>
         <div className="flex flex-wrap items-center gap-4">
           <select
             value={envFilter}
@@ -85,32 +90,27 @@ export default function JobsPage() {
         </div>
         <CardSection>
           {loading ? (
-            <p className="text-slate-500">Loading...</p>
+            <LoadingSkeleton className="h-64 rounded-lg" />
+          ) : items.length === 0 ? (
+            <EmptyState title="No job runs" description="Job runs appear when pipeline runs execute. Start a run from Plans or Initiatives." />
           ) : (
             <TableFrame>
-              <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+              <table className="w-full text-body-small">
+            <thead className="bg-slate-50 border-b border-border-subtle">
               <tr>
-                <th className="text-left p-3 font-medium">Job run ID</th>
-                <th className="text-left p-3 font-medium">Run</th>
-                <th className="text-left p-3 font-medium">Node / type</th>
-                <th className="text-left p-3 font-medium">Attempt</th>
-                <th className="text-left p-3 font-medium">Status</th>
-                <th className="text-left p-3 font-medium">Worker</th>
-                <th className="text-left p-3 font-medium">Started</th>
-                <th className="text-left p-3 font-medium">Error</th>
+                <th className="text-left p-3 font-medium text-text-muted">Job run ID</th>
+                <th className="text-left p-3 font-medium text-text-muted">Run</th>
+                <th className="text-left p-3 font-medium text-text-muted">Node / type</th>
+                <th className="text-left p-3 font-medium text-text-muted">Attempt</th>
+                <th className="text-left p-3 font-medium text-text-muted">Status</th>
+                <th className="text-left p-3 font-medium text-text-muted">Worker</th>
+                <th className="text-left p-3 font-medium text-text-muted">Started</th>
+                <th className="text-left p-3 font-medium text-text-muted">Error</th>
               </tr>
             </thead>
             <tbody>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-6 text-slate-500 text-center">
-                    No job runs.
-                  </td>
-                </tr>
-              ) : (
-                items.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100 hover:bg-slate-50">
+              {items.map((row) => (
+                  <tr key={row.id} className="border-b border-border-subtle hover:bg-slate-50">
                     <td className="p-3 font-mono text-xs">{row.id.slice(0, 8)}…</td>
                     <td className="p-3">
                       <Link href={`/runs/${row.run_id}`} className="text-brand-600 hover:underline font-mono text-xs">
@@ -132,8 +132,7 @@ export default function JobsPage() {
                     <td className="p-3">{row.started_at ? new Date(row.started_at).toLocaleString() : "—"}</td>
                     <td className="p-3 max-w-[180px] truncate" title={row.error_signature ?? ""}>{row.error_signature ?? "—"}</td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
               </table>
             </TableFrame>

@@ -9,7 +9,7 @@ if (process.env.SENTRY_DSN?.trim()) {
 }
 import pg from "pg";
 import { registerWorker, claimJob, startHeartbeatLoop, completeJobSuccess, completeJobFailure } from "./runner.js";
-import { getJobContext } from "./job-context.js";
+import { getJobContext, recordArtifactConsumption } from "./job-context.js";
 import { getHandler, registerAllHandlers } from "./handlers/index.js";
 import { getExecutor, run as runExecutor, jobRequestFromContext, persistJobResult, } from "./executor-registry.js";
 import { advanceSuccessors, checkRunCompletion, markRunFailedIfNoPendingJobs } from "../../control-plane/src/scheduler.js";
@@ -163,6 +163,9 @@ async function pollAndExecute() {
                 await txClient.query("BEGIN");
                 const won = await completeJobSuccess(txClient, jobRun.id, jobRun.run_id, jobRun.plan_node_id, config.workerId);
                 if (won) {
+                    if (jobContext?.predecessor_artifact_ids?.length) {
+                        await recordArtifactConsumption(txClient, jobRun.run_id, jobRun.id, jobRun.plan_node_id, jobContext.predecessor_artifact_ids, "input");
+                    }
                     await advanceSuccessors(txClient, jobRun.run_id, jobRun.plan_node_id, jobRun.id);
                     await checkRunCompletion(txClient, jobRun.run_id);
                 }
@@ -204,6 +207,19 @@ async function pollAndExecute() {
             finally {
                 txClient.release();
             }
+            // Dev Kernel V1: notify control-plane to classify failure and record in incident_memory (fire-and-forget)
+            const controlPlaneUrl = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
+            fetch(`${controlPlaneUrl}/v1/job_failures`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    run_id: jobRun.run_id,
+                    job_run_id: jobRun.id,
+                    plan_node_id: jobRun.plan_node_id,
+                    error_signature: errorSig,
+                    job_type: jobContext?.job_type ?? undefined,
+                }),
+            }).catch(() => { });
         }
         finally {
             stopHeartbeat();

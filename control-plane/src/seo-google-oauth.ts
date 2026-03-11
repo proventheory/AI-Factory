@@ -21,7 +21,7 @@ async function getOAuth2Constructor(): Promise<typeof import("google-auth-librar
   return _OAuth2Client;
 }
 
-async function getOAuthClient(redirectUri: string): Promise<InstanceType<import("google-auth-library").OAuth2Client>> {
+async function getOAuthClient(redirectUri: string): Promise<import("google-auth-library").OAuth2Client> {
   const OAuth2Client = await getOAuth2Constructor();
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;

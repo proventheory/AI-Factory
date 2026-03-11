@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Pencil, Archive } from "lucide-react";
 import {
   Button,
@@ -159,13 +160,16 @@ export default function BrandsPage() {
       <Stack>
         <PageHeader
           title="Brands"
-          description="Manage brand profiles and identity"
+          description="Manage brand profiles and identity. Used by email design, landing pages, and document templates."
           actions={
             <Button variant="primary" onClick={() => router.push("/brands/new")}>
               New Brand
             </Button>
           }
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/tokens" className="text-brand-600 hover:underline">Token Registry</Link> · <Link href="/brand-themes" className="text-brand-600 hover:underline">Brand Themes</Link> · <Link href="/document-templates" className="text-brand-600 hover:underline">Document Templates</Link>
+        </p>
         <CardSection>
           {isLoading ? (
             <div className="space-y-3">

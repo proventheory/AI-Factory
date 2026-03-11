@@ -1,18 +1,22 @@
 "use client";
 
-import { PageFrame, Stack, TableFrame, PageHeader, LoadingSkeleton, DataTable } from "@/components/ui";
+import Link from "next/link";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, LoadingSkeleton, DataTable, EmptyState } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { useRoutingPolicies } from "@/hooks/use-api";
 
 export default function RoutingPoliciesPage() {
   const { data, isLoading, error } = useRoutingPolicies();
+  const items = data?.items ?? [];
 
   if (error) {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Routing Policies" />
-          <p className="text-red-600">Error: {String(error)}</p>
+          <PageHeader title="Routing Policies" description="Model routing by job type." />
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {String(error)}
+          </div>
         </Stack>
       </PageFrame>
     );
@@ -23,11 +27,19 @@ export default function RoutingPoliciesPage() {
       <Stack>
         <PageHeader
           title="Routing Policies"
-          description="Model routing by job type."
+          description="Model routing by job type (model tier, active flag)."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/llm-budgets" className="text-brand-600 hover:underline">LLM Budgets</Link> · <Link href="/cost-dashboard" className="text-brand-600 hover:underline">Cost Dashboard</Link>
+        </p>
         {isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />
+        ) : items.length === 0 ? (
+          <CardSection>
+            <EmptyState title="No routing policies" description="No routing policies configured yet." />
+          </CardSection>
         ) : (
+          <CardSection>
           <TableFrame>
             <DataTable
               columns={([
@@ -35,10 +47,11 @@ export default function RoutingPoliciesPage() {
                 { key: "model_tier", header: "Model Tier" },
                 { key: "active", header: "Active", render: (r) => (r.active ? "Yes" : "No") },
               ]) as Column<{ job_type: string; model_tier: string; active: boolean; id: string }>[]}
-              data={data?.items ?? []}
+              data={items}
               keyExtractor={(r) => r.id}
             />
           </TableFrame>
+          </CardSection>
         )}
       </Stack>
     </PageFrame>

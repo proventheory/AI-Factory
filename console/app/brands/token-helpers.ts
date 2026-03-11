@@ -391,8 +391,11 @@ export function getBrandCompleteness(
     numericCount >= 5 || (numericCount >= 3 && (brandKeys.length >= 3 || hasNeutral)) ? "Complete" : numericCount >= 3 || (has500 && has600 && (hasNeutral || brandKeys.length >= 3)) ? "Standard" : has500 || has600 ? "Minimal" : "Minimal";
   const hasHeading = !!(fonts?.heading ?? typo?.font_headings);
   const hasBody = !!(fonts?.body ?? typo?.font_body);
-  const hasScale = !!(typo?.heading && typeof (typo.heading as object) === "object") || !!(typo?.fontSize);
-  const hasWeights = !!(typo?.fontWeight && Object.keys(typo.fontWeight as object).length > 0);
+  const defTypo = (defaultTokens as Record<string, unknown>)?.typography as Record<string, unknown> | undefined;
+  const effectiveHeading = (typo?.heading ?? defTypo?.heading) as Record<string, unknown> | undefined;
+  const effectiveWeights = (typo?.fontWeight ?? defTypo?.fontWeight) as Record<string, unknown> | undefined;
+  const hasScale = !!(effectiveHeading && typeof effectiveHeading === "object" && Object.keys(effectiveHeading).length > 0) || !!(typo?.fontSize);
+  const hasWeights = !!(effectiveWeights && typeof effectiveWeights === "object" && Object.keys(effectiveWeights).length > 0);
   const typoLevel: CompletenessLevel = hasHeading && hasBody && hasScale && hasWeights ? "Complete" : hasHeading && hasBody && (hasScale || hasWeights) ? "Standard" : hasHeading || hasBody ? "Minimal" : "Minimal";
   const deckReady: ReadinessLevel = deckTheme && typeof deckTheme === "object" && (Array.isArray(deckTheme.chart_color_sequence) || (deckTheme.slide_master && typeof deckTheme.slide_master === "object")) ? "Ready" : "Partial";
   const reportReady: ReadinessLevel = reportTheme && typeof reportTheme === "object" && (reportTheme.header_style !== undefined || reportTheme.section_spacing !== undefined) ? "Ready" : "Partial";
@@ -425,8 +428,11 @@ export function getBrandCompletenessDiagnostics(
   const hasNeutral = Object.keys(neutral).length > 0;
   const hasHeading = !!(fonts?.heading ?? typo?.font_headings);
   const hasBody = !!(fonts?.body ?? typo?.font_body);
-  const hasScale = !!(typo?.heading && typeof (typo.heading as object) === "object") || !!(typo?.fontSize);
-  const hasWeights = !!(typo?.fontWeight && Object.keys(typo.fontWeight as object).length > 0);
+  const defTypo = (defaultTokens as Record<string, unknown>)?.typography as Record<string, unknown> | undefined;
+  const effectiveHeading = (typo?.heading ?? defTypo?.heading) as Record<string, unknown> | undefined;
+  const effectiveWeights = (typo?.fontWeight ?? defTypo?.fontWeight) as Record<string, unknown> | undefined;
+  const hasScale = !!(effectiveHeading && typeof effectiveHeading === "object" && Object.keys(effectiveHeading).length > 0) || !!(typo?.fontSize);
+  const hasWeights = !!(effectiveWeights && typeof effectiveWeights === "object" && Object.keys(effectiveWeights).length > 0);
 
   let colorReason: string;
   let colorSuggestion: string | undefined;

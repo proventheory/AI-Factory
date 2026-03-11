@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DataTable } from "@/components/ui";
-import { EmptyState } from "@/components/ui";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
@@ -35,27 +34,38 @@ export default function SecretsPage() {
     { key: "rotated_at", header: "Rotated", render: (r) => r.rotated_at ? new Date(r.rotated_at).toLocaleString() : "—" },
   ];
 
-  if (error) return <p className="text-state-danger">Error: {error}</p>;
-
   return (
-    <div>
-      <h1 className="text-heading-2 font-bold text-text-primary mb-6">Secrets (refs only)</h1>
-      <p className="text-body-small text-text-muted mb-4">Reference metadata only; values are never displayed.</p>
-      <div className="flex gap-4 mb-4">
-        <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-lg text-body-small">
-          <option value="">All scopes</option>
-          <option value="sandbox">sandbox</option>
-          <option value="staging">staging</option>
-          <option value="prod">prod</option>
-        </select>
-      </div>
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        {loading ? <p className="p-6 text-text-muted">Loading...</p> : items.length === 0 ? (
-          <EmptyState title="No secret refs" description="No secret references configured." />
-        ) : (
-          <DataTable columns={columns} data={items} keyExtractor={(r) => r.id} />
+    <PageFrame>
+      <Stack>
+        <PageHeader
+          title="Secrets"
+          description="Secret reference metadata only; values are never displayed. Filter by scope."
+        />
+        {error && (
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {error}
+          </div>
         )}
-      </div>
-    </div>
+        <div className="mb-4">
+          <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value)} className="rounded-md border border-border-default bg-surface-default px-3 py-1.5 text-body-small">
+            <option value="">All scopes</option>
+            <option value="sandbox">sandbox</option>
+            <option value="staging">staging</option>
+            <option value="prod">prod</option>
+          </select>
+        </div>
+        <CardSection>
+          {loading ? (
+            <LoadingSkeleton className="h-64 rounded-lg" />
+          ) : items.length === 0 ? (
+            <EmptyState title="No secret refs" description="No secret references configured." />
+          ) : (
+            <TableFrame>
+              <DataTable columns={columns} data={items} keyExtractor={(r) => r.id} />
+            </TableFrame>
+          )}
+        </CardSection>
+      </Stack>
+    </PageFrame>
   );
 }

@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "ProfessorX — When an individual acquires great power, the use or misuse of that power is everything.",
+  title: "ProfessorX | AI Factory Operator Console",
   description: "AI Factory operator console",
 };
 

@@ -44,7 +44,26 @@ const migrations = [
   { path: "supabase/migrations/20250314000000_email_component_library_use_context.sql", name: "email_component_library_use_context" },
   { path: "supabase/migrations/20250315100000_stitch_template_contract.sql", name: "stitch_template_contract" },
   { path: "supabase/migrations/20250316100000_email_component_library_html_fragment.sql", name: "email_component_library_html_fragment", skipIfErrorCode: "42701", skipMessage: "column already exists" },
-  { path: "supabase/migrations/20250318000000_rename_email_campaign_metadata_to_email_design_generator.sql", name: "rename_email_campaign_metadata_to_email_design_generator" },
+  {
+    path: "supabase/migrations/20250318000000_rename_email_campaign_metadata_to_email_design_generator.sql",
+    name: "rename_email_campaign_metadata_to_email_design_generator",
+    skipIfErrorCode: "42P07",
+    skipMessage: "table already renamed",
+  },
+  { path: "supabase/migrations/20250310100000_brand_google_credentials.sql", name: "brand_google_credentials" },
+  { path: "supabase/migrations/20250310200000_worker_registry_ensure.sql", name: "worker_registry_ensure" },
+  { path: "supabase/migrations/20250320100000_initiative_google_credentials.sql", name: "initiative_google_credentials" },
+  { path: "supabase/migrations/20250327000000_pipeline_drafts_and_pattern_overrides.sql", name: "pipeline_drafts_and_pattern_overrides" },
+  { path: "supabase/migrations/20250330000000_brand_klaviyo_credentials_and_sync.sql", name: "brand_klaviyo_credentials_and_sync" },
+  { path: "supabase/migrations/20250330000001_klaviyo_operator_actions.sql", name: "klaviyo_operator_actions" },
+  { path: "supabase/migrations/20250330000002_klaviyo_flow_sync.sql", name: "klaviyo_flow_sync" },
+  { path: "supabase/migrations/20250330000003_klaviyo_performance.sql", name: "klaviyo_performance" },
+  { path: "supabase/migrations/20250330000004_klaviyo_source_mappings_entity_types.sql", name: "klaviyo_source_mappings_entity_types" },
+  { path: "supabase/migrations/20250331000000_airtable_import_and_brand_catalog.sql", name: "airtable_import_and_brand_catalog", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250331000001_shopify_brand_and_product_pricing.sql", name: "shopify_brand_and_product_pricing", skipIfErrorCode: "42701", skipMessage: "column already exists" },
+  { path: "supabase/migrations/20250331000002_organizations_and_brand_website.sql", name: "organizations_and_brand_website", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250331000003_taxonomy_websites_upsert_constraint.sql", name: "taxonomy_websites_upsert_constraint", skipIfErrorCode: "42710", skipMessage: "constraint already exists" },
+  { path: "supabase/migrations/20250331000004_taxonomy_terms_url_value.sql", name: "taxonomy_terms_url_value", skipIfErrorCode: "42701", skipMessage: "column already exists" },
 ];
 
 async function run() {

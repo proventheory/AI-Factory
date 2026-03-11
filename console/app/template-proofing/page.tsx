@@ -187,6 +187,9 @@ function TemplateProofingContent() {
           title="Template proofing"
           description="Run every email template with a canonical brand (e.g. Sticky Green) to verify pass/fail. Start a proof run to run for up to 30 minutes; review the table and open runs for Logs/Validations."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/document-templates" className="text-brand-600 hover:underline">Document Templates</Link> · <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link> · <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link>
+        </p>
         <CardSection title="What template proofing does">
           <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">
             <strong>What it’s doing:</strong> For each template, it runs the pipeline with the selected brand, records pass/fail and artifact count, and ingests logs. It does <strong>not</strong> change templates or brands. “Self-heal” here means: proof run → you see what failed (Logs/Validations) → you fix the brand or template → you re-run proof until it passes.

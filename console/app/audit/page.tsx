@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { DataTable } from "@/components/ui";
-import { EmptyState } from "@/components/ui";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
@@ -34,21 +33,36 @@ export default function AuditPage() {
     { key: "created_at", header: "Created", render: (r) => new Date(r.created_at).toLocaleString() },
   ];
 
-  if (error) return <p className="text-state-danger">Error: {error}</p>;
-
   return (
-    <div>
-      <h1 className="text-heading-2 font-bold text-text-primary mb-6">Audit & events</h1>
-      <div className="flex gap-4 mb-4">
-        <input type="text" placeholder="Run ID filter" value={runIdFilter} onChange={(e) => setRunIdFilter(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-lg text-body-small w-56" />
-      </div>
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        {loading ? <p className="p-6 text-text-muted">Loading...</p> : items.length === 0 ? (
-          <EmptyState title="No audit events" description="Run and job events will appear here." />
-        ) : (
-          <DataTable columns={columns} data={items} keyExtractor={(r) => `${r.source}-${r.id}`} />
+    <PageFrame>
+      <Stack>
+        <PageHeader
+          title="Audit"
+          description="Audit trail of run and job events. Filter by run ID."
+        />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link>
+        </p>
+        {error && (
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {error}
+          </div>
         )}
-      </div>
-    </div>
+        <div className="mb-4">
+          <input type="text" placeholder="Run ID filter" value={runIdFilter} onChange={(e) => setRunIdFilter(e.target.value)} className="rounded-md border border-border-default bg-surface-default px-3 py-1.5 text-body-small w-56 font-mono" />
+        </div>
+        <CardSection>
+          {loading ? (
+            <LoadingSkeleton className="h-64 rounded-lg" />
+          ) : items.length === 0 ? (
+            <EmptyState title="No audit events" description="Run and job events will appear here." />
+          ) : (
+            <TableFrame>
+              <DataTable columns={columns} data={items} keyExtractor={(r) => `${r.source}-${r.id}`} />
+            </TableFrame>
+          )}
+        </CardSection>
+      </Stack>
+    </PageFrame>
   );
 }

@@ -46,6 +46,9 @@ export default function TokenRegistryPage() {
           title="Token Registry"
           description="Platform-level design token definitions and per-brand token sets. Brand themes reference or override platform defaults. See docs/BRAND_DESIGN_TOKENS_UPGRADE_PLAN.md for the full token system."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link> · <Link href="/brand-themes" className="text-brand-600 hover:underline">Brand Themes</Link> · <Link href="/components" className="text-brand-600 hover:underline">Component Registry</Link>
+        </p>
 
         {/* By brand first so you see one brand at a time; platform defaults are reference below. */}
         <section className="rounded-lg border border-slate-200 bg-white p-4">

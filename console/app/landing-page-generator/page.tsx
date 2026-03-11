@@ -25,8 +25,10 @@ export default function LandingPageGeneratorPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Landing Page Generator" />
-          <p className="text-state-danger">Error: {formatApiError(error)}</p>
+          <PageHeader title="Landing Page Generator" description="Create and manage landing page campaigns." />
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {formatApiError(error)}
+          </div>
         </Stack>
       </PageFrame>
     );
@@ -60,6 +62,9 @@ export default function LandingPageGeneratorPage() {
           title="Landing Page Generator"
           description="Create landing pages from brand, template, and content. Same flow as Email Design Generator for now; workflow will use pre-built landing page templates next."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/email-marketing" className="text-brand-600 hover:underline">Email Design Generator</Link> · <Link href="/initiatives" className="text-brand-600 hover:underline">Initiatives</Link> · <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link>
+        </p>
         {isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />
         ) : items.length === 0 ? (

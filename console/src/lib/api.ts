@@ -171,11 +171,230 @@ export async function deleteBrandGoogleCredentials(id: string): Promise<void> {
   if (!res.ok) throw new Error(await res.text());
 }
 
+/** GET /v1/brand_profiles/:id/klaviyo_connected — whether brand has Klaviyo credentials. */
+export async function getBrandKlaviyoConnected(id: string): Promise<{ connected: boolean }> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/klaviyo_connected`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** PUT /v1/brand_profiles/:id/klaviyo_credentials — set Klaviyo API key and optional default list. */
+export async function putBrandKlaviyoCredentials(id: string, body: { api_key: string; default_list_id?: string }): Promise<void> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/klaviyo_credentials`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+/** DELETE /v1/brand_profiles/:id/klaviyo_credentials — disconnect Klaviyo for this brand. */
+export async function deleteBrandKlaviyoCredentials(id: string): Promise<void> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/klaviyo_credentials`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 export async function createInitiative(body: { intent_type: string; title?: string | null; risk_level: string; source_ref?: string; brand_profile_id?: string | null }): Promise<InitiativeRow> {
   const res = await fetch(`${API}/v1/initiatives`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
+}
+
+// ——— Launch kernel: build specs & launches ———
+
+export type BuildSpecRow = { id: string; initiative_id: string; spec_json: Record<string, unknown>; created_at: string; updated_at: string };
+
+export type LaunchRow = {
+  id: string;
+  initiative_id: string;
+  status: string;
+  build_spec_id: string | null;
+  artifact_id: string | null;
+  deploy_url: string | null;
+  deploy_id: string | null;
+  domain: string | null;
+  verification_status: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getBuildSpecs(initiativeId: string): Promise<{ items: BuildSpecRow[] }> {
+  const res = await fetch(`${API}/v1/build_specs?initiative_id=${encodeURIComponent(initiativeId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getBuildSpec(id: string): Promise<BuildSpecRow> {
+  const res = await fetch(`${API}/v1/build_specs/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function createBuildSpec(body: {
+  initiative_id: string;
+  spec: Record<string, unknown>;
+  extended?: boolean;
+}): Promise<{ build_spec_id: string; launch_id: string; launch: LaunchRow }> {
+  const res = await fetch(`${API}/v1/build_specs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
+}
+
+export async function createBuildSpecFromStrategy(body: {
+  initiative_id: string;
+  strategy_doc: string;
+}): Promise<{ build_spec_id: string; launch_id: string; launch: LaunchRow }> {
+  const res = await fetch(`${API}/v1/build_specs/from_strategy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
+}
+
+export async function getLaunches(params?: { initiative_id?: string; limit?: number }): Promise<{ items: LaunchRow[] }> {
+  const searchParams = new URLSearchParams();
+  if (params?.initiative_id) searchParams.set("initiative_id", params.initiative_id);
+  if (params?.limit) searchParams.set("limit", String(params.limit));
+  const res = await fetch(`${API}/v1/launches?${searchParams}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getLaunch(id: string): Promise<LaunchRow> {
+  const res = await fetch(`${API}/v1/launches/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function postLaunchAction(
+  action: string,
+  inputs: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API}/v1/launches/actions/${encodeURIComponent(action)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify(inputs),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
+}
+
+export async function postLaunchValidate(launchId: string): Promise<{ passed: boolean; checks?: unknown[] }> {
+  const res = await fetch(`${API}/v1/launches/${launchId}/validate`, {
+    method: "POST",
+    headers: { "x-role": "operator" },
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
+}
+
+export type PipelineDraft = {
+  intentType: string;
+  summary: string;
+  inputs: Record<string, unknown>;
+  requiredInputs?: string[];
+  nodes: { node_key: string; job_type: string; node_type?: string; agent_role?: string; consumes_artifact_types?: string[] }[];
+  edges: { from_key: string; to_key: string; condition?: string }[];
+  entryNodeKeys?: string[];
+  terminalNodeKeys?: string[];
+  expectedOutputs?: string[];
+  modulesUsed?: string[];
+  validations?: string[];
+  successCriteria?: string[];
+  warnings?: string[];
+  fallbackStrategy?: string;
+};
+export type PipelineLintResult = { valid: boolean; errors: string[]; warnings: string[] };
+
+/** POST /v1/pipelines/draft — prompt-built pipeline draft + lint. Supports compose_with (V2). */
+export async function createPipelineDraft(params: {
+  prompt?: string;
+  intent_type?: string;
+  inputs?: Record<string, unknown>;
+  compose_with?: string[];
+}): Promise<{ draft: PipelineDraft; lint: PipelineLintResult }> {
+  const res = await fetch(`${API}/v1/pipelines/draft`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
+}
+
+/** POST /v1/pipelines/drafts — save draft (V1.5). */
+export async function savePipelineDraft(draft: PipelineDraft, name?: string): Promise<{ id: string; draft_hash: string }> {
+  const res = await fetch(`${API}/v1/pipelines/drafts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify({ draft, name }),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
+}
+
+/** GET /v1/pipelines/drafts — list saved drafts. */
+export async function listPipelineDrafts(limit?: number): Promise<{ items: { id: string; draft_hash: string; name: string | null; created_at: string }[] }> {
+  const q = limit != null ? `?limit=${limit}` : "";
+  const res = await fetch(`${API}/v1/pipelines/drafts${q}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/pipelines/drafts/:id — load a saved draft (returns draft + lint). */
+export async function getPipelineDraft(id: string): Promise<{ draft: PipelineDraft; name: string | null; lint: PipelineLintResult }> {
+  const res = await fetch(`${API}/v1/pipelines/drafts/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/pipelines/templates — save draft as pattern override (V2). */
+export async function savePipelineTemplate(patternKey: string, draft: PipelineDraft): Promise<{ ok: boolean; pattern_key: string }> {
+  const res = await fetch(`${API}/v1/pipelines/templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify({ pattern_key: patternKey, draft }),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
+}
+
+/** POST /v1/pipelines/drafts/compose — merge two drafts or two pattern keys (V2). */
+export async function composePipelineDrafts(body: { draft_ids?: string[]; pattern_keys?: string[] }): Promise<{ draft: PipelineDraft; lint: PipelineLintResult }> {
+  const res = await fetch(`${API}/v1/pipelines/drafts/compose`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
+}
+
+/** POST /v1/initiatives/:id/plan/from-draft — compile plan from pipeline draft. */
+export async function compilePlanFromDraft(initiativeId: string, draft: PipelineDraft, options?: { force?: boolean }): Promise<{ id: string; initiative_id: string; status: string; nodes: number; plan_hash: string }> {
+  const res = await fetch(`${API}/v1/initiatives/${initiativeId}/plan/from-draft`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify({ draft, force: options?.force }),
   });
   const data = await res.json();
   if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
@@ -195,6 +414,18 @@ export async function getPlan(id: string): Promise<PlanRow> {
   const res = await fetch(`${API}/v1/plans/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+/** POST /v1/plans/:id/start — create a run for this plan. Returns run id. */
+export async function startPlanRun(planId: string, options?: { environment?: "sandbox" | "staging" | "prod" }): Promise<{ id: string }> {
+  const res = await fetch(`${API}/v1/plans/${planId}/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-role": "operator" },
+    body: JSON.stringify({ environment: options?.environment ?? "sandbox" }),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error ?? await res.text());
+  return data;
 }
 
 export async function getArtifacts(params?: { limit?: number; artifact_class?: string; run_id?: string }): Promise<{ items: ArtifactRow[] }> {
@@ -1012,6 +1243,227 @@ export async function deleteDocumentTemplate(id: string): Promise<{ id: string; 
   return res.json();
 }
 
+/** v1 slice funnel: campaign → lead → revenue counts. */
+export async function getV1SliceFunnel(): Promise<{
+  campaigns: number;
+  leads: number;
+  orders: number;
+  revenue_events: number;
+  revenue_total: number | null;
+  events_by_type: Record<string, number>;
+}> {
+  const res = await fetch(`${API}/v1/v1_slice/funnel`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/decision_loop/observe — anomalies and baselines (read-only). */
+export async function getDecisionLoopObserve(): Promise<{
+  anomalies: Array<{ kpi_key: string; current: number; baseline: number; deviation_pct?: number }>;
+  baselines: Array<{ kpi_key: string; value: number }>;
+}> {
+  const res = await fetch(`${API}/v1/decision_loop/observe`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/decision_loop/tick — run one tick (observe → diagnose → decide → [act] → learn). */
+export async function postDecisionLoopTick(body?: { auto_act?: boolean; compute_baselines?: boolean }): Promise<{
+  observed: { anomalies: unknown[] };
+  diagnosed?: unknown;
+  decided?: unknown;
+  acted?: unknown;
+  learned?: unknown;
+  baselines_computed?: number;
+}> {
+  const res = await fetch(`${API}/v1/decision_loop/tick`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/deploy_events/:id/repair_plan — deploy details and repair plan. */
+export async function getDeployEventRepairPlan(deployId: string): Promise<{
+  deploy_id: string;
+  service_id: string;
+  commit_sha: string | null;
+  status: string;
+  failure_class: string | null;
+  error_signature: string | null;
+  change_event_id: string | null;
+  suggested_actions: Array<{ action_id: string; action_key: string; label: string; description: string | null; risk_level: string; requires_approval: boolean }>;
+  similar_incidents: unknown[];
+  build_config_snapshot: { dependencies_json: unknown; externals_json: unknown; created_at: string } | null;
+  suggested_file_actions: { suggested_files: string[]; unresolved_path: string | null };
+}> {
+  const res = await fetch(`${API}/v1/deploy_events/${encodeURIComponent(deployId)}/repair_plan`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/deploy_events — list deploy events. */
+export async function getDeployEvents(params?: { service_id?: string; status?: string; limit?: number }): Promise<{
+  items: Array<{
+    deploy_id: string;
+    change_event_id: string | null;
+    service_id: string;
+    commit_sha: string | null;
+    status: string;
+    failure_class: string | null;
+    error_signature: string | null;
+    external_deploy_id: string | null;
+    created_at: string;
+  }>;
+}> {
+  const sp = new URLSearchParams();
+  if (params?.service_id) sp.set("service_id", params.service_id);
+  if (params?.status) sp.set("status", params.status);
+  if (params?.limit) sp.set("limit", String(params.limit));
+  const res = await fetch(`${API}/v1/deploy_events?${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/deploy_events/sync — sync from Render API. */
+export async function postDeployEventsSync(): Promise<{ synced: number; message?: string }> {
+  const res = await fetch(`${API}/v1/deploy_events/sync`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/deploy_events/sync_github — sync from GitHub Actions. */
+export async function postDeployEventsSyncGitHub(): Promise<{ synced: number; message?: string }> {
+  const res = await fetch(`${API}/v1/deploy_events/sync_github`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/import_graph — latest import graph snapshot for a service. */
+export async function getImportGraph(serviceId: string): Promise<{
+  snapshot_id: string;
+  service_id: string;
+  snapshot_json: unknown;
+  created_at: string;
+} | null> {
+  const res = await fetch(`${API}/v1/import_graph?service_id=${encodeURIComponent(serviceId)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/import_graph — store import graph snapshot. */
+export async function postImportGraph(serviceId: string, snapshotJson: unknown): Promise<{ snapshot_id: string; service_id: string; created_at: string }> {
+  const res = await fetch(`${API}/v1/import_graph`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ service_id: serviceId, snapshot_json: snapshotJson }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/schema_drift — current schema vs stored snapshot. */
+export async function getSchemaDrift(params?: { environment_a?: string; environment_b?: string }): Promise<{
+  current_schema?: unknown;
+  stored_snapshot?: unknown;
+  diff?: unknown;
+}> {
+  const sp = params ? new URLSearchParams(params) : new URLSearchParams();
+  const res = await fetch(`${API}/v1/schema_drift?${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/schema_snapshots/capture — store current schema as snapshot. */
+export async function postSchemaSnapshotsCapture(environment: string): Promise<{ schema_snapshot_id: string; environment: string; created_at: string }> {
+  const res = await fetch(`${API}/v1/schema_snapshots/capture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ environment }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/contract_breakage_scan — plan nodes with schema refs (contracts at risk). */
+export async function getContractBreakageScan(params?: { scope_key?: string }): Promise<{
+  nodes: Array<{ plan_id: string; node_id: string; input_schema_ref?: string; output_schema_ref?: string }>;
+}> {
+  const sp = params?.scope_key ? `?scope_key=${encodeURIComponent(params.scope_key)}` : "";
+  const res = await fetch(`${API}/v1/contract_breakage_scan${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/change_events/:id/backfill_plan — suggested backfill steps. */
+export async function getChangeEventBackfillPlan(changeEventId: string): Promise<{ steps: unknown[] }> {
+  const res = await fetch(`${API}/v1/change_events/${changeEventId}/backfill_plan`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/baselines/compute — compute KPI baselines. */
+export async function postBaselinesCompute(): Promise<{ baselines: number; items: unknown[] }> {
+  const res = await fetch(`${API}/v1/baselines/compute`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ——— Klaviyo operator pack ———
+export async function getKlaviyoTemplates(brand_profile_id?: string): Promise<{ items: { id: string; brand_profile_id: string; artifact_id: string; klaviyo_template_id: string; sync_state: string; last_synced_at: string | null; last_error: string | null; created_at: string }[] }> {
+  const url = brand_profile_id ? `${API}/v1/klaviyo/templates?brand_profile_id=${encodeURIComponent(brand_profile_id)}` : `${API}/v1/klaviyo/templates`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getKlaviyoCampaigns(brand_profile_id?: string): Promise<{ items: { id: string; initiative_id: string | null; run_id: string | null; artifact_id: string; brand_profile_id: string; klaviyo_campaign_id: string; send_job_id: string | null; sync_state: string; scheduled_at: string | null; last_error: string | null; created_at: string }[] }> {
+  const url = brand_profile_id ? `${API}/v1/klaviyo/campaigns?brand_profile_id=${encodeURIComponent(brand_profile_id)}` : `${API}/v1/klaviyo/campaigns`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getKlaviyoFlows(brand_profile_id?: string): Promise<{ items: { id: string; brand_profile_id: string; flow_type: string; klaviyo_flow_id: string; sync_state: string; last_remote_status: string | null; last_error: string | null; created_at: string }[] }> {
+  const url = brand_profile_id ? `${API}/v1/klaviyo/flows?brand_profile_id=${encodeURIComponent(brand_profile_id)}` : `${API}/v1/klaviyo/flows`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function postKlaviyoCampaignsPush(body: { initiative_id?: string; run_id?: string; artifact_id: string; schedule_at?: string; audience_list_ids?: string[] }): Promise<{ template_id: string; campaign_id: string; send_job_id?: string; sync_state: string; klaviyo_sent_campaigns_id: string }> {
+  const res = await fetch(`${API}/v1/klaviyo/campaigns/push`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function postKlaviyoFlows(body: { brand_profile_id: string; flow_type: string; flow_name?: string; template_ids?: string[]; delays_minutes?: number[] }): Promise<{ flow_id: string; sync_state: string; klaviyo_flow_sync_id: string }> {
+  const res = await fetch(`${API}/v1/klaviyo/flows`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function patchKlaviyoFlowStatus(flowId: string, body: { status: "draft" | "manual" | "live"; brand_profile_id?: string; approved_by?: string }): Promise<{ flow_id: string; status: string }> {
+  const res = await fetch(`${API}/v1/klaviyo/flows/${encodeURIComponent(flowId)}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export const api = {
   getRuns, getRun, getInitiatives, getInitiative, createInitiative, updateInitiative, getPlans, getPlan,
   getJobRuns, getJobRun, getArtifacts, getArtifact, getToolCalls, getApprovals,
@@ -1021,4 +1473,12 @@ export const api = {
   getBrandProfiles, getBrandProfile, createBrandProfile, updateBrandProfile, deleteBrandProfile,
   getBrandEmbeddings, createBrandEmbedding, deleteBrandEmbedding, getBrandAssets, createBrandAsset, deleteBrandAsset,
   getDocumentTemplates, getDocumentTemplate, createDocumentTemplate, updateDocumentTemplate, deleteDocumentTemplate,
+  getV1SliceFunnel,
+  getDecisionLoopObserve, postDecisionLoopTick,
+  getDeployEvents, getDeployEventRepairPlan, postDeployEventsSync, postDeployEventsSyncGitHub,
+  getImportGraph, postImportGraph,
+  getSchemaDrift, postSchemaSnapshotsCapture, getContractBreakageScan, getChangeEventBackfillPlan,
+  postBaselinesCompute,
+  getKlaviyoTemplates, getKlaviyoCampaigns, getKlaviyoFlows,
+  postKlaviyoCampaignsPush, postKlaviyoFlows, patchKlaviyoFlowStatus,
 };

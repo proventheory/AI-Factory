@@ -109,4 +109,32 @@ export interface ArtifactRecord {
     /** Optional metadata (stored as metadata_json). */
     metadata?: Record<string, unknown> | null;
 }
+/** job_events.event_type enum (Postgres). */
+export type JobEventType = "attempt_started" | "attempt_succeeded" | "attempt_failed" | "halted" | "hypothesis_generated" | "patch_applied" | "escalated_model";
+/** attempt_failed: error_signature or reason (e.g. "lost_race"). */
+export interface JobEventAttemptFailedPayload {
+    error_signature?: string;
+    reason?: string;
+}
+/** halted: attempt budget exhausted, etc. */
+export interface JobEventHaltedPayload {
+    reason: string;
+    error_signature?: string;
+    attempts?: number;
+}
+/** hypothesis_generated: from repair recipe or hypothesis. */
+export interface JobEventHypothesisGeneratedPayload {
+    source: "repair_recipe" | "hypothesis";
+    recipe_id?: string;
+    patch_pattern?: string;
+    model_tier?: string;
+    attempt?: number;
+}
+/** escalated_model: model escalation audit. */
+export interface JobEventEscalatedModelPayload {
+    model_tier: string;
+    attempt: number;
+}
+/** Union of all payload shapes; payload_json is optional for attempt_started/attempt_succeeded. */
+export type JobEventPayload = JobEventAttemptFailedPayload | JobEventHaltedPayload | JobEventHypothesisGeneratedPayload | JobEventEscalatedModelPayload | Record<string, never>;
 //# sourceMappingURL=kernel-contract.d.ts.map

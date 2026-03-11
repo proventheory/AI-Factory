@@ -1,15 +1,17 @@
 # AI Factory
 
-Autonomous orchestration system for dev and marketing pipelines. Safely builds, deploys, monitors, and improves itself over time.
+Autonomous orchestration system for dev and marketing pipelines. Graph-native execution (DAG traversal, lineage, change impact, repair, migration guard). Safely builds, deploys, monitors, and improves itself over time.
+
+**Operator Console (ProfessorX):** Single control surface for pipelines, brands, graph ops, and self-heal. See **docs/WHAT_YOU_CAN_DO_WITH_PROFESSORX.md**.
 
 ## Architecture
 
 ```
-Control Plane (scheduler, policy, release manager)
+Control Plane (scheduler, policy, release manager, graph RPCs)
        |
    Postgres Ledger (canonical source of truth)
        |
-   Runner Fleet (stateless workers, lease-based claiming)
+   Runner Fleet (stateless workers, lease-based claiming, artifact consumption)
        |
    MCP Tool Fabric (adapters: Vercel, GitHub, Klaviyo, DNS, n8n, Airtable)
 ```
@@ -18,12 +20,12 @@ Control Plane (scheduler, policy, release manager)
 
 | Layer | Role |
 |-------|------|
-| Control Plane | Scheduling, policy enforcement, release routing, canary management |
+| Control Plane | Scheduling, policy enforcement, release routing, canary management; graph topology, lineage, repair plan, subgraph replay, change impact, migration guard |
 | Work Plane | Adapters, validators, generators — evolvable via upgrade pipeline |
-| Runner Fleet | Stateless workers: claim jobs, execute nodes, write artifacts |
+| Runner Fleet | Stateless workers: claim jobs, execute nodes, write artifacts, record artifact consumption |
 | MCP Tool Fabric | Standardized connectors to external systems |
 
-**Orchestration ledger:** Initiatives -> Plans -> Runs -> Job Runs -> Tool Calls -> Artifacts -> Events
+**Orchestration ledger:** Initiatives -> Plans -> Runs -> Job Runs -> Tool Calls -> Artifacts -> Events. **Graph self-heal:** change_events, graph_impacts, incident_memory, artifact_consumption, graph_checkpoints. **Deploy events:** record build/deploy failures via `POST /v1/deploy_events` (with optional `build_log_text` for classification); use `GET /v1/deploy_events/:id/repair_plan` for suggested actions. Full runbook: **docs/GRAPH_ENGINE_AND_SELF_HEAL.md**.
 
 ## Project Structure
 
@@ -52,6 +54,18 @@ adapters/src/               MCP Adapter layer
   adapter-interface.ts      Base interface: validate -> execute -> verify -> rollback
 ```
 
+## Kernel and operators (current state)
+
+- **Pipeline V2** — Prompt → draft → lint → compile → run. Patterns (SEO, email, self-heal, deploy); compose; plan-from-draft; Console “Build pipeline from prompt” + Start run. See **docs/PIPELINE_GENERATION.md**.
+- **Dev Kernel V1** — Failure → classify → incident_memory → auto-repair (5‑min loop when `ENABLE_AUTO_REPAIR=true`); capability registry; `POST /v1/job_failures` from runner. See **docs/GRAPH_ENGINE_AND_SELF_HEAL.md**.
+- **Action Kernel V1** — Unified action execution (subgraph_replay, rerun_pipeline, rollback_release); policy; validation and learning. See **docs/BUSINESS_OPERATOR_V1.md** (Stage 4 scaffold).
+- **Ads + Commerce Operator (Phases 1–5)** — Canonical schema (typed spend/orders/attribution); Meta & Shopify connectors (read); metrics & diagnosis; Meta pause + validation; Slack daily summary. See **docs/ADS_COMMERCE_OPERATOR.md**.
+- **Taxonomy and brand catalog** — Airtable/Shopify import → raw + canonical (organizations, taxonomy_websites, vocabularies, terms, brand_catalog_products). First Capital Group grouping; `brand_profiles.website_id` for brand ↔ website. See **docs/AIRTABLE_AND_PRODUCT_IMPORT_PLUGIN_ANALYSIS.md** and **docs/ORGANIZATION_AND_CLIENT_GROUPING.md**.
+
+**Migrations:** `npm run db:migrate` (core); `npm run db:migrate:pipeline-v2`; `npm run db:migrate:dev-kernel`; `npm run db:migrate:ads-commerce`; Airtable/taxonomy migrations in `supabase/migrations/20250331*.sql`. **Verification:** `npm run doctor`, `npm run test:pipeline-v2-api`, `npm run test:dev-kernel-api`, `npm run verify:taxonomy-db`, `npm run test:taxonomy-catalog-api`. Full runbook: **docs/OPERATIONS_RUNBOOK.md**.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -68,6 +82,9 @@ npm install
 # Create the database and run migrations
 createdb ai_factory
 npm run db:migrate
+npm run db:migrate:pipeline-v2
+npm run db:migrate:dev-kernel
+npm run db:migrate:ads-commerce
 
 # Build TypeScript
 npm run build
@@ -77,20 +94,21 @@ npm run build
 
 ```bash
 # Start the Control Plane (scheduler, reaper, drift monitor, REST API on port 3001)
-npm run start:control-plane
+# Restart after build so new routes (e.g. /v1/ads/*, /v1/connectors/*) are loaded.
+ENABLE_AUTO_REPAIR=true npm run start:control-plane
 
-# Start a Runner (in a separate terminal)
+# Start a Runner (in a separate terminal; set CONTROL_PLANE_URL so job failures are reported)
 WORKER_ID=worker-1 npm run start:runner
 
 # Start the Console (Next.js on port 3000)
 cd console && npm run dev
 ```
 
-Set `NEXT_PUBLIC_CONTROL_PLANE_API=http://localhost:3001` (or your Control Plane URL) when running the Console.
+Set `NEXT_PUBLIC_CONTROL_PLANE_API=http://localhost:3001` (or your Control Plane URL) when running the Console. Optional: **docs/ENABLEMENT_ENV_VARS.md** for `ENABLE_AUTO_REPAIR`, `CONTROL_PLANE_URL`, and other toggles.
 
 ## Schema
 
-21 tables implementing the full orchestration ledger:
+Core tables plus graph self-heal:
 
 | Table | Purpose |
 |-------|---------|
@@ -98,7 +116,7 @@ Set `NEXT_PUBLIC_CONTROL_PLANE_API=http://localhost:3001` (or your Control Plane
 | plans, plan_nodes, plan_edges | Compiled DAGs |
 | releases, release_routes | Versioned bundles + canary routing |
 | runs | Execution contexts (pinned release, policy, environment) |
-| job_runs | Per-attempt execution records (Pattern A) |
+| job_runs | Per-attempt execution records (Pattern A); optional failure_class |
 | node_progress, node_completions, node_outcomes | DAG advancement + single-winner election |
 | tool_calls | Adapter invocations with idempotency |
 | artifacts | Typed, immutable outputs |
@@ -113,6 +131,10 @@ Set `NEXT_PUBLIC_CONTROL_PLANE_API=http://localhost:3001` (or your Control Plane
 | repair_recipes | Repair knowledge base |
 | llm_calls | Model escalation audit |
 | rollback_targets | Structured rollback pointers |
+| artifact_consumption | Lineage: which artifacts were consumed by which job_runs |
+| change_events, graph_impacts | Change impact analysis and blast radius |
+| graph_checkpoints | Known-good states for replay and diff |
+| incident_memory | Repairable incident patterns and resolutions |
 
 ## Key Design Decisions
 

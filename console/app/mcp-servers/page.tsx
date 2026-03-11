@@ -13,8 +13,10 @@ export default function McpServersPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="MCP Servers" />
-          <p className="text-red-600">Error: {String(error)}</p>
+          <PageHeader title="MCP Servers" description="MCP server configurations." />
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {String(error)}
+          </div>
         </Stack>
       </PageFrame>
     );
@@ -27,6 +29,9 @@ export default function McpServersPage() {
           title="MCP Servers"
           description="MCP server configurations. Manage in Admin for full CRUD."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/admin/mcp_servers" className="text-brand-600 hover:underline">Admin → MCP Servers</Link>
+        </p>
         {isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />
         ) : (

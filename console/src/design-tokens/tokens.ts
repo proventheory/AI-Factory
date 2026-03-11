@@ -4,7 +4,7 @@
  * No hard-coded hex/sizes in components; reference these tokens only.
  */
 
-/** Pharmacy Time / ProfessorX theme: purple palette, Aventa-aligned typography (staging source of truth). */
+/** Pharmacy Time / AI Factory Operator Console theme: purple palette, Aventa-aligned typography (staging source of truth). */
 export const tokens = {
   color: {
     brand: {

@@ -103,6 +103,9 @@ export default function DashboardPage() {
     <PageFrame>
       <Stack>
         <PageHeader title="Overview" description="Scheduler and pipeline health at a glance." />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/health" className="text-brand-600 hover:underline">Scheduler Health</Link> · <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/planner" className="text-brand-600 hover:underline">Planner</Link> · <Link href="/graph/explorer" className="text-brand-600 hover:underline">Graph Explorer</Link>
+        </p>
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

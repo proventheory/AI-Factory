@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Trash2 } from "lucide-react";
 import {
   Badge,
@@ -239,6 +240,9 @@ export default function DocumentTemplatesPage() {
           title="Document Templates"
           description="Deck, report, and email templates. Email templates show image and product slot capacity; use them in the email wizard to build campaigns. Brand embeddings are managed per brand: open a brand → Brand Embeddings → Manage."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link> · <Link href="/email-marketing" className="text-brand-600 hover:underline">Email Design Generator</Link>
+        </p>
         <CardSection className="overflow-hidden rounded-lg border border-border shadow-sm">
           {isLoading ? (
             <div className="space-y-3">

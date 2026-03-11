@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button } from "@/components/ui";
 import { useCreateEmailCampaign } from "@/hooks/use-api";
-import { getRunStatus, getRunArtifacts, type ArtifactRow } from "@/lib/api";
+import { getRunStatus, getRunArtifacts } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 const WIZARD_KEY = "email_marketing_wizard";
@@ -35,27 +35,30 @@ function clearWizardState() {
 
 function GeneratePageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [campaignPrompt, setCampaignPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<string>("");
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
-  // Wizard state is in sessionStorage; sync after mount (and from URL fallback) so we don't show "Select a template" when user came from Content
-  const [wizardTemplateId, setWizardTemplateId] = useState<string | null>(null);
+  // Sync from sessionStorage + URL (no useSearchParams to avoid Suspense stuck on "Loading…" when opening with ?template_id=...)
+  const [wizardTemplateId, setWizardTemplateId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return (getWizardState().template_id as string) ?? null;
+  });
 
   useEffect(() => {
     const s = getWizardState();
     let tid = (s.template_id as string) ?? null;
-    const urlTid = searchParams.get("template_id");
-    const urlBid = searchParams.get("brand_profile_id");
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const urlTid = params?.get("template_id") ?? null;
+    const urlBid = params?.get("brand_profile_id") ?? null;
     if (urlTid && !tid) {
       tid = urlTid;
       setWizardState({ template_id: urlTid });
     }
     if (urlBid && !(s.brand_profile_id as string)) setWizardState({ brand_profile_id: urlBid });
-    setWizardTemplateId(tid);
-  }, [searchParams]);
+    if (tid) setWizardTemplateId(tid);
+  }, []);
 
   const hasTemplate = Boolean(wizardTemplateId);
 
@@ -222,18 +225,5 @@ function GeneratePageContent() {
 }
 
 export default function EmailMarketingNewGeneratePage() {
-  return (
-    <Suspense
-      fallback={
-        <PageFrame>
-          <Stack>
-            <PageHeader title="Generate" description="Create campaign and run the email generation pipeline." />
-            <p className="text-fg-muted text-body-small">Loading…</p>
-          </Stack>
-        </PageFrame>
-      }
-    >
-      <GeneratePageContent />
-    </Suspense>
-  );
+  return <GeneratePageContent />;
 }

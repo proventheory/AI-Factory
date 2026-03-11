@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DataTable } from "@/components/ui";
-import { EmptyState } from "@/components/ui";
+import Link from "next/link";
+import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
@@ -25,23 +25,36 @@ export default function PoliciesPage() {
   const columns: Column<PolicyRow>[] = [
     { key: "version", header: "Version", render: (r) => <span className="font-mono font-medium">{r.version}</span> },
     { key: "created_at", header: "Created", render: (r) => new Date(r.created_at).toLocaleString() },
-    { key: "rules_json", header: "Rules", render: (r) => <span className="text-slate-500 text-xs">{r.rules_json ? "JSON" : "—"}</span> },
+    { key: "rules_json", header: "Rules", render: (r) => <span className="text-text-muted text-caption-small">{r.rules_json ? "JSON" : "—"}</span> },
   ];
 
-  if (error) return <p className="text-red-600">Error: {error}</p>;
-
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-slate-900 mb-6">Policies</h1>
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        {loading ? (
-          <p className="p-6 text-slate-500">Loading...</p>
-        ) : items.length === 0 ? (
-          <EmptyState title="No policies" description="No policy versions defined yet." />
-        ) : (
-          <DataTable columns={columns} data={items} keyExtractor={(r) => r.version} />
+    <PageFrame>
+      <Stack>
+        <PageHeader
+          title="Policies"
+          description="Policy versions and rules (used by releases and graph execution)."
+        />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/releases" className="text-brand-600 hover:underline">Releases</Link> · <Link href="/graph/decision-loop" className="text-brand-600 hover:underline">Decision loop</Link>
+        </p>
+        {error && (
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {error}
+          </div>
         )}
-      </div>
-    </div>
+        <CardSection>
+          {loading ? (
+            <LoadingSkeleton className="h-64 rounded-lg" />
+          ) : items.length === 0 ? (
+            <EmptyState title="No policies" description="No policy versions defined yet." />
+          ) : (
+            <TableFrame>
+              <DataTable columns={columns} data={items} keyExtractor={(r) => r.version} />
+            </TableFrame>
+          )}
+        </CardSection>
+      </Stack>
+    </PageFrame>
   );
 }

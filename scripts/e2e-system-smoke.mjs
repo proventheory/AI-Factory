@@ -80,6 +80,15 @@ async function main() {
   console.log("Initiatives list ok:", listInit.ok);
   console.log("Plans list ok:", listPlan.ok);
 
+  // 6. Klaviyo list endpoints (routes exist; may 200 with empty items or 500 if tables missing)
+  const klaviyoTemplates = await fetch(`${API}/v1/klaviyo/templates`);
+  const klaviyoCampaigns = await fetch(`${API}/v1/klaviyo/campaigns`);
+  const klaviyoFlows = await fetch(`${API}/v1/klaviyo/flows`);
+  console.log("Klaviyo templates list ok:", klaviyoTemplates.ok);
+  console.log("Klaviyo campaigns list ok:", klaviyoCampaigns.ok);
+  console.log("Klaviyo flows list ok:", klaviyoFlows.ok);
+  if (!klaviyoTemplates.ok) console.log("  (Klaviyo tables may not be migrated yet; run 20250330000000_* and 20250330000002_*)");
+
   console.log("\n--- Done. Verify in ProfessorX Console ---");
   console.log("  Initiatives: /initiatives (should see \"E2E smoke: ProfessorX full-system test\")");
   if (plan) console.log("  Plans:       /plans (should see plan with", plan.nodes, "nodes)");

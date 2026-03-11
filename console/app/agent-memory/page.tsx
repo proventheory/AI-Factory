@@ -12,8 +12,10 @@ export default function AgentMemoryPage() {
     return (
       <PageFrame>
         <Stack>
-          <PageHeader title="Agent Memory" />
-          <p className="text-red-600">Error: {String(error)}</p>
+          <PageHeader title="Agent Memory" description="Persistent key-value memory for agents." />
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">
+            {String(error)}
+          </div>
         </Stack>
       </PageFrame>
     );
@@ -26,6 +28,9 @@ export default function AgentMemoryPage() {
           title="Agent Memory"
           description="Persistent key-value memory for agents. Full CRUD in Admin."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/admin/agent_memory" className="text-brand-600 hover:underline">Admin → Agent Memory</Link> · <Link href="/graph/memory" className="text-brand-600 hover:underline">Memory (incidents)</Link>
+        </p>
         {isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />
         ) : (

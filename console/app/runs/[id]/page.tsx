@@ -31,6 +31,63 @@ type LogEntryRow = { id: string; run_id: string; job_run_id: string | null; sour
 type LlmCallRow = { id: string; job_run_id: string | null; model_tier: string; model_id: string; tokens_in: number | null; tokens_out: number | null; latency_ms: number | null; created_at: string };
 type AuditRow = { source: string; id: string; run_id: string; job_run_id: string | null; event_type: string; created_at: string; payload_json: unknown };
 
+function RepairPreviewPanel({
+  runId,
+  jobRuns,
+}: {
+  runId: string;
+  jobRuns: { plan_node_id: string; status: string; error_signature?: string }[];
+}) {
+  const failed = [...new Map(jobRuns.filter((j) => j.status === "failed").map((j) => [j.plan_node_id, j])).values()];
+  const [replayBusy, setReplayBusy] = useState<string | null>(null);
+  const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
+  async function replaySubgraph(nodeId: string) {
+    setReplayBusy(nodeId);
+    try {
+      const r = await fetch(`${API}/v1/graph/subgraph_replay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ run_id: runId, root_node_id: nodeId }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Replay failed");
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setReplayBusy(null);
+    }
+  }
+  if (failed.length === 0) {
+    return (
+      <CardSection title="Repair">
+        <EmptyState title="No failed nodes" description="Use this tab when a run has failed job runs. You can replay the subgraph from a failed node." />
+      </CardSection>
+    );
+  }
+  return (
+    <CardSection title="Repair">
+      <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+        Failed nodes and recommended repair (replay subgraph). Open Repair Preview for full plan and similar incidents.
+      </p>
+      <ul className="space-y-3">
+        {failed.map((j) => (
+          <li key={j.plan_node_id} className="rounded border border-slate-200 dark:border-slate-700 p-3 flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs">{String(j.plan_node_id).slice(0, 8)}…</span>
+            <span className="text-slate-500 text-sm truncate max-w-[280px]" title={j.error_signature}>{j.error_signature ?? "—"}</span>
+            <Link href={`/graph/repair-preview?run_id=${runId}&node_id=${j.plan_node_id}`} className="text-brand-600 hover:underline text-sm">
+              Repair Preview
+            </Link>
+            <Button size="sm" onClick={() => replaySubgraph(j.plan_node_id)} disabled={replayBusy === j.plan_node_id}>
+              {replayBusy === j.plan_node_id ? "Replaying…" : "Replay subgraph"}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </CardSection>
+  );
+}
+
 export default function RunDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -384,6 +441,7 @@ export default function RunDetailPage() {
             <TabsTrigger value="ai_calls">AI Calls</TabsTrigger>
             <TabsTrigger value="secrets">Secrets Access</TabsTrigger>
             <TabsTrigger value="events">Events</TabsTrigger>
+            <TabsTrigger value="repair">Repair</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
           </TabsList>
 
@@ -552,6 +610,10 @@ export default function RunDetailPage() {
                 {(data.run_events ?? []).length === 0 && <li className="text-slate-500">None</li>}
               </ul>
             </CardSection>
+          </TabsContent>
+
+          <TabsContent value="repair" className="pt-4">
+            <RepairPreviewPanel runId={id} jobRuns={(data.job_runs ?? []) as { plan_node_id: string; status: string; error_signature?: string }[]} />
           </TabsContent>
 
           <TabsContent value="notes" className="pt-4 pb-16">

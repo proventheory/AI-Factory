@@ -1,16 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { PageHeader } from "@/components/ui";
+import { PageFrame, Stack, PageHeader } from "@/components/ui";
 import { ADMIN_RESOURCES } from "@/lib/admin-registry";
 
 export default function AdminIndexPage() {
   return (
-    <div>
-      <PageHeader
-        title="Admin"
-        description="Generated CRUD for DB resources. Internal use only."
-      />
+    <PageFrame>
+      <Stack>
+        <PageHeader
+          title="Admin"
+          description="Generated CRUD for DB resources. Internal use only."
+        />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/mcp-servers" className="text-brand-600 hover:underline">MCP Servers</Link> · <Link href="/approvals" className="text-brand-600 hover:underline">Approvals</Link> · <Link href="/admin/permissions" className="text-brand-600 hover:underline">Permissions</Link>
+        </p>
       <ul className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
         {ADMIN_RESOURCES.map((r) => (
           <li key={r.key}>
@@ -31,6 +35,7 @@ export default function AdminIndexPage() {
           </Link>
         </li>
       </ul>
-    </div>
+      </Stack>
+    </PageFrame>
   );
 }

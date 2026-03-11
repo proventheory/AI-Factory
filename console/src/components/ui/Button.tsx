@@ -2,7 +2,7 @@
 
 import { type ButtonHTMLAttributes, type ReactElement, cloneElement, forwardRef, isValidElement } from "react";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline";
 type Size = "sm" | "md" | "lg";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -17,6 +17,7 @@ const variantClasses: Record<Variant, string> = {
   secondary: "bg-slate-100 text-slate-800 hover:bg-slate-200 border-slate-300",
   ghost: "bg-transparent text-slate-700 hover:bg-slate-100 border-transparent",
   danger: "bg-red-600 text-white hover:bg-red-700 border-transparent",
+  outline: "bg-transparent text-slate-700 hover:bg-slate-50 border border-slate-300",
 };
 
 const sizeClasses: Record<Size, string> = {

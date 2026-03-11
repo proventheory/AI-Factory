@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import type pg from "pg";
 import * as Sentry from "@sentry/node";
 import { v4 as uuid } from "uuid";
 import mjml2html from "mjml";
@@ -11,12 +12,40 @@ import {
   getDownstreamNodes,
   pathToNode,
 } from "./graph/traversal.js";
+import {
+  createChangeEvent,
+  computeGraphImpactsForPlan,
+  computeGraphImpactsForRun,
+} from "./graph/impact.js";
+import { executeSubgraphReplay, subgraphReplayPlan } from "./graph/subgraph-replay.js";
+import { lookupBySignature as incidentLookup, recordResolution as incidentRecord, recordBuildIncident } from "./incident-memory.js";
+import { classifyFailure } from "./failure-classifier.js";
+import { parseMigrationSql, postMigrationAudit } from "./graph/migration-guard.js";
+import { getUnknownJobTypes } from "./graph/schema.js";
+import { classifyBuildLog, extractBuildErrorSignature } from "./build/build-classifier.js";
+import { createDeployEventFromPayload, type DeployEventPayload } from "./deploy-events.js";
+import { syncAllRenderDeploys } from "./deploy-sync.js";
+import { syncAllGitHubDeploys } from "./github-deploy-sync.js";
+import { runDecisionLoopTick } from "./decision-loop.js";
+import { computeBaselines } from "./baselines.js";
+import { detectAnomalies } from "./anomaly.js";
+import { ingestV1SliceEvent, getV1SliceFunnel } from "./v1-slice.js";
+import { suggestFilesFromImportGraph } from "./import-graph.js";
+import { getSchemaDrift, getCurrentSchemaShape } from "./schema-drift.js";
+import { evaluatePolicy } from "./policy-evaluator.js";
+import { runValidationPlan, runValidationAfterAction } from "./validation-executor.js";
+import { executeAction } from "./action-executor.js";
 import { executeRollback, routeRun } from "./release-manager.js";
+import { pauseCampaign as metaPauseCampaign, pauseAdSet as metaPauseAdSet, getStatus as metaGetStatus, runMetaIngest, runShopifyIngest, getKlaviyoCredentials, createTemplate, updateTemplate } from "./connectors/index.js";
+import { runKlaviyoCampaignPipeline, buildSendReadyEmail } from "./klaviyo-campaign-pipeline.js";
+import { runKlaviyoFlowPipeline, setKlaviyoFlowStatus } from "./klaviyo-flow-pipeline.js";
+import { runDiagnosis } from "./ads-diagnosis.js";
+import { buildDailySummary, postDailySummaryToSlack } from "./slack-ads-operator.js";
 import { triggerNoArtifactsRemediationForRun, triggerBadArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
 import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
 import { productsFromUrl, type ProductsFromUrlType } from "./products-from-url.js";
 import { tokenizeBrandFromUrl } from "./brand-tokenize-from-url.js";
-import { fetchGscReport, fetchGa4Report } from "../../runners/src/lib/seo/gsc-ga-api.js";
+import { fetchGscReport, fetchGa4Report } from "./lib/seo/gsc-ga-api.js";
 import {
   getGoogleAuthUrl,
   handleOAuthCallback,
@@ -523,6 +552,125 @@ app.post("/v1/products/from_url", async (req, res) => {
   }
 });
 
+/** GET /v1/taxonomy/websites — list canonical taxonomy websites (optional organization_id query). */
+app.get("/v1/taxonomy/websites", async (req, res) => {
+  try {
+    const organization_id = req.query.organization_id as string | undefined;
+    const limit = Math.min(MAX_LIMIT, Math.max(1, Number(req.query.limit) || DEFAULT_LIMIT));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    let q = "SELECT id, organization_id, airtable_base_id, airtable_record_id, name, status, url, created_at FROM taxonomy_websites WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (organization_id) {
+      q += ` AND organization_id = $${i}`;
+      params.push(organization_id);
+      i++;
+    }
+    q += ` ORDER BY name LIMIT $${i} OFFSET $${i + 1}`;
+    params.push(limit, offset);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit, offset });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/taxonomy/websites/:id/vocabularies — list vocabularies for a taxonomy website. */
+app.get("/v1/taxonomy/websites/:id/vocabularies", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const r = await pool.query(
+      "SELECT id, website_id, airtable_record_id, name, visibility, created_at FROM taxonomy_vocabularies WHERE website_id = $1 ORDER BY name",
+      [id]
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/taxonomy/vocabularies/:id/terms — list terms for a vocabulary. */
+app.get("/v1/taxonomy/vocabularies/:id/terms", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const limit = Math.min(MAX_LIMIT, Math.max(1, Number(req.query.limit) || DEFAULT_LIMIT));
+    const r = await pool.query(
+      "SELECT id, vocabulary_id, website_id, airtable_record_id, term_name, published_status, family_type, term_id_external, url_value, created_at FROM taxonomy_terms WHERE vocabulary_id = $1 ORDER BY term_name LIMIT $2",
+      [id, limit]
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/catalog/products — list brand catalog products by brand_profile_id (products belong to a brand). */
+app.get("/v1/catalog/products", async (req, res) => {
+  try {
+    const brand_profile_id = req.query.brand_profile_id as string | undefined;
+    if (!brand_profile_id) {
+      return res.status(400).json({ error: "brand_profile_id is required" });
+    }
+    const limit = Math.min(MAX_LIMIT, Math.max(1, Number(req.query.limit) || DEFAULT_LIMIT));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const r = await pool.query(
+      "SELECT id, brand_profile_id, source_system, external_ref, name, description, image_url, price_cents, currency, created_at FROM brand_catalog_products WHERE brand_profile_id = $1 ORDER BY name LIMIT $2 OFFSET $3",
+      [brand_profile_id, limit, offset]
+    );
+    res.json({ items: r.rows, limit, offset });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/catalog/products — upsert a product into the brand catalog (brand_profile_id required). */
+app.post("/v1/catalog/products", async (req, res) => {
+  try {
+    const body = req.body as {
+      brand_profile_id: string;
+      source_system: string;
+      external_ref: string;
+      name?: string;
+      description?: string;
+      image_url?: string;
+      price_cents?: number;
+      currency?: string;
+      metadata_json?: Record<string, unknown>;
+    };
+    const { brand_profile_id, source_system, external_ref } = body;
+    if (!brand_profile_id || !source_system || !external_ref) {
+      return res.status(400).json({ error: "brand_profile_id, source_system, and external_ref are required" });
+    }
+    const r = await pool.query(
+      `INSERT INTO brand_catalog_products (brand_profile_id, source_system, external_ref, name, description, image_url, price_cents, currency, metadata_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (brand_profile_id, source_system, external_ref) DO UPDATE SET
+         name = COALESCE(EXCLUDED.name, brand_catalog_products.name),
+         description = COALESCE(EXCLUDED.description, brand_catalog_products.description),
+         image_url = COALESCE(EXCLUDED.image_url, brand_catalog_products.image_url),
+         price_cents = COALESCE(EXCLUDED.price_cents, brand_catalog_products.price_cents),
+         currency = COALESCE(EXCLUDED.currency, brand_catalog_products.currency),
+         metadata_json = COALESCE(EXCLUDED.metadata_json, brand_catalog_products.metadata_json),
+         updated_at = now()
+       RETURNING id, brand_profile_id, source_system, external_ref, name, description, image_url, price_cents, currency, created_at, updated_at`,
+      [
+        brand_profile_id,
+        source_system,
+        external_ref,
+        body.name ?? null,
+        body.description ?? null,
+        body.image_url ?? null,
+        body.price_cents ?? null,
+        body.currency ?? "USD",
+        body.metadata_json ? JSON.stringify(body.metadata_json) : null,
+      ]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** POST /v1/seo/gsc_report — fetch GSC Search Analytics (top pages + queries). Requires GOOGLE_APPLICATION_CREDENTIALS and site in Search Console. */
 app.post("/v1/seo/gsc_report", async (req, res) => {
   try {
@@ -647,6 +795,45 @@ app.get("/v1/brand_profiles/:id/google_connected", async (req, res) => {
 app.delete("/v1/brand_profiles/:id/google_credentials", async (req, res) => {
   try {
     await withTransaction((client) => deleteGoogleCredentialsForBrand(client, req.params.id));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/brand_profiles/:id/klaviyo_connected — whether brand has Klaviyo credentials (for brand page "Connect Klaviyo"). */
+app.get("/v1/brand_profiles/:id/klaviyo_connected", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT 1 FROM brand_klaviyo_credentials WHERE brand_profile_id = $1 LIMIT 1", [req.params.id]);
+    res.json({ connected: r.rows.length > 0 });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** PUT /v1/brand_profiles/:id/klaviyo_credentials — set Klaviyo API key and optional default list for this brand. Body: api_key, default_list_id?. */
+app.put("/v1/brand_profiles/:id/klaviyo_credentials", async (req, res) => {
+  try {
+    const brandId = req.params.id;
+    const body = req.body as { api_key?: string; default_list_id?: string };
+    const apiKey = typeof body.api_key === "string" ? body.api_key.trim() : "";
+    if (!apiKey) return res.status(400).json({ error: "api_key is required" });
+    await pool.query(
+      `INSERT INTO brand_klaviyo_credentials (brand_profile_id, api_key_encrypted, default_list_id, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (brand_profile_id) DO UPDATE SET api_key_encrypted = EXCLUDED.api_key_encrypted, default_list_id = EXCLUDED.default_list_id, updated_at = now()`,
+      [brandId, apiKey, body.default_list_id?.trim() || null]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** DELETE /v1/brand_profiles/:id/klaviyo_credentials — disconnect Klaviyo for this brand. */
+app.delete("/v1/brand_profiles/:id/klaviyo_credentials", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM brand_klaviyo_credentials WHERE brand_profile_id = $1", [req.params.id]);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
@@ -845,13 +1032,34 @@ app.get("/v1/graph/audit/:runId", async (req, res) => {
       if (!nodeIds.has(e.from_node_id) || !nodeIds.has(e.to_node_id)) dangling.push(e.id);
     }
     const nodesWithoutOutputs = (nodes as { id: string }[]).filter(n => !artifactProducerNodes.has(n.id)).map(n => n.id);
+    const jobTypes = (nodes as { id: string; job_type: string }[]).map(n => n.job_type);
+    const missing_handlers = getUnknownJobTypes(jobTypes);
     res.json({
       run_id: runId,
       plan_id: planId,
       dangling_edge_ids: dangling,
       nodes_without_artifact_outputs: nodesWithoutOutputs,
-      missing_handlers: [], // V1: could compare job_type to runner registry if exposed
+      missing_handlers,
     });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/missing_capabilities/:planId — plan nodes whose job_type has no registered handler. */
+app.get("/v1/graph/missing_capabilities/:planId", async (req, res) => {
+  try {
+    const planId = req.params.planId;
+    const plan = await pool.query("SELECT id FROM plans WHERE id = $1", [planId]).then(r => r.rows[0]);
+    if (!plan) return res.status(404).json({ error: "Plan not found" });
+    const nodes = await pool.query<{ id: string; node_key: string; job_type: string }>(
+      "SELECT id, node_key, job_type FROM plan_nodes WHERE plan_id = $1",
+      [planId]
+    );
+    const jobTypes = nodes.rows.map(n => n.job_type);
+    const unknown = getUnknownJobTypes(jobTypes);
+    const missing = nodes.rows.filter(n => unknown.includes(n.job_type)).map(n => ({ plan_node_id: n.id, node_key: n.node_key, job_type: n.job_type }));
+    res.json({ plan_id: planId, missing_capabilities: missing });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -887,6 +1095,29 @@ app.get("/v1/graph/lineage/:artifactId", async (req, res) => {
   }
 });
 
+/** POST /v1/job_failures — record a job failure (runner callback). Classifies failure_class, upserts incident_memory, optionally sets job_runs.failure_class. Body: run_id, job_run_id, plan_node_id, error_signature, job_type?. */
+app.post("/v1/job_failures", async (req, res) => {
+  try {
+    const body = req.body as { run_id?: string; job_run_id?: string; plan_node_id?: string; error_signature?: string; job_type?: string };
+    if (!body?.job_run_id || !body?.error_signature) {
+      return res.status(400).json({ error: "job_run_id and error_signature required" });
+    }
+    const failureClass = classifyFailure(body.error_signature, body.job_type);
+    await recordBuildIncident(pool, body.error_signature, failureClass);
+    try {
+      await pool.query(
+        "UPDATE job_runs SET failure_class = $1 WHERE id = $2",
+        [failureClass, body.job_run_id]
+      );
+    } catch {
+      // job_runs.failure_class column may not exist in older migrations
+    }
+    res.status(201).json({ failure_class: failureClass, recorded: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** GET /v1/graph/repair_plan/:runId/:nodeId — repair plan for a failed node. */
 app.get("/v1/graph/repair_plan/:runId/:nodeId", async (req, res) => {
   try {
@@ -904,6 +1135,7 @@ app.get("/v1/graph/repair_plan/:runId/:nodeId", async (req, res) => {
       [runId, nodeId]
     ).then(r => r.rows[0]);
     const failureCause = jobRun?.error_signature ?? "unknown";
+    const similarIncidents = await incidentLookup(pool, failureCause, undefined, 5);
     res.json({
       run_id: runId,
       node_id: nodeId,
@@ -914,7 +1146,1315 @@ app.get("/v1/graph/repair_plan/:runId/:nodeId", async (req, res) => {
       recommended_repair: "replay_subgraph",
       replay_scope: downstream,
       confidence: 0.8,
+      similar_incidents: similarIncidents.map((m) => ({
+        memory_id: m.memory_id,
+        failure_signature: m.failure_signature,
+        failure_class: m.failure_class,
+        resolution: m.resolution,
+        confidence: m.confidence,
+        times_seen: m.times_seen,
+      })),
     });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/graph/subgraph_replay — re-execute root node and all downstream nodes. Body: run_id, root_node_id; optional dry_run=true; policy-gated (approval required if policy says so). */
+app.post("/v1/graph/subgraph_replay", async (req, res) => {
+  try {
+    const body = req.body as { run_id?: string; root_node_id?: string; dry_run?: boolean; approved_by?: string };
+    if (!body?.run_id || !body?.root_node_id) {
+      return res.status(400).json({ error: "run_id and root_node_id required" });
+    }
+    if (body.dry_run) {
+      const plan = await subgraphReplayPlan(pool, body.run_id, body.root_node_id);
+      return res.json({ dry_run: true, ...plan });
+    }
+    const actionRow = await pool.query<{ risk_level: string }>("SELECT risk_level FROM action_registry WHERE action_key = $1", ["subgraph_replay"]).then((r) => r.rows[0]);
+    const riskLevel = actionRow?.risk_level ?? "medium";
+    const policyResult = await evaluatePolicy(pool, { action_key: "subgraph_replay", target_type: "run", risk_level: riskLevel, context: { run_id: body.run_id } });
+    if (!policyResult.allowed) {
+      return res.status(403).json({ error: "Policy denies this action", reason: policyResult.reason });
+    }
+    if (policyResult.require_approval && !body.approved_by) {
+      return res.status(403).json({ error: "Approval required for this action", reason: policyResult.reason, require_approval: true });
+    }
+    const result = await executeSubgraphReplay(pool, body.run_id, body.root_node_id);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/capabilities — capability registry (job types the system can run, with labels and optional contracts). Dev Kernel V1. */
+app.get("/v1/capabilities", async (_req, res) => {
+  try {
+    const { getCapabilityRegistry } = await import("./capability-registry.js");
+    const items = getCapabilityRegistry();
+    res.json({ items });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/incident_memory — list incident memory (optional failure_class, limit). */
+app.get("/v1/incident_memory", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const failureClass = (req.query.failure_class as string) || null;
+    let q = "SELECT memory_id, failure_signature, failure_class, resolution, confidence, times_seen, last_seen_at, created_at FROM incident_memory WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (failureClass) { q += ` AND failure_class = $${i++}`; params.push(failureClass); }
+    q += ` ORDER BY last_seen_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/incident_memory — record a resolution (e.g. after operator confirms fix). */
+app.post("/v1/incident_memory", async (req, res) => {
+  try {
+    const body = req.body as { failure_signature?: string; failure_class?: string; resolution?: string; confidence?: number };
+    if (!body?.failure_signature || !body?.failure_class || !body?.resolution) {
+      return res.status(400).json({ error: "failure_signature, failure_class, and resolution required" });
+    }
+    await incidentRecord(
+      pool,
+      body.failure_signature,
+      body.failure_class,
+      body.resolution,
+      typeof body.confidence === "number" ? body.confidence : 0.8
+    );
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/memory/lookup — rpc_memory_lookup: similar incidents/recipes by signature and optional scope_key. Queries incident_memory and memory_entries (types: incident, repair_recipe, failure_pattern). */
+app.get("/v1/memory/lookup", async (req, res) => {
+  try {
+    const signature = (req.query.signature as string) || (req.query.failure_signature as string) || "";
+    const scopeKey = (req.query.scope_key as string) || null;
+    const limit = Math.min(Number(req.query.limit) || 10, 50);
+    const incidents = await incidentLookup(pool, signature, null, limit);
+    let entries: unknown[] = [];
+    try {
+      let q = "SELECT memory_id, memory_type, scope_type, scope_key, title, summary, signature_json, resolution_json, confidence, times_seen, last_seen_at FROM memory_entries WHERE memory_type IN ('incident', 'repair_recipe', 'failure_pattern')";
+      const params: unknown[] = [];
+      let i = 1;
+      if (scopeKey) { q += ` AND (scope_key = $${i++} OR scope_key IS NULL)`; params.push(scopeKey); }
+      q += ` ORDER BY last_seen_at DESC LIMIT $${i}`;
+      params.push(limit);
+      const r = await pool.query(q, params);
+      entries = r.rows;
+    } catch {
+      // memory_entries table may not exist yet
+    }
+    res.json({ similar_incidents: incidents, memory_entries: entries });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/memory_entries — list memory_entries (optional memory_type, scope_type, scope_key, limit). */
+app.get("/v1/memory_entries", async (req, res) => {
+  try {
+    const memoryType = (req.query.memory_type as string) || null;
+    const scopeType = (req.query.scope_type as string) || null;
+    const scopeKey = (req.query.scope_key as string) || null;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    let q = "SELECT memory_id, memory_type, scope_type, scope_key, title, summary, signature_json, evidence_json, resolution_json, confidence, times_seen, last_seen_at, created_at FROM memory_entries WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (memoryType) { q += ` AND memory_type = $${i++}`; params.push(memoryType); }
+    if (scopeType) { q += ` AND scope_type = $${i++}`; params.push(scopeType); }
+    if (scopeKey) { q += ` AND scope_key = $${i++}`; params.push(scopeKey); }
+    q += ` ORDER BY last_seen_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/memory_entries — create a memory entry (Part D.1). */
+app.post("/v1/memory_entries", async (req, res) => {
+  try {
+    const body = req.body as { memory_type?: string; scope_type?: string; scope_key?: string; title?: string; summary?: string; signature_json?: unknown; evidence_json?: unknown; resolution_json?: unknown; confidence?: number };
+    if (!body?.memory_type || !body?.scope_type) return res.status(400).json({ error: "memory_type and scope_type required" });
+    const r = await pool.query(
+      `INSERT INTO memory_entries (memory_type, scope_type, scope_key, title, summary, signature_json, evidence_json, resolution_json, confidence)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING memory_id, memory_type, scope_type, scope_key, title, summary, signature_json, evidence_json, resolution_json, confidence, times_seen, last_seen_at, created_at`,
+      [
+        body.memory_type,
+        body.scope_type,
+        body.scope_key ?? null,
+        body.title ?? null,
+        body.summary ?? null,
+        body.signature_json ? JSON.stringify(body.signature_json) : null,
+        body.evidence_json ? JSON.stringify(body.evidence_json) : null,
+        body.resolution_json ? JSON.stringify(body.resolution_json) : null,
+        typeof body.confidence === "number" ? body.confidence : null,
+      ]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/baselines/compute — compute KPI baselines from kpi_values and store in memory_entries (Phase 7). */
+app.post("/v1/baselines/compute", async (_req, res) => {
+  try {
+    const body = (_req as express.Request).body as { window_days?: number; min_samples?: number } | undefined;
+    const baselines = await computeBaselines(pool, {
+      windowDays: body?.window_days ?? 30,
+      minSamples: body?.min_samples ?? 3,
+    });
+    res.json({ baselines: baselines.length, items: baselines });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/decision_loop/observe — read-only: anomalies + baselines (no act). */
+app.get("/v1/decision_loop/observe", async (_req, res) => {
+  try {
+    const anomalies = await detectAnomalies(pool);
+    res.json({ anomalies });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/decision_loop/tick — run one decision loop tick: observe → diagnose → decide → [act] → learn. Body: auto_act?, compute_baselines?. */
+app.post("/v1/decision_loop/tick", async (req, res) => {
+  try {
+    const body = req.body as { auto_act?: boolean; compute_baselines?: boolean } | undefined;
+    const result = await runDecisionLoopTick(pool, {
+      auto_act: body?.auto_act ?? false,
+      compute_baselines: body?.compute_baselines ?? true,
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/repair_runs — list repair runs (optional run_id, status, limit). */
+app.get("/v1/repair_runs", async (req, res) => {
+  try {
+    const runId = (req.query.run_id as string) || null;
+    const status = (req.query.status as string) || null;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    let q = "SELECT repair_run_id, incident_memory_id, root_node_id, run_id, repair_strategy, repair_plan_artifact_id, status, started_at, completed_at, created_at FROM repair_runs WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (runId) { q += ` AND run_id = $${i++}`; params.push(runId); }
+    if (status) { q += ` AND status = $${i++}`; params.push(status); }
+    q += ` ORDER BY created_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/repair_runs — create and execute a repair run (rpc_repair_execute). Body: run_id, root_node_id, optional incident_memory_id. Creates repair_runs row, runs subgraph_replay, updates status. */
+app.post("/v1/repair_runs", async (req, res) => {
+  try {
+    const body = req.body as { run_id?: string; root_node_id?: string; incident_memory_id?: string; repair_plan_artifact_id?: string };
+    if (!body?.run_id || !body?.root_node_id) return res.status(400).json({ error: "run_id and root_node_id required" });
+    const repairRunId = uuid();
+    await pool.query(
+      `INSERT INTO repair_runs (repair_run_id, incident_memory_id, root_node_id, run_id, repair_strategy, repair_plan_artifact_id, status, started_at)
+       VALUES ($1, $2, $3, $4, 'replay_subgraph', $5, 'running', now())`,
+      [repairRunId, body.incident_memory_id ?? null, body.root_node_id, body.run_id, body.repair_plan_artifact_id ?? null]
+    );
+    let status = "succeeded";
+    try {
+      await executeSubgraphReplay(pool, body.run_id, body.root_node_id);
+    } catch (err) {
+      status = "failed";
+      await pool.query(
+        "UPDATE repair_runs SET status = $1, completed_at = now() WHERE repair_run_id = $2",
+        [status, repairRunId]
+      );
+      throw err;
+    }
+    await pool.query(
+      "UPDATE repair_runs SET status = $1, completed_at = now() WHERE repair_run_id = $2",
+      [status, repairRunId]
+    );
+    // Dev Kernel V1: record resolution in incident_memory when repair succeeds (action → learning)
+    if (status === "succeeded") {
+      const failedJob = await pool.query<{ error_signature: string; failure_class: string }>(
+        "SELECT error_signature, failure_class FROM job_runs WHERE run_id = $1 AND plan_node_id = $2 AND status = 'failed' ORDER BY attempt DESC LIMIT 1",
+        [body.run_id, body.root_node_id]
+      ).then((r) => r.rows[0]).catch(() => null);
+      if (failedJob?.error_signature) {
+        await incidentRecord(
+          pool,
+          failedJob.error_signature,
+          failedJob.failure_class || "generic_failure",
+          "subgraph_replay",
+          0.8
+        ).catch(() => {});
+      }
+    }
+    res.status(201).json({ repair_run_id: repairRunId, run_id: body.run_id, root_node_id: body.root_node_id, status });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/migration_guard — parse migration SQL; return tables/columns touched and risk hints. */
+app.post("/v1/migration_guard", async (req, res) => {
+  try {
+    const body = req.body as { sql?: string };
+    const sql = body?.sql ?? "";
+    const result = parseMigrationSql(sql);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/migration_audit — post-migration audit: current schema (tables, columns) from information_schema. */
+app.get("/v1/migration_audit", async (req, res) => {
+  try {
+    const snapshotId = (req.query.snapshot_id as string) || null;
+    const result = await postMigrationAudit(pool, snapshotId);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/deploy_events — record a build/deploy outcome (Part I.2). Optionally creates change_event and classifies from build_log_text. */
+app.post("/v1/deploy_events", async (req, res) => {
+  try {
+    const body = req.body as DeployEventPayload;
+    if (!body?.status) return res.status(400).json({ error: "status required" });
+    const result = await createDeployEventFromPayload(pool, body);
+    res.status(201).json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/webhooks/deploy — webhook for Render/GitHub Actions etc. Same body as POST /v1/deploy_events (service_id, commit_sha, status, build_log_text). Optional X-Webhook-Secret for future auth. */
+app.post("/v1/webhooks/deploy", async (req, res) => {
+  try {
+    const body = req.body as DeployEventPayload;
+    if (!body?.status) return res.status(400).json({ error: "status required" });
+    const result = await createDeployEventFromPayload(pool, body);
+    res.status(201).json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/deploy_events/:id/repair_plan — suggested build repair actions and similar incidents for a failed deploy. */
+app.get("/v1/deploy_events/:id/repair_plan", async (req, res) => {
+  try {
+    const deployId = req.params.id;
+    const deployRow = await pool.query(
+      "SELECT deploy_id, service_id, commit_sha, status, failure_class, error_signature, change_event_id FROM deploy_events WHERE deploy_id = $1",
+      [deployId]
+    );
+    if (deployRow.rows.length === 0) return res.status(404).json({ error: "deploy event not found" });
+    const deploy = deployRow.rows[0];
+    const actionsRow = await pool.query(
+      "SELECT action_id, action_key, label, description, risk_level, requires_approval FROM build_repair_actions ORDER BY action_key"
+    );
+    let similar_incidents: Awaited<ReturnType<typeof incidentLookup>> = [];
+    if (deploy.error_signature || deploy.failure_class) {
+      similar_incidents = await incidentLookup(
+        pool,
+        deploy.error_signature ?? "",
+        deploy.failure_class ?? null,
+        10
+      );
+    }
+    let build_config_snapshot: { dependencies_json: unknown; externals_json: unknown; created_at: string } | null = null;
+    if (deploy.service_id) {
+      try {
+        const snap = await pool.query(
+          "SELECT dependencies_json, externals_json, created_at FROM build_config_snapshots WHERE service_id = $1 ORDER BY created_at DESC LIMIT 1",
+          [deploy.service_id]
+        );
+        if (snap.rows.length > 0) build_config_snapshot = snap.rows[0];
+      } catch {
+        // table may not exist
+      }
+    }
+    let suggested_file_actions: { suggested_files: string[]; unresolved_path: string | null } = { suggested_files: [], unresolved_path: null };
+    if (deploy.service_id && (deploy.failure_class === "module_resolution_failed" || deploy.failure_class === "missing_committed_file") && deploy.error_signature) {
+      try {
+        suggested_file_actions = await suggestFilesFromImportGraph(pool, deploy.service_id, deploy.error_signature);
+      } catch {
+        // import_graph_snapshots may not exist
+      }
+    }
+    res.json({
+      deploy_id: deploy.deploy_id,
+      service_id: deploy.service_id,
+      commit_sha: deploy.commit_sha,
+      status: deploy.status,
+      failure_class: deploy.failure_class,
+      error_signature: deploy.error_signature,
+      change_event_id: deploy.change_event_id,
+      suggested_actions: actionsRow.rows,
+      similar_incidents,
+      build_config_snapshot,
+      suggested_file_actions,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/deploy_events — list deploy events (optional service_id, status, limit). */
+app.get("/v1/deploy_events", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const serviceId = (req.query.service_id as string) || null;
+    const status = (req.query.status as string) || null;
+    let q = "SELECT deploy_id, change_event_id, service_id, commit_sha, status, failure_class, error_signature, external_deploy_id, created_at FROM deploy_events WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (serviceId) { q += ` AND service_id = $${i++}`; params.push(serviceId); }
+    if (status) { q += ` AND status = $${i++}`; params.push(status); }
+    q += ` ORDER BY created_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/deploy_events/sync — sync deploy_events from Render API (full deploy observability). Env: RENDER_API_KEY, RENDER_SERVICE_IDS (e.g. srv-xxx:control-plane). */
+app.post("/v1/deploy_events/sync", async (_req, res) => {
+  try {
+    const result = await syncAllRenderDeploys(pool);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/deploy_events/sync_github — sync deploy_events from GitHub Actions (failed workflow runs). Env: GITHUB_TOKEN, GITHUB_REPOS (e.g. owner/repo:control-plane). */
+app.post("/v1/deploy_events/sync_github", async (_req, res) => {
+  try {
+    const result = await syncAllGitHubDeploys(pool);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/build_repair_actions — list registered build repair actions (Part I.2). */
+app.get("/v1/build_repair_actions", async (req, res) => {
+  try {
+    const r = await pool.query(
+      "SELECT action_id, action_key, label, description, risk_level, requires_approval FROM build_repair_actions ORDER BY action_key"
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/import_graph — get latest import graph snapshot for a service (Part I.2 repo/build model). */
+app.get("/v1/import_graph", async (req, res) => {
+  try {
+    const serviceId = (req.query.service_id as string) || null;
+    if (!serviceId) return res.status(400).json({ error: "service_id required" });
+    const r = await pool.query(
+      "SELECT snapshot_id, service_id, snapshot_json, created_at FROM import_graph_snapshots WHERE service_id = $1 ORDER BY created_at DESC LIMIT 1",
+      [serviceId]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "No import graph for this service" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    if ((e as { code?: string }).code === "42P01") return res.status(404).json({ error: "Import graph not available" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/import_graph — store import graph snapshot (e.g. from scripts/export-import-graph.mjs). Body: service_id, snapshot_json. */
+app.post("/v1/import_graph", async (req, res) => {
+  try {
+    const body = req.body as { service_id?: string; snapshot_json?: { files?: string[]; edges?: { from: string; to: string }[] } };
+    if (!body?.service_id || !body?.snapshot_json) return res.status(400).json({ error: "service_id and snapshot_json required" });
+    const r = await pool.query(
+      "INSERT INTO import_graph_snapshots (service_id, snapshot_json) VALUES ($1, $2) RETURNING snapshot_id, service_id, created_at",
+      [body.service_id, JSON.stringify(body.snapshot_json)]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    if ((e as { code?: string }).code === "42P01") return res.status(501).json({ error: "Run migration 20250326000001_import_graph_and_schema_drift.sql first" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/action_registry — list action registry (Part L.3). */
+app.get("/v1/action_registry", async (req, res) => {
+  try {
+    const r = await pool.query(
+      "SELECT action_key, action_type, target_type, risk_level, validation_strategy, rollback_strategy, approval_policy_key FROM action_registry ORDER BY action_key"
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/connectors/meta/ingest — run Meta connector pull/map/store (Phase 1). Body: scope_key, ad_account_id, access_token. */
+app.post("/v1/connectors/meta/ingest", async (req, res) => {
+  try {
+    const body = req.body as { scope_key?: string; ad_account_id?: string; access_token?: string };
+    if (!body?.scope_key || !body?.ad_account_id) return res.status(400).json({ error: "scope_key and ad_account_id required" });
+    const result = await runMetaIngest(pool, { scope_key: body.scope_key, ad_account_id: body.ad_account_id, access_token: body.access_token ?? "" });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/connectors/shopify/ingest — run Shopify connector pull/map/store (Phase 1). Body: scope_key, shop_domain, store_external_ref, access_token. */
+app.post("/v1/connectors/shopify/ingest", async (req, res) => {
+  try {
+    const body = req.body as { scope_key?: string; shop_domain?: string; store_external_ref?: string; access_token?: string };
+    if (!body?.scope_key || !body?.shop_domain || !body?.store_external_ref) return res.status(400).json({ error: "scope_key, shop_domain, store_external_ref required" });
+    const result = await runShopifyIngest(pool, { scope_key: body.scope_key, shop_domain: body.shop_domain, store_external_ref: body.store_external_ref, access_token: body.access_token ?? "" });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/ads/diagnosis — run diagnosis for scope (Phase 3). Query: scope_key, date_from?, date_to?, roas_floor?. */
+app.get("/v1/ads/diagnosis", async (req, res) => {
+  try {
+    const scope_key = (req.query.scope_key as string) || "";
+    if (!scope_key) return res.status(400).json({ error: "scope_key required" });
+    const date_from = (req.query.date_from as string) || undefined;
+    const date_to = (req.query.date_to as string) || undefined;
+    const roas_floor = req.query.roas_floor != null ? Number(req.query.roas_floor) : undefined;
+    const candidates = await runDiagnosis(pool, scope_key, { dateFrom: date_from, dateTo: date_to, roas_floor });
+    res.json({ candidates });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/ads/slack/daily-summary — build and optionally post daily summary to Slack (Phase 5). Body: scope_key, date_from?, date_to?, post?: boolean. */
+app.post("/v1/ads/slack/daily-summary", async (req, res) => {
+  try {
+    const body = req.body as { scope_key?: string; date_from?: string; date_to?: string; post?: boolean };
+    if (!body?.scope_key) return res.status(400).json({ error: "scope_key required" });
+    const payload = await buildDailySummary(pool, body.scope_key, body.date_from, body.date_to);
+    const posted = body.post === true ? await postDailySummaryToSlack(payload) : false;
+    res.json({ summary: payload, posted });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/checkpoints — list graph checkpoints (optional scope_type, scope_id, limit). */
+app.get("/v1/checkpoints", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const scopeType = (req.query.scope_type as string) || null;
+    const scopeId = (req.query.scope_id as string) || null;
+    let q = "SELECT checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, config_snapshot_artifact_id, created_at FROM graph_checkpoints WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (scopeType) { q += ` AND scope_type = $${i++}`; params.push(scopeType); }
+    if (scopeId) { q += ` AND scope_id = $${i++}`; params.push(scopeId); }
+    q += ` ORDER BY created_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/checkpoints — create a known-good checkpoint (scope_type, scope_id, optional run_id). */
+app.post("/v1/checkpoints", async (req, res) => {
+  try {
+    const body = req.body as { scope_type?: string; scope_id?: string; run_id?: string };
+    if (!body?.scope_type || !body?.scope_id) return res.status(400).json({ error: "scope_type and scope_id required" });
+    const r = await pool.query(
+      `INSERT INTO graph_checkpoints (scope_type, scope_id, run_id)
+       VALUES ($1, $2, $3)
+       RETURNING checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, config_snapshot_artifact_id, created_at`,
+      [body.scope_type, body.scope_id, body.run_id ?? null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/checkpoints/:id — single checkpoint. */
+app.get("/v1/checkpoints/:id", async (req, res) => {
+  try {
+    const r = await pool.query(
+      "SELECT checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, config_snapshot_artifact_id, created_at FROM graph_checkpoints WHERE checkpoint_id = $1",
+      [req.params.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Checkpoint not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/checkpoints/:id/diff — rpc_diff_checkpoint: current schema vs checkpoint (current from information_schema; snapshot diff when artifact content available). */
+app.get("/v1/checkpoints/:id/diff", async (req, res) => {
+  try {
+    const cp = await pool.query(
+      "SELECT checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, created_at FROM graph_checkpoints WHERE checkpoint_id = $1",
+      [req.params.id]
+    );
+    if (cp.rows.length === 0) return res.status(404).json({ error: "Checkpoint not found" });
+    const checkpoint = cp.rows[0];
+    const audit = await postMigrationAudit(pool, null);
+    res.json({
+      checkpoint_id: checkpoint.checkpoint_id,
+      scope_type: checkpoint.scope_type,
+      scope_id: checkpoint.scope_id,
+      created_at: checkpoint.created_at,
+      current_schema: { tables: audit.current_tables.length, columns: audit.current_columns.length },
+      current_tables: audit.current_tables,
+      current_columns: audit.current_columns,
+      snapshot_artifact_id: checkpoint.schema_snapshot_artifact_id,
+      snapshot_diff: checkpoint.schema_snapshot_artifact_id ? "Compare to artifact content (V1: no stored body)" : null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/known_good — rpc_known_good: most recent checkpoint for scope (query: scope_type, scope_id). */
+app.get("/v1/known_good", async (req, res) => {
+  try {
+    const scopeType = (req.query.scope_type as string) || null;
+    const scopeId = (req.query.scope_id as string) || null;
+    if (!scopeType || !scopeId) return res.status(400).json({ error: "scope_type and scope_id required" });
+    const r = await pool.query(
+      "SELECT checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, config_snapshot_artifact_id, created_at FROM graph_checkpoints WHERE scope_type = $1 AND scope_id = $2 ORDER BY created_at DESC LIMIT 1",
+      [scopeType, scopeId]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "No checkpoint found for this scope" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/failure_clusters — rpc_failure_clusters: recurring failure families (grouped by failure_class from incident_memory). Optional scope_key filter via failure_class. */
+app.get("/v1/failure_clusters", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const r = await pool.query(
+      `SELECT failure_class, COUNT(*) AS count, MAX(last_seen_at) AS last_seen
+       FROM incident_memory
+       GROUP BY failure_class
+       ORDER BY count DESC, last_seen DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json({ clusters: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/actions/execute — execute a registered action (policy-gated). Body: action_key, params, optional approved_by, include_validation_plan. System actions use action-executor (validation + learning). */
+app.post("/v1/actions/execute", async (req, res) => {
+  try {
+    const body = req.body as { action_key?: string; params?: Record<string, string>; approved_by?: string; include_validation_plan?: boolean; run_validation_after?: boolean };
+    if (!body?.action_key) return res.status(400).json({ error: "action_key required" });
+    const params = body.params ?? {};
+    if (["subgraph_replay", "rerun_pipeline", "rollback_release"].includes(body.action_key)) {
+      try {
+        const out = await executeAction(pool, {
+          action_key: body.action_key,
+          params,
+          approved_by: body.approved_by,
+          run_validation_after: body.run_validation_after,
+          include_validation_plan: body.include_validation_plan,
+        });
+        return res.json(out);
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg.includes("Policy denies") || msg.includes("Approval required")) return res.status(403).json({ error: msg, reason: msg });
+        if (msg.includes("not found") || msg.includes("Run not found")) return res.status(404).json({ error: msg });
+        if (msg.includes("required") || msg.includes("Unknown action_key")) return res.status(400).json({ error: msg });
+        throw err;
+      }
+    }
+    const actionRow = await pool.query<{ risk_level: string; target_type: string | null }>(
+      "SELECT risk_level, target_type FROM action_registry WHERE action_key = $1",
+      [body.action_key]
+    ).then((r) => r.rows[0]);
+    if (!actionRow) return res.status(400).json({ error: "Unknown action_key" });
+    const policyResult = await evaluatePolicy(pool, {
+      action_key: body.action_key,
+      target_type: actionRow.target_type ?? undefined,
+      risk_level: actionRow.risk_level,
+      context: params,
+    });
+    if (!policyResult.allowed) {
+      return res.status(403).json({ error: "Policy denies this action", reason: policyResult.reason });
+    }
+    if (policyResult.require_approval && !body.approved_by) {
+      return res.status(403).json({ error: "Approval required", reason: policyResult.reason, require_approval: true });
+    }
+    if (body.action_key === "pause_campaign") {
+      const campaignId = params.campaign_id ?? params.entity_id;
+      const scopeKey = params.scope_key ?? null;
+      if (!campaignId) return res.status(400).json({ error: "params.campaign_id or params.entity_id required for pause_campaign" });
+      try {
+        const row = await pool.query<{ id: string; external_ref: string; scope_key: string; channel: string }>(
+          `SELECT c.id, c.external_ref, aa.scope_key, aa.channel FROM campaigns c JOIN ad_accounts aa ON aa.id = c.ad_account_id WHERE c.id = $1::uuid`,
+          [campaignId]
+        ).then((r) => r.rows[0]);
+        if (row?.channel === "meta" && row.scope_key) {
+          const cred = await pool.query<{ access_token_encrypted: string }>(
+            "SELECT access_token_encrypted FROM ad_platform_credentials WHERE scope_key = $1 AND channel = 'meta' LIMIT 1",
+            [row.scope_key]
+          ).then((r) => r.rows[0]);
+          const token = cred?.access_token_encrypted ?? "";
+          const result = await metaPauseCampaign({ scope_key: row.scope_key, access_token: token }, row.external_ref);
+          if (result.success) {
+            await pool.query("UPDATE campaigns SET status = 'paused', updated_at = now() WHERE id = $1", [row.id]);
+            const validation = await metaGetStatus({ scope_key: row.scope_key, access_token: token }, "campaign", row.external_ref);
+            const ev = await pool.query(
+              "INSERT INTO business_events (event_type, from_entity_id, payload_json, source_system) VALUES ('campaign_paused', NULL, $1, 'control_plane') RETURNING event_id",
+              [JSON.stringify({ action: "pause_campaign", campaign_id: row.id, external_ref: row.external_ref, approved_by: body.approved_by ?? null, validated: validation.status === "paused" })]
+            );
+            return res.json({ action_key: "pause_campaign", result: { campaign_id: row.id, external_ref: row.external_ref, validated: validation.status === "paused", event_id: ev.rows[0]?.event_id } });
+          }
+        }
+      } catch {
+        /* fallback to legacy business_entities if canonical tables missing or Meta fail */
+      }
+      await pool.query(
+        "UPDATE business_entities SET metadata_json = coalesce(metadata_json, '{}'::jsonb) || '{\"status\":\"paused\"}'::jsonb, updated_at = now() WHERE entity_id = $1",
+        [campaignId]
+      ).catch(() => {});
+      const ev = await pool.query(
+        "INSERT INTO business_events (event_type, from_entity_id, payload_json, source_system) VALUES ('campaign_paused', $1, $2, 'control_plane') RETURNING event_id",
+        [campaignId, JSON.stringify({ action: "pause_campaign", approved_by: body.approved_by ?? null })]
+      );
+      return res.json({ action_key: "pause_campaign", result: { entity_id: campaignId, event_id: ev.rows[0]?.event_id } });
+    }
+    if (body.action_key === "pause_ad_set") {
+      const adSetId = params.ad_set_id;
+      if (!adSetId) return res.status(400).json({ error: "params.ad_set_id required for pause_ad_set" });
+      try {
+        const row = await pool.query<{ id: string; external_ref: string; scope_key: string; channel: string }>(
+          `SELECT s.id, s.external_ref, aa.scope_key, aa.channel FROM ad_sets s JOIN campaigns c ON c.id = s.campaign_id JOIN ad_accounts aa ON aa.id = c.ad_account_id WHERE s.id = $1::uuid`,
+          [adSetId]
+        ).then((r) => r.rows[0]);
+        if (row?.channel === "meta" && row.scope_key) {
+          const cred = await pool.query<{ access_token_encrypted: string }>(
+            "SELECT access_token_encrypted FROM ad_platform_credentials WHERE scope_key = $1 AND channel = 'meta' LIMIT 1",
+            [row.scope_key]
+          ).then((r) => r.rows[0]);
+          const token = cred?.access_token_encrypted ?? "";
+          const result = await metaPauseAdSet({ scope_key: row.scope_key, access_token: token }, row.external_ref);
+          if (result.success) {
+            await pool.query("UPDATE ad_sets SET status = 'paused', updated_at = now() WHERE id = $1", [row.id]);
+            const validation = await metaGetStatus({ scope_key: row.scope_key, access_token: token }, "ad_set", row.external_ref);
+            const ev = await pool.query(
+              "INSERT INTO business_events (event_type, from_entity_id, payload_json, source_system) VALUES ('ad_set_paused', NULL, $1, 'control_plane') RETURNING event_id",
+              [JSON.stringify({ action: "pause_ad_set", ad_set_id: row.id, external_ref: row.external_ref, approved_by: body.approved_by ?? null, validated: validation.status === "paused" })]
+            );
+            return res.json({ action_key: "pause_ad_set", result: { ad_set_id: row.id, external_ref: row.external_ref, validated: validation.status === "paused", event_id: ev.rows[0]?.event_id } });
+          }
+        }
+      } catch {
+        /* canonical tables missing or Meta fail */
+      }
+      return res.status(400).json({ error: "pause_ad_set requires canonical ad_sets and Meta credentials" });
+    }
+    if (body.action_key === "reduce_budget") {
+      const entityId = params.entity_id ?? params.campaign_id;
+      const amount = params.amount != null ? Number(params.amount) : null;
+      const percent = params.percent != null ? Number(params.percent) : null;
+      if (!entityId) return res.status(400).json({ error: "params.entity_id or params.campaign_id required for reduce_budget" });
+      const ev = await pool.query(
+        "INSERT INTO business_events (event_type, from_entity_id, payload_json, source_system) VALUES ('budget_reduced', $1, $2, 'control_plane') RETURNING event_id",
+        [entityId, JSON.stringify({ amount, percent, approved_by: body.approved_by ?? null })]
+      );
+      return res.json({ action_key: "reduce_budget", result: { entity_id: entityId, event_id: ev.rows[0]?.event_id } });
+    }
+    if (body.action_key === "open_incident") {
+      const summary = params.summary ?? params.title ?? "Incident from decision loop";
+      const mem = await pool.query(
+        `INSERT INTO memory_entries (memory_type, scope_type, scope_key, title, summary, confidence) VALUES ('incident', 'system', 'decision_loop', $1, $2, 0.7) RETURNING memory_id`,
+        [summary.slice(0, 255), summary]
+      );
+      return res.json({ action_key: "open_incident", result: { memory_id: mem.rows[0]?.memory_id } });
+    }
+    if (body.action_key === "klaviyo_template_create_or_update") {
+      const brand_profile_id = params.brand_profile_id;
+      const artifact_id = params.artifact_id;
+      if (!brand_profile_id) return res.status(400).json({ error: "params.brand_profile_id required" });
+      if (!artifact_id) return res.status(400).json({ error: "params.artifact_id required" });
+      const creds = await getKlaviyoCredentials(pool, brand_profile_id);
+      const sendReady = await buildSendReadyEmail(pool, {
+        artifact_id,
+        subject: "Email",
+        from_name: "Sender",
+        from_email: "noreply@example.com",
+        brand_profile_id,
+      });
+      const name = `Template ${artifact_id.slice(0, 8)}`;
+      const existing = await pool.query<{ klaviyo_template_id: string }>(
+        "SELECT klaviyo_template_id FROM klaviyo_template_sync WHERE brand_profile_id = $1 AND artifact_id = $2 LIMIT 1",
+        [brand_profile_id, artifact_id]
+      ).then((r) => r.rows[0]);
+      let templateId: string;
+      if (existing?.klaviyo_template_id) {
+        await updateTemplate({ apiKey: creds.api_key, templateId: existing.klaviyo_template_id, template: { name, html: sendReady.html } });
+        templateId = existing.klaviyo_template_id;
+      } else {
+        templateId = await createTemplate({ apiKey: creds.api_key, template: { name, html: sendReady.html } });
+        await pool.query(
+          "INSERT INTO klaviyo_template_sync (brand_profile_id, artifact_id, klaviyo_template_id, sync_state, last_synced_at, updated_at) VALUES ($1, $2, $3, 'synced', now(), now()) ON CONFLICT (brand_profile_id, artifact_id) DO UPDATE SET klaviyo_template_id = EXCLUDED.klaviyo_template_id, sync_state = 'synced', last_synced_at = now(), updated_at = now()",
+          [brand_profile_id, artifact_id, templateId]
+        );
+      }
+      return res.json({ action_key: "klaviyo_template_create_or_update", result: { template_id: templateId } });
+    }
+    if (body.action_key === "klaviyo_campaign_create_and_schedule") {
+      const initiative_id = params.initiative_id ?? undefined;
+      const run_id = params.run_id ?? undefined;
+      const artifact_id = params.artifact_id;
+      if (!artifact_id) return res.status(400).json({ error: "params.artifact_id required" });
+      if (!initiative_id && !run_id) return res.status(400).json({ error: "params.initiative_id or params.run_id required" });
+      const audience_list_ids = params.audience_list_ids ? (typeof params.audience_list_ids === "string" ? params.audience_list_ids.split(",") : [params.audience_list_ids as string]) : undefined;
+      const result = await runKlaviyoCampaignPipeline({
+        pool,
+        initiative_id,
+        run_id,
+        artifact_id,
+        schedule_at: params.schedule_at ?? undefined,
+        audience_list_ids,
+      });
+      return res.json({ action_key: "klaviyo_campaign_create_and_schedule", result });
+    }
+    if (body.action_key === "klaviyo_flow_create_draft") {
+      const brand_profile_id = params.brand_profile_id;
+      const flow_type = params.flow_type;
+      if (!brand_profile_id || !flow_type) return res.status(400).json({ error: "params.brand_profile_id and params.flow_type required" });
+      const template_ids = params.template_ids ? (typeof params.template_ids === "string" ? params.template_ids.split(",") : [params.template_ids as string]) : undefined;
+      const result = await runKlaviyoFlowPipeline({
+        pool,
+        brand_profile_id,
+        flow_type,
+        flow_name: params.flow_name ?? undefined,
+        template_ids,
+        delays_minutes: params.delays_minutes ? (typeof params.delays_minutes === "string" ? params.delays_minutes.split(",").map(Number) : [params.delays_minutes as number]) : undefined,
+      });
+      return res.json({ action_key: "klaviyo_flow_create_draft", result });
+    }
+    if (body.action_key === "klaviyo_flow_set_status") {
+      const flow_id = params.flow_id;
+      const status = params.status as "draft" | "manual" | "live";
+      const brand_profile_id = params.brand_profile_id;
+      if (!flow_id || !status || !["draft", "manual", "live"].includes(status)) return res.status(400).json({ error: "params.flow_id and params.status (draft|manual|live) required" });
+      const resolvedBrand = brand_profile_id ?? await pool.query<{ brand_profile_id: string }>("SELECT brand_profile_id FROM klaviyo_flow_sync WHERE klaviyo_flow_id = $1 LIMIT 1", [flow_id]).then((r) => r.rows[0]?.brand_profile_id);
+      if (!resolvedBrand) return res.status(400).json({ error: "params.brand_profile_id required or flow not in sync table" });
+      const result = await setKlaviyoFlowStatus({
+        pool,
+        brand_profile_id: resolvedBrand,
+        flow_id,
+        status,
+        approved_by: body.approved_by,
+      });
+      return res.json({ action_key: "klaviyo_flow_set_status", result });
+    }
+    return res.status(400).json({ error: "Unsupported action_key; use dedicated endpoint", action_key: body.action_key });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/kpi_registry — list KPIs (optional scope_key). */
+app.get("/v1/kpi_registry", async (req, res) => {
+  try {
+    const scopeKey = (req.query.scope_key as string) || null;
+    let q = "SELECT kpi_id, scope_key, name, unit, created_at FROM kpi_registry WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (scopeKey) { q += ` AND scope_key = $${i++}`; params.push(scopeKey); }
+    q += " ORDER BY scope_key, name";
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/kpi_registry — register a KPI. */
+app.post("/v1/kpi_registry", async (req, res) => {
+  try {
+    const body = req.body as { scope_key?: string; name?: string; unit?: string };
+    if (!body?.scope_key || !body?.name) return res.status(400).json({ error: "scope_key and name required" });
+    const r = await pool.query(
+      "INSERT INTO kpi_registry (scope_key, name, unit) VALUES ($1, $2, $3) RETURNING kpi_id, scope_key, name, unit, created_at",
+      [body.scope_key, body.name, body.unit ?? null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/kpi_registry/:id/values — ingest a KPI value (metrics ingestion stub). Body: value, optional at (ISO), metadata_json. */
+app.post("/v1/kpi_registry/:id/values", async (req, res) => {
+  try {
+    const kpiId = req.params.id;
+    const body = req.body as { value?: number; at?: string; metadata_json?: Record<string, unknown> };
+    if (typeof body?.value !== "number") return res.status(400).json({ error: "value (number) required" });
+    const at = body.at ? new Date(body.at) : new Date();
+    const r = await pool.query(
+      "INSERT INTO kpi_values (kpi_id, value, at, metadata_json) VALUES ($1, $2, $3, $4) RETURNING value_id, kpi_id, value, at, created_at",
+      [kpiId, body.value, at, body.metadata_json ? JSON.stringify(body.metadata_json) : null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    if ((e as { code?: string }).code === "23503") return res.status(404).json({ error: "KPI not found" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/kpi_registry/:id/values — list KPI values (query: limit, from, to). */
+app.get("/v1/kpi_registry/:id/values", async (req, res) => {
+  try {
+    const kpiId = req.params.id;
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const from = (req.query.from as string) || null;
+    const to = (req.query.to as string) || null;
+    let q = "SELECT value_id, kpi_id, value, at, metadata_json, created_at FROM kpi_values WHERE kpi_id = $1";
+    const params: unknown[] = [kpiId];
+    let i = 2;
+    if (from) { q += ` AND at >= $${i++}`; params.push(from); }
+    if (to) { q += ` AND at <= $${i++}`; params.push(to); }
+    q += ` ORDER BY at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/build_config_snapshots — list by service_id (optional limit). */
+app.get("/v1/build_config_snapshots", async (req, res) => {
+  try {
+    const serviceId = (req.query.service_id as string) || null;
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    let q = "SELECT snapshot_id, service_id, dependencies_json, externals_json, created_at FROM build_config_snapshots WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (serviceId) { q += ` AND service_id = $${i++}`; params.push(serviceId); }
+    q += ` ORDER BY created_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/build_config_snapshots — create snapshot (service_id, dependencies_json, externals_json). */
+app.post("/v1/build_config_snapshots", async (req, res) => {
+  try {
+    const body = req.body as { service_id?: string; dependencies_json?: string[]; externals_json?: string[] };
+    if (!body?.service_id) return res.status(400).json({ error: "service_id required" });
+    const r = await pool.query(
+      "INSERT INTO build_config_snapshots (service_id, dependencies_json, externals_json) VALUES ($1, $2, $3) RETURNING snapshot_id, service_id, dependencies_json, externals_json, created_at",
+      [body.service_id, body.dependencies_json ? JSON.stringify(body.dependencies_json) : null, body.externals_json ? JSON.stringify(body.externals_json) : null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/business_entity_types — list canonical entity types (Part L.1). */
+app.get("/v1/business_entity_types", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT entity_type_key, label, created_at FROM business_entity_types ORDER BY entity_type_key");
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/business_entities — list business entities (optional entity_type_key, scope_key). */
+app.get("/v1/business_entities", async (req, res) => {
+  try {
+    const typeKey = (req.query.entity_type_key as string) || null;
+    const scopeKey = (req.query.scope_key as string) || null;
+    let q = "SELECT entity_id, entity_type_key, scope_key, external_ref, metadata_json, created_at, updated_at FROM business_entities WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (typeKey) { q += ` AND entity_type_key = $${i++}`; params.push(typeKey); }
+    if (scopeKey) { q += ` AND scope_key = $${i++}`; params.push(scopeKey); }
+    q += " ORDER BY entity_type_key, created_at DESC";
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/business_entities — create a business entity (Part L.1). */
+app.post("/v1/business_entities", async (req, res) => {
+  try {
+    const body = req.body as { entity_type_key?: string; scope_key?: string; external_ref?: string; metadata_json?: Record<string, unknown> };
+    if (!body?.entity_type_key) return res.status(400).json({ error: "entity_type_key required" });
+    const r = await pool.query(
+      "INSERT INTO business_entities (entity_type_key, scope_key, external_ref, metadata_json) VALUES ($1, $2, $3, $4) RETURNING entity_id, entity_type_key, scope_key, external_ref, metadata_json, created_at, updated_at",
+      [body.entity_type_key, body.scope_key ?? null, body.external_ref ?? null, body.metadata_json ? JSON.stringify(body.metadata_json) : null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/source_mappings — list source mappings (optional source_system, canonical_entity_type, canonical_entity_id). */
+app.get("/v1/source_mappings", async (req, res) => {
+  try {
+    const sourceSystem = (req.query.source_system as string) || null;
+    const entityType = (req.query.canonical_entity_type as string) || null;
+    const entityId = (req.query.canonical_entity_id as string) || null;
+    let q = "SELECT mapping_id, source_system, external_id, canonical_entity_type, canonical_entity_id, metadata_json, created_at FROM source_mappings WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (sourceSystem) { q += ` AND source_system = $${i++}`; params.push(sourceSystem); }
+    if (entityType) { q += ` AND canonical_entity_type = $${i++}`; params.push(entityType); }
+    if (entityId) { q += ` AND canonical_entity_id = $${i++}`; params.push(entityId); }
+    q += " ORDER BY created_at DESC";
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/source_mappings — create source mapping (source_system, external_id, canonical_entity_type, canonical_entity_id). */
+app.post("/v1/source_mappings", async (req, res) => {
+  try {
+    const body = req.body as { source_system?: string; external_id?: string; canonical_entity_type?: string; canonical_entity_id?: string; metadata_json?: Record<string, unknown> };
+    if (!body?.source_system || !body?.external_id || !body?.canonical_entity_type || !body?.canonical_entity_id) {
+      return res.status(400).json({ error: "source_system, external_id, canonical_entity_type, canonical_entity_id required" });
+    }
+    const r = await pool.query(
+      "INSERT INTO source_mappings (source_system, external_id, canonical_entity_type, canonical_entity_id, metadata_json) VALUES ($1, $2, $3, $4, $5) RETURNING mapping_id, source_system, external_id, canonical_entity_type, canonical_entity_id, metadata_json, created_at",
+      [body.source_system, body.external_id, body.canonical_entity_type, body.canonical_entity_id, body.metadata_json ? JSON.stringify(body.metadata_json) : null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    if ((e as { code?: string }).code === "23503") return res.status(400).json({ error: "canonical_entity_type or canonical_entity_id not found" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/business_events — list business events (optional event_type, from_entity_id, to_entity_id, limit). */
+app.get("/v1/business_events", async (req, res) => {
+  try {
+    const eventType = (req.query.event_type as string) || null;
+    const fromId = (req.query.from_entity_id as string) || null;
+    const toId = (req.query.to_entity_id as string) || null;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    let q = "SELECT event_id, event_type, from_entity_id, to_entity_id, payload_json, at, source_system, created_at FROM business_events WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (eventType) { q += ` AND event_type = $${i++}`; params.push(eventType); }
+    if (fromId) { q += ` AND from_entity_id = $${i++}`; params.push(fromId); }
+    if (toId) { q += ` AND to_entity_id = $${i++}`; params.push(toId); }
+    q += ` ORDER BY at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/business_events — create business event (event_type, optional from_entity_id, to_entity_id, payload_json, source_system). */
+app.post("/v1/business_events", async (req, res) => {
+  try {
+    const body = req.body as { event_type?: string; from_entity_id?: string; to_entity_id?: string; payload_json?: unknown; source_system?: string };
+    if (!body?.event_type) return res.status(400).json({ error: "event_type required" });
+    const r = await pool.query(
+      "INSERT INTO business_events (event_type, from_entity_id, to_entity_id, payload_json, source_system) VALUES ($1, $2, $3, $4, $5) RETURNING event_id, event_type, from_entity_id, to_entity_id, payload_json, at, source_system, created_at",
+      [body.event_type, body.from_entity_id ?? null, body.to_entity_id ?? null, body.payload_json ? JSON.stringify(body.payload_json) : null, body.source_system ?? null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    if ((e as { code?: string }).code === "23503") return res.status(400).json({ error: "from_entity_id or to_entity_id not found" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/v1_slice/ingest — ingest campaign/lead/revenue event; resolve or create entity, create business_event (v1 slice adapter). */
+app.post("/v1/v1_slice/ingest", async (req, res) => {
+  try {
+    const body = req.body as {
+      event_type?: string;
+      source_system?: string;
+      entity_type_key?: string;
+      external_id?: string;
+      payload_json?: Record<string, unknown>;
+      from_external_id?: string;
+      from_entity_type_key?: string;
+      to_external_id?: string;
+      to_entity_type_key?: string;
+    };
+    if (!body?.event_type || !body?.source_system || !body?.entity_type_key || !body?.external_id) {
+      return res.status(400).json({ error: "event_type, source_system, entity_type_key, external_id required" });
+    }
+    const result = await ingestV1SliceEvent(pool, {
+      event_type: body.event_type,
+      source_system: body.source_system,
+      entity_type_key: body.entity_type_key,
+      external_id: body.external_id,
+      payload_json: body.payload_json,
+      from_external_id: body.from_external_id,
+      from_entity_type_key: body.from_entity_type_key,
+      to_external_id: body.to_external_id,
+      to_entity_type_key: body.to_entity_type_key,
+    });
+    res.status(201).json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/v1_slice/funnel — funnel summary: campaign → lead → revenue counts and optional revenue total. */
+app.get("/v1/v1_slice/funnel", async (_req, res) => {
+  try {
+    const summary = await getV1SliceFunnel(pool);
+    res.json(summary);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/schema_drift — rpc_schema_drift. Query: environment_a (default current), environment_b (stored snapshot env). Returns current schema and optional diff vs stored snapshot. */
+app.get("/v1/schema_drift", async (req, res) => {
+  try {
+    const environment_a = (req.query.environment_a as string) || "current";
+    const environment_b = (req.query.environment_b as string) || null;
+    const result = await getSchemaDrift(pool, environment_a, environment_b);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/schema_snapshots/capture — store current schema as snapshot for an environment (for schema_drift comparison). Body: environment. */
+app.post("/v1/schema_snapshots/capture", async (req, res) => {
+  try {
+    const body = req.body as { environment?: string };
+    if (!body?.environment) return res.status(400).json({ error: "environment required" });
+    const shape = await getCurrentSchemaShape(pool);
+    const r = await pool.query(
+      "INSERT INTO schema_snapshots (environment, schema_json) VALUES ($1, $2) RETURNING schema_snapshot_id, environment, created_at",
+      [body.environment, JSON.stringify(shape)]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/contract_breakage_scan — rpc_contract_breakage_scan. Query: scope_key (optional). Returns plan_nodes that reference input_schema_ref or output_schema_ref (contracts at risk if schema changes). */
+app.get("/v1/contract_breakage_scan", async (req, res) => {
+  try {
+    const scopeKey = (req.query.scope_key as string) || null;
+    let q = `SELECT pn.id AS plan_node_id, pn.plan_id, pn.node_key, pn.job_type, pn.input_schema_ref, pn.output_schema_ref
+             FROM plan_nodes pn WHERE (pn.input_schema_ref IS NOT NULL OR pn.output_schema_ref IS NOT NULL)`;
+    const params: unknown[] = [];
+    if (scopeKey) {
+      q += ` AND pn.plan_id IN (SELECT id FROM plans WHERE initiative_id IN (SELECT id FROM initiatives WHERE intent_type = $1))`;
+      params.push(scopeKey);
+    }
+    q += " ORDER BY pn.plan_id, pn.node_key";
+    const r = await pool.query(q, params);
+    res.json({ scope_key: scopeKey, contracts: r.rows, message: "Plan nodes with schema refs; review after schema changes." });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/change_events/:id/backfill_plan — rpc_generate_backfill_plan. Returns suggested backfill steps from change_event and optional graph_impacts. */
+app.get("/v1/change_events/:id/backfill_plan", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const ev = await pool.query(
+      "SELECT change_event_id, source_type, change_class, summary FROM change_events WHERE change_event_id = $1",
+      [id]
+    );
+    if (ev.rows.length === 0) return res.status(404).json({ error: "Change event not found" });
+    const event = ev.rows[0];
+    const steps: { action: string; detail: string }[] = [];
+    if (event.source_type === "migration" || event.change_class === "schema") {
+      steps.push({ action: "review_schema", detail: "Run GET /v1/migration_audit and compare to pre-migration snapshot." });
+      steps.push({ action: "backfill_if_not_null", detail: "If migration added NOT NULL columns without default, backfill existing rows before deploy." });
+    }
+    const impacts = await pool.query(
+      "SELECT plan_id, plan_node_id, impact_type, reason FROM graph_impacts WHERE change_event_id = $1 LIMIT 50",
+      [id]
+    );
+    if (impacts.rows.length > 0) {
+      steps.push({
+        action: "revalidate_affected",
+        detail: `Re-run or validate ${impacts.rows.length} affected plan node(s) after backfill.`,
+      });
+    }
+    res.json({ change_event_id: id, steps, summary: event.summary });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/validation_contracts — list validation contracts (Part L.5). */
+app.get("/v1/validation_contracts", async (req, res) => {
+  try {
+    const actionKey = (req.query.action_key as string) || null;
+    let q = "SELECT id, action_key, validation_strategy, success_criteria_json, rollback_strategy, rollback_trigger_conditions FROM validation_contracts WHERE 1=1";
+    const params: unknown[] = [];
+    if (actionKey) { q += " AND action_key = $1"; params.push(actionKey); }
+    q += " ORDER BY action_key";
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/policies/evaluate — evaluate whether an action is allowed / requires approval (Part L.4). */
+app.post("/v1/policies/evaluate", async (req, res) => {
+  try {
+    const body = req.body as { action_key?: string; target_type?: string; risk_level?: string; context?: Record<string, unknown> };
+    if (!body?.action_key) return res.status(400).json({ error: "action_key required" });
+    const result = await evaluatePolicy(pool, {
+      action_key: body.action_key,
+      target_type: body.target_type ?? null,
+      risk_level: body.risk_level ?? null,
+      context: body.context,
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/change_events — create a change event (migration, code_commit, config_edit). */
+app.post("/v1/change_events", async (req, res) => {
+  try {
+    const body = req.body as { source_type?: string; source_ref?: string; change_class?: string; summary?: string; diff_artifact_id?: string };
+    if (!body?.source_type || !body?.change_class) {
+      return res.status(400).json({ error: "source_type and change_class required" });
+    }
+    const changeEventId = await createChangeEvent(pool, {
+      source_type: body.source_type,
+      source_ref: body.source_ref ?? null,
+      change_class: body.change_class,
+      summary: body.summary ?? null,
+      diff_artifact_id: body.diff_artifact_id ?? null,
+    });
+    res.status(201).json({ change_event_id: changeEventId });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/change_events — list change events (optional limit/offset). */
+app.get("/v1/change_events", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const offset = Number(req.query.offset) || 0;
+    const r = await pool.query(
+      `SELECT change_event_id, source_type, source_ref, change_class, summary, diff_artifact_id, created_at
+       FROM change_events ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    res.json({ items: r.rows, limit, offset });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/change_events/:id — single change event. */
+app.get("/v1/change_events/:id", async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT change_event_id, source_type, source_ref, change_class, summary, diff_artifact_id, created_at
+       FROM change_events WHERE change_event_id = $1`,
+      [req.params.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Change event not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/change_events/:id/impacts — list graph_impacts for a change event. */
+app.get("/v1/change_events/:id/impacts", async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT impact_id, change_event_id, run_id, plan_id, plan_node_id, artifact_id, impact_type, reason, created_at
+       FROM graph_impacts WHERE change_event_id = $1 ORDER BY impact_type, plan_node_id`,
+      [req.params.id]
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/change_events/:id/impact — compute and store graph_impacts for plan_id or run_id. */
+app.post("/v1/change_events/:id/impact", async (req, res) => {
+  try {
+    const changeEventId = req.params.id;
+    const body = req.body as { plan_id?: string; run_id?: string; replay_from_node_id?: string };
+    const planId = body?.plan_id;
+    const runId = body?.run_id;
+    if (!planId && !runId) {
+      return res.status(400).json({ error: "plan_id or run_id required" });
+    }
+    const opts = { replay_from_node_id: body?.replay_from_node_id ?? undefined };
+    const impacts = runId
+      ? await computeGraphImpactsForRun(pool, changeEventId, runId, opts)
+      : await computeGraphImpactsForPlan(pool, changeEventId, planId!, { ...opts });
+    res.json({ change_event_id: changeEventId, impacts });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -1156,6 +2696,144 @@ app.post("/v1/runs", async (req, res) => {
   res.status(501).json({ error: "Use scheduler.createRun via internal API; not yet exposed with validation" });
 });
 
+/** POST /v1/pipelines/draft — generate a pipeline draft from prompt or intent_type (prompt-built pipelines). Uses pattern override if saved. Returns draft + lint. */
+app.post("/v1/pipelines/draft", async (req, res) => {
+  try {
+    const body = (req.body as {
+      prompt?: string;
+      intent_type?: string;
+      inputs?: Record<string, unknown>;
+      compose_with?: string[];
+    }) ?? {};
+    const { generatePipelineDraft, classifyIntent } = await import("./prompt-to-pipeline.js");
+    const { lintPipelineDraft } = await import("./pipeline-lint.js");
+    const { getPatternOverride } = await import("./pipeline-pattern-overrides.js");
+    const intentType = body.intent_type ?? (body.prompt ? classifyIntent(body.prompt) : "software");
+    const override = await getPatternOverride(pool, intentType).catch(() => null);
+    const draft = generatePipelineDraft({
+      prompt: body.prompt,
+      intent_type: body.intent_type,
+      inputs: body.inputs,
+      patternOverride: override ?? undefined,
+      composeWith: body.compose_with,
+    });
+    const lint = lintPipelineDraft(draft);
+    res.json({ draft, lint });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/pipelines/drafts — save a draft (V1.5). Body: { draft, name? }. Returns { id, draft_hash }. */
+app.post("/v1/pipelines/drafts", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as { draft: PipelineDraftLike; name?: string };
+    if (!body?.draft?.nodes || !Array.isArray(body.draft.nodes) || !body.draft.edges || !Array.isArray(body.draft.edges)) {
+      return res.status(400).json({ error: "Body must include draft with nodes and edges arrays." });
+    }
+    const { saveDraft } = await import("./pipeline-drafts-db.js");
+    const out = await saveDraft(pool, body.draft as import("./pipeline-draft.js").PipelineDraft, body.name);
+    res.status(201).json(out);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/pipelines/drafts — list saved drafts (V1.5). */
+app.get("/v1/pipelines/drafts", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const { listDrafts } = await import("./pipeline-drafts-db.js");
+    const items = await listDrafts(pool, limit);
+    res.json({ items });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/pipelines/drafts/:id — load a saved draft (V1.5). Returns draft + lint for UI. */
+app.get("/v1/pipelines/drafts/:id", async (req, res) => {
+  try {
+    const { getDraft } = await import("./pipeline-drafts-db.js");
+    const { lintPipelineDraft } = await import("./pipeline-lint.js");
+    const row = await getDraft(pool, req.params.id);
+    if (!row) return res.status(404).json({ error: "Draft not found" });
+    const lint = lintPipelineDraft(row.draft);
+    res.json({ draft: row.draft, name: row.name, lint });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/pipelines/templates — save draft as pattern override (V2). Body: { pattern_key, draft }. */
+app.post("/v1/pipelines/templates", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as { pattern_key: string; draft: { nodes: unknown[]; edges: unknown[]; requiredInputs?: string[] } };
+    if (!body?.pattern_key?.trim() || !body?.draft?.nodes || !Array.isArray(body.draft.nodes) || !body.draft.edges || !Array.isArray(body.draft.edges)) {
+      return res.status(400).json({ error: "Body must include pattern_key and draft with nodes and edges arrays." });
+    }
+    const { setPatternOverride } = await import("./pipeline-pattern-overrides.js");
+    await setPatternOverride(pool, body.pattern_key.trim(), {
+      nodes: body.draft.nodes as import("./pipeline-draft.js").PipelineDraftNode[],
+      edges: body.draft.edges as import("./pipeline-draft.js").PipelineDraftEdge[],
+      required_inputs: body.draft.requiredInputs ?? [],
+    });
+    res.status(201).json({ ok: true, pattern_key: body.pattern_key.trim() });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/pipelines/drafts/compose — merge two drafts or two pattern keys into one draft (V2). Body: { draft_ids?: [id1, id2], pattern_keys?: [key1, key2] }. */
+app.post("/v1/pipelines/drafts/compose", async (req, res) => {
+  try {
+    const body = req.body as { draft_ids?: string[]; pattern_keys?: string[] };
+    const { composePatterns, generatePipelineDraft } = await import("./prompt-to-pipeline.js");
+    const { lintPipelineDraft } = await import("./pipeline-lint.js");
+    const { getDraft } = await import("./pipeline-drafts-db.js");
+    const { getPattern } = await import("./pipeline-patterns.js");
+
+    if (body.draft_ids && body.draft_ids.length >= 2) {
+      const drafts = await Promise.all(body.draft_ids.slice(0, 2).map((id) => getDraft(pool, id)));
+      if (drafts.some((d) => !d)) return res.status(404).json({ error: "One or more draft IDs not found" });
+      const shapes = (drafts as { draft: import("./pipeline-draft.js").PipelineDraft }[]).map((d) => ({ nodes: d.draft.nodes, edges: d.draft.edges }));
+      const composed = composePatterns(shapes);
+      const draft: import("./pipeline-draft.js").PipelineDraft = {
+        intentType: "composed",
+        summary: `Composed from ${body.draft_ids.length} drafts`,
+        inputs: {},
+        nodes: composed.nodes,
+        edges: composed.edges,
+        modulesUsed: (drafts as { draft: import("./pipeline-draft.js").PipelineDraft }[]).flatMap((d) => d.draft.modulesUsed ?? [d.draft.intentType]),
+      };
+      const lint = lintPipelineDraft(draft);
+      return res.json({ draft, lint });
+    }
+    if (body.pattern_keys && body.pattern_keys.length >= 2) {
+      const patterns = body.pattern_keys.slice(0, 2).map((k) => getPattern(k)).filter(Boolean);
+      if (patterns.length < 2) return res.status(400).json({ error: "At least two valid pattern_keys required" });
+      const composed = composePatterns(patterns.map((p) => ({ nodes: p!.nodes, edges: p!.edges })));
+      const draft = generatePipelineDraft({
+        intent_type: "composed",
+        patternOverride: { nodes: composed.nodes, edges: composed.edges, required_inputs: [] },
+        composeWith: [],
+      });
+      draft.modulesUsed = body.pattern_keys.slice(0, 2);
+      const lint = lintPipelineDraft(draft);
+      return res.json({ draft, lint });
+    }
+    return res.status(400).json({ error: "Body must include draft_ids (array of 2) or pattern_keys (array of 2)" });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+type PipelineDraftLike = import("./pipeline-draft.js").PipelineDraft;
+
 /** POST /v1/initiatives/:id/plan — create a plan via plan compiler (idempotent by plan_hash) */
 app.post("/v1/initiatives/:id/plan", async (req, res) => {
   try {
@@ -1169,6 +2847,34 @@ app.post("/v1/initiatives/:id/plan", async (req, res) => {
     );
     const nodeCount = compiled.nodeIds.size;
     res.status(201).json({ id: compiled.planId, initiative_id: initiativeId, status: "draft", nodes: nodeCount, plan_hash: compiled.planHash });
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (msg === "Initiative not found") return res.status(404).json({ error: msg });
+    res.status(500).json({ error: msg });
+  }
+});
+
+/** POST /v1/initiatives/:id/plan/from-draft — compile a plan from a pipeline draft (prompt-built pipelines). Body: { draft }. */
+app.post("/v1/initiatives/:id/plan/from-draft", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const initiativeId = req.params.id;
+    const body = req.body as { draft: { nodes: { node_key: string; job_type: string; node_type?: string; agent_role?: string; consumes_artifact_types?: string[] }[]; edges: { from_key: string; to_key: string; condition?: string }[]; summary?: string }; force?: boolean };
+    if (!body?.draft?.nodes || !Array.isArray(body.draft.nodes) || !body.draft.edges || !Array.isArray(body.draft.edges)) {
+      return res.status(400).json({ error: "Body must include draft with nodes and edges arrays." });
+    }
+    const { compilePlanFromDraft } = await import("./plan-compiler.js");
+    const compiled = await withTransaction((client) =>
+      compilePlanFromDraft(client, initiativeId, body.draft as Parameters<typeof compilePlanFromDraft>[2], { force: body.force })
+    );
+    res.status(201).json({
+      id: compiled.planId,
+      initiative_id: initiativeId,
+      status: "draft",
+      nodes: compiled.nodeIds.size,
+      plan_hash: compiled.planHash,
+    });
   } catch (e) {
     const msg = (e as Error).message;
     if (msg === "Initiative not found") return res.status(404).json({ error: msg });
@@ -1234,12 +2940,21 @@ app.post("/v1/plans/:id/start", async (req, res) => {
   }
 });
 
-/** POST /v1/runs/:id/rerun — create a new run with the same plan (Operator+) */
+/** POST /v1/runs/:id/rerun — create a new run with the same plan (Operator+). Policy-gated. */
 app.post("/v1/runs/:id/rerun", async (req, res) => {
   try {
     const role = getRole(req);
     if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
     const runId = req.params.id;
+    const body = req.body as { approved_by?: string };
+    const actionRow = await pool.query<{ risk_level: string }>("SELECT risk_level FROM action_registry WHERE action_key = $1", ["rerun_pipeline"]).then((r) => r.rows[0]);
+    const policyResult = await evaluatePolicy(pool, { action_key: "rerun_pipeline", target_type: "run", risk_level: actionRow?.risk_level ?? "low", context: { run_id: runId } });
+    if (!policyResult.allowed) {
+      return res.status(403).json({ error: "Policy denies this action", reason: policyResult.reason });
+    }
+    if (policyResult.require_approval && !body?.approved_by) {
+      return res.status(403).json({ error: "Approval required for rerun", reason: policyResult.reason, require_approval: true });
+    }
     let r = await pool.query(
       "SELECT plan_id, release_id, policy_version, environment, cohort, llm_source FROM runs WHERE id = $1",
       [runId]
@@ -1554,8 +3269,8 @@ app.get("/v1/artifacts/:id/content", async (req, res) => {
   try {
     const r = await pool.query("SELECT id, artifact_type, metadata_json, uri FROM artifacts WHERE id = $1", [req.params.id]);
     if (r.rows.length === 0) return res.status(404).send("Artifact not found");
-    const row = r.rows[0] as { artifact_type: string; metadata_json: { content?: string } | null; uri?: string };
-    let content: string | null = row.metadata_json?.content ?? null;
+    const row = r.rows[0] as { artifact_type: string; metadata_json: { content?: string; index_html?: string } | null; uri?: string };
+    let content: string | null = row.metadata_json?.content ?? row.metadata_json?.index_html ?? null;
     if (content == null && row.uri?.startsWith("supabase-storage://")) {
       try {
         const { downloadArtifact } = await import("./artifact-storage.js");
@@ -1563,7 +3278,7 @@ app.get("/v1/artifacts/:id/content", async (req, res) => {
       } catch { /* storage not configured */ }
     }
     if (content == null) return res.status(404).send("Artifact content not available");
-    const isHtml = row.artifact_type === "landing_page" || row.artifact_type === "email_template";
+    const isHtml = row.artifact_type === "landing_page" || row.artifact_type === "email_template" || row.artifact_type === "launch_artifact";
     res.setHeader("Content-Type", isHtml ? "text/html; charset=utf-8" : "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=60");
     res.send(content);
@@ -1656,6 +3371,358 @@ app.get("/v1/artifacts", async (req, res) => {
     const q = `SELECT * FROM artifacts WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}`;
     const r = await pool.query(q, params);
     res.json({ items: r.rows, limit, offset });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** ————— Launch Kernel V1 ————— */
+
+/** POST /v1/build_specs — create BuildSpec (initiative_id, spec). Optional body.extended=true for extended BuildSpec. */
+app.post("/v1/build_specs", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as { initiative_id?: string; spec?: unknown; extended?: boolean };
+    if (!body?.initiative_id) return res.status(400).json({ error: "initiative_id required" });
+    const { validateBuildSpecV1, validateBuildSpecExtended } = await import("./launch/build-spec.js");
+    const validated = body.extended ? validateBuildSpecExtended(body.spec) : validateBuildSpecV1(body.spec);
+    if (!validated.ok) return res.status(400).json({ error: validated.reason });
+    const specToStore = validated.spec;
+    const { createBuildSpec, createLaunch } = await import("./launch/launch-db.js");
+    const initiativeId = body.initiative_id;
+    const { build_spec_id: buildSpecId, launch_id: launchId } = await withTransaction(async (client) => {
+      const specId = await createBuildSpec(client, initiativeId, specToStore as import("./launch/build-spec.js").BuildSpecV1);
+      const lId = await createLaunch(client, initiativeId, specId);
+      return { build_spec_id: specId, launch_id: lId };
+    });
+    const launch = await pool.query("SELECT * FROM launches WHERE id = $1", [launchId]);
+    res.status(201).json({ build_spec_id: buildSpecId, launch_id: launchId, launch: launch.rows[0] });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/build_specs/from_strategy — create BuildSpec from strategy doc (markdown or YAML). Body: initiative_id, strategy_doc. */
+app.post("/v1/build_specs/from_strategy", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as { initiative_id?: string; strategy_doc?: string };
+    if (!body?.initiative_id || typeof body?.strategy_doc !== "string") return res.status(400).json({ error: "initiative_id and strategy_doc required" });
+    const { parseStrategyDoc } = await import("./launch/strategy-doc-parser.js");
+    const parsed = parseStrategyDoc(body.strategy_doc);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.reason });
+    const { createBuildSpec, createLaunch } = await import("./launch/launch-db.js");
+    const initiativeId = body.initiative_id;
+    const { build_spec_id: buildSpecId, launch_id: launchId } = await withTransaction(async (client) => {
+      const specId = await createBuildSpec(client, initiativeId, parsed.spec);
+      const lId = await createLaunch(client, initiativeId, specId);
+      return { build_spec_id: specId, launch_id: lId };
+    });
+    const launch = await pool.query("SELECT * FROM launches WHERE id = $1", [launchId]);
+    res.status(201).json({ build_spec_id: buildSpecId, launch_id: launchId, launch: launch.rows[0] });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/build_specs — list by initiative_id. */
+app.get("/v1/build_specs", async (req, res) => {
+  try {
+    const initiative_id = req.query.initiative_id as string | undefined;
+    if (!initiative_id) return res.status(400).json({ error: "initiative_id required" });
+    const r = await pool.query("SELECT * FROM build_specs WHERE initiative_id = $1 ORDER BY created_at DESC", [initiative_id]);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/build_specs/:id — single build spec. */
+app.get("/v1/build_specs/:id", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT * FROM build_specs WHERE id = $1", [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Build spec not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/launches — list launches; optional initiative_id to filter. */
+app.get("/v1/launches", async (req, res) => {
+  try {
+    const initiative_id = req.query.initiative_id as string | undefined;
+    const limit = Math.min(Number(req.query.limit) || 100, 200);
+    const r = initiative_id
+      ? await pool.query("SELECT * FROM launches WHERE initiative_id = $1 ORDER BY created_at DESC LIMIT $2", [initiative_id, limit])
+      : await pool.query("SELECT * FROM launches ORDER BY created_at DESC LIMIT $1", [limit]);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/launches/:id — launch state. */
+app.get("/v1/launches/:id", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT * FROM launches WHERE id = $1", [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: "Launch not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/launches/actions/:action — execute launch action (deploy.preview, domain.attach_subdomain, etc.). Body: action inputs. */
+app.post("/v1/launches/actions/:action", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const action = req.params.action as string;
+    const { LAUNCH_ACTIONS } = await import("./launch/action-contract.js");
+    if (!LAUNCH_ACTIONS.includes(action as never)) return res.status(400).json({ error: "Invalid action" });
+    const inputs = req.body && typeof req.body === "object" ? req.body : {};
+    const { executeLaunchAction } = await import("./launch/action-registry.js");
+    const result = await withTransaction((client) => executeLaunchAction(client, action as never, inputs));
+    if (!result.ok) {
+      const status = result.failure_class === "missing_env" ? 400 : 500;
+      return res.status(status).json({ error: result.error, failure_class: result.failure_class });
+    }
+    res.json(result.result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/launches/:id/validate — run launch validator (technical + content). */
+app.post("/v1/launches/:id/validate", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const launchId = req.params.id;
+    const launchRow = await pool.query("SELECT * FROM launches WHERE id = $1", [launchId]);
+    if (launchRow.rows.length === 0) return res.status(404).json({ error: "Launch not found" });
+    const launch = launchRow.rows[0] as { deploy_url?: string; domain?: string; build_spec_id?: string | null; artifact_id?: string | null };
+    const deployUrl = launch.deploy_url;
+    if (!deployUrl) return res.status(400).json({ error: "Launch has no deploy_url" });
+    const buildSpecId = launch.build_spec_id;
+    if (!buildSpecId) return res.status(400).json({ error: "Launch has no build_spec_id" });
+    const buildSpecRow = await pool.query("SELECT spec_json FROM build_specs WHERE id = $1", [buildSpecId]);
+    if (buildSpecRow.rows.length === 0) return res.status(400).json({ error: "BuildSpec not found" });
+    const buildSpec = buildSpecRow.rows[0].spec_json as import("./launch/build-spec.js").BuildSpecV1;
+    let html = "";
+    if (launch.artifact_id) {
+      const art = await pool.query("SELECT metadata_json FROM artifacts WHERE id = $1", [launch.artifact_id]);
+      if (art.rows[0]?.metadata_json && typeof art.rows[0].metadata_json === "object") {
+        const meta = art.rows[0].metadata_json as Record<string, unknown>;
+        html = (meta.index_html as string) ?? (meta.content as string) ?? "";
+      }
+    }
+    const { runLaunchValidation } = await import("./launch/launch-validator.js");
+    const validation = await withTransaction((client) =>
+      runLaunchValidation(client, launchId, deployUrl, buildSpec, html, launch.domain)
+    );
+    res.json(validation);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/klaviyo/templates — create or update Klaviyo template from artifact. Body: brand_profile_id, artifact_id (or html + name). */
+app.post("/v1/klaviyo/templates", async (req, res) => {
+  try {
+    const body = req.body as { brand_profile_id?: string; artifact_id?: string; html?: string; name?: string };
+    if (!body?.brand_profile_id) return res.status(400).json({ error: "brand_profile_id required" });
+    const creds = await getKlaviyoCredentials(pool, body.brand_profile_id);
+    let html: string;
+    let name: string;
+    let artifact_id: string | null = null;
+    if (body.artifact_id) {
+      const sendReady = await buildSendReadyEmail(pool, {
+        artifact_id: body.artifact_id,
+        subject: "Email",
+        from_name: "Sender",
+        from_email: "noreply@example.com",
+        brand_profile_id: body.brand_profile_id,
+      });
+      html = sendReady.html;
+      name = `Template ${body.artifact_id.slice(0, 8)}`;
+      artifact_id = body.artifact_id;
+    } else if (body.html && body.name) {
+      html = body.html;
+      name = body.name;
+    } else {
+      return res.status(400).json({ error: "artifact_id or (html + name) required" });
+    }
+    const existing = await pool.query<{ klaviyo_template_id: string }>(
+      "SELECT klaviyo_template_id FROM klaviyo_template_sync WHERE brand_profile_id = $1 AND artifact_id = $2 LIMIT 1",
+      [body.brand_profile_id, artifact_id ?? null]
+    ).then((r) => r.rows[0]);
+    let templateId: string;
+    if (existing?.klaviyo_template_id) {
+      await updateTemplate({ apiKey: creds.api_key, templateId: existing.klaviyo_template_id, template: { name, html } });
+      templateId = existing.klaviyo_template_id;
+    } else {
+      templateId = await createTemplate({ apiKey: creds.api_key, template: { name, html } });
+      if (artifact_id) {
+        await pool.query(
+          "INSERT INTO klaviyo_template_sync (brand_profile_id, artifact_id, klaviyo_template_id, sync_state, last_synced_at, updated_at) VALUES ($1, $2, $3, 'synced', now(), now()) ON CONFLICT (brand_profile_id, artifact_id) DO UPDATE SET klaviyo_template_id = EXCLUDED.klaviyo_template_id, sync_state = 'synced', last_synced_at = now(), updated_at = now()",
+          [body.brand_profile_id, artifact_id, templateId]
+        );
+      }
+    }
+    res.status(201).json({ template_id: templateId });
+  } catch (e) {
+    const msg = String((e as Error).message);
+    if (msg.includes("not configured") || msg.includes("not found")) return res.status(404).json({ error: msg });
+    res.status(500).json({ error: msg });
+  }
+});
+
+/** GET /v1/klaviyo/templates — list template sync status (brand_profile_id optional filter). */
+app.get("/v1/klaviyo/templates", async (req, res) => {
+  try {
+    const brand_profile_id = req.query.brand_profile_id as string | undefined;
+    let q = "SELECT id, brand_profile_id, artifact_id, klaviyo_template_id, sync_state, last_synced_at, last_error, created_at FROM klaviyo_template_sync WHERE 1=1";
+    const params: unknown[] = [];
+    if (brand_profile_id) { q += " AND brand_profile_id = $1"; params.push(brand_profile_id); }
+    q += " ORDER BY created_at DESC LIMIT 100";
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/klaviyo/campaigns/push — run campaign pipeline: artifact → template → campaign → optional schedule. Body: initiative_id or (run_id + artifact_id), optional schedule_at, optional audience_list_ids. */
+app.post("/v1/klaviyo/campaigns/push", async (req, res) => {
+  try {
+    const body = req.body as { initiative_id?: string; run_id?: string; artifact_id?: string; schedule_at?: string; audience_list_ids?: string[] };
+    const initiative_id = body?.initiative_id;
+    const run_id = body?.run_id;
+    const artifact_id = body?.artifact_id;
+    if (!artifact_id) return res.status(400).json({ error: "artifact_id required" });
+    if (!initiative_id && !run_id) return res.status(400).json({ error: "initiative_id or run_id required" });
+    const result = await runKlaviyoCampaignPipeline({
+      pool,
+      initiative_id,
+      run_id,
+      artifact_id,
+      schedule_at: body?.schedule_at,
+      audience_list_ids: body?.audience_list_ids,
+    });
+    res.status(201).json(result);
+  } catch (e) {
+    const msg = String((e as Error).message);
+    if (msg.includes("not configured") || msg.includes("not found")) return res.status(404).json({ error: msg });
+    if (msg.includes("Audience required")) return res.status(400).json({ error: msg });
+    res.status(500).json({ error: msg });
+  }
+});
+
+/** GET /v1/klaviyo/campaigns — list campaign push status (brand_profile_id optional). */
+app.get("/v1/klaviyo/campaigns", async (req, res) => {
+  try {
+    const brand_profile_id = req.query.brand_profile_id as string | undefined;
+    let q = "SELECT id, initiative_id, run_id, artifact_id, brand_profile_id, klaviyo_campaign_id, send_job_id, sync_state, scheduled_at, last_synced_at, last_error, created_at FROM klaviyo_sent_campaigns WHERE 1=1";
+    const params: unknown[] = [];
+    if (brand_profile_id) { q += " AND brand_profile_id = $1"; params.push(brand_profile_id); }
+    q += " ORDER BY created_at DESC LIMIT 100";
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/klaviyo/flows — create flow draft. Body: brand_profile_id, flow_type, optional flow_name, template_ids, delays_minutes. */
+app.post("/v1/klaviyo/flows", async (req, res) => {
+  try {
+    const body = req.body as { brand_profile_id?: string; flow_type?: string; flow_name?: string; template_ids?: string[]; delays_minutes?: number[] };
+    if (!body?.brand_profile_id || !body?.flow_type) return res.status(400).json({ error: "brand_profile_id and flow_type required" });
+    const result = await runKlaviyoFlowPipeline({
+      pool,
+      brand_profile_id: body.brand_profile_id,
+      flow_type: body.flow_type,
+      flow_name: body.flow_name,
+      template_ids: body.template_ids,
+      delays_minutes: body.delays_minutes,
+    });
+    res.status(201).json(result);
+  } catch (e) {
+    const msg = String((e as Error).message);
+    if (msg.includes("not configured") || msg.includes("not found")) return res.status(404).json({ error: msg });
+    res.status(500).json({ error: msg });
+  }
+});
+
+/** PATCH /v1/klaviyo/flows/:id/status — set flow status (draft | manual | live). High-risk for live; approved_by recommended. */
+app.patch("/v1/klaviyo/flows/:id/status", async (req, res) => {
+  try {
+    const flowId = req.params.id;
+    const body = req.body as { status?: string; brand_profile_id?: string; approved_by?: string };
+    const status = body?.status as "draft" | "manual" | "live" | undefined;
+    if (!status || !["draft", "manual", "live"].includes(status)) return res.status(400).json({ error: "status required: draft, manual, or live" });
+    const brand_profile_id = body?.brand_profile_id ?? await pool.query<{ brand_profile_id: string }>("SELECT brand_profile_id FROM klaviyo_flow_sync WHERE klaviyo_flow_id = $1 LIMIT 1", [flowId]).then((r) => r.rows[0]?.brand_profile_id);
+    if (!brand_profile_id) return res.status(400).json({ error: "brand_profile_id required or flow not found in sync table" });
+    const result = await setKlaviyoFlowStatus({ pool, brand_profile_id, flow_id: flowId, status, approved_by: body?.approved_by });
+    res.json(result);
+  } catch (e) {
+    const msg = String((e as Error).message);
+    if (msg.includes("not configured") || msg.includes("not found")) return res.status(404).json({ error: msg });
+    res.status(500).json({ error: msg });
+  }
+});
+
+/** GET /v1/klaviyo/flows — list flow sync status (brand_profile_id optional). */
+app.get("/v1/klaviyo/flows", async (req, res) => {
+  try {
+    const brand_profile_id = req.query.brand_profile_id as string | undefined;
+    let q = "SELECT id, brand_profile_id, flow_type, klaviyo_flow_id, sync_state, last_synced_at, last_remote_status, last_error, created_at FROM klaviyo_flow_sync WHERE 1=1";
+    const params: unknown[] = [];
+    if (brand_profile_id) { q += " AND brand_profile_id = $1"; params.push(brand_profile_id); }
+    q += " ORDER BY created_at DESC LIMIT 100";
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/klaviyo/performance/ingest — record campaign/flow message performance (Track C read-only ingestion). Body: brand_profile_id, entity_type, entity_id, opens?, clicks?, revenue_cents?, sent_at?. */
+app.post("/v1/klaviyo/performance/ingest", async (req, res) => {
+  try {
+    const body = req.body as { brand_profile_id?: string; entity_type?: string; entity_id?: string; opens?: number; clicks?: number; revenue_cents?: number; sent_at?: string };
+    if (!body?.brand_profile_id || !body?.entity_type || !body?.entity_id) return res.status(400).json({ error: "brand_profile_id, entity_type, entity_id required" });
+    await pool.query(
+      `INSERT INTO klaviyo_performance_snapshots (brand_profile_id, entity_type, entity_id, opens, clicks, revenue_cents, sent_at) VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz)`,
+      [body.brand_profile_id, body.entity_type, body.entity_id, body.opens ?? 0, body.clicks ?? 0, body.revenue_cents ?? 0, body.sent_at ?? null]
+    );
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/klaviyo/recommendations — recommendations only (no auto-edit). Identifies weak templates/messages from performance data. */
+app.get("/v1/klaviyo/recommendations", async (req, res) => {
+  try {
+    const brand_profile_id = req.query.brand_profile_id as string | undefined;
+    let q = `SELECT entity_type, entity_id, opens, clicks, revenue_cents, sent_at, snapshot_at
+             FROM klaviyo_performance_snapshots WHERE 1=1`;
+    const params: unknown[] = [];
+    if (brand_profile_id) { q += " AND brand_profile_id = $1"; params.push(brand_profile_id); }
+    q += " ORDER BY snapshot_at DESC LIMIT 500";
+    const rows = await pool.query(q, params).then((r) => r.rows as { entity_type: string; entity_id: string; opens: number; clicks: number; revenue_cents: number; sent_at: string | null }[]);
+    const recommendations: { type: string; entity_id: string; reason: string; action: string }[] = [];
+    for (const row of rows) {
+      const clickRate = row.opens ? row.clicks / row.opens : 0;
+      if (row.opens > 20 && clickRate < 0.02) recommendations.push({ type: row.entity_type, entity_id: row.entity_id, reason: "Low click rate", action: "Consider CTA or content" });
+      if (row.revenue_cents === 0 && row.opens > 50) recommendations.push({ type: row.entity_type, entity_id: row.entity_id, reason: "No revenue", action: "Review offer or audience" });
+    }
+    res.json({ items: recommendations.slice(0, 50) });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }

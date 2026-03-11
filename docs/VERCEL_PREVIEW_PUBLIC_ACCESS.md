@@ -2,7 +2,7 @@
 
 The redirect to **Vercel login** when you open  
 `https://ai-factory-console-git-main-proventheorys-projects.vercel.app/`  
-comes from **Vercel Deployment Protection**, not from the ProfessorX app. The app has no auth middleware; only Vercel’s edge is requiring sign-in.
+comes from **Vercel Deployment Protection**, not from the Operator Console (ProfessorX) app. The app has no auth middleware; only Vercel’s edge is requiring sign-in.
 
 To allow that URL (and other preview URLs) to load without login, use one of these in the **Vercel Dashboard**.
 

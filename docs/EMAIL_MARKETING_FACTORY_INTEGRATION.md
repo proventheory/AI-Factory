@@ -112,12 +112,12 @@ Clicking **Email Marketing** in the Console opens `/email-marketing` on the same
 
 ---
 
-## 6. Naming: design generator vs campaign (future)
+## 6. Naming: design generator vs campaign (sent)
 
 - **email_design_generator** — Intent type for initiatives that create an email *design* in the Console (**Email Design Generator**). This is the generator flow: brand → template → generate. Stored as `initiatives.intent_type = 'email_design_generator'`.
-- **email_campaign** — Reserved for the *future* concept: an email design that has been sent (or scheduled) as a campaign, e.g. to Klaviyo. Do not use `email_campaign` as an intent type; it will later represent the "design sent as campaign" entity.
+- **email_campaign** — Do not use as an `intent_type`. Sent campaigns are implemented by the **Klaviyo operator pack**: push design artifacts to Klaviyo as templates and campaigns (Console → Klaviyo, or POST /v1/klaviyo/campaigns/push). See [KLAVIYO_OPERATOR_PACK.md](KLAVIYO_OPERATOR_PACK.md).
 
-The current table **`email_design_generator_metadata`** holds metadata for the *design* initiative (subject, from, template ref). The API is **`/v1/email_designs`**. When we add sent campaigns (Klaviyo, etc.), we may introduce a separate table or API for that. This avoids overloading the term *email campaign* so it can mean "campaign sent to an audience" later.
+The table **`email_design_generator_metadata`** holds metadata for the *design* initiative (subject, from, template ref). The API is **`/v1/email_designs`**. Sent campaigns use **`klaviyo_template_sync`**, **`klaviyo_sent_campaigns`**, and related Klaviyo API/Console flows.
 
 ## 7. API (Control Plane)
 

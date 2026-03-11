@@ -37,7 +37,7 @@ function RunsPageSkeleton() {
   return (
     <PageFrame>
       <Stack>
-        <PageHeader title="Pipeline Runs" description="Orchestration run history." />
+        <PageHeader title="Pipeline Runs" description="Orchestration run history. Filter by pipeline type and status." />
         <CardSection>
           <LoadingSkeleton className="h-64 w-full rounded-md" />
         </CardSection>
@@ -168,6 +168,9 @@ function RunsPageContent() {
           title="Pipeline Runs"
           description="Orchestration run history. Filter by pipeline type (dev vs marketing). Runs are created when you start a plan; failed runs appear here once the run has started."
         />
+        <p className="text-body-small text-text-muted mb-2">
+          <Link href="/plans" className="text-brand-600 hover:underline">Plans</Link> · <Link href="/jobs" className="text-brand-600 hover:underline">Jobs</Link> · <Link href="/graph/repair-preview" className="text-brand-600 hover:underline">Repair Preview</Link> · <Link href="/graph/deploys" className="text-brand-600 hover:underline">Deploy events</Link>
+        </p>
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <label htmlFor="intent-filter" className="text-body-small text-text-muted">Pipeline</label>
           <select
