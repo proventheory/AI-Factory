@@ -55,24 +55,20 @@ Import has been run successfully: **222 Products**, **703 Variations** → **724
 
 ## WooCommerce cross-reference and sync
 
-To have **100% of data** (Airtable + WordPress/WooCommerce) in AI Factory for later actions:
+**Full reference:** [WOOCOMMERCE_WORDPRESS_CROSS_REFERENCE.md](WOOCOMMERCE_WORDPRESS_CROSS_REFERENCE.md) — raw storage, canonical commerce, cross-reference, how to run, migrations, troubleshooting.
+
+Summary:
 
 1. **Run the WooCommerce sync** (after Airtable import and with the **same** DATABASE_URL that has `brand_profiles` and Pharmacy Time data):
    ```bash
-   # WooCommerce credentials from Pharmacy Repo .env
    export $(grep -E '^WOOCOMMERCE_|^CONSUMER_KEY=|^CONSUMER_SECRET=' "/path/to/Pharmacy Repo/Pharmacy/.env" | xargs)
    npm run woocommerce:sync:pharmacy
    ```
-   Or: copy `WOOCOMMERCE_URL`, `WOOCOMMERCE_CONSUMER_KEY`, `WOOCOMMERCE_CONSUMER_SECRET` (or `CONSUMER_KEY`/`CONSUMER_SECRET`) into AI Factory `.env` and run `npm run woocommerce:sync:pharmacy`.
+   Or copy `WOOCOMMERCE_URL`, `WOOCOMMERCE_CONSUMER_KEY`, `WOOCOMMERCE_CONSUMER_SECRET` (or `CONSUMER_KEY`/`CONSUMER_SECRET`) into AI Factory `.env` and run `npm run woocommerce:sync:pharmacy`.
 
-2. **What the sync does:**
-   - Fetches all **products** and **variations** from the Pharmacy Time WooCommerce store (e.g. pharmac7dev.wpenginepowered.com).
-   - Fetches all **categories**.
-   - Stores full payloads in **raw_woocommerce_snapshots** (entity_type `products`, `categories`) for replay and audit.
-   - Ensures a **stores** row (channel `woocommerce`, scope_key `pharmacy-time`, linked to Pharmacy Time brand) and upserts **products** in the ads commerce table (store_id, external_ref = WC product id, name, price_cents, etc.).
-   - **Cross-references** catalog ↔ WooCommerce: matches catalog rows to WC by product/variation key (compound|form|category|strength from Airtable metadata vs. WC meta `_product_key`, `_strength_key`). For each match, sets **brand_catalog_products.metadata_json** → `woocommerce_product_id`, `woocommerce_variation_id`, `woocommerce_permalink` so you can take actions (e.g. update WC, link to storefront) from a single record.
+2. **Migrations (before first sync):** Run `npm run db:migrate` (for `raw_woocommerce_snapshots`) and **`npm run db:migrate:ads-commerce`** (for `stores` and `products`).
 
-3. **Migration:** Run `supabase/migrations/20250331000005_raw_woocommerce_snapshots.sql` (adds `raw_woocommerce_snapshots`) before the first sync.
+3. **What the sync does:** Fetches products/variations/categories from WooCommerce; stores raw payloads; ensures **stores** row and upserts **products**; cross-references **brand_catalog_products** with WC and sets **metadata_json.woocommerce_product_id**, **woocommerce_variation_id**, **woocommerce_permalink** on matching rows.
 
 ## Pharmacy Repo location
 

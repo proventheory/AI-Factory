@@ -4,9 +4,13 @@
  * store raw payloads, cross-reference with brand_catalog_products (Airtable import), and upsert into ads commerce.
  * Use with Pharmacy Repo .env (WOOCOMMERCE_URL, CONSUMER_KEY, CONSUMER_SECRET) and AI Factory DATABASE_URL.
  *
+ * Prerequisites: Same DB as Pharmacy Airtable import (brand_profiles + Pharmacy Time). Run before first sync:
+ *   npm run db:migrate:ads-commerce   (creates stores + products)
+ *   (raw_woocommerce_snapshots from migration 20250331000005)
+ *
  * Usage:
- *   node --env-file=.env scripts/woocommerce-sync-pharmacy.mjs
- *   (Load Pharmacy .env for WooCommerce vars: export $(grep -E '^WOOCOMMERCE_|^CONSUMER_' Pharmacy/.env | xargs))
+ *   npm run woocommerce:sync:pharmacy
+ *   Or: export $(grep -E '^WOOCOMMERCE_|^CONSUMER_KEY=|^CONSUMER_SECRET=' "Pharmacy Repo/Pharmacy/.env" | xargs); node --env-file=.env scripts/woocommerce-sync-pharmacy.mjs
  */
 
 import pg from "pg";
