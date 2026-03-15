@@ -54,7 +54,7 @@ const migrations = [
   },
   { path: "supabase/migrations/20250310100000_brand_google_credentials.sql", name: "brand_google_credentials" },
   { path: "supabase/migrations/20250310200000_worker_registry_ensure.sql", name: "worker_registry_ensure" },
-  { path: "supabase/migrations/20250320100000_initiative_google_credentials.sql", name: "initiative_google_credentials" },
+  { path: "supabase/migrations/20250320100000_initiative_google_credentials.sql", name: "initiative_google_credentials", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
   { path: "supabase/migrations/20250327000000_pipeline_drafts_and_pattern_overrides.sql", name: "pipeline_drafts_and_pattern_overrides" },
   { path: "supabase/migrations/20250330000000_brand_klaviyo_credentials_and_sync.sql", name: "brand_klaviyo_credentials_and_sync" },
   { path: "supabase/migrations/20250330000001_klaviyo_operator_actions.sql", name: "klaviyo_operator_actions" },
@@ -69,6 +69,7 @@ const migrations = [
   { path: "supabase/migrations/20250331000004_taxonomy_terms_url_value.sql", name: "taxonomy_terms_url_value", skipIfErrorCode: "42701", skipMessage: "column already exists" },
   { path: "supabase/migrations/20250331000005_raw_woocommerce_snapshots.sql", name: "raw_woocommerce_snapshots", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250318100000_build_specs_launches.sql", name: "build_specs_launches", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250315000000_graph_self_heal_tables.sql", name: "graph_self_heal_tables", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
 ];
 
 async function run() {

@@ -21,6 +21,8 @@ import {
   deleteGoogleCredentialsForBrand,
 } from "./seo-google-oauth.js";
 import type { Contract } from "./template-image-validators.js";
+import { lookupBySignature as incidentLookup, recordResolution as incidentRecord } from "./incident-memory.js";
+import { createDeployEventFromPayload } from "./deploy-events.js";
 
 const CONTROL_PLANE_BASE = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const SEO_GOOGLE_CALLBACK_PATH = "/v1/seo/google/callback";
@@ -1747,6 +1749,538 @@ app.get("/v1/incidents/:signature", async (req, res) => {
       [signature, limit, offset]
     );
     res.json({ items: r.rows, limit, offset });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+// ---------- Graph & self-heal ----------
+/** GET /v1/decision_loop/observe — anomalies + baselines (read-only). */
+app.get("/v1/decision_loop/observe", async (_req, res) => {
+  try {
+    res.json({ anomalies: [], baselines: [] });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/decision_loop/tick — run one tick. Body: auto_act?, compute_baselines?. */
+app.post("/v1/decision_loop/tick", async (req, res) => {
+  try {
+    const body = req.body as { auto_act?: boolean; compute_baselines?: boolean };
+    res.json({
+      observed: { anomalies: [] },
+      baselines_computed: body?.compute_baselines ? 0 : undefined,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/incident_memory — list incident memory. */
+app.get("/v1/incident_memory", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const failureClass = (req.query.failure_class as string) || null;
+    let q =
+      "SELECT memory_id, failure_signature, failure_class, resolution, confidence, times_seen, last_seen_at, created_at FROM incident_memory WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (failureClass) {
+      q += ` AND failure_class = $${i++}`;
+      params.push(failureClass);
+    }
+    q += ` ORDER BY last_seen_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") {
+      return res.json({ items: [], limit: 50 });
+    }
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/incident_memory — record a resolution. */
+app.post("/v1/incident_memory", async (req, res) => {
+  try {
+    const body = req.body as { failure_signature?: string; failure_class?: string; resolution?: string; confidence?: number };
+    if (!body?.failure_signature || !body?.failure_class || !body?.resolution) {
+      return res.status(400).json({ error: "failure_signature, failure_class, and resolution required" });
+    }
+    await incidentRecord(
+      pool,
+      body.failure_signature,
+      body.failure_class,
+      body.resolution,
+      typeof body.confidence === "number" ? body.confidence : 0.8
+    );
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/memory/lookup — similar incidents by signature. */
+app.get("/v1/memory/lookup", async (req, res) => {
+  try {
+    const signature = (req.query.signature as string) || (req.query.failure_signature as string) || "";
+    const scopeKey = (req.query.scope_key as string) || null;
+    const limit = Math.min(Number(req.query.limit) || 10, 50);
+    const incidents = await incidentLookup(pool, signature, null, limit);
+    let entries: unknown[] = [];
+    try {
+      let q =
+        "SELECT memory_id, memory_type, scope_type, scope_key, title, summary, signature_json, resolution_json, confidence, times_seen, last_seen_at FROM memory_entries WHERE memory_type IN ('incident', 'repair_recipe', 'failure_pattern')";
+      const params: unknown[] = [];
+      let i = 1;
+      if (scopeKey) {
+        q += ` AND (scope_key = $${i++} OR scope_key IS NULL)`;
+        params.push(scopeKey);
+      }
+      q += ` ORDER BY last_seen_at DESC LIMIT $${i}`;
+      params.push(limit);
+      const r = await pool.query(q, params);
+      entries = r.rows;
+    } catch {
+      // table may not exist
+    }
+    res.json({ similar_incidents: incidents, memory_entries: entries });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") {
+      return res.json({ similar_incidents: [], memory_entries: [] });
+    }
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/memory_entries — list memory_entries. */
+app.get("/v1/memory_entries", async (req, res) => {
+  try {
+    const memoryType = (req.query.memory_type as string) || null;
+    const scopeType = (req.query.scope_type as string) || null;
+    const scopeKey = (req.query.scope_key as string) || null;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    let q =
+      "SELECT memory_id, memory_type, scope_type, scope_key, title, summary, signature_json, evidence_json, resolution_json, confidence, times_seen, last_seen_at, created_at FROM memory_entries WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (memoryType) {
+      q += ` AND memory_type = $${i++}`;
+      params.push(memoryType);
+    }
+    if (scopeType) {
+      q += ` AND scope_type = $${i++}`;
+      params.push(scopeType);
+    }
+    if (scopeKey) {
+      q += ` AND scope_key = $${i++}`;
+      params.push(scopeKey);
+    }
+    q += ` ORDER BY last_seen_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.json({ items: [], limit: 50 });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/deploy_events — record a build/deploy outcome. */
+app.post("/v1/deploy_events", async (req, res) => {
+  try {
+    const body = req.body as { status?: string; service_id?: string; commit_sha?: string; build_log_text?: string; external_deploy_id?: string };
+    if (!body?.status) return res.status(400).json({ error: "status required" });
+    const result = await createDeployEventFromPayload(pool, body);
+    res.status(201).json(result);
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.status(503).json({ error: "deploy_events table not present. Run migration 20250315000000_graph_self_heal_tables.sql." });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/deploy_events/:id/repair_plan — deploy details and suggested actions. */
+app.get("/v1/deploy_events/:id/repair_plan", async (req, res) => {
+  try {
+    const deployId = req.params.id;
+    const deployRow = await pool.query(
+      "SELECT deploy_id, service_id, commit_sha, status, failure_class, error_signature, change_event_id FROM deploy_events WHERE deploy_id = $1",
+      [deployId]
+    );
+    if (deployRow.rows.length === 0) return res.status(404).json({ error: "deploy event not found" });
+    const deploy = deployRow.rows[0] as {
+      deploy_id: string;
+      service_id: string;
+      commit_sha: string | null;
+      status: string;
+      failure_class: string | null;
+      error_signature: string | null;
+      change_event_id: string | null;
+    };
+    let suggested_actions: { action_id: string; action_key: string; label: string; description: string | null; risk_level: string; requires_approval: boolean }[] = [];
+    try {
+      const ar = await pool.query(
+        "SELECT action_id, action_key, label, description, risk_level, requires_approval FROM build_repair_actions ORDER BY action_key"
+      );
+      suggested_actions = ar.rows;
+    } catch {
+      // table may not exist
+    }
+    let similar_incidents: unknown[] = [];
+    if (deploy.error_signature || deploy.failure_class) {
+      similar_incidents = await incidentLookup(pool, deploy.error_signature ?? "", deploy.failure_class, 10);
+    }
+    res.json({
+      deploy_id: deploy.deploy_id,
+      service_id: deploy.service_id,
+      commit_sha: deploy.commit_sha,
+      status: deploy.status,
+      failure_class: deploy.failure_class,
+      error_signature: deploy.error_signature,
+      change_event_id: deploy.change_event_id,
+      suggested_actions,
+      similar_incidents,
+      build_config_snapshot: null,
+      suggested_file_actions: { suggested_files: [], unresolved_path: null },
+    });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.status(404).json({ error: "deploy_events not available" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/deploy_events — list deploy events. */
+app.get("/v1/deploy_events", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const serviceId = (req.query.service_id as string) || null;
+    const status = (req.query.status as string) || null;
+    let q =
+      "SELECT deploy_id, change_event_id, service_id, commit_sha, status, failure_class, error_signature, external_deploy_id, created_at FROM deploy_events WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (serviceId) {
+      q += ` AND service_id = $${i++}`;
+      params.push(serviceId);
+    }
+    if (status) {
+      q += ` AND status = $${i++}`;
+      params.push(status);
+    }
+    q += ` ORDER BY created_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.json({ items: [], limit: 50 });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/deploy_events/sync — sync from Render (stub). */
+app.post("/v1/deploy_events/sync", async (_req, res) => {
+  try {
+    res.json({ synced: 0, message: "Configure RENDER_API_KEY and RENDER_SERVICE_IDS to enable sync." });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/deploy_events/sync_github — sync from GitHub Actions (stub). */
+app.post("/v1/deploy_events/sync_github", async (_req, res) => {
+  try {
+    res.json({ synced: 0, message: "Configure GITHUB_TOKEN and GITHUB_REPOS to enable sync." });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/checkpoints — list graph checkpoints. */
+app.get("/v1/checkpoints", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const scopeType = (req.query.scope_type as string) || null;
+    const scopeId = (req.query.scope_id as string) || null;
+    let q =
+      "SELECT checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, config_snapshot_artifact_id, created_at FROM graph_checkpoints WHERE 1=1";
+    const params: unknown[] = [];
+    let i = 1;
+    if (scopeType) {
+      q += ` AND scope_type = $${i++}`;
+      params.push(scopeType);
+    }
+    if (scopeId) {
+      q += ` AND scope_id = $${i++}`;
+      params.push(scopeId);
+    }
+    q += ` ORDER BY created_at DESC LIMIT $${i}`;
+    params.push(limit);
+    const r = await pool.query(q, params);
+    res.json({ items: r.rows, limit });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.json({ items: [], limit: 50 });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/checkpoints — create a checkpoint. */
+app.post("/v1/checkpoints", async (req, res) => {
+  try {
+    const body = req.body as { scope_type?: string; scope_id?: string; run_id?: string };
+    if (!body?.scope_type || !body?.scope_id) return res.status(400).json({ error: "scope_type and scope_id required" });
+    const r = await pool.query(
+      "INSERT INTO graph_checkpoints (scope_type, scope_id, run_id) VALUES ($1, $2, $3) RETURNING checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, config_snapshot_artifact_id, created_at",
+      [body.scope_type, body.scope_id, body.run_id ?? null]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/checkpoints/:id — single checkpoint. */
+app.get("/v1/checkpoints/:id", async (req, res) => {
+  try {
+    const r = await pool.query(
+      "SELECT checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, config_snapshot_artifact_id, created_at FROM graph_checkpoints WHERE checkpoint_id = $1",
+      [req.params.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Checkpoint not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/checkpoints/:id/diff — stub (no postMigrationAudit). */
+app.get("/v1/checkpoints/:id/diff", async (req, res) => {
+  try {
+    const cp = await pool.query(
+      "SELECT checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, created_at FROM graph_checkpoints WHERE checkpoint_id = $1",
+      [req.params.id]
+    );
+    if (cp.rows.length === 0) return res.status(404).json({ error: "Checkpoint not found" });
+    const checkpoint = cp.rows[0] as { checkpoint_id: string; scope_type: string; scope_id: string; created_at: string; schema_snapshot_artifact_id: string | null };
+    res.json({
+      checkpoint_id: checkpoint.checkpoint_id,
+      scope_type: checkpoint.scope_type,
+      scope_id: checkpoint.scope_id,
+      created_at: checkpoint.created_at,
+      current_schema: { tables: 0, columns: 0 },
+      current_tables: [],
+      current_columns: [],
+      snapshot_artifact_id: checkpoint.schema_snapshot_artifact_id,
+      snapshot_diff: null,
+    });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.status(404).json({ error: "Checkpoint not found" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/known_good — latest checkpoint for scope. */
+app.get("/v1/known_good", async (req, res) => {
+  try {
+    const scopeType = (req.query.scope_type as string) || null;
+    const scopeId = (req.query.scope_id as string) || null;
+    if (!scopeType || !scopeId) return res.status(400).json({ error: "scope_type and scope_id required" });
+    const r = await pool.query(
+      "SELECT checkpoint_id, scope_type, scope_id, run_id, schema_snapshot_artifact_id, contract_snapshot_artifact_id, config_snapshot_artifact_id, created_at FROM graph_checkpoints WHERE scope_type = $1 AND scope_id = $2 ORDER BY created_at DESC LIMIT 1",
+      [scopeType, scopeId]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "No checkpoint found for this scope" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/failure_clusters — failure_class counts from incident_memory. */
+app.get("/v1/failure_clusters", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const r = await pool.query(
+      "SELECT failure_class, COUNT(*) AS count, MAX(last_seen_at) AS last_seen FROM incident_memory GROUP BY failure_class ORDER BY count DESC, last_seen DESC LIMIT $1",
+      [limit]
+    );
+    res.json({ clusters: r.rows });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.json({ clusters: [] });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/change_events — list change events. */
+app.get("/v1/change_events", async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const offset = Number(req.query.offset) || 0;
+    const r = await pool.query(
+      "SELECT change_event_id, source_type, source_ref, change_class, summary, diff_artifact_id, created_at FROM change_events ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+      [limit, offset]
+    );
+    res.json({ items: r.rows, limit, offset });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.json({ items: [], limit: 50, offset: 0 });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/change_events — create a change event. */
+app.post("/v1/change_events", async (req, res) => {
+  try {
+    const body = req.body as { source_type?: string; source_ref?: string; change_class?: string; summary?: string; diff_artifact_id?: string };
+    if (!body?.source_type || !body?.change_class) return res.status(400).json({ error: "source_type and change_class required" });
+    const r = await pool.query(
+      "INSERT INTO change_events (source_type, source_ref, change_class, summary, diff_artifact_id) VALUES ($1, $2, $3, $4, $5) RETURNING change_event_id",
+      [body.source_type, body.source_ref ?? null, body.change_class, body.summary ?? null, body.diff_artifact_id ?? null]
+    );
+    res.status(201).json({ change_event_id: r.rows[0].change_event_id });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/change_events/:id — single change event. */
+app.get("/v1/change_events/:id", async (req, res) => {
+  try {
+    const r = await pool.query(
+      "SELECT change_event_id, source_type, source_ref, change_class, summary, diff_artifact_id, created_at FROM change_events WHERE change_event_id = $1",
+      [req.params.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "Change event not found" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/change_events/:id/impacts — list graph_impacts. */
+app.get("/v1/change_events/:id/impacts", async (req, res) => {
+  try {
+    const r = await pool.query(
+      "SELECT impact_id, change_event_id, run_id, plan_id, plan_node_id, artifact_id, impact_type, reason, created_at FROM graph_impacts WHERE change_event_id = $1 ORDER BY impact_type, plan_node_id",
+      [req.params.id]
+    );
+    res.json({ items: r.rows });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.json({ items: [] });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/change_events/:id/impact — stub (compute impacts not implemented). */
+app.post("/v1/change_events/:id/impact", async (req, res) => {
+  try {
+    res.json({ change_event_id: req.params.id, impacts: [] });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/change_events/:id/backfill_plan — suggested backfill steps. */
+app.get("/v1/change_events/:id/backfill_plan", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const ev = await pool.query("SELECT change_event_id, source_type, change_class, summary FROM change_events WHERE change_event_id = $1", [id]);
+    if (ev.rows.length === 0) return res.status(404).json({ error: "Change event not found" });
+    const event = ev.rows[0] as { source_type: string; change_class: string; summary: string | null };
+    const steps: { action: string; detail: string }[] = [];
+    if (event.source_type === "migration" || event.change_class === "schema") {
+      steps.push({ action: "review_schema", detail: "Run GET /v1/migration_audit and compare to pre-migration snapshot." });
+      steps.push({ action: "backfill_if_not_null", detail: "If migration added NOT NULL columns without default, backfill existing rows before deploy." });
+    }
+    let impacts: { rows: unknown[] } = { rows: [] };
+    try {
+      impacts = await pool.query("SELECT plan_id, plan_node_id, impact_type, reason FROM graph_impacts WHERE change_event_id = $1 LIMIT 50", [id]);
+    } catch {
+      // ignore
+    }
+    if (impacts.rows.length > 0) {
+      steps.push({
+        action: "revalidate_affected",
+        detail: `Re-run or validate ${impacts.rows.length} affected plan node(s) after backfill.`,
+      });
+    }
+    res.json({ change_event_id: id, steps, summary: event.summary });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.status(404).json({ error: "Change event not found" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/import_graph — latest import graph snapshot for a service. */
+app.get("/v1/import_graph", async (req, res) => {
+  try {
+    const serviceId = req.query.service_id as string;
+    if (!serviceId) return res.status(400).json({ error: "service_id required" });
+    const r = await pool.query(
+      "SELECT snapshot_id, service_id, snapshot_json, created_at FROM import_graph_snapshots WHERE service_id = $1 ORDER BY created_at DESC LIMIT 1",
+      [serviceId]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: "No import graph for this service" });
+    res.json(r.rows[0]);
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.status(404).json({ error: "Import graph not available" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/import_graph — store import graph snapshot. */
+app.post("/v1/import_graph", async (req, res) => {
+  try {
+    const body = req.body as { service_id?: string; snapshot_json?: unknown };
+    if (!body?.service_id || body?.snapshot_json === undefined) return res.status(400).json({ error: "service_id and snapshot_json required" });
+    const r = await pool.query(
+      "INSERT INTO import_graph_snapshots (service_id, snapshot_json) VALUES ($1, $2) RETURNING snapshot_id, service_id, created_at",
+      [body.service_id, JSON.stringify(body.snapshot_json)]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.status(501).json({ error: "Run migration 20250315000000_graph_self_heal_tables.sql first" });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/schema_drift — current schema vs stored snapshot (stub). */
+app.get("/v1/schema_drift", async (_req, res) => {
+  try {
+    res.json({ current_schema: null, stored_snapshot: null, diff: null });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/contract_breakage_scan — plan nodes with schema refs (contracts at risk). */
+app.get("/v1/contract_breakage_scan", async (req, res) => {
+  try {
+    const scopeKey = (req.query.scope_key as string) || null;
+    let q = `SELECT pn.id AS plan_node_id, pn.plan_id, pn.node_key, pn.job_type, pn.input_schema_ref, pn.output_schema_ref
+       FROM plan_nodes pn WHERE (pn.input_schema_ref IS NOT NULL OR pn.output_schema_ref IS NOT NULL)`;
+    const params: unknown[] = [];
+    if (scopeKey) {
+      q += " AND pn.plan_id IN (SELECT id FROM plans WHERE initiative_id IN (SELECT id FROM initiatives WHERE intent_type = $1))";
+      params.push(scopeKey);
+    }
+    q += " ORDER BY pn.plan_id, pn.node_key";
+    const r = await pool.query(q, params);
+    res.json({ scope_key: scopeKey, contracts: r.rows, message: "Plan nodes with schema refs; review after schema changes." });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }

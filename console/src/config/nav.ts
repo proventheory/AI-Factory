@@ -46,7 +46,7 @@ export type BranchDef = {
 
 export const BRANCH_GROUP_IDS: Record<BranchId, string[]> = {
   command: ["DASHBOARD"],
-  orchestration: ["ORCHESTRATION"],
+  orchestration: ["ORCHESTRATION", "GRAPH & SELF-HEAL"],
   "data-config": ["CONFIG"],
   studio: ["BRAND & DESIGN"],
   system: ["MONITORING", "OTHER"],
@@ -78,6 +78,11 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/artifacts", label: "Artifacts", branchId: "orchestration" },
       { href: "/approvals", label: "Approvals", branchId: "orchestration" },
       { href: "/ai-calls", label: "AI Calls", branchId: "orchestration" },
+    ],
+  },
+  {
+    title: "GRAPH & SELF-HEAL",
+    items: [
       { href: "/graph/explorer", label: "Graph Explorer", branchId: "orchestration" },
       { href: "/graph/decision-loop", label: "Decision loop", branchId: "orchestration" },
       { href: "/graph/deploys", label: "Deploy events", branchId: "orchestration" },
