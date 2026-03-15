@@ -29,7 +29,7 @@ model_list:
       mode: chat
   - model_name: max/chat
     litellm_params:
-      model: claude-3-5-sonnet-20241022
+      model: anthropic/claude-3-5-sonnet-20241022
       api_key: os.environ/ANTHROPIC_API_KEY
     model_info:
       mode: chat
