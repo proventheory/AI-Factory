@@ -5,11 +5,11 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 # Copy dependency manifests first for better layer caching
 COPY package.json package-lock.json ./
-RUN npm ci --no-optional
+RUN echo "Control-plane: npm ci..." && npm ci --no-optional --no-audit
 # Copy full repo (except node_modules via .dockerignore); then bundle.
 # Use relative paths for esbuild: absolute paths (e.g. /app/...) fail in Render's build context.
 COPY . .
-RUN mkdir -p dist && npx esbuild control-plane/src/index.ts \
+RUN echo "Control-plane: esbuild..." && mkdir -p dist && NODE_OPTIONS="--max-old-space-size=2048" npx esbuild control-plane/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \
   --outfile=dist/control-plane-bundle.js --sourcemap \
   --external:pg --external:express --external:cors --external:uuid --external:mjml --external:@supabase/supabase-js --external:googleapis --external:google-auth-library

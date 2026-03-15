@@ -5,9 +5,9 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --no-optional
+RUN echo "Runner: npm ci..." && npm ci --no-optional --no-audit
 COPY . .
-RUN mkdir -p dist && npx esbuild runners/src/index.ts \
+RUN echo "Runner: esbuild..." && mkdir -p dist && NODE_OPTIONS="--max-old-space-size=2048" npx esbuild runners/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \
   --outfile=dist/runner-bundle.js --sourcemap \
   --external:pg --external:uuid --external:mjml

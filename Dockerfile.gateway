@@ -1,6 +1,7 @@
 # LLM Gateway (LiteLLM) — build from repo root so Render Blueprint can use dockerContext: .
 # Use gateway/Dockerfile when building from gateway/ directory.
 FROM ghcr.io/berriai/litellm:main-latest
+RUN echo "Gateway: copying config..."
 COPY gateway/config.yaml /app/config.yaml
 ENV LITELLM_CONFIG_PATH=/app/config.yaml
 # Render expects port 10000. Image ENTRYPOINT is litellm; CMD must be only litellm args (no shell).
