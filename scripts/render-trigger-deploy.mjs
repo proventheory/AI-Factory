@@ -42,11 +42,16 @@ for (const serviceId of serviceIds) {
     body: JSON.stringify(body),
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    const text = await res.text();
     console.error(serviceId, "Render API error:", res.status, text);
     continue;
   }
-  const data = await res.json();
-  console.log(serviceId, "Deploy triggered:", data.id, data.status || "");
+  let data = {};
+  try {
+    if (text && text.trim()) data = JSON.parse(text);
+  } catch (_) {
+    // empty or non-JSON response
+  }
+  console.log(serviceId, "Deploy triggered:", data.id || res.status, data.status || "");
 }
