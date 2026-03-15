@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { PageFrame, Stack, PageHeader } from "@/components/ui";
+import { PageFrame, Stack, PageHeader, CardSection, DataTable, LoadingSkeleton, EmptyState } from "@/components/ui";
 import { useDeployEvents } from "@/hooks/use-api";
 import { formatApiError } from "@/lib/api";
-import { CardSection, DataTable, LoadingSkeleton } from "@/components/ui";
 
 export default function GraphDeploysPage() {
   const { data, isLoading, error } = useDeployEvents({ limit: 50 });
@@ -26,6 +25,8 @@ export default function GraphDeploysPage() {
         <CardSection title="Deploy events">
           {isLoading ? (
             <LoadingSkeleton className="h-48 rounded-lg" />
+          ) : items.length === 0 ? (
+            <EmptyState title="No deploy events" description="Sync from Render or GitHub Actions to populate." />
           ) : (
             <DataTable
               columns={[

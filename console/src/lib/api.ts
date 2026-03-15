@@ -10,6 +10,9 @@ export function formatApiError(err: unknown): string {
     return "Cannot reach the Control Plane API. If this app is deployed, set NEXT_PUBLIC_CONTROL_PLANE_API to your deployed API URL (e.g. your Render service URL) and ensure CORS allows this origin.";
   }
   if (msg.includes("404") || msg.includes("Not Found")) return "The requested resource was not found.";
+  if (msg.includes("Database schema not applied") || (msg.includes("relation ") && msg.includes(" does not exist"))) {
+    return "Control Plane database schema is missing. Run migrations against the same DB the API uses (see docs/runbooks/console-db-relation-does-not-exist.md).";
+  }
   return msg;
 }
 
@@ -1390,7 +1393,9 @@ export async function postSchemaSnapshotsCapture(environment: string): Promise<{
 
 /** GET /v1/contract_breakage_scan — plan nodes with schema refs (contracts at risk). */
 export async function getContractBreakageScan(params?: { scope_key?: string }): Promise<{
-  nodes: Array<{ plan_id: string; node_id: string; input_schema_ref?: string; output_schema_ref?: string }>;
+  scope_key: string | null;
+  contracts: Array<{ plan_node_id: string; plan_id: string; node_key: string; job_type?: string; input_schema_ref?: string | null; output_schema_ref?: string | null }>;
+  message?: string;
 }> {
   const sp = params?.scope_key ? `?scope_key=${encodeURIComponent(params.scope_key)}` : "";
   const res = await fetch(`${API}/v1/contract_breakage_scan${sp}`);
@@ -1401,6 +1406,181 @@ export async function getContractBreakageScan(params?: { scope_key?: string }): 
 /** GET /v1/change_events/:id/backfill_plan — suggested backfill steps. */
 export async function getChangeEventBackfillPlan(changeEventId: string): Promise<{ steps: unknown[] }> {
   const res = await fetch(`${API}/v1/change_events/${changeEventId}/backfill_plan`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/incident_memory — list incident memory. */
+export async function getIncidentMemory(params?: { limit?: number; failure_class?: string }): Promise<{
+  items: Array<{ memory_id: string; failure_signature?: string; failure_class?: string; resolution?: string; confidence?: number; times_seen?: number; last_seen_at?: string; created_at?: string }>;
+  limit: number;
+}> {
+  const sp = new URLSearchParams();
+  if (params?.limit) sp.set("limit", String(params.limit));
+  if (params?.failure_class) sp.set("failure_class", params.failure_class);
+  const res = await fetch(`${API}/v1/incident_memory?${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/memory/lookup — similar incidents by signature. */
+export async function getMemoryLookup(params: { signature?: string; limit?: number }): Promise<{ similar_incidents: unknown[]; memory_entries: unknown[] }> {
+  const sp = new URLSearchParams();
+  if (params.signature) sp.set("signature", params.signature);
+  if (params.limit) sp.set("limit", String(params.limit));
+  const res = await fetch(`${API}/v1/memory/lookup?${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/checkpoints — list graph checkpoints. */
+export async function getCheckpoints(params?: { limit?: number; scope_type?: string; scope_id?: string }): Promise<{
+  items: Array<{ checkpoint_id: string; scope_type: string; scope_id: string; run_id?: string | null; schema_snapshot_artifact_id?: string | null; contract_snapshot_artifact_id?: string | null; config_snapshot_artifact_id?: string | null; created_at: string }>;
+  limit: number;
+}> {
+  const sp = new URLSearchParams();
+  if (params?.limit) sp.set("limit", String(params.limit));
+  if (params?.scope_type) sp.set("scope_type", params.scope_type);
+  if (params?.scope_id) sp.set("scope_id", params.scope_id);
+  const res = await fetch(`${API}/v1/checkpoints?${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/checkpoints/:id — single checkpoint. */
+export async function getCheckpoint(id: string): Promise<{ checkpoint_id: string; scope_type: string; scope_id: string; run_id?: string | null; created_at: string }> {
+  const res = await fetch(`${API}/v1/checkpoints/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/checkpoints/:id/diff — diff between checkpoint and current. */
+export async function getCheckpointDiff(id: string): Promise<{
+  checkpoint_id: string; scope_type: string; scope_id: string; created_at: string;
+  current_schema?: unknown; current_tables?: unknown[]; current_columns?: unknown[];
+  snapshot_artifact_id?: string | null; snapshot_diff?: unknown;
+}> {
+  const res = await fetch(`${API}/v1/checkpoints/${encodeURIComponent(id)}/diff`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/checkpoints — create checkpoint. */
+export async function postCheckpoint(body: { scope_type: string; scope_id: string; run_id?: string }): Promise<{ checkpoint_id: string; scope_type: string; scope_id: string; created_at: string }> {
+  const res = await fetch(`${API}/v1/checkpoints`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/failure_clusters — failure_class counts. */
+export async function getFailureClusters(params?: { limit?: number }): Promise<{
+  clusters: Array<{ failure_class: string; count: string; last_seen?: string }>;
+}> {
+  const sp = params?.limit ? `?limit=${params.limit}` : "";
+  const res = await fetch(`${API}/v1/failure_clusters${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/change_events — list change events. */
+export async function getChangeEvents(params?: { limit?: number; offset?: number }): Promise<{
+  items: Array<{ change_event_id: string; source_type?: string; source_ref?: string; change_class?: string; summary?: string | null; diff_artifact_id?: string | null; created_at: string }>;
+  limit: number;
+  offset: number;
+}> {
+  const sp = new URLSearchParams();
+  if (params?.limit) sp.set("limit", String(params.limit));
+  if (params?.offset) sp.set("offset", String(params.offset));
+  const res = await fetch(`${API}/v1/change_events?${sp}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/change_events/:id — single change event. */
+export async function getChangeEvent(id: string): Promise<{ change_event_id: string; source_type?: string; source_ref?: string; change_class?: string; summary?: string | null; created_at: string }> {
+  const res = await fetch(`${API}/v1/change_events/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/change_events/:id/impacts — list graph impacts for change event. */
+export async function getChangeEventImpacts(id: string): Promise<{ items: Array<{ impact_id: string; change_event_id: string; run_id?: string; plan_id?: string; plan_node_id?: string; artifact_id?: string; impact_type?: string; reason?: string }> }> {
+  const res = await fetch(`${API}/v1/change_events/${encodeURIComponent(id)}/impacts`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/change_events/:id/impact — compute impacts (stub). */
+export async function postChangeEventImpact(id: string): Promise<{ change_event_id: string; impacts: unknown[] }> {
+  const res = await fetch(`${API}/v1/change_events/${encodeURIComponent(id)}/impact`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/graph/topology/:planId — plan node graph. */
+export async function getGraphTopology(planId: string): Promise<{ plan_id: string; nodes: unknown[]; edges: unknown[] }> {
+  const res = await fetch(`${API}/v1/graph/topology/${encodeURIComponent(planId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/graph/frontier/:runId — run frontier. */
+export async function getGraphFrontier(runId: string): Promise<{ run_id: string; completed_node_ids: string[]; pending_node_ids: string[] }> {
+  const res = await fetch(`${API}/v1/graph/frontier/${encodeURIComponent(runId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/graph/repair_plan/:runId/:nodeId — repair plan for failed node. */
+export async function getGraphRepairPlan(runId: string, nodeId: string): Promise<{ run_id: string; node_id: string; suggested_actions: unknown[]; subgraph_replay_scope: unknown[] }> {
+  const res = await fetch(`${API}/v1/graph/repair_plan/${encodeURIComponent(runId)}/${encodeURIComponent(nodeId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/graph/subgraph_replay — trigger subgraph replay. */
+export async function postGraphSubgraphReplay(body: { run_id: string; node_ids?: string[] }): Promise<{ run_id: string | null; replayed: number }> {
+  const res = await fetch(`${API}/v1/graph/subgraph_replay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** POST /v1/migration_guard — analyze migration SQL. */
+export async function postMigrationGuard(body: { sql?: string; migration_ref?: string }): Promise<{ tables_touched: unknown[]; columns: unknown[]; risks: unknown[]; checkpoint_suggestion: unknown; raw?: string | null }> {
+  const res = await fetch(`${API}/v1/migration_guard`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/graph/audit/:runId — graph audit. */
+export async function getGraphAudit(runId: string): Promise<{ run_id: string; issues: unknown[]; summary: unknown }> {
+  const res = await fetch(`${API}/v1/graph/audit/${encodeURIComponent(runId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/graph/missing_capabilities/:planId — missing capabilities. */
+export async function getGraphMissingCapabilities(planId: string): Promise<{ plan_id: string; missing: unknown[] }> {
+  const res = await fetch(`${API}/v1/graph/missing_capabilities/${encodeURIComponent(planId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/graph/lineage/:artifactId — artifact lineage. */
+export async function getGraphLineage(artifactId: string): Promise<{ artifact_id: string; producers: unknown[]; consumers: unknown[] }> {
+  const res = await fetch(`${API}/v1/graph/lineage/${encodeURIComponent(artifactId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1477,7 +1657,13 @@ export const api = {
   getDecisionLoopObserve, postDecisionLoopTick,
   getDeployEvents, getDeployEventRepairPlan, postDeployEventsSync, postDeployEventsSyncGitHub,
   getImportGraph, postImportGraph,
-  getSchemaDrift, postSchemaSnapshotsCapture, getContractBreakageScan, getChangeEventBackfillPlan,
+  getSchemaDrift, postSchemaSnapshotsCapture,   getContractBreakageScan, getChangeEventBackfillPlan,
+  getIncidentMemory, getMemoryLookup,
+  getCheckpoints, getCheckpoint, getCheckpointDiff, postCheckpoint,
+  getFailureClusters,
+  getChangeEvents, getChangeEvent, getChangeEventImpacts, postChangeEventImpact,
+  getGraphTopology, getGraphFrontier, getGraphRepairPlan, postGraphSubgraphReplay,
+  postMigrationGuard, getGraphAudit, getGraphMissingCapabilities, getGraphLineage,
   postBaselinesCompute,
   getKlaviyoTemplates, getKlaviyoCampaigns, getKlaviyoFlows,
   postKlaviyoCampaignsPush, postKlaviyoFlows, patchKlaviyoFlowStatus,

@@ -228,6 +228,147 @@ export function useContractBreakageScan(params?: { scope_key?: string }) {
   });
 }
 
+export function useIncidentMemory(params?: { limit?: number; failure_class?: string }) {
+  return useQuery({
+    queryKey: ["incident_memory", params?.limit, params?.failure_class],
+    queryFn: () => api.getIncidentMemory(params),
+  });
+}
+
+export function useMemoryLookup(signature: string | null, options?: { limit?: number }) {
+  return useQuery({
+    queryKey: ["memory_lookup", signature, options?.limit],
+    queryFn: () => api.getMemoryLookup({ signature: signature ?? undefined, limit: options?.limit }),
+    enabled: !!signature,
+  });
+}
+
+export function useCheckpoints(params?: { limit?: number; scope_type?: string; scope_id?: string }) {
+  return useQuery({
+    queryKey: ["checkpoints", params?.limit, params?.scope_type, params?.scope_id],
+    queryFn: () => api.getCheckpoints(params),
+  });
+}
+
+export function useCheckpoint(id: string | null) {
+  return useQuery({
+    queryKey: ["checkpoint", id],
+    queryFn: () => api.getCheckpoint(id!),
+    enabled: !!id,
+  });
+}
+
+export function useCheckpointDiff(id: string | null) {
+  return useQuery({
+    queryKey: ["checkpoint_diff", id],
+    queryFn: () => api.getCheckpointDiff(id!),
+    enabled: !!id,
+  });
+}
+
+export function usePostCheckpoint() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { scope_type: string; scope_id: string; run_id?: string }) => api.postCheckpoint(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["checkpoints"] }),
+  });
+}
+
+export function useFailureClusters(params?: { limit?: number }) {
+  return useQuery({
+    queryKey: ["failure_clusters", params?.limit],
+    queryFn: () => api.getFailureClusters(params),
+  });
+}
+
+export function useChangeEvents(params?: { limit?: number; offset?: number }) {
+  return useQuery({
+    queryKey: ["change_events", params?.limit, params?.offset],
+    queryFn: () => api.getChangeEvents(params),
+  });
+}
+
+export function useChangeEvent(id: string | null) {
+  return useQuery({
+    queryKey: ["change_event", id],
+    queryFn: () => api.getChangeEvent(id!),
+    enabled: !!id,
+  });
+}
+
+export function useChangeEventImpacts(id: string | null) {
+  return useQuery({
+    queryKey: ["change_event_impacts", id],
+    queryFn: () => api.getChangeEventImpacts(id!),
+    enabled: !!id,
+  });
+}
+
+export function useGraphTopology(planId: string | null) {
+  return useQuery({
+    queryKey: ["graph_topology", planId],
+    queryFn: () => api.getGraphTopology(planId!),
+    enabled: !!planId,
+  });
+}
+
+export function useGraphFrontier(runId: string | null) {
+  return useQuery({
+    queryKey: ["graph_frontier", runId],
+    queryFn: () => api.getGraphFrontier(runId!),
+    enabled: !!runId,
+  });
+}
+
+export function useGraphRepairPlan(runId: string | null, nodeId: string | null) {
+  return useQuery({
+    queryKey: ["graph_repair_plan", runId, nodeId],
+    queryFn: () => api.getGraphRepairPlan(runId!, nodeId!),
+    enabled: !!runId && !!nodeId,
+  });
+}
+
+export function usePostGraphSubgraphReplay() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { run_id: string; node_ids?: string[] }) => api.postGraphSubgraphReplay(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["graph_repair_plan"] });
+      queryClient.invalidateQueries({ queryKey: ["runs"] });
+    },
+  });
+}
+
+export function useMigrationGuard() {
+  return useMutation({
+    mutationFn: (body: { sql?: string; migration_ref?: string }) => api.postMigrationGuard(body),
+  });
+}
+
+export function useGraphAudit(runId: string | null) {
+  return useQuery({
+    queryKey: ["graph_audit", runId],
+    queryFn: () => api.getGraphAudit(runId!),
+    enabled: !!runId,
+  });
+}
+
+export function useGraphMissingCapabilities(planId: string | null) {
+  return useQuery({
+    queryKey: ["graph_missing_capabilities", planId],
+    queryFn: () => api.getGraphMissingCapabilities(planId!),
+    enabled: !!planId,
+  });
+}
+
+export function useGraphLineage(artifactId: string | null) {
+  return useQuery({
+    queryKey: ["graph_lineage", artifactId],
+    queryFn: () => api.getGraphLineage(artifactId!),
+    enabled: !!artifactId,
+  });
+}
+
 export function useBaselinesCompute() {
   const queryClient = useQueryClient();
   return useMutation({

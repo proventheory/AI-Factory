@@ -198,6 +198,7 @@ app.get("/v1/dashboard", async (req, res) => {
     ]);
     res.json({ stale_leases: staleLeases, queue_depth: queueDepth, workers_alive: workers });
   } catch (e) {
+    if (handleDbMissingTable(e, res)) return;
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
@@ -736,6 +737,18 @@ app.get("/v1/plans/:id", async (req, res) => {
   }
 });
 
+/** Return 503 with migration hint when DB is missing tables (42P01). */
+function handleDbMissingTable(e: unknown, res: express.Response, tableHint = "job_runs"): boolean {
+  const code = (e as { code?: string }).code;
+  if (code === "42P01") {
+    res.status(503).json({
+      error: `Database schema not applied: relation "${tableHint}" does not exist. Run migrations against the same DB the Control Plane uses (e.g. DATABASE_URL from Render → api-staging Environment): npm run db:migrate`,
+    });
+    return true;
+  }
+  return false;
+}
+
 /** GET /v1/runs — list with filters and pagination */
 app.get("/v1/runs", async (req, res) => {
   try {
@@ -773,6 +786,7 @@ app.get("/v1/runs", async (req, res) => {
     const r = await pool.query(q, params);
     res.json({ items: r.rows, limit, offset });
   } catch (e) {
+    if (handleDbMissingTable(e, res)) return;
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
@@ -2281,6 +2295,93 @@ app.get("/v1/contract_breakage_scan", async (req, res) => {
     q += " ORDER BY pn.plan_id, pn.node_key";
     const r = await pool.query(q, params);
     res.json({ scope_key: scopeKey, contracts: r.rows, message: "Plan nodes with schema refs; review after schema changes." });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.json({ scope_key: null, contracts: [], message: "Plan nodes table not present." });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/topology/:planId — plan node graph (stub for Graph Explorer). */
+app.get("/v1/graph/topology/:planId", async (req, res) => {
+  try {
+    res.json({ plan_id: req.params.planId, nodes: [], edges: [] });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/frontier/:runId — run frontier / completed nodes (stub for Graph Explorer). */
+app.get("/v1/graph/frontier/:runId", async (req, res) => {
+  try {
+    res.json({ run_id: req.params.runId, completed_node_ids: [], pending_node_ids: [] });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/repair_plan/:runId/:nodeId — repair plan for a failed node (stub). */
+app.get("/v1/graph/repair_plan/:runId/:nodeId", async (req, res) => {
+  try {
+    res.json({
+      run_id: req.params.runId,
+      node_id: req.params.nodeId,
+      suggested_actions: [],
+      subgraph_replay_scope: [],
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/graph/subgraph_replay — trigger subgraph replay (stub). */
+app.post("/v1/graph/subgraph_replay", async (req, res) => {
+  try {
+    const body = req.body as { run_id?: string; node_ids?: string[] };
+    res.json({ run_id: body?.run_id ?? null, replayed: body?.node_ids?.length ?? 0 });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/migration_guard — analyze migration SQL (stub). */
+app.post("/v1/migration_guard", async (req, res) => {
+  try {
+    const body = req.body as { sql?: string; migration_ref?: string };
+    res.json({
+      tables_touched: [],
+      columns: [],
+      risks: [],
+      checkpoint_suggestion: null,
+      raw: body?.sql ?? body?.migration_ref ?? null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/audit/:runId — graph audit for a run (stub). */
+app.get("/v1/graph/audit/:runId", async (req, res) => {
+  try {
+    res.json({ run_id: req.params.runId, issues: [], summary: null });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/missing_capabilities/:planId — missing capabilities for plan (stub). */
+app.get("/v1/graph/missing_capabilities/:planId", async (req, res) => {
+  try {
+    res.json({ plan_id: req.params.planId, missing: [] });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/lineage/:artifactId — producer/consumers for artifact (stub). */
+app.get("/v1/graph/lineage/:artifactId", async (req, res) => {
+  try {
+    res.json({ artifact_id: req.params.artifactId, producers: [], consumers: [] });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
