@@ -70,8 +70,12 @@ export default function GraphDiagnosticsPage() {
           ) : (
             <DataTable
               columns={[{ key: "type", header: "Type" }, { key: "message", header: "Message" }]}
-              data={issues as Array<{ type?: string; message?: string }>}
-              keyExtractor={(_, i) => String(i)}
+              data={issues.map((issue, i) => ({
+                type: (issue as { type?: string })?.type,
+                message: (issue as { message?: string })?.message,
+                __key: i,
+              }))}
+              keyExtractor={(r) => String(r.__key)}
             />
           )}
         </CardSection>

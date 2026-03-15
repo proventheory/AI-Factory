@@ -65,7 +65,7 @@ export default function LineagePage() {
                   <DataTable
                     columns={[{ key: "id", header: "ID" }, { key: "type", header: "Type" }]}
                     data={producers as Array<{ id?: string; type?: string }>}
-                    keyExtractor={(r, i) => String((r as { id?: string }).id ?? i)}
+                    keyExtractor={(r) => String((r as { id?: string }).id ?? JSON.stringify(r))}
                   />
                 )}
               </div>
@@ -77,7 +77,7 @@ export default function LineagePage() {
                   <DataTable
                     columns={[{ key: "id", header: "ID" }, { key: "type", header: "Type" }]}
                     data={consumers as Array<{ id?: string; type?: string }>}
-                    keyExtractor={(r, i) => String((r as { id?: string }).id ?? i)}
+                    keyExtractor={(r) => String((r as { id?: string }).id ?? JSON.stringify(r))}
                   />
                 )}
               </div>

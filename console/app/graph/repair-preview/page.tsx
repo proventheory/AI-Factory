@@ -66,7 +66,7 @@ export default function RepairPreviewPage() {
                 <DataTable
                   columns={[{ key: "action", header: "Action" }, { key: "detail", header: "Detail" }]}
                   data={suggestedActions as Array<{ action?: string; detail?: string }>}
-                  keyExtractor={(_, i) => String(i)}
+                  keyExtractor={(r) => String((r as { action?: string }).action ?? JSON.stringify(r))}
                 />
               ) : (
                 <p className="text-body-small text-text-muted">No suggested actions.</p>

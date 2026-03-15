@@ -76,7 +76,7 @@ export default function GraphExplorerPage() {
                 <DataTable
                   columns={[{ key: "id", header: "Node" }, { key: "label", header: "Label" }]}
                   data={nodes as Array<{ id?: string; label?: string }>}
-                  keyExtractor={(r, i) => String((r as { id?: string }).id ?? `node-${i}`)}
+                  keyExtractor={(r) => String((r as { id?: string }).id ?? JSON.stringify(r))}
                 />
               )}
             </div>
