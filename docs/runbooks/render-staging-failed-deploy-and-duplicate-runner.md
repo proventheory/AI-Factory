@@ -6,13 +6,31 @@ If **ai-factory-api-staging**, **ai-factory-gateway-staging**, or **ai-factory-r
 
 1. **Render Dashboard** → select the service → **Events** (or **Deploys**) → open the **failed** deploy.
 2. Open **Build logs** (or **Logs**). Look for the first **error** or **failed** line.
-3. Common causes:
+3. **Paste that first error line** (or the last 20 lines of the build log) so the cause can be fixed in the repo or Render config.
+4. Common causes:
    - **Docker build**: Missing file, wrong `dockerfilePath`, or build step failing (e.g. `npm ci`, `esbuild`).
    - **Blueprint / repo**: Service points at wrong branch or repo; sync Blueprint again.
-   - **Cache**: Try **Clear build cache & deploy** in the deploy menu (if available).
-4. Fix the cause in the repo or in the service’s Render settings, then trigger a new deploy (e.g. **Deploy latest commit** or push a new commit).
+   - **Cache**: Trigger deploy with **Clear build cache** (see below).
+5. Fix the cause in the repo or in the service’s Render settings, then trigger a new deploy.
 
-The Render MCP does not return the build log body for failed deploys; the Dashboard is the source of truth.
+**Direct links (open → Events → failed deploy → Build logs):**
+
+| Service | Dashboard |
+|--------|-----------|
+| ai-factory-api-staging | https://dashboard.render.com/web/srv-d6ka7mhaae7s73csv3fg |
+| ai-factory-gateway-staging | https://dashboard.render.com/web/srv-d6l25d1aae7s73ftpvlg |
+| ai-factory-runner-staging (web) | https://dashboard.render.com/web/srv-d6oig7450q8c73ca40q0 |
+
+**Trigger deploy (with optional cache clear):**
+
+```bash
+RENDER_API_KEY=xxx node scripts/render-trigger-deploy.mjs --staging          # all three services
+RENDER_API_KEY=xxx node scripts/render-trigger-deploy.mjs --staging --clear  # clear build cache then deploy
+```
+
+**Why MCP/API can’t show the error:** The Render MCP and Render API do not return build log content for failed deploys. For builds that fail in ~2–3 seconds, **no build log lines are written at all** (failure happens before Docker or clone finishes). So the only way to see the failure reason is the **Dashboard** → service → Events → failed deploy → **Build logs**. If the Dashboard also shows empty or no build logs for that deploy, the failure is **pre-build** (e.g. repo clone, GitHub connection, or Render job setup). In that case: reconnect the GitHub repo in Render (Dashboard → service → Settings → Build & Deploy → Connect repository), or trigger **Clear build cache & deploy** from the Dashboard, or contact Render support.
+
+**Isolate pre-build vs build failure:** Use the minimal test Dockerfile to see if *any* Docker build works. In Dashboard → **ai-factory-api-staging** → **Settings** → **Build & Deploy** → set **Dockerfile Path** to `./Dockerfile.render-minimal` → **Save** → **Manual Deploy**. If that deploy **succeeds**, the problem is in our real Dockerfile (e.g. `npm ci` or `esbuild`); switch the path back to `./Dockerfile.control-plane` and fix the step that fails (check Build logs). If **Dockerfile.render-minimal** also fails in ~2s with no logs, the problem is pre-build (clone, GitHub connection, or Render); try reconnecting the repo and Clear build cache, or contact Render support.
 
 ---
 

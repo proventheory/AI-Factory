@@ -1,0 +1,8 @@
+# Minimal test for Render: if this builds, the failure is in our real Dockerfile steps.
+# To test: In Render Dashboard → api-staging → Settings → Build & Deploy →
+# set Dockerfile Path to: ./Dockerfile.render-minimal, then Deploy.
+# If build succeeds you'll see "Render minimal build OK" in logs; then set path back to ./Dockerfile.control-plane.
+FROM node:20-alpine
+RUN echo "Render minimal build OK"
+EXPOSE 10000
+CMD ["node", "-e", "require('http').createServer((_,r)=>{r.end('ok')}).listen(10000)"]

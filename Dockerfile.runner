@@ -4,6 +4,7 @@
 
 FROM node:20-alpine AS builder
 WORKDIR /app
+RUN echo "Runner: build started"
 COPY package.json package-lock.json ./
 RUN echo "Runner: npm ci..." && npm ci --no-optional --no-audit
 COPY . .
