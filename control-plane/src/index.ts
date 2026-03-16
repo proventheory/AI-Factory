@@ -1,5 +1,29 @@
 import "dotenv/config";
 import * as Sentry from "@sentry/node";
+import { spawnSync } from "child_process";
+import path from "path";
+
+/** App root: parent of the directory containing the bundle (dist/). So scripts/ and schemas/ resolve correctly. */
+function getAppRoot(): string {
+  const bundleDir = typeof __dirname !== "undefined" ? __dirname : path.dirname(process.argv[1] ?? ".");
+  return path.join(bundleDir, "..");
+}
+
+/** Run DB migrations on startup so schema is always applied (self-heal). Runs scripts/run-migrate.mjs from app root so every deploy applies migrations regardless of Render start command. */
+function runMigrationsOnStartup(): void {
+  const appRoot = getAppRoot();
+  const scriptPath = path.join(appRoot, "scripts", "run-migrate.mjs");
+  const result = spawnSync(process.execPath, [scriptPath], {
+    env: process.env,
+    cwd: appRoot,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    console.error("[control-plane] Migrations failed; exiting.");
+    process.exit(result.status ?? 1);
+  }
+  console.log("[control-plane] Migrations complete.");
+}
 
 if (process.env.SENTRY_DSN?.trim()) {
   Sentry.init({
@@ -125,6 +149,8 @@ function startDeployFailureScanLoop(): void {
 
 async function main(): Promise<void> {
   console.log("[control-plane] Starting AI Factory Control Plane...");
+
+  runMigrationsOnStartup();
 
   await startReaperLoop();
   console.log("[control-plane] Lease reaper started");

@@ -1,6 +1,6 @@
-# Runbook: Console shows "relation initiatives does not exist" (or cost dashboard empty, launches 404)
+# Runbook: Console shows "relation initiatives does not exist" or "Control Plane database schema is missing"
 
-When the Console returns `{"error":"relation \"initiatives\" does not exist"}` on Initiatives, Email Design Generator, Landing Page Generator, or when the Cost Dashboard shows no data or the Launches page returns `Cannot GET /v1/launches`, the **database the Control Plane talks to** is missing schema.
+When the Console shows **"Control Plane database schema is missing"** (or `relation "initiatives" does not exist` on Initiatives, Email Design Generator, Launches, Cost Dashboard), the **database the Control Plane talks to** is missing schema.
 
 ---
 
@@ -12,26 +12,29 @@ When the Console returns `{"error":"relation \"initiatives\" does not exist"}` o
 
 ---
 
-## Fix
+## Fix (one-time)
 
 1. **Use the same DB the Control Plane uses**  
-   Get `DATABASE_URL` from the environment of the service that runs the Control Plane (e.g. Render → Service → Environment). Use that exact URL for the steps below.
+   Use the same `DATABASE_URL` as the Control Plane (e.g. from Render → ai-factory-api-staging → Environment). Your repo `.env` should match that for migrations.
 
 2. **Run migrations against that DB**  
-   From the repo root, with `DATABASE_URL` set to that URL:
+   From the repo root:
 
    ```bash
-   export DATABASE_URL="postgresql://..."   # from Render / your Control Plane env
-   pnpm db:migrate
+   node --env-file=.env scripts/run-migrate.mjs
    ```
 
-   Or with a `.env` that has `DATABASE_URL`:
+   Or with `pnpm db:migrate` (if it runs the same script). This applies core schema and all migrations in `scripts/run-migrate.mjs` (including `initiatives`, `build_specs`, `launches`).
 
-   ```bash
-   pnpm db:migrate
-   ```
+3. **Refresh the Console**  
+   Dashboard, Initiatives, and other views should load without the schema error.
 
-   This runs `scripts/run-migrate.mjs`, which applies core schema (including `initiatives`, `llm_calls`) and all Supabase migrations (including `build_specs`, `launches`).
+---
+
+## Why self-heal didn’t fix it
+
+- **Migrations run on every Control Plane start:** (1) **In-process** — the bundle runs `scripts/run-migrate.mjs` before starting the API (`control-plane/src/index.ts`: `runMigrationsOnStartup()`). (2) **Docker CMD** — `Dockerfile.control-plane` runs migrate then the bundle. So every deploy or restart applies pending migrations.
+- If you still see this error, run `node --env-file=.env scripts/run-migrate.mjs` once from repo root (same `DATABASE_URL` as the API). Ensure the Control Plane on Render has no custom Start Command that skips the image CMD.
 
 3. **Redeploy Control Plane**  
    Ensure the Control Plane is deployed from a commit that includes the `/v1/launches` and `/v1/build_specs` API routes (and any other recent API changes). After redeploy, `GET /v1/launches` should return `{ "items": [] }` instead of 404.
