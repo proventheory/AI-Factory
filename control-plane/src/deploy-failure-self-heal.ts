@@ -25,7 +25,8 @@ export const deployFailureRemediatedDeployIds = new Set<string>();
 /** Per service+commit count of remediations. Key: `${serviceId}:${commit}`. */
 export const deployFailureRemediationCountByCommit = new Map<string, number>();
 
-const FAILED_STATUSES = ["failed", "canceled"] as const;
+/** Render API: build_failed = build failed; failed/canceled = other failure. All trigger redeploy. */
+const FAILED_STATUSES = ["failed", "canceled", "build_failed"] as const;
 const MAX_REDEPLOYS_PER_COMMIT = 2;
 
 /**
