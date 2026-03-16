@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 /**
- * Set self-heal env vars on the Control Plane (ai-factory-api-staging) via Render API.
+ * Set self-heal env vars on the Control Plane via Render API.
  * Run from repo root with .env loaded so RENDER_API_KEY, VERCEL_TOKEN (if present) are pushed.
  *
- *   node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs
- *   # or: node -r dotenv/config scripts/set-render-vercel-self-heal-env.mjs
+ *   node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs           # staging only
+ *   node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs --prod    # staging + prod
+ *
+ * If RENDER_PROD_API_SERVICE_ID is set: also sets the same vars on the backup Control Plane
+ * (Render service ai-factory-api-prod). That service's 5-min scan then monitors staging;
+ * when both api-staging and runner-staging are down, the backup triggers staging redeploys.
+ * Everything is staging today; the backup is just the healer instance.
  *
  * Sets on Render (Control Plane):
  *   ENABLE_SELF_HEAL = true
- *   RENDER_API_KEY = (from env) — REQUIRED for deploy-failure self-heal (api/gateway/runner)
- *   RENDER_STAGING_SERVICE_IDS = api,gateway,runner IDs — so all three are monitored every 5 min
- *   VERCEL_PROJECT_IDS = ai-factory-console
- *   VERCEL_TOKEN = (from env; also reads VERCEL_API_TOKEN so one token works for Terraform + self-heal)
+ *   RENDER_API_KEY = (from env)
+ *   RENDER_STAGING_SERVICE_IDS = api,gateway,runner IDs (staging) — monitored every 5 min
+ *   VERCEL_PROJECT_IDS, VERCEL_TOKEN (optional)
  */
 import "dotenv/config";
 
@@ -22,6 +26,7 @@ function getVercelToken() {
 
 const RENDER_API_BASE = "https://api.render.com/v1";
 const CONTROL_PLANE_STAGING_SERVICE_ID = "srv-d6ka7mhaae7s73csv3fg"; // ai-factory-api-staging
+const RUNNER_STAGING_SERVICE_ID = "srv-d6oig7450q8c73ca40q0"; // ai-factory-runner-staging (web)
 const STAGING_IDS = "srv-d6ka7mhaae7s73csv3fg,srv-d6l25d1aae7s73ftpvlg,srv-d6oig7450q8c73ca40q0"; // api, gateway, runner
 
 async function setEnvVar(apiKey, serviceId, key, value) {
@@ -43,6 +48,13 @@ async function setEnvVar(apiKey, serviceId, key, value) {
   }
 }
 
+async function pushToService(apiKey, serviceId, updates, label) {
+  for (const { key, value } of updates) {
+    await setEnvVar(apiKey, serviceId, key, value);
+    console.log(`[${label}] Set`, key, "=", key === "VERCEL_TOKEN" || key === "RENDER_API_KEY" ? "***" : value);
+  }
+}
+
 async function main() {
   const apiKey = process.env.RENDER_API_KEY?.trim();
   if (!apiKey) {
@@ -50,27 +62,38 @@ async function main() {
     process.exit(1);
   }
 
+  const stagingIds = process.env.RENDER_STAGING_SERVICE_IDS?.trim() || STAGING_IDS;
   const updates = [
     { key: "ENABLE_SELF_HEAL", value: "true" },
     { key: "RENDER_API_KEY", value: apiKey },
-    { key: "RENDER_STAGING_SERVICE_IDS", value: process.env.RENDER_STAGING_SERVICE_IDS?.trim() || STAGING_IDS },
+    { key: "RENDER_STAGING_SERVICE_IDS", value: stagingIds },
     { key: "VERCEL_PROJECT_IDS", value: process.env.VERCEL_PROJECT_IDS?.trim() || "ai-factory-console" },
   ];
   const token = getVercelToken();
   if (token) {
     updates.push({ key: "VERCEL_TOKEN", value: token });
   } else {
-    console.warn("VERCEL_TOKEN / VERCEL_API_TOKEN not set in env. Vercel redeploy self-heal will not run until you set one on Render (or in .env and re-run this script).");
+    console.warn("VERCEL_TOKEN / VERCEL_API_TOKEN not set. Vercel redeploy self-heal will not run until set on Render.");
   }
 
-  for (const { key, value } of updates) {
-    await setEnvVar(apiKey, CONTROL_PLANE_STAGING_SERVICE_ID, key, value);
-    console.log("Set", key, "=", key === "VERCEL_TOKEN" || key === "RENDER_API_KEY" ? "***" : value);
-  }
+  // Staging Control Plane: so staging can self-heal when staging is up
+  await pushToService(apiKey, CONTROL_PLANE_STAGING_SERVICE_ID, updates, "staging-api");
+  // Staging Runner: when api-staging is down, runner's 5-min scan can still trigger redeploys for api/gateway/runner
+  await pushToService(apiKey, RUNNER_STAGING_SERVICE_ID, updates, "staging-runner");
+  console.log("Staging: done. API and runner both run 5-min deploy-failure scan; when API is down, runner heals.");
 
-  console.log("Done. Control Plane will redeploy on Render. Next 5-min scan will:");
-  console.log("  - Deploy-failure: check api + gateway + runner and trigger redeploy if failed/canceled.");
-  console.log("  - Vercel: check Console project and trigger redeploy if ERROR/CANCELED (when VERCEL_TOKEN is set).");
+  // Backup Control Plane (ai-factory-api-prod): when BOTH api-staging and runner-staging are down, only this service can trigger staging redeploys.
+  const backupServiceId = process.env.RENDER_PROD_API_SERVICE_ID?.trim();
+  const wantBackup = process.argv.includes("--prod") || !!backupServiceId;
+  if (wantBackup && backupServiceId) {
+    await pushToService(apiKey, backupServiceId, updates, "backup (api-prod)");
+    console.log("Backup Control Plane: done. When both api-staging and runner are down, its 5-min scan will trigger staging redeploys.");
+  } else if (!backupServiceId) {
+    console.log("");
+    console.log("Optional: when BOTH api-staging and runner are down, set backup healer and re-run:");
+    console.log("  RENDER_PROD_API_SERVICE_ID=<ai-factory-api-prod service id from Render Dashboard>");
+    console.log("  node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs");
+  }
 }
 
 main().catch((err) => {

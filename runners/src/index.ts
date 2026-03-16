@@ -21,6 +21,7 @@ import {
   persistJobResult,
 } from "./executor-registry.js";
 import { advanceSuccessors, checkRunCompletion, markRunFailedIfNoPendingJobs } from "../../control-plane/src/scheduler.js";
+import { runDeployFailureScanTriggerOnly } from "../../control-plane/src/deploy-failure-scan-trigger-only.js";
 
 registerAllHandlers();
 
@@ -275,6 +276,19 @@ async function main(): Promise<void> {
   }, POLL_INTERVAL_MS);
 
   startHealthServer();
+
+  // Deploy-failure self-heal (staging): when api-staging is down, runner can still trigger redeploys for api/gateway/runner.
+  if (process.env.ENABLE_SELF_HEAL === "true" && process.env.RENDER_API_KEY?.trim()) {
+    const run = () => {
+      runDeployFailureScanTriggerOnly().catch((err) =>
+        console.warn("[runner] Deploy-failure scan error:", (err as Error).message)
+      );
+    };
+    setTimeout(run, 30_000);
+    setInterval(run, 5 * 60 * 1000);
+    console.log("[runner] Deploy-failure self-heal scan started (every 5 min when RENDER_STAGING_SERVICE_IDS or RENDER_WORKER_SERVICE_ID set)");
+  }
+
   console.log("[runner] Polling for jobs...");
 }
 

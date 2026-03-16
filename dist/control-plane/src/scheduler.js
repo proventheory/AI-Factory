@@ -1,4 +1,5 @@
 import { v4 as uuid } from "uuid";
+import { mirrorRunToGraphRun } from "./graph-run-mirror.js";
 export async function createRun(db, params) {
     const runId = uuid();
     const llmSource = params.llmSource === "openai_direct" ? "openai_direct" : "gateway";
@@ -76,6 +77,8 @@ export async function createRun(db, params) {
         await db.query(`UPDATE runs SET status = 'running', started_at = COALESCE(started_at, now()) WHERE id = $1`, [runId]);
         await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'started')`, [runId]).catch(() => { });
     }
+    // Phase 5A: mirror run to graph_run (execution layer) for observability
+    mirrorRunToGraphRun(db, runId, params.planId).catch(() => { });
     // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
     if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
         const rootJobCount = nodes.rows.filter((n) => (inDegree.get(n.id) ?? 0) === 0 && n.node_type !== "approval").length;

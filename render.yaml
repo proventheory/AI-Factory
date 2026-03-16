@@ -1,6 +1,12 @@
 # Render Blueprint: AI Factory Control Plane + Runner + LLM Gateway
 # Set in Dashboard: DATABASE_URL, CORS_ORIGIN (API), CONTROL_PLANE_URL + LLM_GATEWAY_URL or OPENAI_API_KEY (runner).
 # Gateway: set OPENAI_API_KEY and optionally ANTHROPIC_API_KEY on ai-factory-gateway-staging; then set LLM_GATEWAY_URL on runner to this service URL.
+#
+# Control Plane (API) self-heal: migrations run on every start when built from GitHub (or any deploy) only if:
+#   - dockerContext: .   (repo root; leave Root Directory blank so context is full repo)
+#   - dockerfilePath: ./Dockerfile.control-plane   (or control-plane/Dockerfile with context .)
+#   - Start Command: leave EMPTY so the image CMD runs migrate then the API.
+# If Root Directory is set to control-plane, or Start Command overrides CMD, the image may omit migrations and Console shows "Control Plane database schema is missing."
 
 services:
   - type: web
@@ -21,6 +27,7 @@ services:
     runtime: docker
     dockerContext: .
     dockerfilePath: ./Dockerfile.control-plane
+    # Start Command: leave unset so image CMD runs migrate then API (self-heal)
     branch: main
     envVars:
       - key: PORT
@@ -47,6 +54,7 @@ services:
     runtime: docker
     dockerContext: .
     dockerfilePath: ./Dockerfile.control-plane
+    # Start Command: leave unset so image CMD runs migrate then API (self-heal)
     branch: prod
     envVars:
       - key: PORT

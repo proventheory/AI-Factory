@@ -96,6 +96,7 @@ export async function getGoogleAuthUrl(
 
 /**
  * Exchange code for tokens, store encrypted refresh_token by brand_id or initiative_id, return redirect_uri.
+ * CSRF protection: state is validated via decodeState (must contain redirect_uri and brand_id or initiative_id) before exchanging the code.
  */
 export async function handleOAuthCallback(
   client: PoolClient,

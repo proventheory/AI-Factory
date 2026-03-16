@@ -27,42 +27,23 @@ Control Plane (scheduler, policy, release manager, graph RPCs)
 
 **Orchestration ledger:** Initiatives -> Plans -> Runs -> Job Runs -> Tool Calls -> Artifacts -> Events. **Graph self-heal:** change_events, graph_impacts, incident_memory, artifact_consumption, graph_checkpoints. **Deploy events:** record build/deploy failures via `POST /v1/deploy_events` (with optional `build_log_text` for classification); use `GET /v1/deploy_events/:id/repair_plan` for suggested actions. Full runbook: **docs/GRAPH_ENGINE_AND_SELF_HEAL.md**.
 
-## Project Structure
+## Project structure
 
-```
-schemas/                    Postgres DDL (human-reviewed)
-  001_core_schema.sql       All tables, enums, indexes, constraints
-  002_state_machines_and_constraints.sql  Transition guards, immutability triggers
-
-control-plane/src/          Control Plane application
-  db.ts                     Database connection pool + transaction helper
-  types.ts                  TypeScript type definitions for all tables
-  scheduler.ts              Run creation, node_progress init, DAG advancement
-  reaper.ts                 Lease reaper (reclaims stale job_claims)
-  release-manager.ts        Canary routing, drift detection, auto-rollback
-  golden-suite.ts           Golden initiative test suite
-  repair-engine.ts          repair_recipes lookup, hypothesis generation, escalation
-  scorecard.ts              Factory Scorecard (5-axis metrics per release)
-  index.ts                  Control Plane entry point
-
-runners/src/                Runner Fleet application
-  runner.ts                 Job claim/lease/heartbeat, completion, single-winner election
-  tool-calls.ts             Idempotent tool-call execution with capability gating
-  index.ts                  Runner entry point (poll loop)
-
-adapters/src/               MCP Adapter layer
-  adapter-interface.ts      Base interface: validate -> execute -> verify -> rollback
-```
+- **supabase/migrations/** — Postgres DDL (applied by `scripts/run-migrate.mjs` on Control Plane start).
+- **control-plane/** — REST API, plan compiler, scheduler, graph RPCs. Entry: `src/index.ts` + `src/api.ts`.
+- **runners/** — Stateless workers: ExecutorRegistry, handlers, artifact consumption.
+- **console/** — ProfessorX (Next.js + shadcn). Deployed to Vercel.
+- **docs/** — Index: **docs/README.md**. Runbook: **docs/OPERATIONS_RUNBOOK.md**.
 
 ## Kernel and operators (current state)
 
-- **Pipeline V2** — Prompt → draft → lint → compile → run. Patterns (SEO, email, self-heal, deploy); compose; plan-from-draft; Console “Build pipeline from prompt” + Start run. See **docs/PIPELINE_GENERATION.md**.
+- **Pipeline V2** — Prompt → draft → lint → compile → run. Patterns (SEO, email, self-heal, deploy); compose; plan-from-draft; Console “Build pipeline from prompt” + Start run. See **docs/HOW_TO_BUILD_NEW_PIPELINES.md**.
 - **Dev Kernel V1** — Failure → classify → incident_memory → auto-repair (5‑min loop when `ENABLE_AUTO_REPAIR=true`); capability registry; `POST /v1/job_failures` from runner. See **docs/GRAPH_ENGINE_AND_SELF_HEAL.md**.
-- **Action Kernel V1** — Unified action execution (subgraph_replay, rerun_pipeline, rollback_release); policy; validation and learning. See **docs/BUSINESS_OPERATOR_V1.md** (Stage 4 scaffold).
-- **Ads + Commerce Operator (Phases 1–5)** — Canonical schema (typed spend/orders/attribution); Meta & Shopify connectors (read); metrics & diagnosis; Meta pause + validation; Slack daily summary. See **docs/ADS_COMMERCE_OPERATOR.md**.
-- **Taxonomy and brand catalog** — Airtable/Shopify import → raw + canonical (organizations, taxonomy_websites, vocabularies, terms, brand_catalog_products). First Capital Group grouping; `brand_profiles.website_id` for brand ↔ website. See **docs/AIRTABLE_AND_PRODUCT_IMPORT_PLUGIN_ANALYSIS.md** and **docs/ORGANIZATION_AND_CLIENT_GROUPING.md**.
+- **Action Kernel V1** — Unified action execution (subgraph_replay, rerun_pipeline, rollback_release); policy; validation and learning. See **docs/GRAPH_ENGINE_AND_SELF_HEAL.md**.
+- **Ads + Commerce Operator (Phases 1–5)** — Canonical schema (typed spend/orders/attribution); Meta & Shopify connectors (read); metrics & diagnosis; Meta pause + validation; Slack daily summary. See **docs/GRAPH_ENGINE_IMPLEMENTATION_STATUS.md**.
+- **Taxonomy and brand catalog** — Airtable/Shopify import → raw + canonical (organizations, taxonomy_websites, vocabularies, terms, brand_catalog_products). First Capital Group grouping; `brand_profiles.website_id` for brand ↔ website. See **docs/AIRTABLE_METADATA_AND_PAGE_MAPPING.md**, **docs/BRAND_ENGINE.md**.
 
-**Migrations:** `npm run db:migrate` (core); `npm run db:migrate:pipeline-v2`; `npm run db:migrate:dev-kernel`; `npm run db:migrate:ads-commerce`; Airtable/taxonomy migrations in `supabase/migrations/20250331*.sql`. **Verification:** `npm run doctor`, `npm run test:pipeline-v2-api`, `npm run test:dev-kernel-api`, `npm run verify:taxonomy-db`, `npm run test:taxonomy-catalog-api`. Full runbook: **docs/OPERATIONS_RUNBOOK.md**.
+**Migrations:** Control Plane runs `node scripts/run-migrate.mjs` on every start. Locally: `npm run db:migrate` (uses `DATABASE_URL`). **Verification:** `npm run verify:migrations`, `npm run doctor`. Full runbook: **docs/OPERATIONS_RUNBOOK.md**.
 
 **Deploys:** Before or after any heavy deploy or DB change, follow **[docs/DEPLOY_AND_DATA_SAFETY.md](docs/DEPLOY_AND_DATA_SAFETY.md)** so the Console stays populated and work is traceable.
 
@@ -81,12 +62,9 @@ adapters/src/               MCP Adapter layer
 ```bash
 npm install
 
-# Create the database and run migrations
+# Create the database and run migrations (all migrations in supabase/migrations applied via run-migrate.mjs)
 createdb ai_factory
 npm run db:migrate
-npm run db:migrate:pipeline-v2
-npm run db:migrate:dev-kernel
-npm run db:migrate:ads-commerce
 
 # Build TypeScript
 npm run build
@@ -153,7 +131,7 @@ The factory improves itself through controlled evolution:
 
 1. **Factory Scorecard** — 5-axis metrics (reliability, determinism, safety, velocity, quality) per release
 2. **Repair recipes** — Known fixes stored by error_signature; tried before hypothesis exploration
-3. **Eval Initiative** — Nightly replay of prod failures in sandbox; generates upgrade PRs
+3. **Eval Initiative** — Nightly (or `EVAL_INITIATIVE_INTERVAL_MS`) scan of failure clusters from `incident_memory`; creates initiatives and triggers sandbox replays. Set `ENABLE_EVAL_INITIATIVE=true` on the Control Plane. Upgrade PRs can be created from initiatives (manual or future automation).
 4. **Policy auto-tightening** — Canary drift reduces autonomy until stability returns
 5. **Phased autonomy** — Work Plane first (safe), Control Plane last (human approval required)
 

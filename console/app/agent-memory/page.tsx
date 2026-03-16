@@ -26,13 +26,20 @@ export default function AgentMemoryPage() {
       <Stack>
         <PageHeader
           title="Agent Memory"
-          description="Persistent key-value memory for agents. Full CRUD in Admin."
+          description="Persistent key-value memory for agents. Configured and ready: Runners write here during jobs; you can create or edit entries in Admin."
         />
         <p className="text-body-small text-text-muted mb-2">
           <Link href="/admin/agent_memory" className="text-brand-600 hover:underline">Admin → Agent Memory</Link> · <Link href="/graph/memory" className="text-brand-600 hover:underline">Memory (incidents)</Link>
         </p>
         {isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />
+        ) : (data?.items ?? []).length === 0 ? (
+          <TableFrame>
+            <div className="rounded-lg border border-border-default bg-surface-sunken/50 px-4 py-8 text-center text-body-small text-text-muted">
+              <p className="font-medium text-text-secondary mb-1">No agent memory entries yet</p>
+              <p>Entries are created when Runners write to agent_memory during job execution. You can also create or edit entries in <Link href="/admin/agent_memory" className="text-brand-600 hover:underline">Admin → Agent Memory</Link>.</p>
+            </div>
+          </TableFrame>
         ) : (
           <>
             <TableFrame>

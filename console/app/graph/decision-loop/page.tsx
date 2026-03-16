@@ -24,6 +24,14 @@ export default function DecisionLoopPage() {
         {error && (
           <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">{formatApiError(error)}</div>
         )}
+        {tickMutation.isError && (
+          <div className="rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-4 py-3 text-body-small text-state-danger">{formatApiError(tickMutation.error)}</div>
+        )}
+        {tickMutation.isSuccess && (
+          <div className="rounded-lg border border-state-successMuted bg-state-successMuted/30 px-4 py-3 text-body-small text-state-success">
+            {tickMutation.data?.baselines_computed != null ? "Baselines computed." : "Tick completed."}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <Button
             variant="primary"

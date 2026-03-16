@@ -2705,11 +2705,38 @@ app.get("/v1/graph/repair_plan/:runId/:nodeId", async (req, res) => {
   }
 });
 
-/** POST /v1/graph/subgraph_replay — trigger subgraph replay (stub). */
+/** POST /v1/graph/subgraph_replay — create a new run from the same plan (replay). Reuses same logic as rerun; node_ids reserved for future partial replay. */
 app.post("/v1/graph/subgraph_replay", async (req, res) => {
   try {
     const body = req.body as { run_id?: string; node_ids?: string[] };
-    res.json({ run_id: body?.run_id ?? null, replayed: body?.node_ids?.length ?? 0 });
+    const runId = body?.run_id;
+    if (!runId) return res.status(400).json({ error: "run_id required" });
+
+    let r = await pool.query(
+      "SELECT plan_id, release_id, policy_version, environment, cohort, llm_source FROM runs WHERE id = $1",
+      [runId]
+    ).catch(() => null);
+    if (!r || r.rows.length === 0) {
+      r = await pool.query(
+        "SELECT plan_id, release_id, policy_version, environment, cohort FROM runs WHERE id = $1",
+        [runId]
+      );
+      if (r.rows.length === 0) return res.status(404).json({ error: "Run not found" });
+    }
+    const row = r.rows[0] as { plan_id: string; release_id: string; policy_version: string | null; environment: string; cohort: string | null; llm_source?: string };
+    const llmSource = row.llm_source === "openai_direct" ? "openai_direct" as const : "gateway" as const;
+    const newRunId = await withTransaction(async (client) => {
+      return createRun(client, {
+        planId: row.plan_id,
+        releaseId: row.release_id,
+        policyVersion: row.policy_version ?? "latest",
+        environment: row.environment as "sandbox" | "staging" | "prod",
+        cohort: row.cohort as "canary" | "control" | null,
+        rootIdempotencyKey: `subgraph_replay:${runId}:${Date.now()}`,
+        llmSource,
+      });
+    });
+    res.json({ run_id: newRunId, replayed: 1, message: "New run created from same plan (full replay)." });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }

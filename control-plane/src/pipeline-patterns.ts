@@ -5,7 +5,11 @@
  */
 
 import { getTemplateByIntentType } from "./plan-compiler.js";
-import type { PipelineDraftNode, PipelineDraftEdge } from "./pipeline-draft.js";
+
+/** Draft node shape (matches plan-compiler DraftNodeLike). */
+export type PipelineDraftNode = { node_key: string; job_type: string; node_type?: string; agent_role?: string; consumes_artifact_types?: string[] };
+/** Draft edge shape (matches plan-compiler DraftEdgeLike). */
+export type PipelineDraftEdge = { from_key: string; to_key: string; condition?: string };
 
 export const PIPELINE_PATTERN_IDS = ["seo_migration_audit", "email_design_generator", "self_heal", "software_deploy"] as const;
 

@@ -33,8 +33,7 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 | **[TEMPLATE_IMAGE_QA_CHECKLIST.md](TEMPLATE_IMAGE_QA_CHECKLIST.md)** | Template image QA checklist. |
 | **[SUPABASE_EMAIL_SCHEMA_DEPLOY.md](SUPABASE_EMAIL_SCHEMA_DEPLOY.md)** | Supabase email schema and deploy notes. |
 | **[EMAIL_MARKETING_FACTORY_INTEGRATION.md](EMAIL_MARKETING_FACTORY_INTEGRATION.md)** | Email Marketing Factory app in `email-marketing-factory/`, base path, proxy from Console. |
-| **[EMAIL_DESIGN_VS_CAMPAIGN.md](EMAIL_DESIGN_VS_CAMPAIGN.md)** | Naming: `email_design_generator` (design initiatives) vs *email campaign* (sent via Klaviyo operator pack). |
-| **[KLAVIYO_OPERATOR_PACK.md](KLAVIYO_OPERATOR_PACK.md)** | **Klaviyo operator pack (Phases 1–4):** templates + campaigns push, flow scaffolding, performance/recommendations, Console `/klaviyo`, API, migrations, how to test. |
+| **[EMAIL_DESIGN_VS_CAMPAIGN.md](EMAIL_DESIGN_VS_CAMPAIGN.md)** | Naming: `email_design_generator` (design initiatives) vs *email campaign* (sent via Klaviyo operator pack). Klaviyo: Console `/klaviyo`, templates + campaigns push. |
 
 ## Brand tokens
 
@@ -52,23 +51,26 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 
 | Document | Purpose |
 |----------|---------|
-| **[GRAPH_ENGINE_AND_SELF_HEAL.md](GRAPH_ENGINE_AND_SELF_HEAL.md)** | **Graph & self-heal:** what’s implemented, migrations, how to run Control Plane / Runner / Console, full API reference, Console views. |
-| **[GRAPH_ENGINE_PLAN_STATUS.md](GRAPH_ENGINE_PLAN_STATUS.md)** | **100% plan status:** checklist of all plan items (Part D, E, F, I.2, L, Phases 1–7) and prompt-built pipelines. |
-| **[PIPELINE_GENERATION.md](PIPELINE_GENERATION.md)** | **Pipeline & app generation:** prompt-built pipelines 100% V2 (draft, save/load, templates, compose, deploy pattern, Console start run); real app generation (Track B) planned. |
-| **[LAUNCH_KERNEL_V1.md](LAUNCH_KERNEL_V1.md)** | **Launch kernel:** BuildSpec, LaunchArtifact contract, deploy (Vercel/Render/Netlify/Railway/Fly), DNS (Cloudflare/Vercel), strategy-doc parser, extended BuildSpec, repo provisioning, runner `deploy_preview`, Console Launches UI. |
-| **[BUSINESS_OPERATOR_V1.md](BUSINESS_OPERATOR_V1.md)** | **Stage 4 kernel maturity:** Business Operator V1 scope, required adapters (ads, metrics, experiments), and scaffold. Builds on Dev Kernel V1 + Action Kernel V1. |
-| **[ADS_COMMERCE_OPERATOR.md](ADS_COMMERCE_OPERATOR.md)** | **Ads + Commerce Operator (Phases 1–5):** canonical schema, Meta/Shopify connectors (read), metrics, diagnosis, Meta pause + validation, Slack daily summary. |
+| **[GRAPH_ENGINE_AND_SELF_HEAL.md](GRAPH_ENGINE_AND_SELF_HEAL.md)** | **Graph & self-heal:** what's implemented, migrations, how to run Control Plane / Runner / Console, full API reference, Console views. |
+| **[GRAPH_SELF_HEAL_PLUGGED_STATUS.md](GRAPH_SELF_HEAL_PLUGGED_STATUS.md)** | **API vs stub status:** Which Graph & Self-heal Console features are wired to real APIs (topology, frontier, repair_plan, audit, migration_guard, deploy_events/sync, schema_contracts) and which are stubs or partial. |
+| **[GRAPH_ENGINE_IMPLEMENTATION_STATUS.md](GRAPH_ENGINE_IMPLEMENTATION_STATUS.md)** | Implementation status for graph engine features and phases. |
+| **[CAPABILITY_GRAPH.md](CAPABILITY_GRAPH.md)** | Capability graph and resolver: "which operator can produce artifact type X?", schema (operators, artifact_types, consumes/produces), GET/POST `/v1/capability/resolve`, ranking policy. |
+| **[HOW_TO_BUILD_NEW_PIPELINES.md](HOW_TO_BUILD_NEW_PIPELINES.md)** | How to build new pipelines and wire handlers. |
+| **[ARTIFACT_HYGIENE.md](ARTIFACT_HYGIENE.md)** | Artifact hygiene, lineage, and traceability. |
+| **[WEBHOOKS.md](WEBHOOKS.md)** | Webhook endpoints (GitHub, Vercel), who receives them (Control Plane), and how new pipelines get webhooks (self-heal / register). |
 
 ## Operations runbook and Cursor workflow
 
 | Document | Purpose |
 |----------|---------|
-| **[OPERATIONS_RUNBOOK.md](OPERATIONS_RUNBOOK.md)** | **AI Factory Operator Runbook:** commands at a glance, playbooks (run failure, migration, artifact), mental model, how to use Cursor with debug bundles. Start here when something breaks or before/after a migration. |
+| **[OPERATIONS_RUNBOOK.md](OPERATIONS_RUNBOOK.md)** | **AI Factory Operator Runbook:** commands at a glance, playbooks (run failure, migration, artifact), mental model, how to use Cursor with debug bundles. **Start here** when something breaks or before/after a migration. |
 | **[CURSOR_AND_OPERATIONS.md](CURSOR_AND_OPERATIONS.md)** | Why Cursor is driven by **commands and APIs** (not the Vercel URL); three layers (state → RPCs → Cursor); debug packet; CLI + ProfessorX split; folder structure. |
 | **[runbooks/console-data-safety-and-traceability.md](runbooks/console-data-safety-and-traceability.md)** | **Console data safety:** Never leave Console empty; traceability for templates, components, brands. Pre-deploy export, post-deploy repopulate, recovery steps. |
 | **[runbooks/run-failure.md](runbooks/run-failure.md)** | When a pipeline run fails: doctor:run → bundle → repair-plan → give Cursor bundle → replay. |
 | **[runbooks/migration-workflow.md](runbooks/migration-workflow.md)** | Before/after migrations: migration:guard → fix risks → apply → post-migration:audit. |
 | **[runbooks/artifact-debugging.md](runbooks/artifact-debugging.md)** | Artifact lineage and consumers: graph:lineage, use in bundle or Console. |
+| **[runbooks/render-staging-failed-deploy-and-duplicate-runner.md](runbooks/render-staging-failed-deploy-and-duplicate-runner.md)** | Render staging: failed deploy and duplicate runner remediation. |
+| **[runbooks/console-db-relation-does-not-exist.md](runbooks/console-db-relation-does-not-exist.md)** | Console "relation does not exist" errors. |
 | **[reference/cli-commands.md](reference/cli-commands.md)** | All operator CLI commands and Control Plane RPCs. |
 | **[reference/debug-bundle-schema.md](reference/debug-bundle-schema.md)** | JSON shape of the debug bundle for Cursor. |
 
@@ -78,8 +80,7 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 
 | Document | Purpose |
 |----------|---------|
-| **[DEPLOY_AND_DATA_SAFETY.md](DEPLOY_AND_DATA_SAFETY.md)** | **Mandatory:** Avoid empty Console and lost work. Before/after deploy: export templates, commit mapping, repopulate, verify. The Console must not be left empty; we must be able to trace back. |
-| **[runbooks/console-data-safety-and-traceability.md](runbooks/console-data-safety-and-traceability.md)** | Runbook: source of truth for each data type, pre-deploy export/commit, post-deploy repopulate, recovery when Console is empty. |
+| **[DEPLOY_AND_DATA_SAFETY.md](DEPLOY_AND_DATA_SAFETY.md)** | **Mandatory:** Avoid empty Console and lost work. Before/after deploy: export templates, commit mapping, repopulate, verify. |
 | **[DEPLOY_ENV_SETUP.md](DEPLOY_ENV_SETUP.md)** | Deploy environment setup. |
 | **[DEPLOYMENT_PLAN_WITH_MCP.md](DEPLOYMENT_PLAN_WITH_MCP.md)** | Steps to put the factory on the web: Supabase, Control Plane, Console, LLM Gateway, MCP, Email Marketing Factory. |
 | **[DEPLOY_PHASE3_CHECKLIST.md](DEPLOY_PHASE3_CHECKLIST.md)** | Phase 3 checklist: GitHub Actions secrets/variables, workflow env check. |
@@ -88,11 +89,24 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 | **[RUNNERS_DEPLOYMENT.md](RUNNERS_DEPLOYMENT.md)** | Runners deployment. |
 | **[SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md)** | Security and runbooks. |
 | **[SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md)** | Self-heal: one-time setup and automatic behavior (platform + local CLI). |
-| **[SELF_HEAL_REQUIRED_ENV.md](SELF_HEAL_REQUIRED_ENV.md)** | **Self-heal tokens (every project/brand):** Control Plane env (ENABLE_SELF_HEAL, RENDER_*, VERCEL_*), auto-register Vercel when launching a project (projectId in spec/launch). |
-| **[SELF_HEAL_PROVIDER_STATUS_REFERENCE.md](SELF_HEAL_PROVIDER_STATUS_REFERENCE.md)** | **Canonical list:** Which Render/Vercel deploy status values we treat as failed (so self-heal triggers redeploy). If a failed deploy isn't remediating, check this and add any missing status. |
+| **[SELF_HEAL_REQUIRED_ENV.md](SELF_HEAL_REQUIRED_ENV.md)** | **Self-heal env:** Control Plane (ENABLE_SELF_HEAL, RENDER_*, VERCEL_*), auto-register Vercel when launching (projectId in spec/launch). |
+| **[SELF_HEAL_PROVIDER_STATUS_REFERENCE.md](SELF_HEAL_PROVIDER_STATUS_REFERENCE.md)** | Which Render/Vercel deploy status values we treat as failed (self-heal triggers redeploy). |
+| **[VERCEL_CONSOLE_DEPLOY.md](VERCEL_CONSOLE_DEPLOY.md)** | Deploy Console to Vercel (root dir, workspace, verify Self-heal page). |
+| **[VERCEL_SELF_HEAL.md](VERCEL_SELF_HEAL.md)** | Vercel self-heal (redeploy on failure, webhook). |
 | **[VAULT_KEYS.md](VAULT_KEYS.md)** | Vault keys reference. |
 | **[VERCEL_PREVIEW_PUBLIC_ACCESS.md](VERCEL_PREVIEW_PUBLIC_ACCESS.md)** | Vercel preview public access. |
 | **[VERCEL_TEST_WITHOUT_DEPLOYING.md](VERCEL_TEST_WITHOUT_DEPLOYING.md)** | Testing on Vercel without deploying. |
+
+## SEO migration
+
+| Document | Purpose |
+|----------|---------|
+| **[seo-migration/README.md](seo-migration/README.md)** | SEO migration overview: jobs, artifacts, scoring. |
+| **[seo-migration/artifact-schemas.md](seo-migration/artifact-schemas.md)** | SEO artifact schemas. |
+| **[seo-migration/job-contracts.md](seo-migration/job-contracts.md)** | SEO job contracts. |
+| **[seo-migration/scoring-model.md](seo-migration/scoring-model.md)** | SEO scoring model. |
+| **[seo-migration/CONSOLE_UI_VIEWS.md](seo-migration/CONSOLE_UI_VIEWS.md)** | Console UI views for SEO migration. |
+| **[SOP_SEO_MIGRATION.md](SOP_SEO_MIGRATION.md)** | SOP for SEO migration. |
 
 ## LLM and quality
 
@@ -110,13 +124,24 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 | **[ENABLEMENT_ENV_VARS.md](ENABLEMENT_ENV_VARS.md)** | Env vars that enable optional features: ENABLE_SELF_HEAL, OPTIMIZER_APPLY, NEXT_PUBLIC_FEATURE_*. |
 | **[E2E_SYSTEM_SMOKE_TASK.md](E2E_SYSTEM_SMOKE_TASK.md)** | E2E system smoke task. |
 
+## Data and integrations
+
+| Document | Purpose |
+|----------|---------|
+| **[AIRTABLE_METADATA_AND_PAGE_MAPPING.md](AIRTABLE_METADATA_AND_PAGE_MAPPING.md)** | Airtable metadata and page mapping; WooCommerce cross-reference. |
+| **[TAXONOMY_SCHEMA_AND_MAPPING.md](TAXONOMY_SCHEMA_AND_MAPPING.md)** | Taxonomy schema and mapping. |
+| **[PHARMACY_IMPORT.md](PHARMACY_IMPORT.md)** | Pharmacy import. |
+| **[WOOCOMMERCE_WORDPRESS_CROSS_REFERENCE.md](WOOCOMMERCE_WORDPRESS_CROSS_REFERENCE.md)** | WooCommerce/WordPress cross-reference. |
+
 ## Other
 
 | Document | Purpose |
 |----------|---------|
-| **[WHAT_YOU_CAN_DO_WITH_PROFESSORX.md](WHAT_YOU_CAN_DO_WITH_PROFESSORX.md)** | **Operator Console capabilities:** what ProfessorX is now (graph-native, self-heal), what you can do (orchestration, graph, brands, config, ops), and evolution (was vs is). |
+| **[WHAT_YOU_CAN_DO_WITH_PROFESSORX.md](WHAT_YOU_CAN_DO_WITH_PROFESSORX.md)** | **Operator Console capabilities:** what ProfessorX is now (graph-native, self-heal), what you can do (orchestration, graph, brands, config, ops), and evolution. |
 | **[AGENCY_PLAN_WHAT_YOU_CAN_DO_AND_TEST.md](AGENCY_PLAN_WHAT_YOU_CAN_DO_AND_TEST.md)** | What you can do and test with the agency/ProfessorX setup (dev + marketing; includes graph & self-heal). |
 | **[NOTION_PT_INTEGRATION.md](NOTION_PT_INTEGRATION.md)** | Notion PT Project Manager Agent integration (planning/tasks). |
+| **[HOW_IT_WORKS.md](HOW_IT_WORKS.md)** | How the system works (high-level). |
+| **[TAXONOMY_AND_AI_FACTORY_ARCHITECTURE.md](TAXONOMY_AND_AI_FACTORY_ARCHITECTURE.md)** | Taxonomy and AI Factory architecture. |
 
 ---
 

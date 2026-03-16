@@ -1,5 +1,6 @@
 import "dotenv/config";
 import * as Sentry from "@sentry/node";
+import { createServer } from "node:http";
 if (process.env.SENTRY_DSN?.trim()) {
     Sentry.init({
         dsn: process.env.SENTRY_DSN,
@@ -13,6 +14,7 @@ import { getJobContext, recordArtifactConsumption } from "./job-context.js";
 import { getHandler, registerAllHandlers } from "./handlers/index.js";
 import { getExecutor, run as runExecutor, jobRequestFromContext, persistJobResult, } from "./executor-registry.js";
 import { advanceSuccessors, checkRunCompletion, markRunFailedIfNoPendingJobs } from "../../control-plane/src/scheduler.js";
+import { runDeployFailureScanTriggerOnly } from "../../control-plane/src/deploy-failure-scan-trigger-only.js";
 registerAllHandlers();
 const POLL_INTERVAL_MS = 2_000;
 const databaseUrl = process.env.DATABASE_URL;
@@ -230,6 +232,26 @@ async function pollAndExecute() {
         // outer try (97) finally — no op; ensures try/catch/finally is complete
     }
 }
+/** Start a minimal HTTP server for GET /health when PORT is set (e.g. Render web service check / MCP). */
+function startHealthServer() {
+    const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 0;
+    if (!port || port <= 0) {
+        console.log("[runner] PORT not set — health server skipped (worker-only mode)");
+        return;
+    }
+    const server = createServer((req, res) => {
+        if (req.method === "GET" && (req.url === "/health" || req.url === "/health/readiness")) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ status: "ok", service: "runner" }));
+            return;
+        }
+        res.writeHead(404);
+        res.end();
+    });
+    server.listen(port, "0.0.0.0", () => {
+        console.log(`[runner] Health server listening on port ${port} (GET /health)`);
+    });
+}
 async function main() {
     console.log(`[runner] Starting worker ${config.workerId} (v${config.runnerVersion})`);
     await registerWorker(pool, config);
@@ -243,6 +265,16 @@ async function main() {
             console.error("[runner] Poll error:", err);
         }
     }, POLL_INTERVAL_MS);
+    startHealthServer();
+    // Deploy-failure self-heal (staging): when api-staging is down, runner can still trigger redeploys for api/gateway/runner.
+    if (process.env.ENABLE_SELF_HEAL === "true" && process.env.RENDER_API_KEY?.trim()) {
+        const run = () => {
+            runDeployFailureScanTriggerOnly().catch((err) => console.warn("[runner] Deploy-failure scan error:", err.message));
+        };
+        setTimeout(run, 30_000);
+        setInterval(run, 5 * 60 * 1000);
+        console.log("[runner] Deploy-failure self-heal scan started (every 5 min when RENDER_STAGING_SERVICE_IDS or RENDER_WORKER_SERVICE_ID set)");
+    }
     console.log("[runner] Polling for jobs...");
 }
 main().catch((err) => {

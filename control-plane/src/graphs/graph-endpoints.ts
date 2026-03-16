@@ -432,6 +432,24 @@ export function registerGraphRoutes(app: Express): void {
   });
 
   // --- Phase 4: Ask / Intent ---
+  /** Minimal intent resolver: maps common phrases to resolution_type (action | graph_query) and endpoint so /v1/ask is not always "unknown". */
+  function resolveIntentFromRawText(rawText: string): { intent_type: string; resolution_type: "action" | "graph_query" | "unknown"; confidence: number; requires_approval: boolean; resolved_endpoint: string | null; resolved_params: Record<string, unknown> | null } {
+    const t = rawText.toLowerCase().trim();
+    if (/\b(replay|rerun|re-run)\b.*\b(run|failed|subgraph)\b/.test(t) || /\bsubgraph_replay\b/.test(t)) {
+      return { intent_type: "action", resolution_type: "action", confidence: 0.7, requires_approval: true, resolved_endpoint: "POST /v1/graph/subgraph_replay", resolved_params: { run_id: "<from context>" } };
+    }
+    if (/\brerun\b/.test(t) && /\brun\b/.test(t)) {
+      return { intent_type: "action", resolution_type: "action", confidence: 0.65, requires_approval: true, resolved_endpoint: "POST /v1/runs/:id/rerun", resolved_params: {} };
+    }
+    if (/\b(failure cluster|eval initiative|nightly eval)\b/.test(t)) {
+      return { intent_type: "query", resolution_type: "graph_query", confidence: 0.7, requires_approval: false, resolved_endpoint: "GET /v1/failure_clusters", resolved_params: {} };
+    }
+    if (/\b(deploy|redeploy)\b.*\b(staging|render)\b/.test(t)) {
+      return { intent_type: "action", resolution_type: "action", confidence: 0.6, requires_approval: true, resolved_endpoint: "POST /v1/self_heal/deploy_failure_scan", resolved_params: {} };
+    }
+    return { intent_type: "unknown", resolution_type: "unknown", confidence: 0, requires_approval: true, resolved_endpoint: null, resolved_params: null };
+  }
+
   app.post("/v1/ask", async (req, res) => {
     try {
       const b = req.body as { raw_text: string; source_type?: string; context?: Record<string, unknown>; initiative_id?: string };
@@ -441,16 +459,17 @@ export function registerGraphRoutes(app: Express): void {
         [b.source_type ?? "api", b.raw_text, b.context ? JSON.stringify(b.context) : null]
       );
       const intentId = doc.rows[0].id;
+      const resolved = resolveIntentFromRawText(b.raw_text);
       await pool.query(
-        `INSERT INTO intent_resolutions (intent_document_id, resolution_type, confidence, requires_approval, status) VALUES ($1, 'unknown', 0, true, 'proposed') RETURNING id`,
-        [intentId]
+        `INSERT INTO intent_resolutions (intent_document_id, resolution_type, confidence, requires_approval, status) VALUES ($1, $2, $3, $4, 'proposed') RETURNING id`,
+        [intentId, resolved.resolution_type, resolved.confidence, resolved.requires_approval]
       );
       res.json({
-        intent_type: "unknown",
-        confidence: 0,
-        requires_approval: true,
-        resolved_endpoint: null,
-        resolved_params: null,
+        intent_type: resolved.intent_type,
+        confidence: resolved.confidence,
+        requires_approval: resolved.requires_approval,
+        resolved_endpoint: resolved.resolved_endpoint,
+        resolved_params: resolved.resolved_params,
         intent_document_id: intentId,
       });
     } catch (e) {

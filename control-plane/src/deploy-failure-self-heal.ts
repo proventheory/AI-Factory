@@ -1,7 +1,7 @@
 /**
  * Self-heal: deploy-failure remediation (no human in the loop).
  *
- * When any staging service (api, gateway, runner) has latest deploy failed or canceled,
+ * When any staging service (api, gateway, runner) has latest deploy failed, build_failed, or canceled,
  * trigger a new deploy with cache clear so Render retries the build.
  * If the same commit has already been remediated 2+ times for that service (code bug), create
  * an initiative instead of redeploying again.
@@ -25,7 +25,11 @@ export const deployFailureRemediatedDeployIds = new Set<string>();
 /** Per service+commit count of remediations. Key: `${serviceId}:${commit}`. */
 export const deployFailureRemediationCountByCommit = new Map<string, number>();
 
-/** Render API: build_failed = build failed; failed/canceled = other failure. All trigger redeploy. */
+/**
+ * Render deploy statuses we treat as failed and remediate (trigger redeploy).
+ * Must match Render API; if a failed deploy isn't self-healing, check the deploy's status and add it here.
+ * See docs/SELF_HEAL_PROVIDER_STATUS_REFERENCE.md.
+ */
 const FAILED_STATUSES = ["failed", "canceled", "build_failed"] as const;
 const MAX_REDEPLOYS_PER_COMMIT = 2;
 
@@ -39,7 +43,9 @@ export async function scanAndRemediateDeployFailure(): Promise<void> {
   if (!selfHeal || !hasKey) return;
 
   const serviceIds = await getStagingServiceIds();
-  if (serviceIds.length === 0) return;
+  if (serviceIds.length === 0) {
+    return;
+  }
 
   for (const serviceId of serviceIds) {
     let deploys: { id: string; status: string; commit?: string }[];

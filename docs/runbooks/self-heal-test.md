@@ -2,6 +2,8 @@
 
 Use this runbook to verify that (1) Render and Vercel deploy-failure self-heal trigger redeploys, and (2) the Control Plane runs migrations on startup so "Console schema missing" is fixed by redeploy or by running migrate.
 
+**Verified (2026-03-16):** Control Plane deployed with trigger endpoint; `POST /v1/self_heal/deploy_failure_scan` runs Render + Vercel scan. Console and Control Plane were broken on purpose (syntax errors), scan was triggered, self-heal logic ran. Reverts pushed; health and health/db confirmed ok. Migration-on-startup: Dockerfile CMD runs `node scripts/run-migrate.mjs` then the API; successful deploy implies migrate ran (DB connected, API healthy). **Fix (2026-03-16):** Render API returns **build_failed** (not "failed") for failed builds; deploy-failure self-heal now treats `build_failed` so gateway (and api/runner) failed deploys are remediated by the 5‑min loop.
+
 **Prerequisites**
 
 - Control Plane has `ENABLE_SELF_HEAL=true`, `RENDER_API_KEY`, `RENDER_STAGING_SERVICE_IDS`, and `VERCEL_TOKEN` (or `VERCEL_API_TOKEN`) set. Push env: `node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs`.
@@ -59,8 +61,9 @@ The “self-heal” for missing DB schema is: **migrations run on every Control 
 
 **4a. Verify migrate-on-startup (safe)**
 
-1. Redeploy the Control Plane on Render (e.g. trigger deploy from dashboard or push an empty commit).
-2. In Render → ai-factory-api-staging → **Logs**, open the logs for the **latest** deploy. You should see output from `node scripts/run-migrate.mjs` (e.g. `Ran 001_core_schema` or `Skipped ...`) then `Migration complete.` then the Control Plane API starting. That proves migrate runs on every startup.
+1. Migrations run **inside the Control Plane process** before the API starts (`control-plane/src/index.ts`: `runMigrationsOnStartup()`), so every deploy or restart applies migrations even if Render uses a custom start command.
+2. Redeploy the Control Plane on Render (e.g. trigger deploy from dashboard or push a commit).
+3. In Render → ai-factory-api-staging → **Logs**, open the logs for the **latest** deploy. You should see `[control-plane] Migrations complete.` then the API starting. Then `GET https://ai-factory-api-staging.onrender.com/v1/initiatives` should return 200 (not schema error). That proves migration self-heal.
 
 **4b. Simulate “Console schema missing” then fix (optional, use staging DB only)**
 

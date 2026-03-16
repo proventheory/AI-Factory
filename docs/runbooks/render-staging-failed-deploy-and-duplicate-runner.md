@@ -1,5 +1,28 @@
 # Render staging: failed deploy and duplicate runner
 
+## Why didn’t self-heal fix the failed deploy?
+
+Deploy-failure self-heal runs **inside the Control Plane**: a 5‑minute loop in **ai-factory-api-staging** (and/or api-prod) that checks Render and triggers redeploys when the latest deploy is failed/canceled. So:
+
+- **When api-staging itself has a failed deploy**, that service is **not running**. The Control Plane can’t trigger its own redeploy — but the **runner** (ai-factory-runner-staging) also runs the same 5‑min deploy-failure scan when it has ENABLE_SELF_HEAL, RENDER_API_KEY, and RENDER_STAGING_SERVICE_IDS set. So when the API is down, the **runner** can still trigger redeploys for api (and gateway/runner). Staging can self-heal as long as the runner is up.
+- If **both** api-staging and runner-staging have failed deploys, nothing in staging is running. Then **prod** (or a manual trigger) must run the scan; see Patch below.
+
+**What to do right now:** Trigger redeploys manually (see §1 below), or call the one-shot scan from **prod** if prod is up:  
+`POST https://<api-prod-url>/v1/self_heal/deploy_failure_scan` (no body). That triggers redeploys for any staging service in the failed list (if prod has `RENDER_API_KEY` and `RENDER_STAGING_SERVICE_IDS` set).
+
+**Patch (one-time): so staging fixes itself** — The script pushes self-heal env to **staging API** and **staging runner**. So when api-staging is down, the runner’s 5‑min scan triggers redeploys. Optionally add **prod** so when both api and runner are down, prod heals staging:
+
+1. From repo root:  
+   `node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs`  
+   This pushes ENABLE_SELF_HEAL, RENDER_API_KEY, RENDER_STAGING_SERVICE_IDS to **staging API** and **staging runner**. After that, when api-staging has a failed deploy, the runner will trigger a redeploy. No manual step.
+2. (Optional) For a second line of defense when both api and runner are down: get **ai-factory-api-prod**’s service ID from Render Dashboard, then run  
+   `RENDER_PROD_API_SERVICE_ID=srv-xxxxxxxxxx node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs --prod`  
+   so prod’s 5‑min scan also triggers staging redeploys.
+
+See [SELF_HEAL_REQUIRED_ENV.md](../SELF_HEAL_REQUIRED_ENV.md) and [OPERATIONS_RUNBOOK.md](../OPERATIONS_RUNBOOK.md).
+
+---
+
 ## 1. Failed deploy (build_failed in ~2s)
 
 If **ai-factory-api-staging**, **ai-factory-gateway-staging**, or **ai-factory-runner-staging** show **Failed deploy** with the build failing in a few seconds:

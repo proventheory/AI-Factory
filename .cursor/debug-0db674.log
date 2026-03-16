@@ -1,0 +1,13 @@
+{"sessionId":"0db674","hypothesisId":"H1","location":"api.ts:POST email_campaigns","message":"body.risk_level and resolved riskLevel","data":{"has_risk_level":false},"timestamp":1772780233599}
+{"sessionId":"0db674","hypothesisId":"H5","location":"api.ts:INSERT initiatives","message":"riskLevel passed to DB","data":{"riskLevel":"med","paramOrder":"id,title,brand_profile_id,template_id,riskLevel"},"timestamp":1772780233599}
+{"sessionId":"0db674","hypothesisId":"H4","location":"api.ts:POST email_campaigns catch","message":"INSERT error","data":{"error":"column \"brand_profile_id\" of relation \"initiatives\" does not exist"},"timestamp":1772780233662}
+{"sessionId":"0db674","hypothesisId":"H5","location":"api.ts:POST plan:entry","message":"plan compile entry","data":{"initiativeId":"4f84854c-5c5c-491a-a41f-38d370c2af8b"},"timestamp":1772780233914}
+{"sessionId":"0db674","hypothesisId":"H4","location":"db.ts:withTransaction:begin","message":"BEGIN","data":{},"timestamp":1772780233914}
+{"sessionId":"0db674","hypothesisId":"H1","location":"plan-compiler.ts:loadInitiative:entry","message":"loadInitiative entry","data":{"initiativeId":"4f84854c-5c5c-491a-a41f-38d370c2af8b"},"timestamp":1772780234040}
+{"sessionId":"0db674","hypothesisId":"H1","location":"plan-compiler.ts:loadInitiative:fullSelect_err","message":"fullSelect failed","data":{"code":"42703","msg":"column \"template_id\" does not exist"},"timestamp":1772780234177}
+{"sessionId":"0db674","hypothesisId":"H2","location":"plan-compiler.ts:loadInitiative:after_rollback","message":"after ROLLBACK TO SAVEPOINT","data":{},"timestamp":1772780234244}
+{"sessionId":"0db674","hypothesisId":"H2","location":"plan-compiler.ts:loadInitiative:minimalSelect_ok","message":"minimalSelect succeeded","data":{},"timestamp":1772780234309}
+{"sessionId":"0db674","hypothesisId":"H3","location":"plan-compiler.ts:loadInitiative:before_release","message":"before RELEASE SAVEPOINT","data":{"didRollback":true},"timestamp":1772780234309}
+{"sessionId":"0db674","hypothesisId":"H3","location":"plan-compiler.ts:loadInitiative:after_finally","message":"after finally","data":{},"timestamp":1772780234309}
+{"sessionId":"0db674","hypothesisId":"H5","location":"plan-compiler.ts:compilePlan:after_loadInitiative","message":"after loadInitiative","data":{},"timestamp":1772780234373}
+{"sessionId":"0db674","hypothesisId":"H4","location":"db.ts:withTransaction:pre_commit","message":"fn() returned, before COMMIT","data":{},"timestamp":1772780235470}

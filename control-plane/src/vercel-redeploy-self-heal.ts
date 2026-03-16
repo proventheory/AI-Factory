@@ -18,6 +18,11 @@
 import type { Pool } from "pg";
 import { pool, withTransaction } from "./db.js";
 
+/**
+ * Vercel deployment states we treat as failed and remediate (trigger redeploy).
+ * Must match Vercel API; if a failed deploy isn't self-healing, check the deployment's state and add it here.
+ * See docs/SELF_HEAL_PROVIDER_STATUS_REFERENCE.md.
+ */
 const FAILED_STATES = ["ERROR", "CANCELED"] as const;
 const MAX_REDEPLOYS_PER_COMMIT = 2;
 const VERCEL_WEBHOOK_EVENTS = ["deployment.error", "deployment.canceled", "deployment.ready"] as const;
@@ -136,7 +141,7 @@ async function listVercelDeployments(
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`Vercel API ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as { deployments?: { uid: string; state: string; meta?: { githubCommitSha?: string }; meta?: { githubCommitSha?: string }; commit?: string }[] };
+  const data = (await res.json()) as { deployments?: { uid: string; state: string; meta?: { githubCommitSha?: string }; commit?: string }[] };
   const list = data.deployments ?? [];
   return list.map((d) => ({
     uid: d.uid,
