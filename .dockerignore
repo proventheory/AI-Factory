@@ -12,6 +12,8 @@ console
 email-marketing-factory
 evals
 scripts
+# Control-plane image needs run-migrate.mjs at runtime
+!scripts/run-migrate.mjs
 *.test.ts
 *.spec.ts
 __tests__
