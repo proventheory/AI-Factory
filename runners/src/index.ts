@@ -285,9 +285,17 @@ function startHealthServer(): void {
   });
 }
 
+/** Interval for worker_registry heartbeat so control plane /system_state sees workers_alive (requires last_heartbeat_at within 5 min). */
+const WORKER_REGISTRY_HEARTBEAT_MS = 2 * 60 * 1000; // 2 minutes
+
 async function main(): Promise<void> {
   console.log(`[runner] Starting worker ${config.workerId} (v${config.runnerVersion})`);
   await registerWorker(pool, config);
+  setInterval(() => {
+    registerWorker(pool, config).catch((err) =>
+      console.warn("[runner] Worker registry heartbeat error:", (err as Error).message)
+    );
+  }, WORKER_REGISTRY_HEARTBEAT_MS);
   const q = await pool.query("SELECT count(*)::int AS c FROM job_runs WHERE status = 'queued'");
   console.log(`[runner] DB check: ${q.rows[0]?.c ?? 0} queued job(s) visible`);
   setInterval(async () => {
