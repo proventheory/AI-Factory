@@ -9,12 +9,24 @@ import { PieChart } from "@/components/charts/PieChart";
 import { BarChart } from "@/components/charts/BarChart";
 import { useRuns, useJobRuns } from "@/hooks/use-api";
 import { useRunsOverTime, useRunStatusDistribution, useJobsByType } from "@/hooks/use-chart-data";
+import { useEnvironment } from "@/contexts/EnvironmentContext";
 import { formatApiError } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
 type Lease = { job_run_id: string; worker_id: string; heartbeat_at: string };
 type TimeRange = "7d" | "30d" | "90d";
+
+type DriftData = {
+  environment: string;
+  window_minutes: number;
+  canary_success_rate: number;
+  control_success_rate: number;
+  success_rate_delta: number;
+  canary_new_signatures: string[];
+  should_rollback: boolean;
+  drift_pass: boolean;
+} | null;
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
@@ -32,11 +44,12 @@ function ChartSkeleton() {
 }
 
 export default function DashboardPage() {
+  const { environment, setEnvironment } = useEnvironment();
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
 
-  const { data: allRunsData, isLoading: allRunsLoading } = useRuns({ limit: 500 });
-  const { data: runsData, isLoading: runsLoading, error: runsError } = useRuns({ status: "failed", limit: 10 });
-  const { data: jobRunsData, isLoading: jobRunsLoading } = useJobRuns({ limit: 500 });
+  const { data: allRunsData, isLoading: allRunsLoading } = useRuns({ limit: 500, environment });
+  const { data: runsData, isLoading: runsLoading, error: runsError } = useRuns({ status: "failed", limit: 10, environment });
+  const { data: jobRunsData, isLoading: jobRunsLoading } = useJobRuns({ limit: 500, environment });
 
   const allRuns = allRunsData?.items;
   const failedRuns = runsData?.items ?? [];
@@ -47,12 +60,19 @@ export default function DashboardPage() {
   const jobsByType = useJobsByType(jobRuns);
 
   const [dashboardData, setDashboardData] = useState<{ stale_leases?: number; queue_depth?: number; workers_alive?: number } | null>(null);
+  const [driftData, setDriftData] = useState<DriftData>(null);
   const [leases, setLeases] = useState<Lease[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API}/v1/dashboard`).then((r) => r.json()).then(setDashboardData).catch((e) => setError(formatApiError(e)));
   }, []);
+  useEffect(() => {
+    fetch(`${API}/v1/dashboard/drift?environment=${encodeURIComponent(environment)}&window_minutes=60`)
+      .then((r) => r.json())
+      .then(setDriftData)
+      .catch(() => setDriftData(null));
+  }, [environment]);
   useEffect(() => {
     fetch(`${API}/v1/health`).then((r) => r.json()).then((d: { active_leases?: Lease[] }) => setLeases(d.active_leases ?? [])).catch(() => {});
   }, []);
@@ -108,11 +128,65 @@ export default function DashboardPage() {
         </p>
 
         {/* Stat cards */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard label="Stale leases" value={data?.stale_leases ?? 0} />
           <StatCard label="Queue depth (1h)" value={data?.queue_depth ?? 0} />
           <StatCard label="Workers alive" value={data?.workers_alive ?? 0} />
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm px-4 py-4 md:px-6">
+            <p className="text-caption text-text-muted">Canary drift</p>
+            <div className="mt-1 flex items-center gap-2">
+              <select
+                value={environment}
+                onChange={(e) => setEnvironment(e.target.value as "sandbox" | "staging" | "prod")}
+                className="rounded border border-slate-200 bg-white px-2 py-0.5 text-caption text-text-primary"
+              >
+                <option value="sandbox">sandbox</option>
+                <option value="staging">staging</option>
+                <option value="prod">prod</option>
+              </select>
+              {driftData ? (
+                <span className={`text-heading-3 font-semibold ${driftData.drift_pass ? "text-state-success" : "text-state-danger"}`}>
+                  {driftData.drift_pass ? "PASS" : "FAIL"}
+                </span>
+              ) : (
+                <span className="text-body-small text-text-muted">—</span>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* Canary vs control chart (runs success) */}
+        {driftData != null && (
+          <Card>
+            <CardHeader>
+              <h3 className="text-body font-medium text-text-primary">Runs success: canary vs control ({driftData.environment}, last {driftData.window_minutes}m)</h3>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 text-body-small">
+                <div>
+                  <p className="text-text-muted">Canary success rate</p>
+                  <p className="text-heading-3 font-semibold text-text-primary">{Math.round(driftData.canary_success_rate * 100)}%</p>
+                </div>
+                <div>
+                  <p className="text-text-muted">Control success rate</p>
+                  <p className="text-heading-3 font-semibold text-text-primary">{Math.round(driftData.control_success_rate * 100)}%</p>
+                </div>
+                <div>
+                  <p className="text-text-muted">Delta</p>
+                  <p className={`font-semibold ${driftData.success_rate_delta >= 0 ? "text-state-success" : "text-state-danger"}`}>
+                    {(driftData.success_rate_delta >= 0 ? "+" : "") + (driftData.success_rate_delta * 100).toFixed(1)}%
+                  </p>
+                </div>
+                {driftData.canary_new_signatures.length > 0 && (
+                  <div className="col-span-2">
+                    <p className="text-text-muted">Error signature divergence (new in canary)</p>
+                    <p className="text-caption-small font-mono text-state-danger">{driftData.canary_new_signatures.slice(0, 5).join(", ")}{driftData.canary_new_signatures.length > 5 ? "…" : ""}</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Time range selector */}
         <div className="flex items-center gap-2">

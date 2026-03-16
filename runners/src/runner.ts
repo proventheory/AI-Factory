@@ -186,6 +186,11 @@ export async function completeJobFailure(
      WHERE id = $1`,
     [jobRunId, errorSignature],
   );
+  // Plan §10: set next_retry_at so control-plane sweepDelayedRetries can create attempt+1
+  await client.query(
+    `UPDATE job_runs SET next_retry_at = now() WHERE id = $1`,
+    [jobRunId],
+  ).catch(() => {});
 
   await client.query(
     `INSERT INTO job_events (job_run_id, event_type, payload_json)

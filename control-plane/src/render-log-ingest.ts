@@ -34,6 +34,16 @@ function dedupeHash(message: string, loggedAt: string): string {
   return String(h >>> 0);
 }
 
+/** Redact secrets from log message before persisting (Plan 12B.4). */
+function redactLogMessage(message: string): string {
+  if (!message || typeof message !== "string") return message;
+  let out = message
+    .replace(/\bBearer\s+[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*/gi, "Bearer [REDACTED]")
+    .replace(/Authorization:\s*Bearer\s+[^\s,}\]]+/gi, "Authorization: Bearer [REDACTED]")
+    .replace(/([?&])(api_key|apikey|token|password|secret|auth)=[^&\s]+/gi, "$1$2=[REDACTED]");
+  return out;
+}
+
 /** Resolve worker service ID for log fetch (same logic as render-worker-remediate). */
 async function getWorkerServiceId(apiKey: string): Promise<string | null> {
   if (WORKER_SERVICE_ID) {
@@ -128,7 +138,8 @@ export async function ingestRunLogsOneOff(
     const parsed = parseRunIdFromMessage(line.message);
     if (parsed !== runIdLower) continue;
     const loggedAt = line.timestamp ? new Date(line.timestamp) : new Date();
-    const msg = line.message || "";
+    const rawMsg = line.message || "";
+    const msg = redactLogMessage(rawMsg);
     const hash = dedupeHash(msg, loggedAt.toISOString());
     toInsert.push({
       run_id: runId,
@@ -196,7 +207,7 @@ export async function runScheduledLogIngest(): Promise<{ runsTouched: number; li
     const runId = parseRunIdFromMessage(line.message);
     if (!runId) continue;
     const loggedAt = line.timestamp ? new Date(line.timestamp) : new Date();
-    const msg = line.message || "";
+    const msg = redactLogMessage(line.message || "");
     const hash = dedupeHash(msg, loggedAt.toISOString());
     const row = {
       run_id: runId,

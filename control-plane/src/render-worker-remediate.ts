@@ -114,6 +114,14 @@ export async function getStagingServiceIds(): Promise<string[]> {
   return [];
 }
 
+/** Single deploy with optional updatedAt (for dashboard). */
+export interface RenderDeployInfo {
+  id: string;
+  status: string;
+  commit?: string;
+  updatedAt?: string;
+}
+
 /**
  * List recent deploys for a Render service. Returns id, status, commit.
  */
@@ -122,6 +130,18 @@ export async function listRenderDeploys(
   serviceId: string,
   limit: number = 5
 ): Promise<{ id: string; status: string; commit?: string }[]> {
+  const out = await listRenderDeploysWithMeta(apiKey, serviceId, limit);
+  return out.map(({ id, status, commit }) => ({ id, status, commit }));
+}
+
+/**
+ * List recent deploys with updatedAt for dashboard/status views.
+ */
+export async function listRenderDeploysWithMeta(
+  apiKey: string,
+  serviceId: string,
+  limit: number = 5
+): Promise<RenderDeployInfo[]> {
   const res = await fetch(
     `${RENDER_API_BASE}/services/${serviceId}/deploys?limit=${Math.min(limit, 20)}`,
     {
@@ -132,10 +152,56 @@ export async function listRenderDeploys(
   if (!res.ok) throw new Error(`Render API list deploys failed: ${res.status} ${await res.text()}`);
   const raw = (await res.json()) as unknown;
   const arr = Array.isArray(raw) ? raw : (raw as { deploys?: unknown[] })?.deploys ?? [];
-  return arr.map((item: { deploy?: { id: string; status: string; commit?: { id?: string } }; id?: string; status?: string; commit?: { id?: string } }) => {
+  return arr.map((item: {
+    deploy?: { id: string; status: string; commit?: { id?: string }; updatedAt?: string; updated_at?: string };
+    id?: string; status?: string; commit?: { id?: string }; updatedAt?: string; updated_at?: string;
+  }) => {
     const d = item.deploy ?? item;
-    return { id: d.id!, status: d.status!, commit: d.commit?.id };
+    const commit = (d as { commit?: { id?: string } }).commit?.id;
+    const raw = d as { updatedAt?: string; updated_at?: string };
+    return {
+      id: d.id!,
+      status: d.status!,
+      commit,
+      updatedAt: raw.updatedAt ?? raw.updated_at,
+    };
   });
+}
+
+/**
+ * List recent logs for a Render service (build + app). Used by deploy-failure self-heal to pass
+ * failure context to the LLM. Render API: GET /v1/logs with resource filter.
+ */
+export async function listRenderLogs(
+  apiKey: string,
+  serviceId: string,
+  options: { limit?: number; direction?: "forward" | "backward" } = {}
+): Promise<{ message: string; timestamp?: string; labels?: { name: string; value: string }[] }[]> {
+  const limit = Math.min(options.limit ?? 80, 200);
+  const direction = options.direction ?? "backward";
+  const params = new URLSearchParams({
+    resource: serviceId,
+    limit: String(limit),
+    direction,
+  });
+  const res = await fetch(`${RENDER_API_BASE}/logs?${params}`, {
+    method: "GET",
+    headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Render API list logs failed: ${res.status} ${text}`);
+  }
+  const data = (await res.json()) as {
+    logs?: { message?: string; timestamp?: string; labels?: { name: string; value: string }[] }[];
+    hasMore?: boolean;
+  };
+  const logs = data.logs ?? [];
+  return logs.map((l) => ({
+    message: l.message ?? "",
+    timestamp: l.timestamp,
+    labels: l.labels,
+  }));
 }
 
 /**

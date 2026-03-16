@@ -15,6 +15,8 @@ type PendingRow = {
   requested_at: string;
   requested_reason: string | null;
   context_ref: string | null;
+  requested_by?: string | null;
+  action_required?: string;
   node_key: string;
   job_type: string;
 };
@@ -78,6 +80,7 @@ export default function ApprovalsPage() {
     { key: "run_id", header: "Run", render: (r) => <Link href={`/runs/${r.run_id}`} className="text-brand-600 hover:underline font-mono text-caption-small">{r.run_id.slice(0, 8)}…</Link> },
     { key: "node_key", header: "Node" },
     { key: "job_type", header: "Job type" },
+    { key: "requested_by", header: "Requested by", render: (r) => r.requested_by ?? "—" },
     { key: "requested_at", header: "Requested", render: (r) => new Date(r.requested_at).toLocaleString() },
     {
       key: "id",

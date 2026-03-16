@@ -36,20 +36,7 @@ export async function reapStaleLeases(pool: pg.Pool, maxAttemptsPerNode: number 
         [lease.id],
       );
 
-      await client.query(
-        `UPDATE job_runs SET status = 'failed', ended_at = now(),
-           error_signature = COALESCE(error_signature, 'lease_expired')
-         WHERE id = $1 AND status = 'running'`,
-        [lease.job_run_id],
-      );
-
-      await client.query(
-        `INSERT INTO job_events (job_run_id, event_type, payload_json)
-         VALUES ($1, 'attempt_failed', '{"reason":"lease_expired"}'::jsonb)`,
-        [lease.job_run_id],
-      );
-
-      // Check if retry is allowed
+      // Load job info first (for next_retry_at and for sweep to create attempt+1; Plan §10 delayed retry)
       const jobInfo = await client.query<{
         run_id: string;
         plan_node_id: string;
@@ -59,18 +46,29 @@ export async function reapStaleLeases(pool: pg.Pool, maxAttemptsPerNode: number 
         [lease.job_run_id],
       );
 
-      if (jobInfo.rows.length > 0) {
-        const { run_id, plan_node_id, attempt } = jobInfo.rows[0];
-        if (attempt < maxAttemptsPerNode) {
-          const newJobRunId = uuid();
-          const idempotencyKey = `${run_id}:${plan_node_id}`;
-          await client.query(
-            `INSERT INTO job_runs (id, run_id, plan_node_id, attempt, status, idempotency_key)
-             VALUES ($1, $2, $3, $4, 'queued', $5)`,
-            [newJobRunId, run_id, plan_node_id, attempt + 1, idempotencyKey],
-          );
-        }
+      const retryAllowed = jobInfo.rows.length > 0 && jobInfo.rows[0].attempt < maxAttemptsPerNode;
+
+      await client.query(
+        `UPDATE job_runs SET status = 'failed', ended_at = now(),
+           error_signature = COALESCE(error_signature, 'lease_expired')
+         WHERE id = $1 AND status = 'running'`,
+        [lease.job_run_id],
+      );
+
+      if (retryAllowed) {
+        await client.query(
+          `UPDATE job_runs SET next_retry_at = $2 WHERE id = $1`,
+          [lease.job_run_id, new Date()],
+        ).catch(() => {});
       }
+
+      await client.query(
+        `INSERT INTO job_events (job_run_id, event_type, payload_json)
+         VALUES ($1, 'attempt_failed', '{"reason":"lease_expired"}'::jsonb)`,
+        [lease.job_run_id],
+      );
+
+      // Do not insert attempt+1 here; sweepDelayedRetries() will create it when next_retry_at <= now()
 
       await client.query("COMMIT");
       reaped++;
@@ -82,6 +80,61 @@ export async function reapStaleLeases(pool: pg.Pool, maxAttemptsPerNode: number 
   }
 
   return reaped;
+}
+
+const DEFAULT_MAX_ATTEMPTS_PER_NODE = 4;
+
+/**
+ * Sweep delayed retries (Plan §10): job_runs with status = 'failed', next_retry_at <= now(),
+ * attempt < max → insert attempt+1 (queued) and clear next_retry_at.
+ * Call this from the control-plane loop next to reapStaleLeases.
+ */
+export async function sweepDelayedRetries(
+  pool: pg.Pool,
+  maxAttemptsPerNode: number = DEFAULT_MAX_ATTEMPTS_PER_NODE,
+): Promise<number> {
+  const rows = await pool.query<{
+    id: string;
+    run_id: string;
+    plan_node_id: string;
+    attempt: number;
+  }>(
+    `SELECT id, run_id, plan_node_id, attempt
+     FROM job_runs
+     WHERE status = 'failed'
+       AND next_retry_at IS NOT NULL
+       AND next_retry_at <= now()
+       AND attempt < $1
+     ORDER BY next_retry_at ASC
+     LIMIT 100`,
+    [maxAttemptsPerNode],
+  );
+
+  let swept = 0;
+  for (const row of rows.rows) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const newJobRunId = uuid();
+      const idempotencyKey = `${row.run_id}:${row.plan_node_id}`;
+      await client.query(
+        `INSERT INTO job_runs (id, run_id, plan_node_id, attempt, status, idempotency_key)
+         VALUES ($1, $2, $3, $4, 'queued', $5)`,
+        [newJobRunId, row.run_id, row.plan_node_id, row.attempt + 1, idempotencyKey],
+      );
+      await client.query(
+        `UPDATE job_runs SET next_retry_at = NULL WHERE id = $1`,
+        [row.id],
+      );
+      await client.query("COMMIT");
+      swept++;
+    } catch {
+      await client.query("ROLLBACK").catch(() => {});
+    } finally {
+      client.release();
+    }
+  }
+  return swept;
 }
 
 /**
@@ -147,6 +200,7 @@ export async function reconcileRunningRunsWithNoPendingJobs(pool: pg.Pool): Prom
         [row.id],
       );
       if (r.rowCount && r.rowCount > 0) {
+        await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`, [row.id]).catch(() => {});
         await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'succeeded')`, [row.id]).catch(() => {});
         succeeded++;
       }
@@ -156,6 +210,7 @@ export async function reconcileRunningRunsWithNoPendingJobs(pool: pg.Pool): Prom
         [row.id],
       );
       if (r.rowCount && r.rowCount > 0) {
+        await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`, [row.id]).catch(() => {});
         await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`, [row.id]).catch(() => {});
         failed++;
       }
@@ -203,6 +258,7 @@ export async function reconcileRunningRunsWithStaleQueuedJobs(pool: pg.Pool): Pr
         [row.id],
       );
       if (r.rowCount && r.rowCount > 0) {
+        await client.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`, [row.id]).catch(() => {});
         await client.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`, [row.id]).catch(() => {});
         failed++;
       }

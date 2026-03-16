@@ -6,7 +6,7 @@ import { v4 as uuid } from "uuid";
 import mjml2html from "mjml";
 import { pool, withTransaction } from "./db.js";
 import { createRun, completeApprovalAndAdvance } from "./scheduler.js";
-import { executeRollback, routeRun } from "./release-manager.js";
+import { computeDrift, executeRollback, routeRun } from "./release-manager.js";
 import { triggerNoArtifactsRemediationForRun, triggerBadArtifactsRemediationForRun } from "./no-artifacts-self-heal.js";
 import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
 import { productsFromUrl, type ProductsFromUrlType } from "./products-from-url.js";
@@ -26,6 +26,7 @@ import { createDeployEventFromPayload } from "./deploy-events.js";
 import { registerVercelProjectForSelfHeal, scanAndRemediateVercelDeployFailure } from "./vercel-redeploy-self-heal.js";
 import { scanAndRemediateDeployFailure } from "./deploy-failure-self-heal.js";
 import { registerGraphRoutes } from "./graphs/graph-endpoints.js";
+import { runUpgradeGates } from "./upgrade-gates.js";
 
 const CONTROL_PLANE_BASE = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const SEO_GOOGLE_CALLBACK_PATH = "/v1/seo/google/callback";
@@ -103,11 +104,21 @@ function normalizeRiskLevel(s: string | undefined): "low" | "med" | "high" {
   return "med";
 }
 
-/** RBAC stub: resolve role from header or JWT. In production use Supabase Auth + custom claim. Default operator so Console can compile/start without auth. */
-function getRole(_req: express.Request): "viewer" | "operator" | "approver" | "admin" {
+/** RBAC (Plan 12B C2, 12B.5): resolve role from header or JWT. In production use Supabase Auth + custom claim. Default operator. */
+export type Role = "viewer" | "operator" | "approver" | "admin";
+
+function getRole(_req: express.Request): Role {
   const role = _req.headers["x-role"] as string | undefined;
   if (role === "admin" || role === "approver" || role === "operator" || role === "viewer") return role;
   return "operator";
+}
+
+/** Enforce RBAC: if req role not in allowedRoles, send 403 and return true (caller should return). */
+function requireRole(req: express.Request, res: express.Response, allowedRoles: Role[]): boolean {
+  const role = getRole(req);
+  if (allowedRoles.includes(role)) return false;
+  res.status(403).json({ error: "Forbidden", required_role: allowedRoles.join(" or ") });
+  return true;
 }
 
 /** Keys that must not be written into email_design_generator_metadata.metadata_json; use columns or child table. See docs/SCHEMA_JSON_GUARDRAILS.md. */
@@ -243,6 +254,126 @@ app.get("/v1/dashboard", async (req, res) => {
   }
 });
 
+/** GET /v1/search — global search across initiatives, runs, job_runs, artifacts, tool_calls, releases (Plan 12B.4) */
+app.get("/v1/search", async (req, res) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    const environment = (req.query.environment as string) || null;
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+    if (!q || q.length < 2) {
+      return res.json({ items: [], limit: 0 });
+    }
+    const pattern = `%${q.replace(/%/g, "\\%")}%`;
+
+    const [initiatives, runs, jobRuns, artifacts, toolCalls, releases] = await Promise.all([
+      pool.query(
+        `SELECT id, title, intent_type, created_at FROM initiatives WHERE (title ILIKE $1 OR intent_type::text ILIKE $1) ORDER BY created_at DESC LIMIT $2`,
+        [pattern, limit],
+      ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "initiative", id: row.id, title: row.title, intent_type: row.intent_type, created_at: row.created_at, status: null, environment: null }))),
+      environment
+        ? pool.query(
+            `SELECT r.id, r.status, r.environment, r.created_at FROM runs r WHERE (r.id::text ILIKE $1 OR r.root_idempotency_key ILIKE $1) AND r.environment = $2 ORDER BY r.created_at DESC LIMIT $3`,
+            [pattern, environment, limit],
+          ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "run", id: row.id, status: row.status, environment: row.environment, created_at: row.created_at, title: null, intent_type: null })))
+        : pool.query(
+            `SELECT r.id, r.status, r.environment, r.created_at FROM runs r WHERE (r.id::text ILIKE $1 OR r.root_idempotency_key ILIKE $1) ORDER BY r.created_at DESC LIMIT $2`,
+            [pattern, limit],
+          ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "run", id: row.id, status: row.status, environment: row.environment, created_at: row.created_at, title: null, intent_type: null }))),
+      environment
+        ? pool.query(
+            `SELECT jr.id, jr.run_id, jr.error_signature, r.environment, r.created_at FROM job_runs jr JOIN runs r ON r.id = jr.run_id WHERE jr.error_signature ILIKE $1 AND r.environment = $2 ORDER BY jr.ended_at DESC NULLS LAST LIMIT $3`,
+            [pattern, environment, limit],
+          ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "job_run", id: row.id, run_id: row.run_id, status: null, environment: row.environment, created_at: row.created_at, title: row.error_signature, intent_type: null })))
+        : pool.query(
+            `SELECT jr.id, jr.run_id, jr.error_signature, r.environment, r.created_at FROM job_runs jr JOIN runs r ON r.id = jr.run_id WHERE jr.error_signature ILIKE $1 ORDER BY jr.ended_at DESC NULLS LAST LIMIT $2`,
+            [pattern, limit],
+          ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "job_run", id: row.id, run_id: row.run_id, status: null, environment: row.environment, created_at: row.created_at, title: row.error_signature, intent_type: null }))),
+      environment
+        ? pool.query(
+            `SELECT a.id, a.run_id, a.artifact_type, a.uri, r.environment, a.created_at FROM artifacts a JOIN runs r ON r.id = a.run_id WHERE (a.uri ILIKE $1 OR a.artifact_type ILIKE $1) AND r.environment = $2 ORDER BY a.created_at DESC LIMIT $3`,
+            [pattern, environment, limit],
+          ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "artifact", id: row.id, run_id: row.run_id, status: null, environment: row.environment, created_at: row.created_at, title: row.uri, intent_type: row.artifact_type })))
+        : pool.query(
+            `SELECT a.id, a.run_id, a.artifact_type, a.uri, r.environment, a.created_at FROM artifacts a JOIN runs r ON r.id = a.run_id WHERE (a.uri ILIKE $1 OR a.artifact_type ILIKE $1) ORDER BY a.created_at DESC LIMIT $2`,
+            [pattern, limit],
+          ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "artifact", id: row.id, run_id: row.run_id, status: null, environment: row.environment, created_at: row.created_at, title: row.uri, intent_type: row.artifact_type }))),
+      environment
+        ? pool.query(
+            `SELECT tc.id, tc.operation_key, tc.idempotency_key, jr.run_id, r.environment, tc.started_at AS created_at FROM tool_calls tc JOIN job_runs jr ON jr.id = tc.job_run_id JOIN runs r ON r.id = jr.run_id WHERE (tc.operation_key ILIKE $1 OR tc.idempotency_key ILIKE $1) AND r.environment = $2 ORDER BY tc.started_at DESC NULLS LAST LIMIT $3`,
+            [pattern, environment, limit],
+          ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "tool_call", id: row.id, run_id: row.run_id, status: null, environment: row.environment, created_at: row.created_at, title: row.operation_key, intent_type: row.idempotency_key })))
+        : pool.query(
+            `SELECT tc.id, tc.operation_key, tc.idempotency_key, jr.run_id, r.environment, tc.started_at AS created_at FROM tool_calls tc JOIN job_runs jr ON jr.id = tc.job_run_id JOIN runs r ON r.id = jr.run_id WHERE (tc.operation_key ILIKE $1 OR tc.idempotency_key ILIKE $1) ORDER BY tc.started_at DESC NULLS LAST LIMIT $2`,
+            [pattern, limit],
+          ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "tool_call", id: row.id, run_id: row.run_id, status: null, environment: row.environment, created_at: row.created_at, title: row.operation_key, intent_type: row.idempotency_key }))),
+      pool.query(
+        `SELECT id, status, created_at FROM releases WHERE id::text ILIKE $1 OR status::text ILIKE $1 ORDER BY created_at DESC LIMIT $2`,
+        [pattern, limit],
+      ).then((r) => r.rows.map((row: Record<string, unknown>) => ({ object_type: "release", id: row.id, status: row.status, environment: null, created_at: row.created_at, title: null, intent_type: null }))),
+    ]);
+
+    const combined = [
+      ...initiatives,
+      ...runs,
+      ...jobRuns,
+      ...artifacts,
+      ...toolCalls,
+      ...releases,
+    ].sort((a, b) => new Date((b as { created_at: string }).created_at).getTime() - new Date((a as { created_at: string }).created_at).getTime()).slice(0, limit);
+    res.json({ items: combined, limit: combined.length });
+  } catch (e) {
+    if (handleDbMissingTable(e, res)) return;
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/system_state — Healthy | Degraded | Paused for global header (Plan 12B.4) */
+app.get("/v1/system_state", async (req, res) => {
+  try {
+    if (process.env.SYSTEM_PAUSED === "1" || process.env.SYSTEM_PAUSED === "true") {
+      return res.json({ state: "Paused", canary_percent: 0, stale_leases: 0, workers_alive: 0 });
+    }
+    const env = (req.query.environment as string) ?? "staging";
+    const [staleLeases, drift, workers] = await Promise.all([
+      pool.query(`SELECT count(*)::int AS c FROM job_claims WHERE released_at IS NULL AND heartbeat_at < now() - interval '2 minutes'`).then((r) => r.rows[0]?.c ?? 0),
+      computeDrift(pool, env as "sandbox" | "staging" | "prod", 60).catch(() => ({ shouldRollback: false })),
+      pool.query(`SELECT count(*)::int AS c FROM worker_registry WHERE last_heartbeat_at > now() - interval '5 minutes'`).then((r) => r.rows[0]?.c ?? 0),
+    ]);
+    const driftFail = (drift as { shouldRollback?: boolean }).shouldRollback === true;
+    const state = driftFail || (staleLeases as number) > 0 ? "Degraded" : (workers as number) === 0 ? "Degraded" : "Healthy";
+    const canaryPercent = await pool.query(
+      `SELECT COALESCE(rel.percent_rollout, 0)::int AS pct FROM release_routes rr JOIN releases rel ON rel.id = rr.release_id WHERE rr.environment = $1 AND rr.cohort = 'canary' AND (rr.active_to IS NULL OR rr.active_to > now()) ORDER BY rr.active_from DESC NULLS LAST LIMIT 1`,
+      [env],
+    ).then((r) => r.rows[0]?.pct ?? 0);
+    res.json({ state, canary_percent: canaryPercent, stale_leases: staleLeases, workers_alive: workers });
+  } catch (e) {
+    if (handleDbMissingTable(e, res)) return;
+    res.status(500).json({ state: "Degraded", canary_percent: 0, error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/dashboard/drift — canary vs control success rates and error_signature divergence (Plan 12B.4 C4.1) */
+app.get("/v1/dashboard/drift", async (req, res) => {
+  try {
+    const environment = (req.query.environment as string) ?? "staging";
+    const windowMinutes = Math.min(Math.max(Number(req.query.window_minutes) || 60, 5), 10080);
+    const drift = await computeDrift(pool, environment as "sandbox" | "staging" | "prod", windowMinutes);
+    res.json({
+      environment,
+      window_minutes: windowMinutes,
+      canary_success_rate: drift.canarySuccessRate,
+      control_success_rate: drift.controlSuccessRate,
+      success_rate_delta: drift.successRateDelta,
+      canary_new_signatures: drift.canaryNewSignatures,
+      should_rollback: drift.shouldRollback,
+      drift_pass: !drift.shouldRollback,
+    });
+  } catch (e) {
+    if (handleDbMissingTable(e, res)) return;
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** GET /v1/initiatives — list with filters and pagination */
 app.get("/v1/initiatives", async (req, res) => {
   try {
@@ -347,8 +478,7 @@ app.get("/v1/email_designs/:id", async (req, res) => {
 /** POST /v1/email_designs — create initiative (email_design_generator) + optional metadata */
 app.post("/v1/email_designs", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as {
       title?: string;
       subject_line?: string;
@@ -431,8 +561,7 @@ app.post("/v1/email_designs", async (req, res) => {
 /** PATCH /v1/email_designs/:id — update email design metadata (upsert) */
 app.patch("/v1/email_designs/:id", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const id = req.params.id;
     const exists = await pool.query("SELECT id FROM initiatives WHERE id = $1 AND intent_type = 'email_design_generator'", [id]);
     if (exists.rows.length === 0) return res.status(404).json({ error: "Not found" });
@@ -682,8 +811,7 @@ app.delete("/v1/brand_profiles/:id/google_credentials", async (req, res) => {
 /** PATCH /v1/initiatives/:id — update initiative (Operator+) */
 app.patch("/v1/initiatives/:id", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as Record<string, unknown>;
     const allowed = ["intent_type", "title", "risk_level", "goal_state", "goal_metadata", "source_ref", "template_id", "priority", "brand_profile_id"];
     const sets: string[] = [];
@@ -833,11 +961,11 @@ app.get("/v1/runs", async (req, res) => {
   }
 });
 
-/** GET /v1/runs/:id — full flight recorder (run + plan + node_progress + job_runs + artifacts + events). Includes initiative_id from plan for runner fallback. */
+/** GET /v1/runs/:id — full flight recorder (run + plan + node_progress + job_runs + artifacts + events). Includes release pinned context and initiative_id (Plan 12B.4 C4.5). */
 app.get("/v1/runs/:id", async (req, res) => {
   try {
     const runId = req.params.id;
-    const [run, planRow, planNodes, planEdges, nodeProgress, jobRuns, runArtifacts, runEvents] = await Promise.all([
+    const [run, planRow, planNodes, planEdges, nodeProgress, jobRuns, runArtifacts, runEvents, releaseRow, jobEvents] = await Promise.all([
       pool.query("SELECT * FROM runs WHERE id = $1", [runId]).then(r => r.rows[0]),
       pool.query("SELECT p.initiative_id FROM plans p JOIN runs r ON r.plan_id = p.id WHERE r.id = $1", [runId]).then(r => r.rows[0] ?? null),
       pool.query("SELECT pn.* FROM plans p JOIN plan_nodes pn ON pn.plan_id = p.id WHERE p.id = (SELECT plan_id FROM runs WHERE id = $1)", [runId]).then(r => r.rows),
@@ -846,10 +974,28 @@ app.get("/v1/runs/:id", async (req, res) => {
       pool.query("SELECT jr.* FROM job_runs jr WHERE jr.run_id = $1 ORDER BY plan_node_id, attempt DESC", [runId]).then(r => r.rows),
       pool.query("SELECT * FROM artifacts WHERE run_id = $1 ORDER BY created_at", [runId]).then(r => r.rows),
       pool.query("SELECT * FROM run_events WHERE run_id = $1 ORDER BY created_at", [runId]).then(r => r.rows),
+      pool.query("SELECT rel.runner_image_digest, rel.workplane_bundle_version, rel.policy_version AS release_policy_version FROM runs r JOIN releases rel ON rel.id = r.release_id WHERE r.id = $1", [runId]).then(r => r.rows[0] ?? null),
+      pool.query("SELECT je.* FROM job_events je JOIN job_runs jr ON jr.id = je.job_run_id WHERE jr.run_id = $1 ORDER BY je.created_at DESC LIMIT 50", [runId]).then(r => r.rows),
     ]);
     if (!run) return res.status(404).json({ error: "Run not found" });
     const initiative_id = (planRow as { initiative_id?: string } | null)?.initiative_id ?? null;
-    res.json({ run: { ...run, initiative_id }, initiative_id, plan_nodes: planNodes, plan_edges: planEdges, node_progress: nodeProgress, job_runs: jobRuns, artifacts: runArtifacts, run_events: runEvents });
+    const pinned_context = releaseRow ? {
+      runner_image_digest: (releaseRow as { runner_image_digest?: string }).runner_image_digest ?? null,
+      workplane_bundle_version: (releaseRow as { workplane_bundle_version?: string }).workplane_bundle_version ?? null,
+      release_policy_version: (releaseRow as { release_policy_version?: string }).release_policy_version ?? null,
+    } : null;
+    res.json({
+      run: { ...run, initiative_id },
+      initiative_id,
+      pinned_context,
+      plan_nodes: planNodes,
+      plan_edges: planEdges,
+      node_progress: nodeProgress,
+      job_runs: jobRuns,
+      artifacts: runArtifacts,
+      run_events: runEvents,
+      job_events: jobEvents,
+    });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -1008,8 +1154,7 @@ app.post("/v1/runs/:id/validate_image_assignment", async (req, res) => {
 /** POST /v1/runs/:id/cancel — set run cancelled (cancelled_at + status or metadata) */
 app.post("/v1/runs/:id/cancel", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const runId = req.params.id;
     const reason = (req.body as { reason?: string })?.reason ?? null;
     const r = await pool.query(
@@ -1031,8 +1176,7 @@ app.post("/v1/runs", async (req, res) => {
 /** POST /v1/runs/by-artifact-type — resolve operator from capability graph, create single-node plan + run. Body: { produces, consumes?: [], initiative_id, environment? }. */
 app.post("/v1/runs/by-artifact-type", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as { produces?: string; consumes?: string[]; initiative_id?: string; environment?: string };
     const produces = body?.produces?.trim();
     const initiativeId = body?.initiative_id?.trim();
@@ -1120,8 +1264,7 @@ app.post("/v1/runs/by-artifact-type", async (req, res) => {
 /** POST /v1/initiatives/:id/plan — create a plan via plan compiler (idempotent by plan_hash) */
 app.post("/v1/initiatives/:id/plan", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const initiativeId = req.params.id;
     const body = (req.body as { seed?: string; force?: boolean }) ?? {};
     const { compilePlan } = await import("./plan-compiler.js");
@@ -1140,8 +1283,7 @@ app.post("/v1/initiatives/:id/plan", async (req, res) => {
 /** POST /v1/plans/:id/start — create a run for this plan (get or create release, then createRun). Body: { environment?: "sandbox"|"staging"|"prod", llm_source?: "gateway"|"openai_direct" }. */
 app.post("/v1/plans/:id/start", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const planId = req.params.id;
     const body = req.body as { environment?: string; llm_source?: string };
     const environment = body?.environment ?? "sandbox";
@@ -1198,8 +1340,7 @@ app.post("/v1/plans/:id/start", async (req, res) => {
 /** POST /v1/runs/:id/rerun — create a new run with the same plan (Operator+) */
 app.post("/v1/runs/:id/rerun", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const runId = req.params.id;
     let r = await pool.query(
       "SELECT plan_id, release_id, policy_version, environment, cohort, llm_source FROM runs WHERE id = $1",
@@ -1234,8 +1375,7 @@ app.post("/v1/runs/:id/rerun", async (req, res) => {
 /** POST /v1/runs/:id/rollback — trigger rollback for this run's release in this environment */
 app.post("/v1/runs/:id/rollback", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role !== "admin" && role !== "operator") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["approver", "admin"])) return;
     const runId = req.params.id;
     const r = await pool.query("SELECT release_id, environment FROM runs WHERE id = $1", [runId]);
     if (r.rows.length === 0) return res.status(404).json({ error: "Run not found" });
@@ -1247,15 +1387,22 @@ app.post("/v1/runs/:id/rollback", async (req, res) => {
   }
 });
 
-/** POST /v1/releases/:id/rollout — set percent_rollout (0–100) for the release (Admin/Operator) */
+/** POST /v1/releases/:id/rollout — set percent_rollout (0–100) for the release (Approver+). Runs upgrade gates. */
 app.post("/v1/releases/:id/rollout", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["approver", "admin"])) return;
     const releaseId = req.params.id;
     const percent = Number((req.body as { percent?: number }).percent);
     if (!Number.isInteger(percent) || percent < 0 || percent > 100) {
       return res.status(400).json({ error: "Body must include percent (0–100)" });
+    }
+    const gates = await runUpgradeGates(pool, { releaseId });
+    if (!gates.pass) {
+      return res.status(400).json({
+        error: "Upgrade gates failed",
+        schema_errors: gates.schemaPolicy.errors,
+        control_plane_errors: gates.controlPlane.errors,
+      });
     }
     await pool.query(
       "UPDATE releases SET percent_rollout = $1, status = 'promoted' WHERE id = $2",
@@ -1269,14 +1416,21 @@ app.post("/v1/releases/:id/rollout", async (req, res) => {
   }
 });
 
-/** POST /v1/releases/:id/canary — set canary percent in release_routes for an environment */
+/** POST /v1/releases/:id/canary — set canary percent in release_routes for an environment. Runs upgrade gates. */
 app.post("/v1/releases/:id/canary", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["approver", "admin"])) return;
     const releaseId = req.params.id;
     const { environment = "prod", percent = 0 } = req.body as { environment?: string; percent?: number };
     const pct = Math.max(0, Math.min(100, Number(percent)));
+    const gates = await runUpgradeGates(pool, { releaseId });
+    if (!gates.pass) {
+      return res.status(400).json({
+        error: "Upgrade gates failed",
+        schema_errors: gates.schemaPolicy.errors,
+        control_plane_errors: gates.controlPlane.errors,
+      });
+    }
     const ruleId = `canary-${releaseId.slice(0, 8)}-${environment}`;
     await pool.query(
       `INSERT INTO release_routes (rule_id, release_id, environment, cohort, percent, active_from, active_to)
@@ -1298,12 +1452,17 @@ app.get("/v1/approvals/pending", async (_req, res) => {
   try {
     const r = await pool.query(
       `SELECT ar.id, ar.run_id, ar.plan_node_id, ar.requested_at, ar.requested_reason, ar.context_ref,
+              ar.requested_by,
               pn.node_key, pn.job_type
        FROM approval_requests ar
        JOIN plan_nodes pn ON pn.id = ar.plan_node_id
        ORDER BY ar.requested_at ASC`
     ).catch(() => ({ rows: [] }));
-    res.json({ items: r.rows ?? [] });
+    const items = (r.rows ?? []).map((row: Record<string, unknown>) => ({
+      ...row,
+      action_required: "approve_or_reject",
+    }));
+    res.json({ items });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -1312,8 +1471,7 @@ app.get("/v1/approvals/pending", async (_req, res) => {
 /** POST /v1/approvals — record an approval decision; accepts plan_node_id; clears approval_requests row */
 app.post("/v1/approvals", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role !== "approver" && role !== "admin") return res.status(403).json({ error: "Approver or Admin required" });
+    if (requireRole(req, res, ["approver", "admin"])) return;
     const body = req.body as { run_id?: string; job_run_id?: string; plan_node_id?: string; action?: string; comment?: string };
     const { run_id, job_run_id, plan_node_id, action, comment } = body;
     if (!run_id || !action) return res.status(400).json({ error: "run_id and action (approve|reject) required" });
@@ -1360,11 +1518,26 @@ app.post("/v1/approvals", async (req, res) => {
   }
 });
 
+/** POST /v1/job_failures — runner notifies on job failure; set next_retry_at so sweepDelayedRetries can create attempt+1 (Plan §10) */
+app.post("/v1/job_failures", async (req, res) => {
+  try {
+    const body = req.body as { job_run_id?: string; run_id?: string; error_signature?: string };
+    const jobRunId = body?.job_run_id;
+    if (!jobRunId) return res.status(400).json({ error: "job_run_id required" });
+    await pool.query(
+      `UPDATE job_runs SET next_retry_at = now() WHERE id = $1 AND status = 'failed'`,
+      [jobRunId],
+    ).catch(() => {});
+    res.status(204).end();
+  } catch {
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+
 /** POST /v1/job_runs/:id/retry — requeue a failed job_run (new attempt, status queued) */
 app.post("/v1/job_runs/:id/retry", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const jobRunId = req.params.id;
     const jr = await pool.query(
       "SELECT id, run_id, plan_node_id, attempt FROM job_runs WHERE id = $1",
@@ -1374,10 +1547,11 @@ app.post("/v1/job_runs/:id/retry", async (req, res) => {
     const row = jr.rows[0];
     const newAttempt = (row.attempt ?? 1) + 1;
     const newJobRunId = uuid();
+    const idempotencyKey = `${row.run_id}:${row.plan_node_id}`;
     await pool.query(
       `INSERT INTO job_runs (id, run_id, plan_node_id, attempt, status, idempotency_key)
        VALUES ($1, $2, $3, $4, 'queued', $5)`,
-      [newJobRunId, row.run_id, row.plan_node_id, newAttempt, `retry:${jobRunId}:${newAttempt}`]
+      [newJobRunId, row.run_id, row.plan_node_id, newAttempt, idempotencyKey],
     );
     res.status(201).json({ id: newJobRunId, run_id: row.run_id, attempt: newAttempt });
   } catch (e) {
@@ -1559,8 +1733,7 @@ app.get("/v1/artifacts/:id/analyze", async (req, res) => {
 const MAX_ARTIFACT_CONTENT_BYTES = 2 * 1024 * 1024; // 2MB
 app.patch("/v1/artifacts/:id", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
 
     let body: { content?: string; metadata?: Record<string, unknown> };
     try {
@@ -1604,8 +1777,7 @@ app.patch("/v1/artifacts/:id", async (req, res) => {
 /** PATCH /v1/artifacts/:id/knowledge — set Artifact/Knowledge graph fields: derived_from_artifact_id, scope_type, scope_id. */
 app.patch("/v1/artifacts/:id/knowledge", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const id = req.params.id;
     const body = (req.body as { derived_from_artifact_id?: string | null; scope_type?: string | null; scope_id?: string | null }) ?? {};
     const check = await pool.query("SELECT id FROM artifacts WHERE id = $1", [id]);
@@ -1643,8 +1815,7 @@ app.patch("/v1/artifacts/:id/knowledge", async (req, res) => {
 /** POST /v1/artifacts/:id/referenced_by — add a page reference (Artifact/Knowledge graph: referenced_by). */
 app.post("/v1/artifacts/:id/referenced_by", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const id = req.params.id;
     const body = req.body as { page_ref?: string; ref_type?: string };
     const pageRef = body?.page_ref?.trim();
@@ -2939,8 +3110,7 @@ app.get("/v1/validations", async (req, res) => {
 /** POST /v1/template_proof/start — start a template proof batch (Sticky Green + all templates). Body: brand_profile_id, duration_minutes, optional template_ids. Returns 202 with batch_id. */
 app.post("/v1/template_proof/start", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as { brand_profile_id?: string; duration_minutes?: number; template_ids?: string[] };
     const brandProfileId = body?.brand_profile_id;
     const durationMinutes = Math.min(Math.max(Number(body?.duration_minutes) || 30, 1), 120);
@@ -3077,6 +3247,57 @@ app.post("/v1/errors", (req, res) => {
     return res.status(400).json({ error: "JSON body required (e.g. { message, code, context })" });
   }
   res.status(202).json({ accepted: true, message: "Error report accepted for processing." });
+});
+
+/** GET /v1/render/status — live Render service status for dashboard (staging + prod). */
+app.get("/v1/render/status", async (_req, res) => {
+  try {
+    const apiKey = process.env.RENDER_API_KEY;
+    if (!apiKey) {
+      return res.json({ services: [], message: "RENDER_API_KEY not set." });
+    }
+    const {
+      getStagingServiceIds,
+      getRenderService,
+      listRenderDeploysWithMeta,
+    } = await import("./render-worker-remediate.js");
+    const stagingIds = await getStagingServiceIds();
+    const prodId = process.env.RENDER_PROD_API_SERVICE_ID?.trim();
+    const serviceIds = [...new Set([...stagingIds, ...(prodId ? [prodId] : [])])].filter(Boolean);
+    const services: {
+      id: string;
+      name: string;
+      slug?: string;
+      dashboardUrl: string;
+      environment: "staging" | "prod";
+      latestDeploy: { id: string; status: string; commit?: string; updatedAt?: string } | null;
+    }[] = [];
+    for (const id of serviceIds) {
+      const svc = await getRenderService(apiKey, id).catch(() => null);
+      const name = svc?.name ?? id;
+      const slug = svc?.slug;
+      const dashboardUrl = `https://dashboard.render.com/web/${id}`;
+      const environment = prodId && id === prodId ? "prod" : "staging";
+      let latestDeploy: { id: string; status: string; commit?: string; updatedAt?: string } | null = null;
+      try {
+        const deploys = await listRenderDeploysWithMeta(apiKey, id, 1);
+        if (deploys[0]) {
+          latestDeploy = {
+            id: deploys[0].id,
+            status: deploys[0].status,
+            commit: deploys[0].commit,
+            updatedAt: deploys[0].updatedAt,
+          };
+        }
+      } catch {
+        // leave latestDeploy null on error
+      }
+      services.push({ id, name, slug, dashboardUrl, environment, latestDeploy });
+    }
+    res.json({ services });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
 });
 
 /** POST /v1/self_heal/deploy_failure_scan — run deploy-failure scan once (Render + Vercel). For testing without waiting 5 min. */
@@ -3270,8 +3491,7 @@ app.post("/v1/webhooks/vercel", async (req, res) => {
 /** POST /v1/initiatives/:id/replan — alias for POST .../plan with force=true */
 app.post("/v1/initiatives/:id/replan", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const initiativeId = req.params.id;
     const { compilePlan } = await import("./plan-compiler.js");
     const compiled = await withTransaction((client) => compilePlan(client, initiativeId, { force: true }));
@@ -3474,8 +3694,7 @@ app.get("/v1/agent_memory/:id", async (req, res) => {
 /** POST /v1/agent_memory — create (admin/testing) */
 app.post("/v1/agent_memory", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as { initiative_id?: string; run_id?: string; scope: string; key: string; value: string };
     if (!body.scope || !body.key) return res.status(400).json({ error: "scope and key required" });
     const r = await pool.query(
@@ -3492,8 +3711,7 @@ app.post("/v1/agent_memory", async (req, res) => {
 /** PATCH /v1/agent_memory/:id — update value */
 app.patch("/v1/agent_memory/:id", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as { value?: string; scope?: string; key?: string };
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -3649,8 +3867,7 @@ app.get("/v1/routing_policies", async (req, res) => {
 /** POST /v1/routing_policies — create or update (upsert by job_type) */
 app.post("/v1/routing_policies", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role !== "admin" && role !== "operator") return res.status(403).json({ error: "Admin or Operator required" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as { job_type: string; model_tier?: string; config_json?: unknown };
     if (!body.job_type) return res.status(400).json({ error: "job_type required" });
     const r = await pool.query(
@@ -4920,8 +5137,7 @@ app.get("/v1/email_templates/:id/lint", async (req, res) => {
 /** POST /v1/email_templates */
 app.post("/v1/email_templates", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as {
       type?: string;
       name?: string;
@@ -4957,8 +5173,7 @@ app.post("/v1/email_templates", async (req, res) => {
 /** PATCH /v1/email_templates/:id — optional lint_on_save: when true, run L001–L010 after update; fail with 400 if any error-severity issues. */
 app.patch("/v1/email_templates/:id", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const id = req.params.id;
     const body = req.body as Record<string, unknown>;
     const lintOnSave = body.lint_on_save === true;
@@ -5021,8 +5236,7 @@ app.patch("/v1/email_templates/:id", async (req, res) => {
 /** DELETE /v1/email_templates/:id */
 app.delete("/v1/email_templates/:id", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const id = req.params.id;
     const r = await pool.query("DELETE FROM email_templates WHERE id = $1 RETURNING id", [id]);
     if (r.rows.length === 0) return res.status(404).json({ error: "Not found" });
@@ -5118,8 +5332,7 @@ app.get("/v1/email_component_library/:id", async (req, res) => {
 /** POST /v1/email_component_library */
 app.post("/v1/email_component_library", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as {
       component_type?: string;
       name?: string;
@@ -5160,8 +5373,7 @@ app.post("/v1/email_component_library", async (req, res) => {
 /** PATCH /v1/email_component_library/:id */
 app.patch("/v1/email_component_library/:id", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const id = req.params.id;
     if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
     const body = req.body as Record<string, unknown>;
@@ -5205,8 +5417,7 @@ app.patch("/v1/email_component_library/:id", async (req, res) => {
 /** DELETE /v1/email_component_library/:id */
 app.delete("/v1/email_component_library/:id", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const id = req.params.id;
     if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
     const r = await pool.query("DELETE FROM email_component_library WHERE id = $1 RETURNING id", [id]);
@@ -5252,8 +5463,7 @@ app.get("/v1/build_specs/:id", async (req, res) => {
 /** POST /v1/build_specs — create build spec and a launch for the initiative */
 app.post("/v1/build_specs", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as { initiative_id?: string; spec?: Record<string, unknown>; extended?: boolean };
     const initiativeId = body?.initiative_id;
     const spec = body?.spec ?? {};
@@ -5298,8 +5508,7 @@ app.post("/v1/build_specs", async (req, res) => {
 /** POST /v1/build_specs/from_strategy — create build spec + launch from strategy doc (stub: same as POST /v1/build_specs with spec from doc) */
 app.post("/v1/build_specs/from_strategy", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const body = req.body as { initiative_id?: string; strategy_doc?: string };
     const initiativeId = body?.initiative_id;
     const strategyDoc = body?.strategy_doc ?? "";
@@ -5359,8 +5568,7 @@ app.get("/v1/launches", async (req, res) => {
 /** POST /v1/launches/actions/:action — trigger launch action (preview_deploy, domain_attach, etc.); stub returns ok. Auto-registers Vercel project for self-heal when body includes projectId. */
 app.post("/v1/launches/actions/:action", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const action = req.params.action;
     const inputs = (req.body ?? {}) as Record<string, unknown>;
     if (!action) return res.status(400).json({ error: "action required" });
@@ -5398,8 +5606,7 @@ app.get("/v1/launches/:id", async (req, res) => {
 /** POST /v1/launches/:id/validate — run validation checks for a launch; stub returns passed */
 app.post("/v1/launches/:id/validate", async (req, res) => {
   try {
-    const role = getRole(req);
-    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    if (requireRole(req, res, ["operator", "approver", "admin"])) return;
     const id = req.params.id;
     if (!isValidUuid(id)) return res.status(400).json({ error: "Invalid UUID" });
     const r = await pool.query("SELECT id FROM launches WHERE id = $1", [id]);

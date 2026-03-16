@@ -52,6 +52,7 @@ const migrations = [
   { path: "supabase/migrations/20250313000001_email_templates_component_sequence.sql", name: "email_templates_component_sequence", skipIfErrorCode: "42710", skipMessage: "column/objects already exist" },
   { path: "supabase/migrations/20250314000000_email_component_library_use_context.sql", name: "email_component_library_use_context" },
   { path: "supabase/migrations/20250315100000_stitch_template_contract.sql", name: "stitch_template_contract" },
+  { path: "supabase/migrations/20250316000000_approval_requests_requested_by.sql", name: "approval_requests_requested_by", skipIfErrorCodes: ["42701", "42P01"], skipMessage: "column already exists or table not yet created" },
   { path: "supabase/migrations/20250316100000_email_component_library_html_fragment.sql", name: "email_component_library_html_fragment", skipIfErrorCode: "42701", skipMessage: "column already exists" },
   {
     path: "supabase/migrations/20250318000000_rename_email_campaign_metadata_to_email_design_generator.sql",
@@ -60,7 +61,7 @@ const migrations = [
     skipMessage: "table already renamed",
   },
   { path: "supabase/migrations/20250310200000_worker_registry_ensure.sql", name: "worker_registry_ensure" },
-  { path: "supabase/migrations/20250317000000_intent_type_email_design_generator.sql", name: "intent_type_email_design_generator", skipIfErrorCode: "42701", skipMessage: "column already exists" },
+  { path: "supabase/migrations/20250317000000_intent_type_email_design_generator.sql", name: "intent_type_email_design_generator", skipIfErrorCodes: ["42701", "42P01"], skipMessage: "column already exists or table renamed" },
   { path: "supabase/migrations/20250320100000_initiative_google_credentials.sql", name: "initiative_google_credentials", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
   { path: "supabase/migrations/20250320000000_seo_url_risk_snapshots.sql", name: "seo_url_risk_snapshots", skipIfErrorCode: "42710", skipMessage: "policy/table already exists" },
   { path: "supabase/migrations/20250331000010_artifact_consumption.sql", name: "artifact_consumption", skipIfErrorCode: "42P07", skipMessage: "table already exists" },

@@ -1,6 +1,8 @@
 
 # AI Software Factory: Schema Spec and Technical Stack Plan (Detailed)
 
+**Blueprint status (alignment with repo):** This document remains the **canonical long-form spec**. The repo implements it: core schema (sections 5.1–5.21) is in `supabase/migrations/20250303000000_ai_factory_core.sql`; scheduler lock, job_claims, node_outcomes, repair_recipes, release_routes exist; Control Plane, Runner Fleet, ProfessorX Console, self-heal (deploy-failure, no-artifacts, repair engine), and Eval Initiative (nightly failure-cluster scan + sandbox replay) are implemented. **Hosting:** The spec lists Control Plane/Runners as "K8s/ECS/Fly/VM"; in practice this repo also uses **Render** (Docker) for Control Plane and runners—see `render.yaml`, `docs/RUNNERS_DEPLOYMENT.md`. **Extensions beyond this spec:** Later migrations add `incident_memory`, `deploy_events`, `intent_documents`, `intent_resolutions`, `artifact_consumption`, graph runtime tables, `vercel_self_heal_projects`; these extend rather than replace the spec. **Section 18** (creativepropulsionlabs/.github prompts/ADR) is optional reference; adopt or adapt if using that org.
+
 ## 1. Executive Summary and Strategic Context
 
 ### 1.1 What We Are Building

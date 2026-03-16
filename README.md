@@ -147,4 +147,4 @@ Full details: **`docs/STACK_AND_DECISIONS.md`**. Env vars and operating mode the
 
 ## Full Architecture Spec
 
-See `AI_Factory_Architecture_Blueprint.md` for the complete 1800-line specification covering schema, runner execution, node taxonomy, UI console, and self-improvement system.
+See **`AI_Factory_Architecture_Blueprint.md`** for the complete 1800-line specification covering schema, runner execution, node taxonomy, UI console, and self-improvement system. It is still the canonical long-form reference; the repo implements this architecture (Control Plane, Postgres, Runner Fleet, ProfessorX, self-heal, MCP). Env and stack details: **`docs/STACK_AND_DECISIONS.md`**.

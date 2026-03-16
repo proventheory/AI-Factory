@@ -22,6 +22,8 @@ import {
 } from "./executor-registry.js";
 import { advanceSuccessors, checkRunCompletion, markRunFailedIfNoPendingJobs } from "../../control-plane/src/scheduler.js";
 import { runDeployFailureScanTriggerOnly } from "../../control-plane/src/deploy-failure-scan-trigger-only.js";
+import { normalizeErrorSignature } from "./error-signature.js";
+import { recordSecretAccessByName } from "./secret-access.js";
 
 registerAllHandlers();
 
@@ -106,6 +108,27 @@ async function pollAndExecute(): Promise<void> {
       jobContext = await getJobContext(ctxClient, jobRun);
     } finally {
       ctxClient.release();
+    }
+
+    // Digest check: if release pins a runner digest, this process must match (Plan 12B.4).
+    const expectedDigest = jobContext?.runner_image_digest;
+    if (expectedDigest?.trim()) {
+      const currentDigest = process.env.RUNNER_IMAGE_DIGEST?.trim() ?? "";
+      if (currentDigest && currentDigest !== expectedDigest) {
+        throw new Error(
+          `Runner digest mismatch: release expects ${expectedDigest.slice(0, 16)}..., current RUNNER_IMAGE_DIGEST=${currentDigest.slice(0, 16)}...`
+        );
+      }
+    }
+
+    // Record secret access for audit when we use env-based secrets that match secret_refs (Plan 12B.4).
+    const envScope = jobContext?.environment ?? config.environment;
+    const secretClient = await pool.connect();
+    try {
+      if (process.env.OPENAI_API_KEY) await recordSecretAccessByName(secretClient, "openai_api_key", envScope, jobRun.id, config.workerId);
+      if (process.env.GITHUB_TOKEN) await recordSecretAccessByName(secretClient, "github_token", envScope, jobRun.id, config.workerId);
+    } finally {
+      secretClient.release();
     }
 
     try {
@@ -194,7 +217,7 @@ async function pollAndExecute(): Promise<void> {
         txClient.release();
       }
     } catch (err) {
-      const errorSig = (err as Error).message?.slice(0, 200) ?? "unknown";
+      const errorSig = normalizeErrorSignature(err);
       if (process.env.SENTRY_DSN?.trim()) {
         Sentry.withScope((scope) => {
           scope.setTag("job_type", jobContext?.job_type ?? "unknown");

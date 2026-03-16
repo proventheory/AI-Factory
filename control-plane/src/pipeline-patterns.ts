@@ -11,7 +11,7 @@ export type PipelineDraftNode = { node_key: string; job_type: string; node_type?
 /** Draft edge shape (matches plan-compiler DraftEdgeLike). */
 export type PipelineDraftEdge = { from_key: string; to_key: string; condition?: string };
 
-export const PIPELINE_PATTERN_IDS = ["seo_migration_audit", "email_design_generator", "self_heal", "software_deploy"] as const;
+export const PIPELINE_PATTERN_IDS = ["seo_migration_audit", "email_design_generator", "self_heal", "software_deploy", "upgrade_initiative"] as const;
 
 export type PipelinePatternId = (typeof PIPELINE_PATTERN_IDS)[number];
 
@@ -21,6 +21,7 @@ export const PATTERN_REQUIRED_INPUTS: Record<string, string[]> = {
   email_design_generator: ["initiative_id", "template_id"],
   self_heal: ["initiative_id"],
   software_deploy: ["initiative_id"],
+  upgrade_initiative: ["initiative_id"],
 };
 
 /** Human-readable labels for pattern inputs (for UI and prompt extraction). */
@@ -29,6 +30,7 @@ export const PATTERN_INPUT_LABELS: Record<string, Record<string, string>> = {
   email_design_generator: { initiative_id: "Initiative", template_id: "Email template" },
   self_heal: { initiative_id: "Initiative" },
   software_deploy: { initiative_id: "Initiative", environment: "Environment" },
+  upgrade_initiative: { initiative_id: "Initiative" },
 };
 
 /** Success criteria per pattern (for draft.successCriteria and lint). */
@@ -37,6 +39,7 @@ export const PATTERN_SUCCESS_CRITERIA: Record<string, string[]> = {
   email_design_generator: ["MJML email artifact produced", "Template contract satisfied"],
   self_heal: ["Patch applied and PR submitted", "Tests passing"],
   software_deploy: ["Migration guard passed", "Build succeeded", "Preview deploy healthy", "Smoke test passed"],
+  upgrade_initiative: ["Golden suite passed", "Staging deploy healthy", "Canary approved", "Full rollout and docs updated"],
 };
 
 export function getPattern(intentType: string): {

@@ -4,11 +4,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as api from "@/lib/api";
 
 export function useRuns(
-  params?: { status?: string; intent_type?: string; limit?: number },
+  params?: { status?: string; intent_type?: string; environment?: string; limit?: number },
   options?: { refetchInterval?: number | false }
 ) {
   return useQuery({
-    queryKey: ["runs", params?.status, params?.intent_type, params?.limit],
+    queryKey: ["runs", params?.status, params?.intent_type, params?.environment, params?.limit],
     queryFn: () => api.getRuns(params),
     refetchInterval: options?.refetchInterval,
   });
@@ -203,6 +203,15 @@ export function useDeployEventsSyncGitHub() {
   return useMutation({
     mutationFn: () => api.postDeployEventsSyncGitHub(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["deploy_events"] }),
+  });
+}
+
+/** Live Render service status (staging + prod) for operator dashboard. */
+export function useRenderStatus(options?: { refetchInterval?: number | false }) {
+  return useQuery({
+    queryKey: ["render_status"],
+    queryFn: () => api.getRenderStatus(),
+    refetchInterval: options?.refetchInterval ?? 60_000, // default 1 min
   });
 }
 

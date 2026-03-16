@@ -29,4 +29,5 @@ CREATE INDEX IF NOT EXISTS idx_seo_url_risk_snapshots_risk_level ON seo_url_risk
 COMMENT ON TABLE seo_url_risk_snapshots IS 'Queryable risk history per URL from seo_ranking_risk_report; optional population from pipeline artifacts.';
 
 ALTER TABLE seo_url_risk_snapshots ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "seo_url_risk_snapshots_select" ON seo_url_risk_snapshots;
 CREATE POLICY "seo_url_risk_snapshots_select" ON seo_url_risk_snapshots FOR SELECT USING (true);

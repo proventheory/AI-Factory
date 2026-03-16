@@ -19,6 +19,20 @@ On **ai-factory-api-staging** and **ai-factory-runner-staging** (and optionally 
 
 Without these, the **deploy-failure loop** (every 5 min) will not redeploy failed Render or Vercel builds.
 
+### Allow self-heal to push fixes to the repo
+
+When a deploy keeps failing because of a **code** issue (e.g. missing migration file), self-heal can create an initiative and run an LLM to produce a patch. By default that flow ends with a **PR** (issue_fix template). If you want the system to **apply the patch and push directly to main**, set:
+
+| Variable | Where | Purpose |
+|----------|--------|---------|
+| **ALLOW_SELF_HEAL_PUSH** | Control Plane | `true` — use `deploy_fix` template (analyze → write_patch → push_fix) instead of `issue_fix` when a deploy has failed 2+ times for the same commit. |
+| **GITHUB_TOKEN** | Runner | Token with push access to the repo (e.g. fine-grained repo token or `repo` scope). Required for the `push_fix` job to clone, apply patch, and push to `main`. |
+| **GITHUB_REPOSITORY** | Runner | `owner/repo` (e.g. `proventheory/AI-Factory`). Used as clone target and push target. |
+
+With these set, after 2 failed redeploys for the same commit the Control Plane creates an initiative with template **deploy_fix**. The Runner runs **analyze_repo** → **write_patch** → **push_fix**. The **push_fix** job clones the repo, applies the patch (including e.g. new migration stubs), commits, and pushes to `main`. The next Render deploy then picks up the new commit and can succeed.
+
+**Security:** Only enable `ALLOW_SELF_HEAL_PUSH` if you accept automated pushes to `main` from the Runner. Use a token with minimal required scope.
+
 **Staging down?** The scan runs on the Control Plane. When **ai-factory-api-staging** has a failed deploy, that service is not running, so it cannot trigger its own redeploy. **Patch:** set the same variables on **ai-factory-api-prod** so prod’s 5‑min scan triggers staging redeploys. One command (get prod service ID from Render Dashboard first):  
 `RENDER_PROD_API_SERVICE_ID=srv-xxxx node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs --prod`  
 See [runbooks/render-staging-failed-deploy-and-duplicate-runner.md](runbooks/render-staging-failed-deploy-and-duplicate-runner.md) (§ Why didn’t self-heal fix the failed deploy? / Patch).
@@ -43,6 +57,7 @@ When you **launch a project** with AI Factory and that project is on Vercel:
 
 - [ ] **Control Plane** has `ENABLE_SELF_HEAL`, `RENDER_API_KEY`, `RENDER_STAGING_SERVICE_IDS` set (so Render deploy-failure self-heal runs).
 - [ ] **Control Plane** has `VERCEL_TOKEN` and `CONTROL_PLANE_URL` set (so Vercel redeploy and webhooks work).
+- [ ] (Optional) **Control Plane** has `ALLOW_SELF_HEAL_PUSH=true` and **Runner** has `GITHUB_TOKEN` and `GITHUB_REPOSITORY=owner/repo` if you want self-heal to push deploy-fix patches to `main`.
 - [ ] **Console** (Operator UI) is in the self-heal list: either in `VERCEL_PROJECT_IDS` or registered once via **POST /v1/vercel/register** with the Console’s Vercel project ID.
 - [ ] **Each new AI Factory–launched Vercel project** is registered: either pass `projectId` (and optional `teamId`) in build_spec `spec` or in launch action body so it’s auto-registered, or call **POST /v1/vercel/register** once per project.
 

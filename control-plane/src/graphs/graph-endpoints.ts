@@ -11,14 +11,16 @@ import { isValidProjectionKey } from "./base/mapping-loader.js";
 import { strategyGraph } from "./strategy-graph.js";
 import { catalogGraph } from "./catalog-graph.js";
 import { dependencyGraph } from "./dependency-graph.js";
+import { topologyGraph } from "./topology-graph.js";
+import { governanceGraph } from "./governance-graph.js";
 import type { GraphProjectionKey } from "./base/types.js";
 
 const PROJECTIONS: Record<GraphProjectionKey, { build: (client: import("pg").PoolClient, opts?: { nodeLimit?: number; edgeLimit?: number }) => Promise<import("./base/types.js").GraphProjectionResult>; query: (client: import("pg").PoolClient, request: import("./base/types.js").GraphQueryRequest) => Promise<import("./base/types.js").GraphQueryResponse> }> = {
   strategy: strategyGraph,
   catalog: catalogGraph,
   dependency: dependencyGraph,
-  topology: { build: async () => ({ graph: "topology", nodes: [], edges: [], summary: { node_count: 0, edge_count: 0, node_counts_by_kind: {}, edge_counts_by_kind: {} } }), query: async (_c, req) => ({ graph: "topology", nodes: [], edges: [] }) },
-  governance: { build: async () => ({ graph: "governance", nodes: [], edges: [], summary: { node_count: 0, edge_count: 0, node_counts_by_kind: {}, edge_counts_by_kind: {} } }), query: async (_c, req) => ({ graph: "governance", nodes: [], edges: [] }) },
+  topology: topologyGraph,
+  governance: governanceGraph,
 };
 
 export function registerGraphRoutes(app: Express): void {
@@ -59,6 +61,56 @@ export function registerGraphRoutes(app: Express): void {
     }
   });
 
+  /** GET /v1/graphs/summary — one-call platform totals: 5 graphs, total nodes, total edges (for "platform is now traversable" banner). */
+  app.get("/v1/graphs/summary", async (_req, res) => {
+    try {
+      const keys = ["dependency", "strategy", "catalog", "topology", "governance"] as const;
+      const graphs: { graph: string; node_count: number; edge_count: number; node_counts_by_kind: Record<string, number> }[] = [];
+      let totalNodes = 0;
+      let totalEdges = 0;
+      await withTransaction(async (client) => {
+        for (const key of keys) {
+          const result = await PROJECTIONS[key].build(client, { nodeLimit: 500, edgeLimit: 1000 });
+          const nc = result.nodes.length;
+          const ec = result.edges.length;
+          totalNodes += nc;
+          totalEdges += ec;
+          graphs.push({
+            graph: result.graph,
+            node_count: nc,
+            edge_count: ec,
+            node_counts_by_kind: result.summary?.node_counts_by_kind ?? {},
+          });
+        }
+      });
+      res.json({ graphs, total_nodes: totalNodes, total_edges: totalEdges });
+    } catch (e) {
+      res.status(500).json({ error: String((e as Error).message) });
+    }
+  });
+
+  /** GET /v1/graphs/validate — run each projection build; return ok/error per graph (validator-style health check). */
+  app.get("/v1/graphs/validate", async (_req, res) => {
+    try {
+      const keys = ["dependency", "strategy", "catalog", "topology", "governance"] as const;
+      const projections: { graph: string; ok: boolean; node_count: number; edge_count: number; error?: string }[] = [];
+      await withTransaction(async (client) => {
+        for (const key of keys) {
+          try {
+            const result = await PROJECTIONS[key].build(client, { nodeLimit: 500, edgeLimit: 1000 });
+            projections.push({ graph: key, ok: true, node_count: result.nodes.length, edge_count: result.edges.length });
+          } catch (err) {
+            projections.push({ graph: key, ok: false, node_count: 0, edge_count: 0, error: String((err as Error).message) });
+          }
+        }
+      });
+      const ok = projections.every((p) => p.ok);
+      res.status(ok ? 200 : 207).json({ projections, ok });
+    } catch (e) {
+      res.status(500).json({ error: String((e as Error).message) });
+    }
+  });
+
   /** GET /v1/graphs/:name — return projection by name */
   app.get("/v1/graphs/:name", async (req, res) => {
     const name = (req.params.name ?? "").toLowerCase();
@@ -83,9 +135,14 @@ export function registerGraphRoutes(app: Express): void {
       return res.status(400).json({ error: "Missing or invalid graph", valid: ["dependency", "topology", "strategy", "governance", "catalog"] });
     }
     try {
-      const response = await withTransaction((client) =>
+      let response = await withTransaction((client) =>
         PROJECTIONS[graph].query(client, { graph: graph as GraphProjectionKey, preset: body.preset, query: body.query })
       );
+      if (response.answer == null && (response.nodes != null || response.summary != null)) {
+        const n = response.nodes?.length ?? response.summary?.node_count ?? 0;
+        const e = response.edges?.length ?? response.summary?.edge_count ?? 0;
+        response = { ...response, answer: `${n} nodes, ${e} edges` };
+      }
       res.json(response);
     } catch (e) {
       res.status(500).json({ error: String((e as Error).message) });
@@ -432,8 +489,17 @@ export function registerGraphRoutes(app: Express): void {
   });
 
   // --- Phase 4: Ask / Intent ---
-  /** Minimal intent resolver: maps common phrases to resolution_type (action | graph_query) and endpoint so /v1/ask is not always "unknown". */
-  function resolveIntentFromRawText(rawText: string): { intent_type: string; resolution_type: "action" | "graph_query" | "unknown"; confidence: number; requires_approval: boolean; resolved_endpoint: string | null; resolved_params: Record<string, unknown> | null } {
+  /** Intent resolver: maps phrases to resolution_type (action | graph_query) and optionally graph+preset for immediate execution. */
+  function resolveIntentFromRawText(rawText: string): {
+    intent_type: string;
+    resolution_type: "action" | "graph_query" | "unknown";
+    confidence: number;
+    requires_approval: boolean;
+    resolved_endpoint: string | null;
+    resolved_params: Record<string, unknown> | null;
+    resolved_graph?: GraphProjectionKey;
+    resolved_preset?: string;
+  } {
     const t = rawText.toLowerCase().trim();
     if (/\b(replay|rerun|re-run)\b.*\b(run|failed|subgraph)\b/.test(t) || /\bsubgraph_replay\b/.test(t)) {
       return { intent_type: "action", resolution_type: "action", confidence: 0.7, requires_approval: true, resolved_endpoint: "POST /v1/graph/subgraph_replay", resolved_params: { run_id: "<from context>" } };
@@ -447,12 +513,31 @@ export function registerGraphRoutes(app: Express): void {
     if (/\b(deploy|redeploy)\b.*\b(staging|render)\b/.test(t)) {
       return { intent_type: "action", resolution_type: "action", confidence: 0.6, requires_approval: true, resolved_endpoint: "POST /v1/self_heal/deploy_failure_scan", resolved_params: {} };
     }
+    // Graph queries: ask anything → execute and return result
+    if (/\b(blocked|what'?s blocked|blocked tasks)\b/.test(t)) {
+      return { intent_type: "query", resolution_type: "graph_query", confidence: 0.8, requires_approval: false, resolved_endpoint: "POST /v1/graphs/query", resolved_params: {}, resolved_graph: "strategy", resolved_preset: "blocked_tasks" };
+    }
+    if (/\b(dependency|dependencies|blast radius)\b/.test(t)) {
+      return { intent_type: "query", resolution_type: "graph_query", confidence: 0.75, requires_approval: false, resolved_endpoint: "POST /v1/graphs/query", resolved_params: {}, resolved_graph: "dependency" };
+    }
+    if (/\b(topology|environments|deployment map|releases)\b/.test(t)) {
+      return { intent_type: "query", resolution_type: "graph_query", confidence: 0.75, requires_approval: false, resolved_endpoint: "POST /v1/graphs/query", resolved_params: {}, resolved_graph: "topology" };
+    }
+    if (/\b(governance|policies|rules|approval)\b/.test(t)) {
+      return { intent_type: "query", resolution_type: "graph_query", confidence: 0.75, requires_approval: false, resolved_endpoint: "POST /v1/graphs/query", resolved_params: {}, resolved_graph: "governance" };
+    }
+    if (/\b(catalog|operators|flows|inventory)\b/.test(t)) {
+      return { intent_type: "query", resolution_type: "graph_query", confidence: 0.75, requires_approval: false, resolved_endpoint: "POST /v1/graphs/query", resolved_params: {}, resolved_graph: "catalog" };
+    }
+    if (/\b(strategy|plans|running|active runs)\b/.test(t)) {
+      return { intent_type: "query", resolution_type: "graph_query", confidence: 0.7, requires_approval: false, resolved_endpoint: "POST /v1/graphs/query", resolved_params: {}, resolved_graph: "strategy" };
+    }
     return { intent_type: "unknown", resolution_type: "unknown", confidence: 0, requires_approval: true, resolved_endpoint: null, resolved_params: null };
   }
 
   app.post("/v1/ask", async (req, res) => {
     try {
-      const b = req.body as { raw_text: string; source_type?: string; context?: Record<string, unknown>; initiative_id?: string };
+      const b = req.body as { raw_text: string; source_type?: string; context?: Record<string, unknown>; initiative_id?: string; execute?: boolean };
       if (!b?.raw_text) return res.status(400).json({ error: "raw_text required" });
       const doc = await pool.query(
         `INSERT INTO intent_documents (source_type, raw_text, context_json, status) VALUES ($1, $2, $3, 'pending') RETURNING id`,
@@ -464,14 +549,30 @@ export function registerGraphRoutes(app: Express): void {
         `INSERT INTO intent_resolutions (intent_document_id, resolution_type, confidence, requires_approval, status) VALUES ($1, $2, $3, $4, 'proposed') RETURNING id`,
         [intentId, resolved.resolution_type, resolved.confidence, resolved.requires_approval]
       );
-      res.json({
+      const payload: Record<string, unknown> = {
         intent_type: resolved.intent_type,
         confidence: resolved.confidence,
         requires_approval: resolved.requires_approval,
         resolved_endpoint: resolved.resolved_endpoint,
         resolved_params: resolved.resolved_params,
         intent_document_id: intentId,
-      });
+      };
+      if (resolved.resolution_type === "graph_query" && resolved.resolved_graph && (b.execute !== false)) {
+        try {
+          const graphResult = await withTransaction((client) =>
+            PROJECTIONS[resolved.resolved_graph].query(client, {
+              graph: resolved.resolved_graph,
+              preset: resolved.resolved_preset,
+              query: {},
+            })
+          );
+          payload.answer = { graph: graphResult.graph, summary: graphResult.summary, nodes: graphResult.nodes?.length ?? 0, edges: graphResult.edges?.length ?? 0 };
+          payload.graph_result = graphResult;
+        } catch (err) {
+          payload.answer = { error: String((err as Error).message) };
+        }
+      }
+      res.json(payload);
     } catch (e) {
       res.status(500).json({ error: String((e as Error).message) });
     }

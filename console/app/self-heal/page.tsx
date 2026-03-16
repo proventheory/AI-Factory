@@ -37,6 +37,7 @@ export default function SelfHealPage() {
           <ul className="list-disc list-inside space-y-1 text-body-small text-text-secondary mb-2">
             <li><Link href="/graph/decision-loop" className="text-brand-600 hover:underline">Decision loop</Link> — Run a tick, compute baselines, view anomalies; optional auto-act (e.g. open_incident).</li>
             <li><Link href="/graph/deploys" className="text-brand-600 hover:underline">Deploy events</Link> — List builds; sync from Render or GitHub Actions; open a deploy to see repair plan and suggested file actions.</li>
+            <li><Link href="/render" className="text-brand-600 hover:underline">Render status</Link> — Live deploy status for staging and prod services (Control Plane → Render API).</li>
             <li><Link href="/graph/import-graph" className="text-brand-600 hover:underline">Import graph</Link> — Per-service module graph used for deploy repair (e.g. missing file → files to commit).</li>
             <li><Link href="/graph/memory" className="text-brand-600 hover:underline">Memory (incidents)</Link> — Incident resolutions used by the decision loop and repair planning.</li>
           </ul>

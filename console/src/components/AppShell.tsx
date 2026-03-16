@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Dropdown, Drawer } from "@/components/ui";
 import { CommandPalette } from "@/components/CommandPalette";
 import { IconBar } from "@/components/IconBar";
+import { useEnvironment, type EnvironmentId } from "@/contexts/EnvironmentContext";
 import {
   BRANCHES,
   getGroupsForBranch,
@@ -16,6 +17,10 @@ import {
   type NavItem,
   type BranchId,
 } from "@/config/nav";
+
+const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
+
+type SystemState = { state: string; canary_percent?: number; stale_leases?: number; workers_alive?: number };
 
 function filterItemsForDisplay(items: NavItem[]): NavItem[] {
   return items.filter(isNavItemVisible);
@@ -66,13 +71,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const breadcrumbs = getBreadcrumbs(pathname);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeBranchId, setActiveBranchId] = useState<BranchId | null>("command");
+  const { environment, setEnvironment } = useEnvironment();
+  const [systemState, setSystemState] = useState<SystemState | null>(null);
 
   useEffect(() => {
     const branch = getBranchForHref(pathname ?? "");
     setActiveBranchId(branch ?? "command");
   }, [pathname]);
 
+  useEffect(() => {
+    fetch(`${API}/v1/system_state?environment=${encodeURIComponent(environment)}`)
+      .then((r) => r.json())
+      .then((d) => setSystemState(d))
+      .catch(() => setSystemState({ state: "Degraded" }));
+  }, [environment]);
+
   const groups = getGroupsForBranch(activeBranchId ?? "command");
+  const stateLabel = systemState?.state ?? "—";
+  const canaryPct = systemState?.canary_percent ?? 0;
+  const stateDotClass =
+    stateLabel === "Healthy" ? "bg-state-success" : stateLabel === "Degraded" ? "bg-amber-500" : stateLabel === "Paused" ? "bg-slate-500" : "bg-slate-400";
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -129,15 +147,26 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-3 min-h-[44px] shrink-0">
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-sunken px-2 py-1 text-body-small text-text-secondary" title="System state">
+              <span className={`inline-block w-2 h-2 rounded-full ${stateDotClass}`} aria-hidden />
+              <span>{stateLabel}</span>
+            </span>
+            {canaryPct > 0 && (
+              <span className="hidden sm:inline-flex items-center rounded-md border border-border-subtle bg-amber-50 px-2 py-1 text-body-small text-amber-800" title="Canary rollout">
+                Canary {canaryPct}%
+              </span>
+            )}
             <select
               className="rounded-md border border-border-default bg-white px-2 sm:px-3 py-1.5 sm:py-2 min-h-[36px] sm:min-h-[44px] text-body-small text-text-primary focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 touch-manipulation"
               aria-label="Environment"
+              value={environment}
+              onChange={(e) => setEnvironment(e.target.value as EnvironmentId)}
             >
               <option value="sandbox">sandbox</option>
               <option value="staging">staging</option>
               <option value="prod">prod</option>
             </select>
-            <CommandPalette />
+            <CommandPalette environment={environment} />
             <Dropdown
               align="right"
               trigger={

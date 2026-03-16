@@ -15,6 +15,8 @@ export interface CreateRunParams {
   environment: Environment;
   cohort: Cohort | null;
   rootIdempotencyKey: string;
+  /** Pinned git ref/commit for this run (Plan §2.4 Invariant 3). */
+  repoCommitBase?: string | null;
   routingReason?: string;
   routingRuleId?: string;
   promptTemplateVersion?: string;
@@ -27,36 +29,58 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
   const runId = uuid();
 
   const llmSource = params.llmSource === "openai_direct" ? "openai_direct" : "gateway";
+  const repoCommitBase = params.repoCommitBase ?? null;
   await db.query("SAVEPOINT before_runs_insert");
   try {
     await db.query(
       `INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
          status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
-         prompt_template_version, adapter_contract_version, llm_source)
-       VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11,$12)`,
+         prompt_template_version, adapter_contract_version, llm_source, repo_commit_base)
+       VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11,$12,$13)`,
       [
         runId, params.planId, params.releaseId, params.policyVersion,
         params.environment, params.cohort, params.rootIdempotencyKey,
         params.routingReason ?? null, params.routingRuleId ?? null,
         params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
-        llmSource,
+        llmSource, repoCommitBase,
       ],
     );
   } catch (err: unknown) {
     if ((err as { code?: string }).code === "42703") {
       await db.query("ROLLBACK TO SAVEPOINT before_runs_insert");
-      await db.query(
-        `INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
-           status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
-           prompt_template_version, adapter_contract_version)
-         VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11)`,
-        [
-          runId, params.planId, params.releaseId, params.policyVersion,
-          params.environment, params.cohort, params.rootIdempotencyKey,
-          params.routingReason ?? null, params.routingRuleId ?? null,
-          params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
-        ],
-      );
+      try {
+        await db.query(
+          `INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
+             status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
+             prompt_template_version, adapter_contract_version, llm_source, repo_commit_base)
+           VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11,$12,$13)`,
+          [
+            runId, params.planId, params.releaseId, params.policyVersion,
+            params.environment, params.cohort, params.rootIdempotencyKey,
+            params.routingReason ?? null, params.routingRuleId ?? null,
+            params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
+            llmSource, repoCommitBase,
+          ],
+        );
+      } catch (err2: unknown) {
+        if ((err2 as { code?: string }).code === "42703") {
+          await db.query("ROLLBACK TO SAVEPOINT before_runs_insert");
+          await db.query(
+            `INSERT INTO runs (id, plan_id, release_id, policy_version, environment, cohort,
+               status, root_idempotency_key, routed_at, routing_reason, routing_rule_id,
+               prompt_template_version, adapter_contract_version)
+             VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,now(),$8,$9,$10,$11)`,
+            [
+              runId, params.planId, params.releaseId, params.policyVersion,
+              params.environment, params.cohort, params.rootIdempotencyKey,
+              params.routingReason ?? null, params.routingRuleId ?? null,
+              params.promptTemplateVersion ?? null, params.adapterContractVersion ?? null,
+            ],
+          );
+        } else {
+          throw err2;
+        }
+      }
     } else {
       throw err;
     }
@@ -105,8 +129,8 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
     if (isRoot) {
       if (isApproval) {
         await db.query(
-          `INSERT INTO approval_requests (id, run_id, plan_node_id, requested_at, requested_reason)
-           VALUES ($1, $2, $3, now(), $4)
+          `INSERT INTO approval_requests (id, run_id, plan_node_id, requested_at, requested_reason, requested_by)
+           VALUES ($1, $2, $3, now(), $4, 'scheduler')
            ON CONFLICT (run_id, plan_node_id) DO NOTHING`,
           [uuid(), runId, node.id, "Approval node – awaiting human decision"],
         ).catch(() => {});
@@ -126,6 +150,7 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
   if (hasQueuedJob) {
     await db.query(`UPDATE runs SET status = 'running', started_at = COALESCE(started_at, now()) WHERE id = $1`, [runId]);
     await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'started')`, [runId]).catch(() => {});
+    await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_entered')`, [runId]).catch(() => {});
   }
 
   // Phase 5A: mirror run to graph_run (execution layer) for observability
@@ -187,8 +212,8 @@ export async function advanceSuccessors(
       const isApproval = nodeTypeResult.rows[0]?.node_type === "approval";
       if (isApproval) {
         await db.query(
-          `INSERT INTO approval_requests (id, run_id, plan_node_id, requested_at, requested_reason)
-           VALUES ($1, $2, $3, now(), $4)
+          `INSERT INTO approval_requests (id, run_id, plan_node_id, requested_at, requested_reason, requested_by)
+           VALUES ($1, $2, $3, now(), $4, 'scheduler')
            ON CONFLICT (run_id, plan_node_id) DO NOTHING`,
           [uuid(), runId, to_node_id, "Approval node – awaiting human decision"],
         ).catch(() => {});
@@ -237,10 +262,14 @@ export async function completeApprovalAndAdvance(
     `UPDATE node_progress SET status = 'succeeded' WHERE run_id = $1 AND plan_node_id = $2`,
     [runId, planNodeId],
   );
-  await db.query(
-    `UPDATE runs SET status = 'running', started_at = COALESCE(started_at, now()) WHERE id = $1 AND status = 'queued'`,
+  const runUpdated = await db.query(
+    `UPDATE runs SET status = 'running', started_at = COALESCE(started_at, now()) WHERE id = $1 AND status = 'queued' RETURNING id`,
     [runId],
   );
+  if (runUpdated.rowCount && runUpdated.rowCount > 0) {
+    await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'started')`, [runId]).catch(() => {});
+    await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_entered')`, [runId]).catch(() => {});
+  }
   await advanceSuccessors(db, runId, planNodeId, jobRunId);
   await checkRunCompletion(db, runId);
 }
@@ -263,6 +292,10 @@ export async function checkRunCompletion(db: DbClient, runId: string): Promise<b
       `UPDATE runs SET status = 'succeeded', ended_at = now() WHERE id = $1 AND status = 'running'`,
       [runId],
     );
+    await db.query(
+      `INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`,
+      [runId],
+    ).catch(() => {});
     await db.query(
       `INSERT INTO run_events (run_id, event_type) VALUES ($1, 'succeeded')`,
       [runId],
@@ -287,6 +320,10 @@ export async function markRunFailedIfNoPendingJobs(db: DbClient, runId: string):
     `UPDATE runs SET status = 'failed', ended_at = now() WHERE id = $1 AND status = 'running'`,
     [runId],
   );
+  await db.query(
+    `INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`,
+    [runId],
+  ).catch(() => {});
   await db.query(
     `INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`,
     [runId],

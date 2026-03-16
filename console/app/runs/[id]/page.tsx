@@ -14,14 +14,22 @@ import type { Column } from "@/components/ui/DataTable";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
+type PinnedContext = {
+  runner_image_digest: string | null;
+  workplane_bundle_version: string | null;
+  release_policy_version: string | null;
+} | null;
+
 type RunDetail = {
   run: Record<string, unknown>;
+  pinned_context?: PinnedContext;
   plan_nodes: Record<string, unknown>[];
   plan_edges: Record<string, unknown>[];
   node_progress: Record<string, unknown>[];
   job_runs: Record<string, unknown>[];
   artifacts?: ArtifactRow[];
   run_events: Record<string, unknown>[];
+  job_events?: Record<string, unknown>[];
 };
 
 type ToolCallRow = { id: string; job_run_id: string; capability: string; operation_key: string; status: string; started_at: string | null };
@@ -415,6 +423,21 @@ export default function RunDetailPage() {
             </p>
           </div>
         )}
+        {/* Pinned context header (Plan 12B.4 C4.5) */}
+        {(data.pinned_context || run.repo_commit_base != null || run.routing_reason != null) && (
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 px-4 py-3 mb-4">
+            <p className="text-caption font-medium text-text-muted mb-2">Pinned context</p>
+            <dl className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-body-small">
+              {data.pinned_context?.runner_image_digest != null && <><dt className="text-text-muted">Runner digest</dt><dd className="font-mono truncate" title={data.pinned_context.runner_image_digest ?? ""}>{String(data.pinned_context.runner_image_digest).slice(0, 16)}…</dd></>}
+              {data.pinned_context?.workplane_bundle_version != null && <><dt className="text-text-muted">Workplane bundle</dt><dd>{String(data.pinned_context.workplane_bundle_version)}</dd></>}
+              {(data.pinned_context?.release_policy_version ?? run.policy_version) != null && <><dt className="text-text-muted">Policy version</dt><dd>{String(data.pinned_context?.release_policy_version ?? run.policy_version)}</dd></>}
+              {run.cohort != null && <><dt className="text-text-muted">Cohort</dt><dd>{String(run.cohort)}</dd></>}
+              {run.routing_reason != null && <><dt className="text-text-muted">Routing reason</dt><dd>{String(run.routing_reason)}</dd></>}
+              {run.repo_commit_base != null && <><dt className="text-text-muted">Repo commit</dt><dd className="font-mono truncate" title={String(run.repo_commit_base)}>{String(run.repo_commit_base).slice(0, 12)}…</dd></>}
+            </dl>
+          </div>
+        )}
+
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-heading-2 font-bold text-text-primary">Run</h1>
@@ -441,6 +464,7 @@ export default function RunDetailPage() {
             <TabsTrigger value="ai_calls">AI Calls</TabsTrigger>
             <TabsTrigger value="secrets">Secrets Access</TabsTrigger>
             <TabsTrigger value="events">Events</TabsTrigger>
+            <TabsTrigger value="explainability">Explainability</TabsTrigger>
             <TabsTrigger value="repair">Repair</TabsTrigger>
             <TabsTrigger value="notes">Notes</TabsTrigger>
           </TabsList>
@@ -456,10 +480,13 @@ export default function RunDetailPage() {
                   <dt className="text-slate-500">Ended</dt><dd>{run.ended_at ? new Date(String(run.ended_at)).toLocaleString() : "—"}</dd>
                 </dl>
               </CardSection>
-              <CardSection title="Node progress">
+              <CardSection title="Node progress (eligible_at, status)">
                 <ul className="text-sm space-y-1">
                   {(data.node_progress ?? []).map((np: Record<string, unknown>, i: number) => (
-                    <li key={i}>Node {String(np.plan_node_id).slice(0, 8)}… — {String(np.status)}</li>
+                    <li key={i}>
+                      Node {String(np.plan_node_id).slice(0, 8)}… — <strong>{String(np.status)}</strong>
+                      {np.eligible_at != null && ` (eligible ${new Date(String(np.eligible_at)).toISOString()})`}
+                    </li>
                   ))}
                   {(data.node_progress ?? []).length === 0 && <li className="text-slate-500">None</li>}
                 </ul>
@@ -609,6 +636,42 @@ export default function RunDetailPage() {
                 ))}
                 {(data.run_events ?? []).length === 0 && <li className="text-slate-500">None</li>}
               </ul>
+            </CardSection>
+          </TabsContent>
+
+          <TabsContent value="explainability" className="pt-4">
+            <CardSection title="Explainability (failure: error_signature cluster + last job_events + tool_calls)">
+              {(() => {
+                const failedJobs = (data.job_runs ?? []).filter((j: Record<string, unknown>) => j.status === "failed") as { id: string; plan_node_id: string; error_signature?: string }[];
+                const jobEvents = (data.job_events ?? []).slice(0, 20) as { job_run_id: string; event_type: string; payload_json: unknown; created_at: string }[];
+                const errorSignatures = [...new Set(failedJobs.map((j) => j.error_signature).filter(Boolean))];
+                if (failedJobs.length === 0) {
+                  return <p className="text-body-small text-text-muted">No failed job runs. This drawer shows error signatures, last 20 job_events, and tool_calls when the run has failures.</p>;
+                }
+                return (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-caption text-text-muted mb-1">Error signature cluster</p>
+                      <ul className="text-body-small font-mono">
+                        {errorSignatures.map((sig, i) => <li key={i}>{String(sig)}</li>)}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="text-caption text-text-muted mb-1">Last 20 job_events</p>
+                      <ul className="text-body-small space-y-0.5 max-h-48 overflow-y-auto">
+                        {jobEvents.map((ev, i) => (
+                          <li key={i} className="flex gap-2">
+                            <span className="text-text-muted shrink-0">{new Date(ev.created_at).toISOString()}</span>
+                            <span>{ev.event_type}</span>
+                            {ev.payload_json != null && <span className="truncate text-text-muted">{JSON.stringify(ev.payload_json).slice(0, 80)}…</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <p className="text-body-small text-text-muted">Tool calls for this run are in the <button type="button" onClick={() => setActiveTab("tool_calls")} className="font-medium text-brand-600 hover:underline">Tool Calls</button> tab.</p>
+                  </div>
+                );
+              })()}
             </CardSection>
           </TabsContent>
 

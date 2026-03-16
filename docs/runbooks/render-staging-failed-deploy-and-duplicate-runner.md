@@ -4,11 +4,17 @@
 
 Deploy-failure self-heal runs **inside the Control Plane**: a 5‑minute loop in **ai-factory-api-staging** (and/or api-prod) that checks Render and triggers redeploys when the latest deploy is failed/canceled. So:
 
-- **When api-staging itself has a failed deploy**, that service is **not running**. The Control Plane can’t trigger its own redeploy — but the **runner** (ai-factory-runner-staging) also runs the same 5‑min deploy-failure scan when it has ENABLE_SELF_HEAL, RENDER_API_KEY, and RENDER_STAGING_SERVICE_IDS set. So when the API is down, the **runner** can still trigger redeploys for api (and gateway/runner). Staging can self-heal as long as the runner is up.
-- If **both** api-staging and runner-staging have failed deploys, nothing in staging is running. Then **prod** (or a manual trigger) must run the scan; see Patch below.
+- **When api-staging itself has a failed deploy**, that service is **not running**. The **runner** (ai-factory-runner-staging) also runs the same 5‑min deploy-failure scan when it has the right env; so when the API is down, the runner can still trigger redeploys for api (and gateway/runner).
+- **When BOTH api-staging and runner-staging have failed deploys**, nothing in staging is running. **Prod (ai-factory-api-prod)** is the backup healer: the script now **always** pushes self-heal env to prod, so prod’s 5‑min scan will trigger staging redeploys. Run the script once (see Patch below); after that, even if all of staging is down, prod will heal it within 5 minutes.
 
-**What to do right now:** Trigger redeploys manually (see §1 below), or call the one-shot scan from **prod** if prod is up:  
-`POST https://<api-prod-url>/v1/self_heal/deploy_failure_scan` (no body). That triggers redeploys for any staging service in the failed list (if prod has `RENDER_API_KEY` and `RENDER_STAGING_SERVICE_IDS` set).
+**Why staging kept failing even though self-heal was triggering redeploys:**  
+Self-heal **was** working (Render deploys show `trigger: "api"`). Each new deploy failed at **runtime** with `relation "runs"`, `relation "job_claims"`, or `relation "job_runs" does not exist` because **DATABASE_URL** on the staging services was missing or pointed at a DB where the core schema was never applied. The script did not set DATABASE_URL, so staging relied on Render/Blueprint defaults. **Fix:** The script now sets **DATABASE_URL** (from `.env`) on staging API and runner so they use the same Supabase DB as migrations. Re-run the script after any env change; we also set it via Render MCP when diagnosing.
+
+**What to do right now:**  
+1. **One-time:** Run `node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs` so staging API, staging runner, **and api-prod** all have self-heal env **and DATABASE_URL** (staging = same DB as migrations). Prod is then the backup healer when both api and runner are down.  
+2. **Immediate (don’t wait 5 min):** Call the one-shot scan on **prod**:  
+   `POST https://<api-prod-url>/v1/self_heal/deploy_failure_scan` (no body).  
+   That triggers redeploys for any staging service in the failed list. Use this when staging is down and you want redeploys now instead of waiting for the next 5‑min tick.
 
 **Runner is up but api-staging still didn’t self-heal?** Two common causes:
 
@@ -19,14 +25,12 @@ Deploy-failure self-heal runs **inside the Control Plane**: a 5‑minute loop in
 
 **LLM self-fix (after 2 redeploys):** When the same commit fails 2+ times, self-heal no longer only creates an initiative — it fetches Render logs, stores them in the initiative’s `goal_metadata.deploy_failure`, compiles the **issue_fix** plan (analyze_repo → write_patch → …), and **auto-starts a run**. The runner’s **analyze_repo** and **write_patch** handlers use the deploy logs in the LLM prompt so the model can diagnose (e.g. migration order, policy already exists) and propose a patch. You still need to apply the patch (e.g. from the run’s patch artifact) and merge/push; So the system *does* fix itself: **detect → logs → LLM → suggested patch**. The **remaining part** is applying that patch (and optionally automating PR creation). See [AUTONOMOUS_RECOVERY_SPEC.md](../AUTONOMOUS_RECOVERY_SPEC.md) for the full incident/recovery subsystem.
 
-**Patch (one-time): so staging fixes itself** — The script pushes self-heal env to **staging API** and **staging runner**. So when api-staging is down, the runner’s 5‑min scan triggers redeploys. Optionally add **prod** so when both api and runner are down, prod heals staging:
+**Patch (one-time): so staging fixes itself** — The script pushes self-heal env **and DATABASE_URL** to **staging API** and **staging runner**. So when api-staging is down, the runner’s 5‑min scan triggers redeploys. The script now always pushes to api-prod too (backup healer) with prod’s DATABASE_URL. Run once from repo root:
 
-1. From repo root:  
+1. From repo root (ensure `.env` has `DATABASE_URL` and `DATABASE_URL_PROD`):  
    `node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs`  
-   This pushes ENABLE_SELF_HEAL, RENDER_API_KEY, RENDER_STAGING_SERVICE_IDS to **staging API** and **staging runner**. After that, when api-staging has a failed deploy, the runner will trigger a redeploy. No manual step.
-2. (Optional) For a second line of defense when both api and runner are down: get **ai-factory-api-prod**’s service ID from Render Dashboard, then run  
-   `node --env-file=.env scripts/set-render-vercel-self-heal-env.mjs --prod` (uses built-in prod ID or RENDER_PROD_API_SERVICE_ID)  
-   so prod’s 5‑min scan also triggers staging redeploys.
+   This pushes ENABLE_SELF_HEAL, RENDER_API_KEY, RENDER_STAGING_SERVICE_IDS, **DATABASE_URL** (staging DB for API/runner, prod DB for api-prod) to all three. Staging must use the same DB as migrations or you get "relation runs/job_claims does not exist" at runtime.
+2. No `--prod` flag needed; script pushes to api-prod by default.
 
 See [SELF_HEAL_REQUIRED_ENV.md](../SELF_HEAL_REQUIRED_ENV.md) and [OPERATIONS_RUNBOOK.md](../OPERATIONS_RUNBOOK.md).
 
@@ -74,6 +78,13 @@ If the **build** succeeds (image pushes) but the deploy shows **Failed deploy** 
 
 - **`relation "operators" does not exist`** — A migration references `operators` before it’s created. Fix: in `scripts/run-migrate.mjs`, run **capability_graph** (which creates `operators`) **before** **phase6_durable_graph_runtime** (which references `operators(id)`).
 - **`policy "seo_url_risk_snapshots_select" ... already exists`** — The migration isn’t idempotent. Fix: in the migration SQL use `DROP POLICY IF EXISTS "..." ON table; CREATE POLICY ...` so re-runs don’t fail.
+
+**Runtime "relation does not exist" (migrations finished, app crashes after start):** If **Logs** show migrations completing but then errors like `relation "runs" does not exist` or `relation "job_claims" does not exist`, the app is talking to a DB where core tables are missing.
+
+1. **Set DATABASE_URL on Render** — In Render → service → **Environment**, set **DATABASE_URL** to your staging Supabase pooler URL (same as in `.env`). Re-deploy. The script `scripts/set-render-vercel-self-heal-env.mjs` now pushes DATABASE_URL for staging API and runner when you run it.
+2. **If it still fails after setting DATABASE_URL** — The staging DB may never have had migrations applied (e.g. new or empty Supabase project). **Bootstrap the DB once** from your machine: from repo root run  
+   `DATABASE_URL='<staging-pooler-URL-from-.env>' node scripts/run-migrate.mjs`  
+   Use the exact same URL as in `.env` for staging (e.g. `postgres.anqhihkvovuhfzsyqtxu` pooler). Then trigger a new deploy on Render (or wait for self-heal). After that, the container’s migration step will be a no-op (already applied) and the app will see the tables.
 
 After fixing migrations or run order, commit, push, and trigger a new deploy (or let self-heal trigger it).
 

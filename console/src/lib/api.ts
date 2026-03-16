@@ -91,10 +91,11 @@ export type ToolCallRow = {
   ended_at?: string | null;
 };
 
-export async function getRuns(params?: { status?: string; intent_type?: string; limit?: number }): Promise<{ items: RunRow[] }> {
+export async function getRuns(params?: { status?: string; intent_type?: string; environment?: string; limit?: number }): Promise<{ items: RunRow[] }> {
   const searchParams = new URLSearchParams();
   if (params?.status) searchParams.set("status", params.status);
   if (params?.intent_type) searchParams.set("intent_type", params.intent_type);
+  if (params?.environment) searchParams.set("environment", params.environment);
   if (params?.limit) searchParams.set("limit", String(params.limit ?? 50));
   const res = await fetch(`${API}/v1/runs?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
@@ -1340,6 +1341,22 @@ export async function postDeployEventsSync(): Promise<{ synced: number; message?
 /** POST /v1/deploy_events/sync_github — sync from GitHub Actions. */
 export async function postDeployEventsSyncGitHub(): Promise<{ synced: number; message?: string }> {
   const res = await fetch(`${API}/v1/deploy_events/sync_github`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/render/status — live Render service status for dashboard. */
+export type RenderServiceStatus = {
+  id: string;
+  name: string;
+  slug?: string;
+  dashboardUrl: string;
+  environment: "staging" | "prod";
+  latestDeploy: { id: string; status: string; commit?: string; updatedAt?: string } | null;
+};
+
+export async function getRenderStatus(): Promise<{ services: RenderServiceStatus[]; message?: string }> {
+  const res = await fetch(`${API}/v1/render/status`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

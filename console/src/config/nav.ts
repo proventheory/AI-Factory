@@ -86,6 +86,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/graph/explorer", label: "Graph Explorer", branchId: "orchestration" },
       { href: "/graph/decision-loop", label: "Decision loop", branchId: "orchestration" },
       { href: "/graph/deploys", label: "Deploy events", branchId: "orchestration" },
+      { href: "/render", label: "Render status", branchId: "orchestration" },
       { href: "/graph/import-graph", label: "Import graph", branchId: "orchestration" },
       { href: "/graph/schema-contracts", label: "Schema & contracts", branchId: "orchestration" },
       { href: "/graph/change-impact", label: "Change Impact", branchId: "orchestration" },

@@ -54,6 +54,19 @@ const TEMPLATE_ISSUE_FIX: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[]
   ],
 };
 
+/** Deploy-fix: analyze → write_patch → push_fix. Used when ALLOW_SELF_HEAL_PUSH=true so the system can push the fix to main. */
+const TEMPLATE_DEPLOY_FIX: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
+  nodes: [
+    { node_key: "analyze", job_type: "analyze_repo", agent_role: "engineer", node_type: "job" },
+    { node_key: "patch", job_type: "write_patch", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["repo_summary"] },
+    { node_key: "push_fix", job_type: "push_fix", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["patch"] },
+  ],
+  edges: [
+    { from_key: "analyze", to_key: "patch", condition: "success" },
+    { from_key: "patch", to_key: "push_fix", condition: "success" },
+  ],
+};
+
 const TEMPLATE_MIGRATION: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
   nodes: [
     { node_key: "analyze", job_type: "analyze_repo", agent_role: "architect", node_type: "job" },
@@ -225,9 +238,33 @@ const TEMPLATE_SOFTWARE_DEPLOY: { nodes: PlanTemplateNode[]; edges: PlanTemplate
   ],
 };
 
+/** Upgrade Initiative DAG (Plan 12B.4): intake → branch/PR → sandbox validate → golden suite → staging → canary gate → full rollout → post-deploy docs. */
+const TEMPLATE_UPGRADE_INITIATIVE: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
+  nodes: [
+    { node_key: "upgrade_intake", job_type: "upgrade_intake", agent_role: "product_manager", node_type: "job" },
+    { node_key: "branch_pr_create", job_type: "branch_pr_create", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["upgrade_spec"] },
+    { node_key: "sandbox_validate", job_type: "sandbox_validate", agent_role: "qa", node_type: "job", consumes_artifact_types: ["pr_url"] },
+    { node_key: "golden_suite_sandbox", job_type: "golden_suite_sandbox", agent_role: "qa", node_type: "validator", consumes_artifact_types: ["sandbox_result"] },
+    { node_key: "staging_deploy", job_type: "staging_deploy", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["golden_result"] },
+    { node_key: "canary_gate", job_type: "approval", agent_role: "reviewer", node_type: "approval", consumes_artifact_types: ["staging_result"] },
+    { node_key: "full_rollout", job_type: "full_rollout", agent_role: "engineer", node_type: "job", consumes_artifact_types: ["canary_approval"] },
+    { node_key: "post_deploy_docs", job_type: "post_deploy_docs", agent_role: "product_manager", node_type: "job", consumes_artifact_types: ["rollout_result"] },
+  ],
+  edges: [
+    { from_key: "upgrade_intake", to_key: "branch_pr_create", condition: "success" },
+    { from_key: "branch_pr_create", to_key: "sandbox_validate", condition: "success" },
+    { from_key: "sandbox_validate", to_key: "golden_suite_sandbox", condition: "success" },
+    { from_key: "golden_suite_sandbox", to_key: "staging_deploy", condition: "success" },
+    { from_key: "staging_deploy", to_key: "canary_gate", condition: "success" },
+    { from_key: "canary_gate", to_key: "full_rollout", condition: "success" },
+    { from_key: "full_rollout", to_key: "post_deploy_docs", condition: "success" },
+  ],
+};
+
 const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] }> = {
   software: TEMPLATE_SOFTWARE,
   issue_fix: TEMPLATE_ISSUE_FIX,
+  deploy_fix: TEMPLATE_DEPLOY_FIX,
   migration: TEMPLATE_MIGRATION,
   factory_ops: TEMPLATE_FACTORY_OPS,
   ci_gate: TEMPLATE_CI_GATE,
@@ -239,6 +276,7 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   email_design_generator: TEMPLATE_EMAIL_CAMPAIGN,
   seo_migration_audit: TEMPLATE_SEO_MIGRATION_AUDIT,
   software_deploy: TEMPLATE_SOFTWARE_DEPLOY,
+  upgrade_initiative: TEMPLATE_UPGRADE_INITIATIVE,
 };
 
 /** Return template nodes/edges for an intent type (for prompt-built pipelines). */

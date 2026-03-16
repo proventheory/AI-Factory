@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton, Badge, Button, AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { useRuns, useCancelRun } from "@/hooks/use-api";
+import { useEnvironment } from "@/contexts/EnvironmentContext";
 import { formatApiError } from "@/lib/api";
 import { INTENT_TYPES } from "@/config/intent-types";
 
@@ -48,6 +49,7 @@ function RunsPageSkeleton() {
 
 function RunsPageContent() {
   const searchParams = useSearchParams();
+  const { environment } = useEnvironment();
   const intentFromUrl = searchParams.get("intent_type") ?? "";
   const [intentFilter, setIntentFilter] = useState<string>(intentFromUrl);
   const [confirmingRunId, setConfirmingRunId] = useState<string | null>(null);
@@ -56,7 +58,7 @@ function RunsPageContent() {
     if (intentFromUrl && intentFilter !== intentFromUrl) setIntentFilter(intentFromUrl);
   }, [intentFromUrl]);
   const { data, isLoading, error } = useRuns(
-    { limit: 50, intent_type: intentFilter || undefined },
+    { limit: 50, intent_type: intentFilter || undefined, environment },
     { refetchInterval: RUNS_POLL_MS }
   );
   const cancelRun = useCancelRun();
