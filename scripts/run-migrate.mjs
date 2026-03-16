@@ -86,10 +86,10 @@ const migrations = [
   { path: "supabase/migrations/20250331000013_schema_snapshots.sql", name: "schema_snapshots", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250401000000_graph_os_kinds.sql", name: "graph_os_kinds", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250401000001_graph_os_registry.sql", name: "graph_os_registry", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
-  { path: "supabase/migrations/20250401000002_graph_os_projection_mappings.sql", name: "graph_os_projection_mappings", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250401000002_graph_os_projection_mappings.sql", name: "graph_os_projection_mappings", skipIfErrorCodes: ["42P07", "23505"], skipMessage: "table already exists or already seeded" },
   { path: "supabase/migrations/20250401000003_graph_os_projection_views.sql", name: "graph_os_projection_views", skipIfErrorCode: "42P07", skipMessage: "view already exists" },
   { path: "supabase/migrations/20250401000004_graph_os_operators_saved_flows.sql", name: "graph_os_operators_saved_flows", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
-  { path: "supabase/migrations/20250401000005_graph_os_intent_build_specs.sql", name: "graph_os_intent_build_specs", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250401000005_graph_os_intent_build_specs.sql", name: "graph_os_intent_build_specs", skipIfErrorCodes: ["42P07", "42703"], skipMessage: "table already exists or column missing (schema partial)" },
   { path: "supabase/migrations/20250401000006_graph_os_reconciliation_action_policies.sql", name: "graph_os_reconciliation_action_policies", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250401000007_graph_os_seed_action_policies.sql", name: "graph_os_seed_action_policies", skipIfErrorCode: "42P07", skipMessage: "already seeded" },
   { path: "supabase/migrations/20250401000008_graph_os_approval_requests_v2.sql", name: "graph_os_approval_requests_v2", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
@@ -97,17 +97,17 @@ const migrations = [
   { path: "supabase/migrations/20250402100000_policies_rules_json_guardrails.sql", name: "policies_rules_json_guardrails" },
   { path: "supabase/migrations/20250403000000_incidents.sql", name: "incidents", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250403000001_incident_evidence.sql", name: "incident_evidence", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
-  { path: "supabase/migrations/20250403000002_failure_signatures.sql", name: "failure_signatures", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000002_failure_signatures.sql", name: "failure_signatures", skipIfErrorCodes: ["42P07", "42710"], skipMessage: "table or constraint already exists" },
   { path: "supabase/migrations/20250403000003_incident_signature_matches.sql", name: "incident_signature_matches", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
-  { path: "supabase/migrations/20250403000004_repair_recipes.sql", name: "repair_recipes", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000004_repair_recipes.sql", name: "repair_recipes", skipIfErrorCodes: ["42P07", "42703"], skipMessage: "table already exists or column missing" },
   { path: "supabase/migrations/20250403000005_repair_plans.sql", name: "repair_plans", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250403000006_repair_attempts.sql", name: "repair_attempts", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250403000007_verification_runs.sql", name: "verification_runs", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250403000008_incident_memories.sql", name: "incident_memories", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250403000009_release_recovery_state.sql", name: "release_recovery_state", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250403000010_seed_failure_signatures.sql", name: "seed_failure_signatures", skipIfErrorCode: "42710", skipMessage: "already seeded" },
-  { path: "supabase/migrations/20250403000011_seed_repair_recipes.sql", name: "seed_repair_recipes", skipIfErrorCode: "42710", skipMessage: "already seeded" },
-  { path: "supabase/migrations/20250403000012_repair_recipes_rollback_then_branch_patch.sql", name: "repair_recipes_rollback_then_branch_patch", skipIfErrorCode: "42P07", skipMessage: "constraint already updated" },
+  { path: "supabase/migrations/20250403000011_seed_repair_recipes.sql", name: "seed_repair_recipes", skipIfErrorCodes: ["42710", "42703"], skipMessage: "already seeded or schema partial" },
+  { path: "supabase/migrations/20250403000012_repair_recipes_rollback_then_branch_patch.sql", name: "repair_recipes_rollback_then_branch_patch", skipIfErrorCodes: ["42P07", "42703"], skipMessage: "constraint already updated or column missing" },
 ];
 
 async function run() {
@@ -129,7 +129,9 @@ async function run() {
         console.log(`Ran ${m.name}`);
       } catch (err) {
         const code = err.code;
-        if (m.skipIfErrorCode && code === m.skipIfErrorCode) {
+        const skipCodes = m.skipIfErrorCodes ?? (m.skipIfErrorCode ? [m.skipIfErrorCode] : []);
+        const shouldSkip = skipCodes.length && skipCodes.includes(code);
+        if (shouldSkip) {
           try {
             await client.query("ROLLBACK");
           } catch (_) {
