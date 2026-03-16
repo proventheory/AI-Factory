@@ -11,9 +11,14 @@
  *   RENDER_API_KEY = (from env) — REQUIRED for deploy-failure self-heal (api/gateway/runner)
  *   RENDER_STAGING_SERVICE_IDS = api,gateway,runner IDs — so all three are monitored every 5 min
  *   VERCEL_PROJECT_IDS = ai-factory-console
- *   VERCEL_TOKEN = (from env, if set)
+ *   VERCEL_TOKEN = (from env; also reads VERCEL_API_TOKEN so one token works for Terraform + self-heal)
  */
 import "dotenv/config";
+
+/** Same token as Terraform (VERCEL_API_TOKEN); Control Plane expects VERCEL_TOKEN. */
+function getVercelToken() {
+  return process.env.VERCEL_TOKEN?.trim() || process.env.VERCEL_API_TOKEN?.trim();
+}
 
 const RENDER_API_BASE = "https://api.render.com/v1";
 const CONTROL_PLANE_STAGING_SERVICE_ID = "srv-d6ka7mhaae7s73csv3fg"; // ai-factory-api-staging
@@ -51,11 +56,11 @@ async function main() {
     { key: "RENDER_STAGING_SERVICE_IDS", value: process.env.RENDER_STAGING_SERVICE_IDS?.trim() || STAGING_IDS },
     { key: "VERCEL_PROJECT_IDS", value: process.env.VERCEL_PROJECT_IDS?.trim() || "ai-factory-console" },
   ];
-  const token = process.env.VERCEL_TOKEN?.trim();
+  const token = getVercelToken();
   if (token) {
     updates.push({ key: "VERCEL_TOKEN", value: token });
   } else {
-    console.warn("VERCEL_TOKEN not set in env. Vercel redeploy self-heal will not run until you set it on Render (or in .env and re-run this script).");
+    console.warn("VERCEL_TOKEN / VERCEL_API_TOKEN not set in env. Vercel redeploy self-heal will not run until you set one on Render (or in .env and re-run this script).");
   }
 
   for (const { key, value } of updates) {

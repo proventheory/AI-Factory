@@ -15,10 +15,13 @@ import { startApi } from "./api.js";
 import { reapStaleLeases, reconcileRunStatuses, reconcileRunningRunsWithNoPendingJobs, reconcileRunningRunsWithStaleQueuedJobs } from "./reaper.js";
 import { computeDrift, executeRollback, routeRun } from "./release-manager.js";
 import { scanAndRemediateNoArtifactsRuns, scanAndRemediateBadArtifactRuns } from "./no-artifacts-self-heal.js";
+import { scanAndRemediateDeployFailure } from "./deploy-failure-self-heal.js";
+import { scanAndRemediateVercelDeployFailure } from "./vercel-redeploy-self-heal.js";
 
 const REAPER_INTERVAL_MS = 30_000;
 const DRIFT_CHECK_INTERVAL_MS = 60_000;
 const NO_ARTIFACTS_SCAN_INTERVAL_MS = 3 * 60_000; // 3 minutes
+const DEPLOY_FAILURE_SCAN_INTERVAL_MS = 5 * 60_000; // 5 minutes — Render + Vercel failed deploys
 
 async function startReaperLoop(): Promise<void> {
   try {
@@ -104,6 +107,22 @@ function startRenderLogIngestLoop(): void {
   console.log("[control-plane] Render log ingest started (every 2 min)");
 }
 
+/** Deploy-failure self-heal: every 5 min, check Render (api/gateway/runner) and Vercel projects; if latest deploy failed/canceled, trigger redeploy. Requires ENABLE_SELF_HEAL, RENDER_API_KEY, RENDER_STAGING_SERVICE_IDS (Render); VERCEL_TOKEN + VERCEL_PROJECT_IDS (Vercel). */
+function startDeployFailureScanLoop(): void {
+  const run = async () => {
+    try {
+      await scanAndRemediateDeployFailure();
+      await scanAndRemediateVercelDeployFailure();
+    } catch (err) {
+      console.error("[self-heal] Deploy-failure scan error:", err);
+    }
+  };
+  // Run once after 30s so we don't block startup; then every 5 min
+  setTimeout(run, 30_000);
+  setInterval(run, DEPLOY_FAILURE_SCAN_INTERVAL_MS);
+  console.log("[control-plane] Deploy-failure self-heal scan started (every 5 min)");
+}
+
 async function main(): Promise<void> {
   console.log("[control-plane] Starting AI Factory Control Plane...");
 
@@ -117,6 +136,8 @@ async function main(): Promise<void> {
   console.log("[control-plane] No-artifacts self-heal scan started");
 
   startRenderLogIngestLoop();
+
+  startDeployFailureScanLoop();
 
   startApi();
   console.log("[control-plane] API started");

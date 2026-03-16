@@ -19,6 +19,22 @@
 | **Commit and push (agent)** | From **repo root:** `node scripts/git-commit-and-push.mjs [message]` or `GIT_COMMIT_MESSAGE="…" node scripts/git-commit-and-push.mjs`. Push requires GitHub auth (**GITHUB_TOKEN** or SSH). Agents use this to ship changes without asking the user to push. |
 | **Deploy Console (Vercel)** | Console is on Vercel. Push to `main` to trigger auto-deploy, or use Vercel Dashboard → Project → Deployments → Redeploy. No script in repo; use Git push or Vercel UI. |
 | **Self-heal (local)** | `npm run self-heal` (see [SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md)). |
+| **Migrations (autonomous)** | Control Plane runs `node scripts/run-migrate.mjs` on **every startup** (Docker CMD). No manual step after deploy if the Control Plane starts successfully. |
+
+---
+
+## Self-heal: required tokens (every project / brand)
+
+**Control Plane** must have these set so the deploy-failure loop and Vercel self-heal run: **ENABLE_SELF_HEAL**, **RENDER_API_KEY**, **RENDER_STAGING_SERVICE_IDS**, and (for Vercel) **VERCEL_TOKEN** or **VERCEL_API_TOKEN** (same token as Terraform), **VERCEL_PROJECT_IDS** or projects registered via **POST /v1/vercel/register**. When you **launch a new project** with AI Factory, pass **projectId** (and optional **teamId**) in the build spec `spec` or in the launch action body so the project is **automatically** registered for self-heal. See **[SELF_HEAL_REQUIRED_ENV.md](SELF_HEAL_REQUIRED_ENV.md)** for the full checklist and how new projects get tokens/variables established.
+
+**Terraform (infra/):** Terraform still provisions **Supabase** (staging + optional prod) and **Vercel** (Console project + env vars). It reads **VERCEL_API_TOKEN** and **SUPABASE_ACCESS_TOKEN** from the environment. The Control Plane and `scripts/set-render-vercel-self-heal-env.mjs` accept **VERCEL_API_TOKEN** as well as **VERCEL_TOKEN**, so the same token in `.env` works for both Terraform and deploy-failure self-heal. Run Terraform from `infra/` with env loaded (e.g. `export VERCEL_API_TOKEN=...` or `node --env-file=../.env` in a wrapper) so your AI Factory token is used. See [infra/README.md](../infra/README.md).
+
+---
+
+## How self-heal and migrations run without you
+
+- **Deploy-failure self-heal:** The Control Plane starts a **5‑minute loop** that checks Render (api, gateway, runner) and Vercel projects. If the latest deploy is failed or canceled, it triggers a redeploy (up to 2× per commit, then creates an initiative). This loop only runs when **ENABLE_SELF_HEAL**, **RENDER_API_KEY**, and **RENDER_STAGING_SERVICE_IDS** are set on the Control Plane. So once the Control Plane is live, you don’t need to manually redeploy failed staging services.
+- **Migrations:** On every **Control Plane** container start, the Docker CMD runs `node scripts/run-migrate.mjs` then starts the API. So every deploy of the Control Plane applies pending migrations to the same DB the API and runner use. No separate “run migrate” step after deploy.
 
 ---
 
@@ -30,7 +46,7 @@
 2. **Repair plan:** Use `GET /v1/deploy_events/:id/repair_plan` when the failure is deploy-related; or follow self-heal/repair docs.
 3. **Replay:** After fixing, rerun or use subgraph replay as per plan.
 
-**Runbooks:** [runbooks/render-staging-failed-deploy-and-duplicate-runner.md](runbooks/render-staging-failed-deploy-and-duplicate-runner.md) (Render failures), [SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md) (self-heal paths).
+**Runbooks:** [runbooks/render-staging-failed-deploy-and-duplicate-runner.md](runbooks/render-staging-failed-deploy-and-duplicate-runner.md) (Render failures), [SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md) (self-heal paths). **Test self-heal:** [runbooks/self-heal-test.md](runbooks/self-heal-test.md) (break Vercel/Render on purpose, trigger scan, verify migration-on-startup).
 
 ### Before/after migrations
 

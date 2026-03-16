@@ -23,6 +23,8 @@ import {
 import type { Contract } from "./template-image-validators.js";
 import { lookupBySignature as incidentLookup, recordResolution as incidentRecord } from "./incident-memory.js";
 import { createDeployEventFromPayload } from "./deploy-events.js";
+import { registerVercelProjectForSelfHeal, scanAndRemediateVercelDeployFailure } from "./vercel-redeploy-self-heal.js";
+import { scanAndRemediateDeployFailure } from "./deploy-failure-self-heal.js";
 
 const CONTROL_PLANE_BASE = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const SEO_GOOGLE_CALLBACK_PATH = "/v1/seo/google/callback";
@@ -2017,6 +2019,22 @@ app.post("/v1/deploy_events/sync_github", async (_req, res) => {
   }
 });
 
+/** POST /v1/vercel/register — register a Vercel project for self-heal (webhook + redeploy scan). Body: { projectId: string, teamId?: string }. */
+app.post("/v1/vercel/register", async (req, res) => {
+  try {
+    const body = req.body as { projectId?: string; teamId?: string };
+    const projectId = body?.projectId?.trim();
+    if (!projectId) return res.status(400).json({ error: "projectId required" });
+    const result = await registerVercelProjectForSelfHeal(projectId, body?.teamId?.trim());
+    res.status(201).json({ projectId, ...result });
+  } catch (e) {
+    const err = e as { message?: string; code?: string };
+    if (err.message?.includes("vercel_self_heal_projects table not present"))
+      return res.status(503).json({ error: err.message });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
 /** GET /v1/checkpoints — list graph checkpoints. */
 app.get("/v1/checkpoints", async (req, res) => {
   try {
@@ -2537,6 +2555,17 @@ app.get("/v1/health", async (_req, res) => {
       `).then(r => r.rows[0]?.c ?? 0),
     ]);
     res.json({ workers, active_leases: activeLeases, stale_leases_count: staleLeases });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/self_heal/deploy_failure_scan — run deploy-failure scan once (Render + Vercel). For testing without waiting 5 min. */
+app.post("/v1/self_heal/deploy_failure_scan", async (_req, res) => {
+  try {
+    await scanAndRemediateDeployFailure();
+    await scanAndRemediateVercelDeployFailure();
+    res.json({ ok: true, message: "Deploy-failure scan completed. Check Control Plane logs and Render/Vercel deploy history." });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -4684,6 +4713,14 @@ app.post("/v1/build_specs", async (req, res) => {
         [lid, initiativeId, bid]
       );
     });
+    // Auto-register Vercel project for self-heal when spec includes vercel_project_id (AI Factory–launched project)
+    const vercelProjectId = (specJson as { vercel_project_id?: string; projectId?: string }).vercel_project_id ?? (specJson as { vercel_project_id?: string; projectId?: string }).projectId;
+    if (typeof vercelProjectId === "string" && vercelProjectId.trim()) {
+      const teamId = (specJson as { vercel_team_id?: string; teamId?: string }).vercel_team_id ?? (specJson as { vercel_team_id?: string; teamId?: string }).teamId;
+      registerVercelProjectForSelfHeal(vercelProjectId.trim(), typeof teamId === "string" ? teamId.trim() : undefined).catch((e) =>
+        console.warn("[build_specs] Vercel self-heal register failed:", (e as Error).message)
+      );
+    }
     const launchRow = await pool.query(
       "SELECT id, initiative_id, status, build_spec_id, artifact_id, deploy_url, deploy_id, domain, verification_status, created_at, updated_at FROM launches WHERE id = $1",
       [lid]
@@ -4759,7 +4796,7 @@ app.get("/v1/launches", async (req, res) => {
   }
 });
 
-/** POST /v1/launches/actions/:action — trigger launch action (preview_deploy, domain_attach, etc.); stub returns ok */
+/** POST /v1/launches/actions/:action — trigger launch action (preview_deploy, domain_attach, etc.); stub returns ok. Auto-registers Vercel project for self-heal when body includes projectId. */
 app.post("/v1/launches/actions/:action", async (req, res) => {
   try {
     const role = getRole(req);
@@ -4767,6 +4804,14 @@ app.post("/v1/launches/actions/:action", async (req, res) => {
     const action = req.params.action;
     const inputs = (req.body ?? {}) as Record<string, unknown>;
     if (!action) return res.status(400).json({ error: "action required" });
+    // Auto-register Vercel project for self-heal when launch action includes projectId (AI Factory–launched project)
+    const projectId = typeof inputs.projectId === "string" ? inputs.projectId.trim() : null;
+    if (projectId) {
+      const teamId = typeof inputs.teamId === "string" ? inputs.teamId.trim() : undefined;
+      registerVercelProjectForSelfHeal(projectId, teamId).catch((e) =>
+        console.warn("[launches/actions] Vercel self-heal register failed:", (e as Error).message)
+      );
+    }
     // Stub: no-op; in production this would call launch kernel (e.g. request deploy preview, domain attach).
     res.json({ ok: true, action, inputs });
   } catch (e) {

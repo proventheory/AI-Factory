@@ -22,6 +22,11 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 RUN npm pkg set type=commonjs
 COPY --from=builder /app/dist ./dist
+# Migrations: run on every Control Plane startup so DB is up to date without manual steps
+COPY --from=builder /app/scripts/run-migrate.mjs ./scripts/
+COPY --from=builder /app/schemas ./schemas
+COPY --from=builder /app/supabase ./supabase
 EXPOSE 10000
 ENV PORT=10000
-CMD ["node", "dist/control-plane-bundle.js"]
+# Run migrations then start the API (DATABASE_URL must be set in Render env)
+CMD ["sh", "-c", "node scripts/run-migrate.mjs && exec node dist/control-plane-bundle.js"]

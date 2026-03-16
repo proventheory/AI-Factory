@@ -69,6 +69,7 @@ const migrations = [
   { path: "supabase/migrations/20250331000004_taxonomy_terms_url_value.sql", name: "taxonomy_terms_url_value", skipIfErrorCode: "42701", skipMessage: "column already exists" },
   { path: "supabase/migrations/20250331000005_raw_woocommerce_snapshots.sql", name: "raw_woocommerce_snapshots", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250318100000_build_specs_launches.sql", name: "build_specs_launches", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250320200000_vercel_self_heal_projects.sql", name: "vercel_self_heal_projects", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250315000000_graph_self_heal_tables.sql", name: "graph_self_heal_tables", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
 ];
 
