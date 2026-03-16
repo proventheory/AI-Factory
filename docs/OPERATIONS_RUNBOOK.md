@@ -2,6 +2,8 @@
 
 **Start here** when something breaks, before/after a migration, or when you need the mental model for **commands and APIs** (not just the Vercel URL). The Console (**ProfessorX**) is one control surface; many operations are done via CLI, Control Plane API, and runbooks.
 
+**Product handoff:** For the first product surface (Deploy Repair), see [PRODUCT_DEPLOY_REPAIR.md](PRODUCT_DEPLOY_REPAIR.md) (demo story, reliability bar, transferability). **Reliability and observability:** See [RELIABILITY_OBSERVABILITY.md](RELIABILITY_OBSERVABILITY.md) for failure modes, chaos prevention, and in-progress measures.
+
 ---
 
 ## Commands at a glance

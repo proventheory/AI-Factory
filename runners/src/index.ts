@@ -24,10 +24,13 @@ import { advanceSuccessors, checkRunCompletion, markRunFailedIfNoPendingJobs } f
 import { runDeployFailureScanTriggerOnly } from "../../control-plane/src/deploy-failure-scan-trigger-only.js";
 import { normalizeErrorSignature } from "./error-signature.js";
 import { recordSecretAccessByName } from "./secret-access.js";
+import { claimExperimentRun } from "./evolution-claim.js";
+import { runEvolutionReplay } from "./handlers/evolution-replay.js";
 
 registerAllHandlers();
 
 const POLL_INTERVAL_MS = 2_000;
+const EVOLUTION_POLL_INTERVAL_MS = 10_000;
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl?.trim()) {
@@ -64,6 +67,7 @@ if (process.env.LLM_GATEWAY_URL?.trim()) {
 }
 
 let activeJobs = 0;
+let evolutionBusy = false;
 
 async function pollAndExecute(): Promise<void> {
   if (activeJobs >= config.maxConcurrency) return;
@@ -305,6 +309,40 @@ async function main(): Promise<void> {
       console.error("[runner] Poll error:", err);
     }
   }, POLL_INTERVAL_MS);
+
+  setInterval(async () => {
+    if (evolutionBusy) return;
+    evolutionBusy = true;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const claimed = await claimExperimentRun(client, config.workerId);
+      if (!claimed) {
+        await client.query("ROLLBACK");
+        return;
+      }
+      await client.query("COMMIT");
+      try {
+        await client.query("BEGIN");
+        await runEvolutionReplay(client, { experiment_run_id: claimed.id });
+        await client.query("COMMIT");
+        console.log("[runner] Evolution replay completed", { experiment_run_id: claimed.id });
+      } catch (err) {
+        await client.query("ROLLBACK").catch(() => {});
+        await pool.query(
+          `UPDATE experiment_runs SET status = 'failed', ended_at = now(), notes = $1 WHERE id = $2`,
+          [String((err as Error).message).slice(0, 1000), claimed.id]
+        );
+        console.error("[runner] Evolution replay failed:", err);
+      }
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("[runner] Evolution claim error:", err);
+    } finally {
+      client.release();
+      evolutionBusy = false;
+    }
+  }, EVOLUTION_POLL_INTERVAL_MS);
 
   startHealthServer();
 

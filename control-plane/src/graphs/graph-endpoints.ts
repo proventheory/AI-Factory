@@ -557,11 +557,12 @@ export function registerGraphRoutes(app: Express): void {
         resolved_params: resolved.resolved_params,
         intent_document_id: intentId,
       };
-      if (resolved.resolution_type === "graph_query" && resolved.resolved_graph && (b.execute !== false)) {
+      const graphKey = resolved.resolved_graph;
+      if (resolved.resolution_type === "graph_query" && graphKey && (b.execute !== false)) {
         try {
           const graphResult = await withTransaction((client) =>
-            PROJECTIONS[resolved.resolved_graph].query(client, {
-              graph: resolved.resolved_graph,
+            PROJECTIONS[graphKey].query(client, {
+              graph: graphKey,
               preset: resolved.resolved_preset,
               query: {},
             })

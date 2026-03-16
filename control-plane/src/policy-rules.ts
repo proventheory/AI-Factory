@@ -74,5 +74,5 @@ export function requiresApprovalForPaths(rules: PolicyRulesJson, touchedPaths: s
   const required = rules.requires_approval_if_paths_touched ?? [];
   if (required.length === 0) return false;
   const normalized = touchedPaths.map((p) => p.replace(/\\/g, "/"));
-  return required.some((r) => normalized.some((p) => p === r || p.startsWith(r + "/"))));
+  return required.some((r) => normalized.some((p) => p === r || p.startsWith(r + "/")));
 }

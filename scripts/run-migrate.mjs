@@ -109,6 +109,8 @@ const migrations = [
   { path: "supabase/migrations/20250403000010_seed_failure_signatures.sql", name: "seed_failure_signatures", skipIfErrorCode: "42710", skipMessage: "already seeded" },
   { path: "supabase/migrations/20250403000011_seed_repair_recipes.sql", name: "seed_repair_recipes", skipIfErrorCodes: ["42710", "42703"], skipMessage: "already seeded or schema partial" },
   { path: "supabase/migrations/20250403000012_repair_recipes_rollback_then_branch_patch.sql", name: "repair_recipes_rollback_then_branch_patch", skipIfErrorCodes: ["42P07", "42703"], skipMessage: "constraint already updated or column missing" },
+  { path: "supabase/migrations/20250404000000_evolution_loop_v1.sql", name: "evolution_loop_v1", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250404000001_evolution_targets_seed.sql", name: "evolution_targets_seed", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
 ];
 
 async function run() {

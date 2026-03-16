@@ -14,6 +14,7 @@ import { applyPatchInDir } from "../deploy-fix-apply.js";
 import { chat, isGatewayConfigured, resolveTier } from "../llm-client.js";
 import type { ModelTier } from "../llm-client.js";
 import { getBudgetsForJob, checkBudgets, recordUsage } from "../llm-budgets.js";
+import { runEvolutionReplay } from "./evolution-replay.js";
 
 export type NodeHandler = (
   client: pg.PoolClient,
@@ -579,6 +580,16 @@ export function registerAllHandlers(): void {
   registry.set("landing_page_generate", async (client, context, params) => {
     const { handleLandingPageGenerate } = await import("./landing-page-generate.js");
     await handleLandingPageGenerate({ client, context, params, writeArtifact });
+  });
+
+  // Evolution Loop V1: replay (cohort evaluation) and shadow (stub)
+  registry.set("evolution_replay", async (client, context) => {
+    const experiment_run_id = context.goal_metadata?.experiment_run_id as string | undefined;
+    if (!experiment_run_id) throw new Error("evolution_replay requires goal_metadata.experiment_run_id");
+    await runEvolutionReplay(client, { experiment_run_id });
+  });
+  registry.set("evolution_shadow", async () => {
+    throw new Error("evolution_shadow not implemented in V1; use traffic_strategy=replay");
   });
 
   // deploy_preview and seo_* handlers require modules not yet in repo; register when those files are added

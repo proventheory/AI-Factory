@@ -27,6 +27,7 @@ import { registerVercelProjectForSelfHeal, scanAndRemediateVercelDeployFailure }
 import { scanAndRemediateDeployFailure } from "./deploy-failure-self-heal.js";
 import { registerGraphRoutes } from "./graphs/graph-endpoints.js";
 import { runUpgradeGates } from "./upgrade-gates.js";
+import evolutionRouter from "./evolution/router.js";
 
 const CONTROL_PLANE_BASE = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const SEO_GOOGLE_CALLBACK_PATH = "/v1/seo/google/callback";
@@ -55,6 +56,7 @@ const generalLimiter = rateLimit({
 app.use((req, res, next) => (isAuthPath(req.path) ? authLimiter(req, res, next) : generalLimiter(req, res, next)));
 
 registerGraphRoutes(app);
+app.use("/v1/evolution", evolutionRouter);
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
