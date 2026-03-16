@@ -14,6 +14,7 @@
 |----------------|----------------------------|---------------|
 | **build_failed** | Build failed (e.g. compile error). | ✅ Yes |
 | **failed**       | Deploy failed (e.g. runtime/health). | ✅ Yes |
+| **update_failed** | Deploy update failed (Render API; observed for failed staging deploys). | ✅ Yes |
 | **canceled**     | Deploy was canceled.       | ✅ Yes |
 | live, deactivated, build_in_progress, update_in_progress, queued, … | Success, superseded, or in-progress. (We observed `deactivated` from live API; we do not remediate.) | No |
 

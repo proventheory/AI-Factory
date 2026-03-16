@@ -27,10 +27,10 @@ export const deployFailureRemediationCountByCommit = new Map<string, number>();
 
 /**
  * Render deploy statuses we treat as failed and remediate (trigger redeploy).
- * Check is case-insensitive (Render UI may show "Failed deploy"; API may vary).
+ * Check is case-insensitive. Render API returns e.g. "update_failed" for failed deploys.
  * See docs/SELF_HEAL_PROVIDER_STATUS_REFERENCE.md.
  */
-const FAILED_STATUSES = ["failed", "canceled", "build_failed"] as const;
+const FAILED_STATUSES = ["failed", "canceled", "build_failed", "update_failed"] as const;
 
 function isFailedStatus(status: string | undefined): boolean {
   const s = (status ?? "").toLowerCase().trim();

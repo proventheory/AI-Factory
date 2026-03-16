@@ -26,7 +26,8 @@ function getVercelToken() {
 
 const RENDER_API_BASE = "https://api.render.com/v1";
 const CONTROL_PLANE_STAGING_SERVICE_ID = "srv-d6ka7mhaae7s73csv3fg"; // ai-factory-api-staging
-const RUNNER_STAGING_SERVICE_ID = "srv-d6oig7450q8c73ca40q0"; // ai-factory-runner-staging (web)
+const CONTROL_PLANE_PROD_SERVICE_ID = "srv-d6ka7mhaae7s73csv3h0";   // ai-factory-api-prod (backup healer)
+const RUNNER_STAGING_SERVICE_ID = "srv-d6oig7450q8c73ca40q0";       // ai-factory-runner-staging (web; runs 5-min scan)
 const STAGING_IDS = "srv-d6ka7mhaae7s73csv3fg,srv-d6l25d1aae7s73ftpvlg,srv-d6oig7450q8c73ca40q0"; // api, gateway, runner
 
 async function setEnvVar(apiKey, serviceId, key, value) {
@@ -83,8 +84,8 @@ async function main() {
   console.log("Staging: done. API and runner both run 5-min deploy-failure scan; when API is down, runner heals.");
 
   // Backup Control Plane (ai-factory-api-prod): when BOTH api-staging and runner-staging are down, only this service can trigger staging redeploys.
-  const backupServiceId = process.env.RENDER_PROD_API_SERVICE_ID?.trim();
-  const wantBackup = process.argv.includes("--prod") || !!backupServiceId;
+  const backupServiceId = process.env.RENDER_PROD_API_SERVICE_ID?.trim() || CONTROL_PLANE_PROD_SERVICE_ID;
+  const wantBackup = process.argv.includes("--prod") || !!process.env.RENDER_PROD_API_SERVICE_ID?.trim();
   if (wantBackup && backupServiceId) {
     await pushToService(apiKey, backupServiceId, updates, "backup (api-prod)");
     console.log("Backup Control Plane: done. When both api-staging and runner are down, its 5-min scan will trigger staging redeploys.");

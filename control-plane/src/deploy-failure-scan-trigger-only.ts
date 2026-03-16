@@ -11,7 +11,7 @@ import {
   triggerRenderDeploy,
 } from "./render-worker-remediate.js";
 
-const FAILED_STATUSES = ["failed", "canceled", "build_failed"] as const;
+const FAILED_STATUSES = ["failed", "canceled", "build_failed", "update_failed"] as const;
 
 function isFailedStatus(status: string | undefined): boolean {
   const s = (status ?? "").toLowerCase().trim();
