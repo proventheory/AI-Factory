@@ -13,6 +13,11 @@ import {
 
 const FAILED_STATUSES = ["failed", "canceled", "build_failed"] as const;
 
+function isFailedStatus(status: string | undefined): boolean {
+  const s = (status ?? "").toLowerCase().trim();
+  return FAILED_STATUSES.some((f) => s === f || s.replace(/_/g, " ").includes(f.replace(/_/g, " ")));
+}
+
 /** Deploy IDs we already triggered (in-memory). Avoids re-triggering every 5 min for same deploy. */
 const triggeredDeployIds = new Set<string>();
 
@@ -26,7 +31,15 @@ export async function runDeployFailureScanTriggerOnly(): Promise<void> {
   if (!selfHeal || !hasKey) return;
 
   const serviceIds = await getStagingServiceIds();
-  if (serviceIds.length === 0) return;
+  if (serviceIds.length === 0) {
+    if (process.env.DEBUG_SELF_HEAL === "1") {
+      console.warn("[runner self-heal] Deploy-failure scan: no service IDs (set RENDER_STAGING_SERVICE_IDS or RENDER_WORKER_SERVICE_ID on this service)");
+    }
+    return;
+  }
+  if (process.env.DEBUG_SELF_HEAL === "1") {
+    console.log("[runner self-heal] Deploy-failure scan: monitoring", serviceIds.length, "service(s)");
+  }
 
   for (const serviceId of serviceIds) {
     let deploys: { id: string; status: string; commit?: string }[];
@@ -39,7 +52,7 @@ export async function runDeployFailureScanTriggerOnly(): Promise<void> {
 
     const latest = deploys[0];
     if (!latest?.id) continue;
-    if (!FAILED_STATUSES.includes(latest.status as (typeof FAILED_STATUSES)[number])) continue;
+    if (!isFailedStatus(latest.status)) continue;
     if (triggeredDeployIds.has(latest.id)) continue;
 
     try {

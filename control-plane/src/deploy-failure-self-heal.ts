@@ -27,10 +27,15 @@ export const deployFailureRemediationCountByCommit = new Map<string, number>();
 
 /**
  * Render deploy statuses we treat as failed and remediate (trigger redeploy).
- * Must match Render API; if a failed deploy isn't self-healing, check the deploy's status and add it here.
+ * Check is case-insensitive (Render UI may show "Failed deploy"; API may vary).
  * See docs/SELF_HEAL_PROVIDER_STATUS_REFERENCE.md.
  */
 const FAILED_STATUSES = ["failed", "canceled", "build_failed"] as const;
+
+function isFailedStatus(status: string | undefined): boolean {
+  const s = (status ?? "").toLowerCase().trim();
+  return FAILED_STATUSES.some((f) => s === f || s.replace(/_/g, " ").includes(f.replace(/_/g, " ")));
+}
 const MAX_REDEPLOYS_PER_COMMIT = 2;
 
 /**
@@ -44,7 +49,13 @@ export async function scanAndRemediateDeployFailure(): Promise<void> {
 
   const serviceIds = await getStagingServiceIds();
   if (serviceIds.length === 0) {
+    if (process.env.DEBUG_SELF_HEAL === "1") {
+      console.warn("[self-heal] Deploy-failure scan: no service IDs (set RENDER_STAGING_SERVICE_IDS or RENDER_WORKER_SERVICE_ID)");
+    }
     return;
+  }
+  if (process.env.DEBUG_SELF_HEAL === "1") {
+    console.log("[self-heal] Deploy-failure scan: monitoring", serviceIds.length, "service(s)");
   }
 
   for (const serviceId of serviceIds) {
@@ -58,7 +69,7 @@ export async function scanAndRemediateDeployFailure(): Promise<void> {
 
     const latest = deploys[0];
     if (!latest?.id) continue;
-    if (!FAILED_STATUSES.includes(latest.status as (typeof FAILED_STATUSES)[number])) continue;
+    if (!isFailedStatus(latest.status)) continue;
     if (deployFailureRemediatedDeployIds.has(latest.id)) continue;
 
     const commitKey = `${serviceId}:${latest.commit?.trim() || latest.id}`;
