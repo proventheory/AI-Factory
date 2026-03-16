@@ -744,7 +744,7 @@ function handleDbMissingTable(e: unknown, res: express.Response, tableHint = "jo
   const code = (e as { code?: string }).code;
   if (code === "42P01") {
     res.status(503).json({
-      error: `Database schema not applied: relation "${tableHint}" does not exist. Run migrations against the same DB the Control Plane uses (e.g. DATABASE_URL from Render → api-staging Environment): npm run db:migrate`,
+      error: `Database schema not applied: relation "${tableHint}" does not exist. Migrations run automatically on every Control Plane start; redeploy the service or check that it uses the default CMD and DATABASE_URL (see docs/runbooks/console-db-relation-does-not-exist.md).`,
     });
     return true;
   }
@@ -1771,10 +1771,14 @@ app.get("/v1/incidents/:signature", async (req, res) => {
 });
 
 // ---------- Graph & self-heal ----------
-/** GET /v1/decision_loop/observe — anomalies + baselines (read-only). */
+/** GET /v1/decision_loop/observe — anomalies + baselines. Requires kpi_baselines/kpi_observations tables (future). */
 app.get("/v1/decision_loop/observe", async (_req, res) => {
   try {
-    res.json({ anomalies: [], baselines: [] });
+    res.json({
+      anomalies: [],
+      baselines: [],
+      message: "KPI storage not configured; add kpi_baselines and kpi_observations tables to enable.",
+    });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -1787,6 +1791,7 @@ app.post("/v1/decision_loop/tick", async (req, res) => {
     res.json({
       observed: { anomalies: [] },
       baselines_computed: body?.compute_baselines ? 0 : undefined,
+      message: "KPI storage not configured; tick is a no-op until baselines/observations are wired.",
     });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
@@ -2001,19 +2006,78 @@ app.get("/v1/deploy_events", async (req, res) => {
   }
 });
 
-/** POST /v1/deploy_events/sync — sync from Render (stub). */
+/** POST /v1/deploy_events/sync — sync from Render API into deploy_events (by external_deploy_id). */
 app.post("/v1/deploy_events/sync", async (_req, res) => {
   try {
-    res.json({ synced: 0, message: "Configure RENDER_API_KEY and RENDER_SERVICE_IDS to enable sync." });
+    const apiKey = process.env.RENDER_API_KEY?.trim();
+    if (!apiKey) {
+      return res.json({ synced: 0, message: "Configure RENDER_API_KEY and RENDER_STAGING_SERVICE_IDS (or RENDER_WORKER_SERVICE_ID) to enable sync." });
+    }
+    const { getStagingServiceIds, listRenderDeploys } = await import("./render-worker-remediate.js");
+    const serviceIds = await getStagingServiceIds();
+    if (serviceIds.length === 0) {
+      return res.json({ synced: 0, message: "No Render service IDs configured (RENDER_STAGING_SERVICE_IDS or RENDER_WORKER_SERVICE_ID)." });
+    }
+    let synced = 0;
+    for (const serviceId of serviceIds) {
+      let deploys: { id: string; status: string; commit?: string }[];
+      try {
+        deploys = await listRenderDeploys(apiKey, serviceId, 20);
+      } catch (err) {
+        continue;
+      }
+      for (const d of deploys) {
+        const existing = await pool.query("SELECT 1 FROM deploy_events WHERE external_deploy_id = $1 LIMIT 1", [d.id]);
+        if (existing.rows.length > 0) continue;
+        await createDeployEventFromPayload(pool, {
+          status: d.status,
+          service_id: serviceId,
+          commit_sha: d.commit ?? undefined,
+          external_deploy_id: d.id,
+        });
+        synced++;
+      }
+    }
+    res.json({ synced, message: synced ? `Synced ${synced} deploy(s) from Render.` : "No new deploys to sync." });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
 
-/** POST /v1/deploy_events/sync_github — sync from GitHub Actions (stub). */
+/** POST /v1/deploy_events/sync_github — sync from GitHub Actions workflow runs (optional). */
 app.post("/v1/deploy_events/sync_github", async (_req, res) => {
   try {
-    res.json({ synced: 0, message: "Configure GITHUB_TOKEN and GITHUB_REPOS to enable sync." });
+    const token = process.env.GITHUB_TOKEN?.trim();
+    const repos = process.env.GITHUB_REPOS?.trim()?.split(",").map((s) => s.trim()).filter(Boolean);
+    if (!token || !repos?.length) {
+      return res.json({ synced: 0, message: "Configure GITHUB_TOKEN and GITHUB_REPOS (owner/repo, comma-separated) to enable sync." });
+    }
+    let synced = 0;
+    for (const repo of repos) {
+      const [owner, repoName] = repo.split("/");
+      if (!owner || !repoName) continue;
+      const resGh = await fetch(
+        `https://api.github.com/repos/${owner}/${repoName}/actions/runs?per_page=20&status=completed`,
+        { headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}` } }
+      );
+      if (!resGh.ok) continue;
+      const data = (await resGh.json()) as { workflow_runs?: { id: number; status: string; conclusion: string; head_sha?: string }[] };
+      const runs = data.workflow_runs ?? [];
+      for (const run of runs) {
+        const externalId = `github:${owner}/${repoName}:${run.id}`;
+        const existing = await pool.query("SELECT 1 FROM deploy_events WHERE external_deploy_id = $1 LIMIT 1", [externalId]);
+        if (existing.rows.length > 0) continue;
+        const status = run.conclusion === "success" ? "success" : run.conclusion === "failure" ? "failed" : run.status;
+        await createDeployEventFromPayload(pool, {
+          status,
+          service_id: `github:${repo}`,
+          commit_sha: run.head_sha ?? undefined,
+          external_deploy_id: externalId,
+        });
+        synced++;
+      }
+    }
+    res.json({ synced, message: synced ? `Synced ${synced} workflow run(s) from GitHub.` : "No new runs to sync." });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -2093,7 +2157,7 @@ app.get("/v1/checkpoints/:id", async (req, res) => {
   }
 });
 
-/** GET /v1/checkpoints/:id/diff — stub (no postMigrationAudit). */
+/** GET /v1/checkpoints/:id/diff — checkpoint vs current schema; snapshot_diff requires postMigrationAudit (optional). */
 app.get("/v1/checkpoints/:id/diff", async (req, res) => {
   try {
     const cp = await pool.query(
@@ -2112,6 +2176,7 @@ app.get("/v1/checkpoints/:id/diff", async (req, res) => {
       current_columns: [],
       snapshot_artifact_id: checkpoint.schema_snapshot_artifact_id,
       snapshot_diff: null,
+      message: "Post-migration audit not run; set up artifact content for schema snapshot to compute diff.",
     });
   } catch (e) {
     const err = e as { code?: string };
@@ -2320,32 +2385,109 @@ app.get("/v1/contract_breakage_scan", async (req, res) => {
   }
 });
 
-/** GET /v1/graph/topology/:planId — plan node graph (stub for Graph Explorer). */
+/** GET /v1/schema_contracts — capability graph artifact types and operators (for Schema & contracts page). */
+app.get("/v1/schema_contracts", async (_req, res) => {
+  try {
+    let artifact_types: { key: string }[] = [];
+    let operators: { key: string; priority: number | null }[] = [];
+    try {
+      const at = await pool.query("SELECT key FROM artifact_types ORDER BY key");
+      artifact_types = at.rows as { key: string }[];
+      const op = await pool.query("SELECT key, priority FROM operators ORDER BY priority NULLS LAST, key");
+      operators = op.rows as { key: string; priority: number | null }[];
+    } catch {
+      // capability graph tables may not exist
+    }
+    res.json({
+      artifact_types: artifact_types.map((r) => r.key),
+      operators: operators.map((r) => ({ key: r.key, priority: r.priority })),
+      message: artifact_types.length || operators.length ? "From capability graph (artifact_types, operators)." : "Capability graph not seeded; run migration 20250331000011_capability_graph.sql.",
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** GET /v1/graph/topology/:planId — plan node graph for Graph Explorer. */
 app.get("/v1/graph/topology/:planId", async (req, res) => {
   try {
-    res.json({ plan_id: req.params.planId, nodes: [], edges: [] });
+    const planId = req.params.planId;
+    const [nodesRows, edgesRows] = await Promise.all([
+      pool.query("SELECT id, node_key, job_type, node_type FROM plan_nodes WHERE plan_id = $1 ORDER BY node_key", [planId]),
+      pool.query("SELECT from_node_id, to_node_id, condition FROM plan_edges WHERE plan_id = $1", [planId]),
+    ]);
+    const nodes = nodesRows.rows.map((n: { id: string; node_key: string; job_type: string; node_type: string }) => ({
+      id: n.id,
+      node_key: n.node_key,
+      job_type: n.job_type,
+      node_type: n.node_type,
+    }));
+    const edges = edgesRows.rows.map((e: { from_node_id: string; to_node_id: string; condition: string }) => ({
+      from_node_id: e.from_node_id,
+      to_node_id: e.to_node_id,
+      condition: e.condition,
+    }));
+    res.json({ plan_id: planId, nodes, edges });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
 
-/** GET /v1/graph/frontier/:runId — run frontier / completed nodes (stub for Graph Explorer). */
+/** GET /v1/graph/frontier/:runId — run frontier (completed vs pending nodes) for Graph Explorer. */
 app.get("/v1/graph/frontier/:runId", async (req, res) => {
   try {
-    res.json({ run_id: req.params.runId, completed_node_ids: [], pending_node_ids: [] });
+    const runId = req.params.runId;
+    const run = await pool.query("SELECT plan_id FROM runs WHERE id = $1", [runId]).then((r) => r.rows[0]);
+    if (!run) return res.status(404).json({ error: "Run not found", run_id: runId, completed_node_ids: [], pending_node_ids: [] });
+    const planId = (run as { plan_id: string }).plan_id;
+    const nodeProgress = await pool.query(
+      "SELECT plan_node_id, status FROM node_progress WHERE run_id = $1",
+      [runId]
+    );
+    const completed_node_ids: string[] = [];
+    const pending_node_ids: string[] = [];
+    for (const row of nodeProgress.rows as { plan_node_id: string; status: string }[]) {
+      if (row.status === "succeeded" || row.status === "failed" || row.status === "skipped") {
+        completed_node_ids.push(row.plan_node_id);
+      } else {
+        pending_node_ids.push(row.plan_node_id);
+      }
+    }
+    if (completed_node_ids.length === 0 && pending_node_ids.length === 0) {
+      const allNodes = await pool.query("SELECT id FROM plan_nodes WHERE plan_id = $1", [planId]);
+      pending_node_ids.push(...(allNodes.rows as { id: string }[]).map((n) => n.id));
+    }
+    res.json({ run_id: runId, plan_id: planId, completed_node_ids, pending_node_ids });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
 
-/** GET /v1/graph/repair_plan/:runId/:nodeId — repair plan for a failed node (stub). */
+/** GET /v1/graph/repair_plan/:runId/:nodeId — repair plan for a failed node (suggested actions from incident_memory). */
 app.get("/v1/graph/repair_plan/:runId/:nodeId", async (req, res) => {
   try {
+    const runId = req.params.runId;
+    const nodeId = req.params.nodeId;
+    const jobRun = await pool.query(
+      "SELECT id, error_signature, status FROM job_runs WHERE run_id = $1 AND plan_node_id = $2 ORDER BY attempt DESC LIMIT 1",
+      [runId, nodeId]
+    ).then((r) => r.rows[0] as { id: string; error_signature: string | null; status: string } | undefined);
+    let suggested_actions: { action_id: string; label: string; description: string | null }[] = [];
+    const subgraph_replay_scope: string[] = [];
+    if (jobRun?.error_signature) {
+      const similar = await incidentLookup(pool, jobRun.error_signature ?? "", null, 5);
+      suggested_actions = (similar as { memory_id?: string; resolution?: string; failure_signature?: string }[]).map((s, i) => ({
+        action_id: `incident_${i}`,
+        label: s.resolution ? (s.resolution as string).slice(0, 200) : "Apply resolution from incident memory",
+        description: s.failure_signature ?? null,
+      }));
+    }
     res.json({
-      run_id: req.params.runId,
-      node_id: req.params.nodeId,
-      suggested_actions: [],
-      subgraph_replay_scope: [],
+      run_id: runId,
+      node_id: nodeId,
+      suggested_actions,
+      subgraph_replay_scope,
+      error_signature: jobRun?.error_signature ?? null,
     });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
@@ -2362,44 +2504,139 @@ app.post("/v1/graph/subgraph_replay", async (req, res) => {
   }
 });
 
-/** POST /v1/migration_guard — analyze migration SQL (stub). */
+/** POST /v1/migration_guard — analyze migration SQL (tables touched, simple risks). */
 app.post("/v1/migration_guard", async (req, res) => {
   try {
     const body = req.body as { sql?: string; migration_ref?: string };
+    const sql = (body?.sql ?? body?.migration_ref ?? "") as string;
+    const tablesTouched: string[] = [];
+    const risks: { kind: string; detail: string }[] = [];
+    const createMatch = sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:[\w.]+\.")?(\w+)(?:"\s*)?\s*\(/gi);
+    for (const m of createMatch) tablesTouched.push(m[1]);
+    const alterMatch = sql.matchAll(/ALTER\s+TABLE\s+(?:[\w.]+\.")?(\w+)(?:"\s*)?\s+/gi);
+    for (const m of alterMatch) tablesTouched.push(m[1]);
+    const dropMatch = sql.matchAll(/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:[\w.]+\.")?(\w+)/gi);
+    for (const m of dropMatch) {
+      tablesTouched.push(m[1]);
+      risks.push({ kind: "drop_table", detail: `DROP TABLE ${m[1]}` });
+    }
+    if (/DROP\s+TABLE\s+(?!IF\s+EXISTS)/i.test(sql)) risks.push({ kind: "drop_without_if_exists", detail: "DROP TABLE without IF EXISTS" });
+    const uniqueTables = [...new Set(tablesTouched)];
     res.json({
-      tables_touched: [],
+      tables_touched: uniqueTables,
       columns: [],
-      risks: [],
-      checkpoint_suggestion: null,
-      raw: body?.sql ?? body?.migration_ref ?? null,
+      risks,
+      checkpoint_suggestion: uniqueTables.length > 0 ? "Create a checkpoint before applying." : null,
+      raw: sql.slice(0, 2000),
     });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
 
-/** GET /v1/graph/audit/:runId — graph audit for a run (stub). */
+/** GET /v1/graph/audit/:runId — graph audit for a run (run + job status summary, failed nodes as issues). */
 app.get("/v1/graph/audit/:runId", async (req, res) => {
   try {
-    res.json({ run_id: req.params.runId, issues: [], summary: null });
+    const runId = req.params.runId;
+    const run = await pool.query("SELECT id, status, plan_id FROM runs WHERE id = $1", [runId]).then((r) => r.rows[0]);
+    if (!run) return res.status(404).json({ error: "Run not found", run_id: runId, issues: [], summary: null });
+    const jobRuns = await pool.query(
+      "SELECT jr.id, jr.plan_node_id, jr.status, jr.error_signature, pn.node_key FROM job_runs jr JOIN plan_nodes pn ON pn.id = jr.plan_node_id WHERE jr.run_id = $1 ORDER BY jr.attempt DESC",
+      [runId]
+    );
+    const byNode = new Map<string, { status: string; error_signature: string | null; node_key: string }>();
+    for (const j of jobRuns.rows as { plan_node_id: string; status: string; error_signature: string | null; node_key: string }[]) {
+      if (!byNode.has(j.plan_node_id)) byNode.set(j.plan_node_id, { status: j.status, error_signature: j.error_signature, node_key: j.node_key });
+    }
+    const issues = Array.from(byNode.entries())
+      .filter(([, v]) => v.status === "failed")
+      .map(([plan_node_id, v]) => ({ plan_node_id, node_key: v.node_key, error_signature: v.error_signature }));
+    const summary = {
+      run_id: runId,
+      run_status: (run as { status: string }).status,
+      total_nodes: byNode.size,
+      failed: issues.length,
+      succeeded: Array.from(byNode.values()).filter((v) => v.status === "succeeded").length,
+    };
+    res.json({ run_id: runId, issues, summary });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
 
-/** GET /v1/graph/missing_capabilities/:planId — missing capabilities for plan (stub). */
+/** GET /v1/graph/missing_capabilities/:planId — plan node job_types not in capability graph operators (if table exists). */
 app.get("/v1/graph/missing_capabilities/:planId", async (req, res) => {
   try {
-    res.json({ plan_id: req.params.planId, missing: [] });
+    const planId = req.params.planId;
+    const nodeRows = await pool.query("SELECT DISTINCT job_type FROM plan_nodes WHERE plan_id = $1", [planId]);
+    const jobTypes = (nodeRows.rows as { job_type: string }[]).map((r) => r.job_type);
+    let missing: string[] = [];
+    try {
+      const opRows = await pool.query("SELECT DISTINCT key FROM operators");
+      const known = new Set((opRows.rows as { key: string }[]).map((r) => r.key));
+      missing = jobTypes.filter((jt) => !known.has(jt));
+    } catch {
+      missing = jobTypes;
+    }
+    res.json({ plan_id: planId, job_types: jobTypes, missing });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
 
-/** GET /v1/graph/lineage/:artifactId — producer/consumers for artifact (stub). */
+/** GET /v1/graph/lineage/:artifactId — declared producer (from artifacts) + observed consumers (from artifact_consumption). */
 app.get("/v1/graph/lineage/:artifactId", async (req, res) => {
   try {
-    res.json({ artifact_id: req.params.artifactId, producers: [], consumers: [] });
+    const artifactId = req.params.artifactId;
+    const artifactRow = await pool.query(
+      "SELECT id, run_id, producer_plan_node_id, artifact_type FROM artifacts WHERE id = $1",
+      [artifactId]
+    ).then((r) => r.rows[0] as { id: string; run_id: string; producer_plan_node_id: string | null; artifact_type: string } | undefined);
+    if (!artifactRow) {
+      return res.status(404).json({ error: "Artifact not found", artifact_id: artifactId, producers: [], consumers: [] });
+    }
+    const producers: unknown[] = [];
+    if (artifactRow.producer_plan_node_id) {
+      const producerNode = await pool.query(
+        "SELECT pn.id AS plan_node_id, pn.node_key, pn.job_type, p.run_id FROM plan_nodes pn JOIN plans p ON p.id = pn.plan_id WHERE pn.id = $1",
+        [artifactRow.producer_plan_node_id]
+      ).then((r) => r.rows[0]);
+      if (producerNode) {
+        producers.push({
+          plan_node_id: producerNode.plan_node_id,
+          run_id: producerNode.run_id,
+          node_key: producerNode.node_key,
+          artifact_type: artifactRow.artifact_type,
+          role: "producer",
+        });
+      }
+    }
+    let consumers: unknown[] = [];
+    try {
+      const consumerRows = await pool.query(
+        `SELECT ac.job_run_id, ac.plan_node_id, ac.run_id, pn.node_key
+         FROM artifact_consumption ac
+         JOIN plan_nodes pn ON pn.id = ac.plan_node_id
+         WHERE ac.artifact_id = $1`,
+        [artifactId]
+      );
+      consumers = consumerRows.rows.map((r) => ({
+        job_run_id: r.job_run_id,
+        plan_node_id: r.plan_node_id,
+        run_id: r.run_id,
+        node_key: r.node_key,
+        role: "consumer",
+      }));
+    } catch {
+      // artifact_consumption table may not exist
+    }
+    res.json({
+      artifact_id: artifactId,
+      producers,
+      consumers,
+      declared_producer: producers[0] ?? null,
+      observed_consumers: consumers,
+    });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
@@ -2703,6 +2940,47 @@ app.post("/v1/webhooks/github", async (req, res) => {
     if (!initiativeId) return res.status(500).json({ error: "Failed to create initiative" });
     res.status(201).json({ initiative_id: initiativeId, repo, source_ref: issue.html_url });
   } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/webhooks/vercel — Vercel deployment events → deploy_events (and optional self-heal on failure). */
+app.post("/v1/webhooks/vercel", async (req, res) => {
+  try {
+    const body = req.body as {
+      type?: string;
+      payload?: {
+        deployment?: { id?: string; url?: string; name?: string; meta?: { githubCommitSha?: string }; state?: string };
+        project?: { id?: string; name?: string };
+        team?: { id?: string };
+      };
+    };
+    const eventType = body.type ?? "";
+    const deployment = body.payload?.deployment;
+    const project = body.payload?.project;
+    if (!deployment?.id) {
+      return res.status(200).json({ received: true, skipped: true, reason: "no deployment id" });
+    }
+    const statusMap: Record<string, string> = {
+      READY: "ready",
+      ERROR: "failed",
+      CANCELED: "canceled",
+      BUILDING: "building",
+      INITIALIZING: "building",
+    };
+    const status = statusMap[deployment.state ?? ""] ?? (eventType === "deployment.error" ? "failed" : eventType === "deployment.ready" ? "ready" : "unknown");
+    const serviceId = project?.name ?? project?.id ?? "vercel";
+    const commitSha = deployment.meta?.githubCommitSha ?? null;
+    const result = await createDeployEventFromPayload(pool, {
+      status,
+      service_id: serviceId,
+      commit_sha: commitSha ?? undefined,
+      external_deploy_id: deployment.id,
+    });
+    res.status(201).json({ received: true, deploy_id: result.deploy_id, status: result.status });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.status(503).json({ error: "deploy_events table not present. Run migration 20250315000000_graph_self_heal_tables.sql." });
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
