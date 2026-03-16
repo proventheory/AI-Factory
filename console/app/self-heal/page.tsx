@@ -1,4 +1,5 @@
 "use client";
+// Self-heal: platform automatic (one-time setup), then Local CLI — no numbered "2. Platform" list.
 
 import Link from "next/link";
 import {
