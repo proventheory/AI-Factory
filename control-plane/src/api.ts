@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import * as Sentry from "@sentry/node";
 import { v4 as uuid } from "uuid";
 import mjml2html from "mjml";
@@ -10,7 +11,6 @@ import { triggerNoArtifactsRemediationForRun, triggerBadArtifactsRemediationForR
 import { fetchSitemapProducts, type SitemapType } from "./sitemap-products.js";
 import { productsFromUrl, type ProductsFromUrlType } from "./products-from-url.js";
 import { tokenizeBrandFromUrl } from "./brand-tokenize-from-url.js";
-import { fetchGscReport, fetchGa4Report } from "../../runners/src/lib/seo/gsc-ga-api.js";
 import {
   getGoogleAuthUrl,
   handleOAuthCallback,
@@ -25,6 +25,7 @@ import { lookupBySignature as incidentLookup, recordResolution as incidentRecord
 import { createDeployEventFromPayload } from "./deploy-events.js";
 import { registerVercelProjectForSelfHeal, scanAndRemediateVercelDeployFailure } from "./vercel-redeploy-self-heal.js";
 import { scanAndRemediateDeployFailure } from "./deploy-failure-self-heal.js";
+import { registerGraphRoutes } from "./graphs/graph-endpoints.js";
 
 const CONTROL_PLANE_BASE = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const SEO_GOOGLE_CALLBACK_PATH = "/v1/seo/google/callback";
@@ -35,6 +36,24 @@ const corsOrigin = process.env.CORS_ORIGIN ?? "*";
 const allowedOrigins = corsOrigin === "*" ? "*" : corsOrigin.split(",").map((s) => s.trim()).filter(Boolean);
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
+
+// Rate limiting: stricter for auth/OAuth endpoints, general for rest (audit recommendation).
+const isAuthPath = (path: string) => /\/v1\/seo\/google|google_access_token|google_connected|google_credentials/.test(path);
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { error: "Too many authentication requests; try again later." },
+  standardHeaders: true,
+});
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MAX_PER_MIN) || 300,
+  message: { error: "Too many requests; try again later." },
+  standardHeaders: true,
+});
+app.use((req, res, next) => (isAuthPath(req.path) ? authLimiter(req, res, next) : generalLimiter(req, res, next)));
+
+registerGraphRoutes(app);
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -181,6 +200,25 @@ app.get("/health/db", async (_req, res) => {
     res.json({ status: "ok", db: "connected", database_hint });
   } catch (e) {
     res.status(503).json({ status: "error", db: String((e as Error).message) });
+  }
+});
+
+/** GET /health/migrations — migration status (applied on Control Plane startup via run-migrate.mjs; no registry table). */
+app.get("/health/migrations", (_req, res) => {
+  res.json({
+    status: "ok",
+    message: "Migrations run on Control Plane startup via run-migrate.mjs",
+    note: "No migration registry table; check startup logs for apply status.",
+  });
+});
+
+/** GET /health/schema — schema drift status (use GET /v1/schema_drift for details). */
+app.get("/health/schema", async (_req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ status: "ok", schema_drift_endpoint: "/v1/schema_drift" });
+  } catch (e) {
+    res.status(503).json({ status: "error", schema: String((e as Error).message) });
   }
 });
 
@@ -525,6 +563,7 @@ app.post("/v1/seo/gsc_report", async (req, res) => {
     const body = req.body as { site_url?: string; date_range?: string; row_limit?: number };
     const site_url = body.site_url ?? "";
     if (!site_url) return res.status(400).json({ error: "site_url is required" });
+    const { fetchGscReport } = await import("./seo-gsc-ga-client.js");
     const report = await fetchGscReport(site_url, {
       dateRange: body.date_range ?? "last28days",
       rowLimit: Math.min(1000, Math.max(1, Number(body.row_limit) || 500)),
@@ -541,6 +580,7 @@ app.post("/v1/seo/ga4_report", async (req, res) => {
     const body = req.body as { property_id?: string; row_limit?: number };
     const property_id = body.property_id ?? "";
     if (!property_id) return res.status(400).json({ error: "property_id is required" });
+    const { fetchGa4Report } = await import("./seo-gsc-ga-client.js");
     const report = await fetchGa4Report(property_id, {
       rowLimit: Math.min(1000, Math.max(1, Number(body.row_limit) || 500)),
     });
@@ -568,7 +608,7 @@ app.get("/v1/seo/google/auth", async (req, res) => {
   }
 });
 
-/** GET /v1/seo/google/callback — OAuth callback: exchange code, store refresh_token, redirect to redirect_uri from state. */
+/** GET /v1/seo/google/callback — OAuth callback: exchange code, store refresh_token, redirect to redirect_uri from state. State is validated (decodeState) for CSRF protection before exchanging the code. */
 app.get("/v1/seo/google/callback", async (req, res) => {
   const code = req.query.code as string;
   const state = req.query.state as string;
@@ -986,6 +1026,95 @@ app.post("/v1/runs/:id/cancel", async (req, res) => {
 /** POST /v1/runs — create run (requires plan_id, release_id, environment, root_idempotency_key) — stub; real impl uses scheduler.createRun */
 app.post("/v1/runs", async (req, res) => {
   res.status(501).json({ error: "Use scheduler.createRun via internal API; not yet exposed with validation" });
+});
+
+/** POST /v1/runs/by-artifact-type — resolve operator from capability graph, create single-node plan + run. Body: { produces, consumes?: [], initiative_id, environment? }. */
+app.post("/v1/runs/by-artifact-type", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const body = req.body as { produces?: string; consumes?: string[]; initiative_id?: string; environment?: string };
+    const produces = body?.produces?.trim();
+    const initiativeId = body?.initiative_id?.trim();
+    if (!produces) return res.status(400).json({ error: "Body must include produces (artifact type key)" });
+    if (!initiativeId) return res.status(400).json({ error: "Body must include initiative_id" });
+    const consumes = Array.isArray(body?.consumes) ? body.consumes.filter((c): c is string => typeof c === "string") : [];
+    const environment = (body?.environment && ["sandbox", "staging", "prod"].includes(body.environment)) ? body.environment : "sandbox";
+
+    const runId = await withTransaction(async (client) => {
+      const { resolveOperators } = await import("./capability-resolver.js");
+      const { createHash } = await import("crypto");
+      const result = await resolveOperators(client as import("pg").PoolClient, { produces, consumes });
+      if (!result.operators.length) {
+        throw new Error(`No operator produces artifact type "${produces}"${consumes.length ? ` and consumes [${consumes.join(", ")}]` : ""}. Check capability graph.`);
+      }
+      const jobType = result.operators[0];
+
+      const planHash = createHash("sha256").update(`by_artifact_type:${produces}:${consumes.join(",")}`).digest("hex");
+      let planId: string;
+      const existing = await client.query(
+        "SELECT id FROM plans WHERE initiative_id = $1 AND plan_hash = $2",
+        [initiativeId, planHash]
+      );
+      if (existing.rows.length > 0) {
+        planId = (existing.rows[0] as { id: string }).id;
+      } else {
+        const initCheck = await client.query("SELECT id FROM initiatives WHERE id = $1", [initiativeId]);
+        if (initCheck.rows.length === 0) throw new Error("Initiative not found");
+        planId = uuid();
+        const versionRow = await client.query(
+          "SELECT coalesce(max(version), 0) + 1 AS v FROM plans WHERE initiative_id = $1",
+          [initiativeId]
+        );
+        const version = (versionRow.rows[0]?.v as number) ?? 1;
+        await client.query(
+          "INSERT INTO plans (id, initiative_id, plan_hash, name, version) VALUES ($1, $2, $3, $4, $5)",
+          [planId, initiativeId, planHash, `Produce ${produces}`, version]
+        );
+        const nodeId = uuid();
+        await client.query(
+          "INSERT INTO plan_nodes (id, plan_id, node_key, job_type, node_type) VALUES ($1, $2, $3, $4, 'job')",
+          [nodeId, planId, "produce", jobType]
+        );
+      }
+
+      let releaseId: string;
+      try {
+        const route = await routeRun(pool, environment as "sandbox" | "staging" | "prod");
+        releaseId = route.releaseId;
+      } catch (routeErr) {
+        const msg = (routeErr as Error).message;
+        if (!msg.includes("No promoted release")) throw routeErr;
+        const ins = await pool.query(
+          "INSERT INTO releases (id, status, percent_rollout, policy_version) VALUES ($1, 'promoted', 100, 'latest') RETURNING id",
+          [uuid()]
+        );
+        releaseId = ins.rows[0].id;
+      }
+
+      return createRun(client as import("./db.js").DbClient, {
+        planId,
+        releaseId,
+        policyVersion: "latest",
+        environment: environment as "sandbox" | "staging" | "prod",
+        cohort: "control",
+        rootIdempotencyKey: `by-artifact-type:${produces}:${Date.now()}`,
+        llmSource: "gateway",
+      });
+    });
+
+    res.status(201).json({
+      id: runId,
+      produces,
+      consumes,
+      message: "Resolved operator from capability graph; single-node plan and run created. Runner will produce the artifact when connected.",
+    });
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (msg === "Initiative not found") return res.status(404).json({ error: msg });
+    if (msg.includes("No operator produces")) return res.status(400).json({ error: msg });
+    res.status(500).json({ error: msg });
+  }
 });
 
 /** POST /v1/initiatives/:id/plan — create a plan via plan compiler (idempotent by plan_hash) */
@@ -1468,6 +1597,70 @@ app.patch("/v1/artifacts/:id", async (req, res) => {
     if (process.env.NODE_ENV !== "test") console.info("[PATCH artifact]", { artifact_id: id, run_id: updatedRow?.run_id });
     res.json(updated.rows[0]);
   } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** PATCH /v1/artifacts/:id/knowledge — set Artifact/Knowledge graph fields: derived_from_artifact_id, scope_type, scope_id. */
+app.patch("/v1/artifacts/:id/knowledge", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const id = req.params.id;
+    const body = (req.body as { derived_from_artifact_id?: string | null; scope_type?: string | null; scope_id?: string | null }) ?? {};
+    const check = await pool.query("SELECT id FROM artifacts WHERE id = $1", [id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: "Artifact not found" });
+    const updates: string[] = [];
+    const params: unknown[] = [];
+    let i = 1;
+    if (body.derived_from_artifact_id !== undefined) {
+      updates.push(`derived_from_artifact_id = $${i++}`);
+      params.push(body.derived_from_artifact_id || null);
+    }
+    if (body.scope_type !== undefined) {
+      updates.push(`scope_type = $${i++}`);
+      params.push(body.scope_type || null);
+    }
+    if (body.scope_id !== undefined) {
+      updates.push(`scope_id = $${i++}`);
+      params.push(body.scope_id || null);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: "Body must include at least one of derived_from_artifact_id, scope_type, scope_id" });
+    params.push(id);
+    await pool.query(
+      `UPDATE artifacts SET ${updates.join(", ")} WHERE id = $${i}`,
+      params
+    );
+    const updated = await pool.query("SELECT id, derived_from_artifact_id, scope_type, scope_id FROM artifacts WHERE id = $1", [id]);
+    res.json(updated.rows[0] ?? { id });
+  } catch (e: unknown) {
+    const err = e as { code?: string };
+    if (err.code === "42703") return res.status(503).json({ error: "Artifact knowledge columns not present. Run migration 20250331000012_artifact_knowledge_graph.sql." });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/artifacts/:id/referenced_by — add a page reference (Artifact/Knowledge graph: referenced_by). */
+app.post("/v1/artifacts/:id/referenced_by", async (req, res) => {
+  try {
+    const role = getRole(req);
+    if (role === "viewer") return res.status(403).json({ error: "Forbidden" });
+    const id = req.params.id;
+    const body = req.body as { page_ref?: string; ref_type?: string };
+    const pageRef = body?.page_ref?.trim();
+    if (!pageRef) return res.status(400).json({ error: "Body must include page_ref (URL or page identifier)" });
+    const refType = body?.ref_type?.trim() || "page";
+    const check = await pool.query("SELECT id FROM artifacts WHERE id = $1", [id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: "Artifact not found" });
+    await pool.query(
+      "INSERT INTO artifact_page_references (artifact_id, page_ref, ref_type) VALUES ($1, $2, $3) ON CONFLICT (artifact_id, page_ref) DO NOTHING",
+      [id, pageRef, refType]
+    );
+    const refs = await pool.query("SELECT id, page_ref, ref_type FROM artifact_page_references WHERE artifact_id = $1", [id]);
+    res.status(201).json({ artifact_id: id, referenced_by: refs.rows });
+  } catch (e: unknown) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.status(503).json({ error: "artifact_page_references table not present. Run migration 20250331000012_artifact_knowledge_graph.sql." });
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
@@ -2355,11 +2548,29 @@ app.post("/v1/import_graph", async (req, res) => {
   }
 });
 
-/** GET /v1/schema_drift — current schema vs stored snapshot (stub). */
+/** GET /v1/schema_drift — current schema vs stored snapshot; returns diff if any. */
 app.get("/v1/schema_drift", async (_req, res) => {
   try {
-    res.json({ current_schema: null, stored_snapshot: null, diff: null });
+    const { computeSchemaDrift } = await import("./schema-drift.js");
+    const result = await computeSchemaDrift(pool);
+    res.json(result);
   } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.json({ current_schema: null, stored_snapshot: null, stored_id: null, diff: null, has_drift: false, message: "schema_snapshots table not found; run migration 20250331000013_schema_snapshots.sql." });
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+});
+
+/** POST /v1/schema_drift/capture — store current schema as new snapshot (label optional). */
+app.post("/v1/schema_drift/capture", async (req, res) => {
+  try {
+    const { captureSchemaSnapshot } = await import("./schema-drift.js");
+    const label = (req.body as { label?: string })?.label ?? "manual";
+    const { id } = await captureSchemaSnapshot(pool, label);
+    res.status(201).json({ id, message: "Schema snapshot captured." });
+  } catch (e) {
+    const err = e as { code?: string };
+    if (err.code === "42P01") return res.status(501).json({ error: "Run migration 20250331000013_schema_snapshots.sql first." });
     res.status(500).json({ error: String((e as Error).message) });
   }
 });
@@ -2584,14 +2795,27 @@ app.get("/v1/graph/missing_capabilities/:planId", async (req, res) => {
   }
 });
 
-/** GET /v1/graph/lineage/:artifactId — declared producer (from artifacts) + observed consumers (from artifact_consumption). */
+/** GET /v1/graph/lineage/:artifactId — Artifact/Knowledge graph: producer, consumers, derived_from, scope, referenced_by. */
 app.get("/v1/graph/lineage/:artifactId", async (req, res) => {
   try {
     const artifactId = req.params.artifactId;
-    const artifactRow = await pool.query(
-      "SELECT id, run_id, producer_plan_node_id, artifact_type FROM artifacts WHERE id = $1",
-      [artifactId]
-    ).then((r) => r.rows[0] as { id: string; run_id: string; producer_plan_node_id: string | null; artifact_type: string } | undefined);
+    let artifactRow: {
+      id: string; run_id: string; producer_plan_node_id: string | null; artifact_type: string;
+      derived_from_artifact_id?: string | null; scope_type?: string | null; scope_id?: string | null;
+    } | undefined;
+    try {
+      artifactRow = await pool.query(
+        "SELECT id, run_id, producer_plan_node_id, artifact_type, derived_from_artifact_id, scope_type, scope_id FROM artifacts WHERE id = $1",
+        [artifactId]
+      ).then((r) => r.rows[0] as typeof artifactRow);
+    } catch (colErr: unknown) {
+      if ((colErr as { code?: string }).code === "42703") {
+        artifactRow = await pool.query(
+          "SELECT id, run_id, producer_plan_node_id, artifact_type FROM artifacts WHERE id = $1",
+          [artifactId]
+        ).then((r) => r.rows[0] as typeof artifactRow);
+      } else throw colErr;
+    }
     if (!artifactRow) {
       return res.status(404).json({ error: "Artifact not found", artifact_id: artifactId, producers: [], consumers: [] });
     }
@@ -2630,12 +2854,34 @@ app.get("/v1/graph/lineage/:artifactId", async (req, res) => {
     } catch {
       // artifact_consumption table may not exist
     }
+    let derived_from: { artifact_id: string } | null = null;
+    if (artifactRow.derived_from_artifact_id) {
+      derived_from = { artifact_id: artifactRow.derived_from_artifact_id };
+    }
+    const scope = (artifactRow.scope_type && artifactRow.scope_id)
+      ? { scope_type: artifactRow.scope_type, scope_id: artifactRow.scope_id }
+      : null;
+    const part_of_project = scope?.scope_type === "project" ? { project_id: scope.scope_id } : null;
+    let referenced_by: { page_ref: string; ref_type: string }[] = [];
+    try {
+      const refRows = await pool.query(
+        "SELECT page_ref, ref_type FROM artifact_page_references WHERE artifact_id = $1",
+        [artifactId]
+      );
+      referenced_by = (refRows.rows as { page_ref: string; ref_type: string }[]).map((r) => ({ page_ref: r.page_ref, ref_type: r.ref_type }));
+    } catch {
+      // artifact_page_references may not exist
+    }
     res.json({
       artifact_id: artifactId,
       producers,
       consumers,
       declared_producer: producers[0] ?? null,
       observed_consumers: consumers,
+      derived_from,
+      scope,
+      part_of_project: part_of_project ?? null,
+      referenced_by,
     });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
@@ -2795,6 +3041,15 @@ app.get("/v1/health", async (_req, res) => {
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
+});
+
+/** POST /v1/errors — client error reporting (stub: accept payload, return 202 for future processing/logging). */
+app.post("/v1/errors", (req, res) => {
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body !== "object") {
+    return res.status(400).json({ error: "JSON body required (e.g. { message, code, context })" });
+  }
+  res.status(202).json({ accepted: true, message: "Error report accepted for processing." });
 });
 
 /** POST /v1/self_heal/deploy_failure_scan — run deploy-failure scan once (Render + Vercel). For testing without waiting 5 min. */

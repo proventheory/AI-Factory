@@ -1,6 +1,7 @@
 import { v4 as uuid } from "uuid";
 import type { DbClient } from "./db.js";
 import type { Environment, Cohort, PlanNode, PlanEdge } from "./types.js";
+import { mirrorRunToGraphRun } from "./graph-run-mirror.js";
 
 /**
  * Scheduler: creates runs, initializes node_progress, enqueues roots,
@@ -126,6 +127,9 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
     await db.query(`UPDATE runs SET status = 'running', started_at = COALESCE(started_at, now()) WHERE id = $1`, [runId]);
     await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'started')`, [runId]).catch(() => {});
   }
+
+  // Phase 5A: mirror run to graph_run (execution layer) for observability
+  mirrorRunToGraphRun(db, runId, params.planId).catch(() => {});
 
   // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
   if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
