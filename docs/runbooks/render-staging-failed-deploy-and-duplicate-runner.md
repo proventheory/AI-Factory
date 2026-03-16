@@ -15,6 +15,10 @@ Deploy-failure self-heal runs **inside the Control Plane**: a 5‑minute loop in
 1. **Runner missing RENDER_STAGING_SERVICE_IDS** — The runner only checks services in **RENDER_STAGING_SERVICE_IDS**. If that’s unset, it only uses **RENDER_WORKER_SERVICE_ID** (itself). Fix: run the script below so the runner gets `RENDER_STAGING_SERVICE_IDS=api_id,gateway_id,runner_id`. To confirm: set `DEBUG_SELF_HEAL=1` on the runner and check logs for “monitoring N service(s)” — you should see 3, not 1.
 2. **Render API status not in our list** — Render returns **`update_failed`** (not `failed`) for many failed deploys. Self-heal only remediates statuses in `FAILED_STATUSES`; we now include `update_failed`. If a new failure type appears, add it in `deploy-failure-self-heal.ts` and `deploy-failure-scan-trigger-only.ts` and see [SELF_HEAL_PROVIDER_STATUS_REFERENCE.md](../SELF_HEAL_PROVIDER_STATUS_REFERENCE.md).
 
+3. **Env is set but api-staging still shows Failed deploy (verified via Render MCP):** Self-heal **is** running: the runner (or prod) triggers redeploys for api-staging every ~5 minutes (Render deploys show `trigger: "api"`). The deploy stays red because **each redeploy fails for the same reason**: the migration `20250320000000_seo_url_risk_snapshots.sql` hits `policy "seo_url_risk_snapshots_select" already exists` (Postgres 42710). The image was built from a commit that didn’t yet have the idempotent fix (`DROP POLICY IF EXISTS` before `CREATE POLICY`). **Fix applied in repo:** (1) Migration has `DROP POLICY IF EXISTS` before `CREATE POLICY`. (2) `run-migrate.mjs` lists this migration with `skipIfErrorCode: "42710"` so older images can skip “policy already exists” and continue. **Commit and push** these changes; the next self-heal redeploy (or manual deploy) should bring api-staging live.
+
+**LLM self-fix (after 2 redeploys):** When the same commit fails 2+ times, self-heal no longer only creates an initiative — it fetches Render logs, stores them in the initiative’s `goal_metadata.deploy_failure`, compiles the **issue_fix** plan (analyze_repo → write_patch → …), and **auto-starts a run**. The runner’s **analyze_repo** and **write_patch** handlers use the deploy logs in the LLM prompt so the model can diagnose (e.g. migration order, policy already exists) and propose a patch. You still need to apply the patch (e.g. from the run’s patch artifact) and merge/push; So the system *does* fix itself: **detect → logs → LLM → suggested patch**. The **remaining part** is applying that patch (and optionally automating PR creation). See [AUTONOMOUS_RECOVERY_SPEC.md](../AUTONOMOUS_RECOVERY_SPEC.md) for the full incident/recovery subsystem.
+
 **Patch (one-time): so staging fixes itself** — The script pushes self-heal env to **staging API** and **staging runner**. So when api-staging is down, the runner’s 5‑min scan triggers redeploys. Optionally add **prod** so when both api and runner are down, prod heals staging:
 
 1. From repo root:  
@@ -59,6 +63,19 @@ RENDER_API_KEY=xxx node scripts/render-trigger-deploy.mjs --staging --clear  # c
 **Why MCP/API can’t show the error:** The Render MCP and Render API do not return build log content for failed deploys. For builds that fail in ~2–3 seconds, **no build log lines are written at all** (failure happens before Docker or clone finishes). So the only way to see the failure reason is the **Dashboard** → service → Events → failed deploy → **Build logs**. If the Dashboard also shows empty or no build logs for that deploy, the failure is **pre-build** (e.g. repo clone, GitHub connection, or Render job setup). In that case: reconnect the GitHub repo in Render (Dashboard → service → Settings → Build & Deploy → Connect repository), or trigger **Clear build cache & deploy** from the Dashboard, or contact Render support.
 
 **Isolate pre-build vs build failure:** Use the minimal test Dockerfile to see if *any* Docker build works. In Dashboard → **ai-factory-api-staging** → **Settings** → **Build & Deploy** → set **Dockerfile Path** to `./Dockerfile.render-minimal` → **Save** → **Manual Deploy**. If that deploy **succeeds**, the problem is in our real Dockerfile (e.g. `npm ci` or `esbuild`); switch the path back to `./Dockerfile.control-plane` and fix the step that fails (check Build logs). If **Dockerfile.render-minimal** also fails in ~2s with no logs, the problem is pre-build (clone, GitHub connection, or Render); try reconnecting the repo and Clear build cache, or contact Render support.
+
+---
+
+## 1b. Failed deploy (update_failed — migrations fail at startup)
+
+If the **build** succeeds (image pushes) but the deploy shows **Failed deploy** and status **update_failed**, the container is exiting during **startup** (e.g. migrations). Check **Logs** (runtime, not Build logs) for the service.
+
+**Common migration errors:**
+
+- **`relation "operators" does not exist`** — A migration references `operators` before it’s created. Fix: in `scripts/run-migrate.mjs`, run **capability_graph** (which creates `operators`) **before** **phase6_durable_graph_runtime** (which references `operators(id)`).
+- **`policy "seo_url_risk_snapshots_select" ... already exists`** — The migration isn’t idempotent. Fix: in the migration SQL use `DROP POLICY IF EXISTS "..." ON table; CREATE POLICY ...` so re-runs don’t fail.
+
+After fixing migrations or run order, commit, push, and trigger a new deploy (or let self-heal trigger it).
 
 ---
 

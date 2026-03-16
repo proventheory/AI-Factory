@@ -62,7 +62,9 @@ const migrations = [
   { path: "supabase/migrations/20250310200000_worker_registry_ensure.sql", name: "worker_registry_ensure" },
   { path: "supabase/migrations/20250317000000_intent_type_email_design_generator.sql", name: "intent_type_email_design_generator", skipIfErrorCode: "42701", skipMessage: "column already exists" },
   { path: "supabase/migrations/20250320100000_initiative_google_credentials.sql", name: "initiative_google_credentials", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
-  { path: "supabase/migrations/20250320000000_seo_url_risk_snapshots.sql", name: "seo_url_risk_snapshots", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250320000000_seo_url_risk_snapshots.sql", name: "seo_url_risk_snapshots", skipIfErrorCode: "42710", skipMessage: "policy/table already exists" },
+  { path: "supabase/migrations/20250331000010_artifact_consumption.sql", name: "artifact_consumption", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250331000011_capability_graph.sql", name: "capability_graph", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250321000000_phase6_durable_graph_runtime.sql", name: "phase6_durable_graph_runtime", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250327000000_pipeline_drafts_and_pattern_overrides.sql", name: "pipeline_drafts_and_pattern_overrides" },
   { path: "supabase/migrations/20250330000000_brand_klaviyo_credentials_and_sync.sql", name: "brand_klaviyo_credentials_and_sync" },
@@ -80,8 +82,6 @@ const migrations = [
   { path: "supabase/migrations/20250318100000_build_specs_launches.sql", name: "build_specs_launches", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250320200000_vercel_self_heal_projects.sql", name: "vercel_self_heal_projects", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250315000000_graph_self_heal_tables.sql", name: "graph_self_heal_tables", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
-  { path: "supabase/migrations/20250331000010_artifact_consumption.sql", name: "artifact_consumption", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
-  { path: "supabase/migrations/20250331000011_capability_graph.sql", name: "capability_graph", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250331000012_artifact_knowledge_graph.sql", name: "artifact_knowledge_graph", skipIfErrorCode: "42701", skipMessage: "column/table already exists" },
   { path: "supabase/migrations/20250331000013_schema_snapshots.sql", name: "schema_snapshots", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250401000000_graph_os_kinds.sql", name: "graph_os_kinds", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
@@ -93,17 +93,36 @@ const migrations = [
   { path: "supabase/migrations/20250401000006_graph_os_reconciliation_action_policies.sql", name: "graph_os_reconciliation_action_policies", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250401000007_graph_os_seed_action_policies.sql", name: "graph_os_seed_action_policies", skipIfErrorCode: "42P07", skipMessage: "already seeded" },
   { path: "supabase/migrations/20250401000008_graph_os_approval_requests_v2.sql", name: "graph_os_approval_requests_v2", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250402000000_runs_repo_commit_job_runs_next_retry.sql", name: "runs_repo_commit_job_runs_next_retry", skipIfErrorCode: "42701", skipMessage: "column already exists" },
+  { path: "supabase/migrations/20250402100000_policies_rules_json_guardrails.sql", name: "policies_rules_json_guardrails" },
+  { path: "supabase/migrations/20250403000000_incidents.sql", name: "incidents", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000001_incident_evidence.sql", name: "incident_evidence", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000002_failure_signatures.sql", name: "failure_signatures", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000003_incident_signature_matches.sql", name: "incident_signature_matches", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000004_repair_recipes.sql", name: "repair_recipes", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000005_repair_plans.sql", name: "repair_plans", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000006_repair_attempts.sql", name: "repair_attempts", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000007_verification_runs.sql", name: "verification_runs", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000008_incident_memories.sql", name: "incident_memories", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000009_release_recovery_state.sql", name: "release_recovery_state", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20250403000010_seed_failure_signatures.sql", name: "seed_failure_signatures", skipIfErrorCode: "42710", skipMessage: "already seeded" },
+  { path: "supabase/migrations/20250403000011_seed_repair_recipes.sql", name: "seed_repair_recipes", skipIfErrorCode: "42710", skipMessage: "already seeded" },
+  { path: "supabase/migrations/20250403000012_repair_recipes_rollback_then_branch_patch.sql", name: "repair_recipes_rollback_then_branch_patch", skipIfErrorCode: "42P07", skipMessage: "constraint already updated" },
 ];
 
 async function run() {
+  // Guard: every listed migration file must exist (no silent skips).
+  for (const m of migrations) {
+    const fullPath = join(root, m.path);
+    if (!existsSync(fullPath)) {
+      throw new Error(`Migration listed but not found: ${m.path}`);
+    }
+  }
+
   await client.connect();
   try {
     for (const m of migrations) {
       const fullPath = join(root, m.path);
-      if (!existsSync(fullPath)) {
-        console.log(`Skipping ${m.path} (file not found)`);
-        continue;
-      }
       const sql = readFileSync(fullPath, "utf8");
       try {
         await client.query(sql);
