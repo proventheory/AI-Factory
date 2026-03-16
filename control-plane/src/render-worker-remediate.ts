@@ -103,6 +103,64 @@ export async function setServiceEnvVar(
 }
 
 /**
+ * Return staging service IDs to monitor for deploy-failure (api, gateway, runner).
+ * From env RENDER_STAGING_SERVICE_IDS (comma-separated) or RENDER_WORKER_SERVICE_ID only.
+ */
+export async function getStagingServiceIds(): Promise<string[]> {
+  const ids = process.env.RENDER_STAGING_SERVICE_IDS?.trim();
+  if (ids) return ids.split(",").map((s) => s.trim()).filter(Boolean);
+  const workerId = process.env.RENDER_WORKER_SERVICE_ID?.trim();
+  if (workerId) return [workerId];
+  return [];
+}
+
+/**
+ * List recent deploys for a Render service. Returns id, status, commit.
+ */
+export async function listRenderDeploys(
+  apiKey: string,
+  serviceId: string,
+  limit: number = 5
+): Promise<{ id: string; status: string; commit?: string }[]> {
+  const res = await fetch(
+    `${RENDER_API_BASE}/services/${serviceId}/deploys?limit=${Math.min(limit, 20)}`,
+    {
+      method: "GET",
+      headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+    }
+  );
+  if (!res.ok) throw new Error(`Render API list deploys failed: ${res.status} ${await res.text()}`);
+  const raw = (await res.json()) as unknown;
+  const arr = Array.isArray(raw) ? raw : (raw as { deploys?: unknown[] })?.deploys ?? [];
+  return arr.map((item: { deploy?: { id: string; status: string; commit?: { id?: string } }; id?: string; status?: string; commit?: { id?: string } }) => {
+    const d = item.deploy ?? item;
+    return { id: d.id!, status: d.status!, commit: d.commit?.id };
+  });
+}
+
+/**
+ * Trigger a new deploy for a Render service (optionally clear build cache).
+ */
+export async function triggerRenderDeploy(
+  apiKey: string,
+  serviceId: string,
+  clearCache: boolean = false
+): Promise<{ id?: string }> {
+  const res = await fetch(`${RENDER_API_BASE}/services/${serviceId}/deploys`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ clearCache: clearCache ? "clear" : "do_not_clear" }),
+  });
+  if (!res.ok) throw new Error(`Render API trigger deploy failed: ${res.status} ${await res.text()}`);
+  const data = (await res.json()) as { id?: string };
+  return data;
+}
+
+/**
  * Restart a Render service so it picks up new env vars.
  * Render API: POST /services/:id/restart. See https://api-docs.render.com/reference/restart-service
  */
