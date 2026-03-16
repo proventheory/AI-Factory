@@ -1,7 +1,5 @@
 import "dotenv/config";
 import * as Sentry from "@sentry/node";
-// SELF_HEAL_TEST: intentional build break - will revert
-const _testBreak = ; // syntax error
 
 if (process.env.SENTRY_DSN?.trim()) {
   Sentry.init({
