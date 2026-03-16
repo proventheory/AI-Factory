@@ -18,7 +18,7 @@ export default function OperatorGuidePage() {
                 <strong>Console (ProfessorX)</strong> — This UI. Runs on Vercel. Every nav link stays inside this app so the menu never leaves.
               </p>
               <p>
-                <strong>Control Plane</strong> — Backend API + scheduler. Runs on Render. Handles initiatives, plans, runs, cost data, launches. Talks to Postgres.
+                <strong>Control Plane</strong> — Backend API + scheduler. Runs on Render. Handles initiatives, plans, runs, cost data, launches. Talks to Postgres. With <code className="rounded bg-slate-100 px-1">ENABLE_SELF_HEAL=true</code> and a GitHub webhook, self-healing is automatic (fix-me label → initiative → fix plan).
               </p>
               <p>
                 <strong>Runners</strong> — Workers that run pipeline jobs (email gen, copy, etc.). Get work from Control Plane; write to DB/artifacts.
@@ -32,7 +32,7 @@ export default function OperatorGuidePage() {
                 Browser → Console → Control Plane API → Postgres
               </p>
               <p>
-                The Console calls <code className="rounded bg-slate-100 px-1">NEXT_PUBLIC_CONTROL_PLANE_API</code>. If you see &quot;relation does not exist&quot; or empty data, the DB the Control Plane uses likely needs migrations: <code className="rounded bg-slate-100 px-1">npm run db:migrate</code> with that <code className="rounded bg-slate-100 px-1">DATABASE_URL</code>.
+                The Console calls <code className="rounded bg-slate-100 px-1">NEXT_PUBLIC_CONTROL_PLANE_API</code>. Migrations run automatically on every Control Plane start. If you see &quot;relation does not exist&quot; or schema errors, redeploy the Control Plane (it self-heals on start); see <code className="rounded bg-slate-100 px-1">docs/runbooks/console-db-relation-does-not-exist.md</code>.
               </p>
             </CardContent>
           </Card>

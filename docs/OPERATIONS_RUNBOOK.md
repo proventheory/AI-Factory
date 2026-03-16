@@ -14,8 +14,8 @@
 | **Lineage** | `GET /v1/graph/lineage/:artifactId` — declared producer + observed consumers. |
 | **Capability resolve** | `GET /v1/capability/resolve?produces=copy` — which operator produces that artifact type. |
 | **Run by artifact type** | `POST /v1/runs/by-artifact-type` body `{ produces: "copy" }` — resolve → create run → runner produces artifact. |
-| **Deploy staging** | From **repo root:** `node scripts/render-trigger-deploy.mjs --staging` (loads `RENDER_API_KEY` from `.env`). Use `--staging --clear` to clear build cache. **After deploy:** wait for deploy to complete (Render MCP `list_deploys` until `status` is `live`), then run full migrate: `node --env-file=.env scripts/run-migrate.mjs`. |
-| **Deploy staging + migrate (one shot)** | From **repo root:** `node --env-file=.env scripts/deploy-staging-and-migrate.mjs` — triggers staging deploy, waits for live, then runs migrate. Use `--no-wait` to skip wait; `--clear` to clear build cache. |
+| **Deploy staging** | From **repo root:** `node scripts/render-trigger-deploy.mjs --staging` (loads `RENDER_API_KEY` from `.env`). Use `--staging --clear` to clear build cache. Migrations run automatically on Control Plane start; no need to run migrate after deploy. |
+| **Deploy staging + wait (optional)** | From **repo root:** `node --env-file=.env scripts/deploy-staging-and-migrate.mjs` — triggers staging deploy, waits for live, optionally runs migrate. Use `--no-wait` to skip wait; `--clear` to clear build cache. Only run migrate manually if you need to target a DB that the Control Plane is not using. |
 | **Commit and push (agent)** | From **repo root:** `node scripts/git-commit-and-push.mjs [message]` or `GIT_COMMIT_MESSAGE="…" node scripts/git-commit-and-push.mjs`. Push requires GitHub auth (**GITHUB_TOKEN** or SSH). Agents use this to ship changes without asking the user to push. |
 | **Deploy Console (Vercel)** | Console is on Vercel. Push to `main` to trigger auto-deploy, or use Vercel Dashboard → Project → Deployments → Redeploy. No script in repo; use Git push or Vercel UI. |
 | **Self-heal (local)** | `npm run self-heal` (see [SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md)). |
@@ -25,7 +25,7 @@
 
 ## Self-heal: required tokens (every project / brand)
 
-**Control Plane** must have these set so the deploy-failure loop and Vercel self-heal run: **ENABLE_SELF_HEAL**, **RENDER_API_KEY**, **RENDER_STAGING_SERVICE_IDS**, and (for Vercel) **VERCEL_TOKEN** or **VERCEL_API_TOKEN** (same token as Terraform), **VERCEL_PROJECT_IDS** or projects registered via **POST /v1/vercel/register**. When you **launch a new project** with AI Factory, pass **projectId** (and optional **teamId**) in the build spec `spec` or in the launch action body so the project is **automatically** registered for self-heal. See **[SELF_HEAL_REQUIRED_ENV.md](SELF_HEAL_REQUIRED_ENV.md)** for the full checklist and how new projects get tokens/variables established.
+**Control Plane** must have these set so the deploy-failure loop and Vercel self-heal run: **ENABLE_SELF_HEAL**, **RENDER_API_KEY**, **RENDER_STAGING_SERVICE_IDS**, and (for Vercel) **VERCEL_TOKEN** or **VERCEL_API_TOKEN** (same token as Terraform), **VERCEL_PROJECT_IDS** or projects registered via **POST /v1/vercel/register**. When you **launch a new project** with AI Factory, pass **projectId** (and optional **teamId**) in the build spec `spec` or in the launch action body so the project is **automatically** registered for self-heal. See **[SELF_HEAL_REQUIRED_ENV.md](SELF_HEAL_REQUIRED_ENV.md)** for the full checklist and how new projects get tokens/variables established. **If a failed deploy (Render or Vercel) isn't self-healing,** check that the provider's failure status is in our list: **[SELF_HEAL_PROVIDER_STATUS_REFERENCE.md](SELF_HEAL_PROVIDER_STATUS_REFERENCE.md)** (canonical list; add any missing status there and in code). **To verify what each system actually returns:** run `node --env-file=.env scripts/verify-provider-status-values.mjs` (calls Render and Vercel APIs and prints status/state values).
 
 **Terraform (infra/):** Terraform still provisions **Supabase** (staging + optional prod) and **Vercel** (Console project + env vars). It reads **VERCEL_API_TOKEN** and **SUPABASE_ACCESS_TOKEN** from the environment. The Control Plane and `scripts/set-render-vercel-self-heal-env.mjs` accept **VERCEL_API_TOKEN** as well as **VERCEL_TOKEN**, so the same token in `.env` works for both Terraform and deploy-failure self-heal. Run Terraform from `infra/` with env loaded (e.g. `export VERCEL_API_TOKEN=...` or `node --env-file=../.env` in a wrapper) so your AI Factory token is used. See [infra/README.md](../infra/README.md).
 
@@ -50,8 +50,8 @@
 
 ### Before/after migrations
 
-1. **Before:** Every new migration file must be in `scripts/run-migrate.mjs` in the same PR. Run `npm run verify:migrations`.
-2. **Apply:** `DATABASE_URL=<control_plane_db> npm run db:migrate` (or let the runner run it on next deploy).
+1. **Before:** Every new migration file must be in `scripts/run-migrate.mjs` in the same PR. Run `npm run verify:migrations`. **New wizards/pipelines (ads, SEO, etc.):** register their migration in run-migrate.mjs so the next Control Plane deploy runs it automatically (self-heal).
+2. **Apply:** Control Plane runs migrate on every start. For a DB the Control Plane does not use (e.g. local dev), run `DATABASE_URL=<that_db> npm run db:migrate` once.
 3. **After (large deploy):** Use [runbooks/large-deploy-verification.md](runbooks/large-deploy-verification.md) — tables present, runner migrate→start, lineage API, capability resolver, capability loop. This is **Gate B** for the graph engine; see [GRAPH_ENGINE_IMPLEMENTATION_STATUS.md](GRAPH_ENGINE_IMPLEMENTATION_STATUS.md).
 
 **Runbooks:** [runbooks/console-db-relation-does-not-exist.md](runbooks/console-db-relation-does-not-exist.md) (Console "relation does not exist"), [runbooks/console-data-safety-and-traceability.md](runbooks/console-data-safety-and-traceability.md) (data safety).

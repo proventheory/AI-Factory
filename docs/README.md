@@ -87,7 +87,9 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 | **[STAGING_RENDER_CHECKLIST.md](STAGING_RENDER_CHECKLIST.md)** | Staging and Render checklist. |
 | **[RUNNERS_DEPLOYMENT.md](RUNNERS_DEPLOYMENT.md)** | Runners deployment. |
 | **[SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md)** | Security and runbooks. |
-| **[SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md)** | How to trigger self-heal (LLM Gateway, quality gates). |
+| **[SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md)** | Self-heal: one-time setup and automatic behavior (platform + local CLI). |
+| **[SELF_HEAL_REQUIRED_ENV.md](SELF_HEAL_REQUIRED_ENV.md)** | **Self-heal tokens (every project/brand):** Control Plane env (ENABLE_SELF_HEAL, RENDER_*, VERCEL_*), auto-register Vercel when launching a project (projectId in spec/launch). |
+| **[SELF_HEAL_PROVIDER_STATUS_REFERENCE.md](SELF_HEAL_PROVIDER_STATUS_REFERENCE.md)** | **Canonical list:** Which Render/Vercel deploy status values we treat as failed (so self-heal triggers redeploy). If a failed deploy isn't remediating, check this and add any missing status. |
 | **[VAULT_KEYS.md](VAULT_KEYS.md)** | Vault keys reference. |
 | **[VERCEL_PREVIEW_PUBLIC_ACCESS.md](VERCEL_PREVIEW_PUBLIC_ACCESS.md)** | Vercel preview public access. |
 | **[VERCEL_TEST_WITHOUT_DEPLOYING.md](VERCEL_TEST_WITHOUT_DEPLOYING.md)** | Testing on Vercel without deploying. |

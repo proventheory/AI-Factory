@@ -1,6 +1,6 @@
-# How to Trigger Auto-Debug and Self-Heal
+# Self-heal: one-time setup and automatic behavior
 
-The AI Factory has two self-heal paths. Use the one that matches how you work.
+**Platform self-heal is automatic.** After a single one-time setup (Render env + GitHub webhook), you do not "trigger" or run steps per incident — you add the **fix-me** label and the Control Plane creates initiatives and plans; runners (when connected) execute the fix. This doc covers that one-time setup and the local CLI option.
 
 ---
 
@@ -39,13 +39,11 @@ npm run baseline    # writes .self-heal-baseline.json
 
 ---
 
-## 2. Platform self-heal (Control Plane + GitHub)
+## 2. Platform self-heal (automatic after one-time setup)
 
-**Use when:** You want the platform to create an initiative and (when runners are connected) run a self-heal plan from a GitHub issue or PR.
+**Behavior:** Once configured, the platform reacts automatically. Add the **fix-me** label to an issue or PR → GitHub webhook notifies the Control Plane → initiative and plan are created → runners (when connected) execute the fix and can open a PR. No manual steps per incident.
 
-**Trigger:** Add the **fix-me** label to an **issue** or **pull request** in the GitHub repo connected to the Control Plane.
-
-**Requirements:**
+### One-time setup
 
 1. **Control Plane (Render)**  
    For the service that receives the webhook, set:
@@ -62,22 +60,18 @@ npm run baseline    # writes .self-heal-baseline.json
    - **Secret:** optional; if you set one, the Control Plane would need to verify it (not implemented by default)
 
 3. **Database**  
-   The Control Plane must have a working Postgres connection (initiatives and plans are stored there).
+   The Control Plane must have a working Postgres connection (initiatives and plans are stored there). Migrations run automatically on every Control Plane start.
 
-**What happens when you add the label:**
+After that, self-heal is **autonomous**: add the label and the system handles the rest.
+
+### What happens when you add the label (automatic)
 
 1. GitHub sends a `labeled` event to your webhook URL.
 2. The Control Plane creates an initiative with title like `Self-heal: <issue title>` and `source_ref` = issue/PR URL.
 3. It compiles a plan for that initiative (best-effort on webhook).
 4. You see the new initiative and plan in the Console under **Initiatives** and **Plans**. When runners are deployed and polling, they can pick up the plan and run the self-heal (OpenHands or SWE-agent) and open a PR.
 
-**To request a self-heal from the platform:**
-
-1. Open your repo on GitHub.
-2. Create an **issue** (or use an existing one) that describes what’s broken or what you want fixed.
-3. Add the **fix-me** label to that issue (or to a PR).
-4. The webhook fires; the Control Plane creates the initiative and plan.
-5. In the Console, go to **Initiatives** (or **Pipeline Runs**) to see the new run and progress (once runners are connected).
+**Using it:** Add the **fix-me** label to an issue or PR; the webhook and Control Plane handle the rest automatically. In the Console, **Initiatives** (or **Pipeline Runs**) show the new run and progress once runners are connected.
 
 ---
 
@@ -91,6 +85,8 @@ The Operator Console (ProfessorX) is wired to **Render** (API key), **GitHub** (
   (3) **Platform (no-artifacts)** — When a run completes (initiative → plan → pipeline → jobs) but has **no artifacts** (e.g. Render worker wrong env), the Control Plane **auto-detects** via API (run status, job_runs, artifact count) and **auto-remediates**: syncs Render worker env from Control Plane (DATABASE_URL, CONTROL_PLANE_URL, LLM_GATEWAY_URL, optional OPENAI_API_KEY), **restarts the worker** so it picks up new vars, then creates a new run (preserving the original run’s `llm_source`). No human in the loop. Requires `ENABLE_SELF_HEAL=true` and `RENDER_API_KEY` on the Control Plane. Triggers: GET /v1/runs/:id/artifacts when empty, and a **background scan** every 3 minutes for terminal runs with jobs but zero artifacts.
 
 - **When to use the runbook:** If self-heal is disabled or you need manual steps, see [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **No artifacts on runs** and **Runner not claiming jobs**.
+- **(4) Deploy-failure (Render + Vercel)** — The Control Plane runs a **5‑minute loop** (`startDeployFailureScanLoop` in `control-plane/src/index.ts`). When `ENABLE_SELF_HEAL=true`, `RENDER_API_KEY`, and `RENDER_STAGING_SERVICE_IDS` are set, it checks api/gateway/runner; if latest deploy is failed/canceled, it triggers a redeploy (up to 2× per commit, then creates an initiative). With `VERCEL_TOKEN` and `VERCEL_PROJECT_IDS`, it does the same for Vercel.
+- **Migrations (autonomous)** — The Control Plane runs `node scripts/run-migrate.mjs` on **every container startup** (Dockerfile.control-plane CMD). Every deploy of the Control Plane applies pending migrations to the shared DB.
 
 ---
 
@@ -126,7 +122,7 @@ If an email run shows **every image as a product image** (or wrong mapping), the
 | Goal | Action |
 |------|--------|
 | **Auto-debug this repo right now (local)** | Run `npm run self-heal` in the repo (with `OPENAI_API_KEY` set). |
-| **Ask the platform to self-heal from GitHub** | Add the **fix-me** label to an issue or PR; set `ENABLE_SELF_HEAL=true` on the Control Plane and configure the GitHub webhook to `POST /v1/webhooks/github`. |
+| **Platform self-heal (automatic after one-time setup)** | Set `ENABLE_SELF_HEAL=true` and add GitHub webhook to `POST /v1/webhooks/github` once; then add the **fix-me** label to an issue or PR and the system reacts automatically. |
 | **Runs have no artifacts / landing page missing** | With `ENABLE_SELF_HEAL=true` and `RENDER_API_KEY` set, the Control Plane auto-remediates (worker env sync + new run). Otherwise use runbook: [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **No artifacts on runs**. |
 | **Email: every image is a product / wrong mapping** | Create a new campaign; in the **Images** step pick campaign images, then add products. Re-run won’t help (same inputs). Runbook: [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **Template / image mapping self-heal**. |
 | **Template proof: ensure template "loaded properly"** | Run **Template proofing**; check proof run status and **Validations** tab. If artifact analysis fails (unreplaced placeholders/bad images), fix runner/template and re-run proof. Runbook: [SECURITY_AND_RUNBOOKS.md](SECURITY_AND_RUNBOOKS.md) → **Template proof / self-heal loop**. |

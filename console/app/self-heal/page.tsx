@@ -14,12 +14,20 @@ export default function SelfHealPage() {
       <Stack>
         <PageHeader
           title="Self-heal"
-          description="How to trigger auto-debug and self-healing: local CLI, platform (GitHub + Control Plane), and graph-driven decision loop."
+          description="Platform self-healing is automatic: add the fix-me label and the Control Plane creates initiatives and runs fix plans. Local CLI and graph-driven loop below."
         />
         <p className="text-body-small text-text-secondary mb-4">
           To give Cursor a <strong>repeatable entrypoint</strong> (debug bundle + commands instead of &quot;check the logs&quot;), see{" "}
           <Link href="/operator-guide" className="text-brand-600 hover:underline">Operator guide</Link>.
         </p>
+        <CardSection title="Platform self-heal (automatic)">
+          <p className="text-body-small text-text-secondary mb-2">
+            Once configured, the platform reacts automatically: add the <strong>fix-me</strong> label to an issue or PR → GitHub webhook notifies the Control Plane → initiative and plan are created → runners (when connected) execute the fix and can open a PR. No manual steps per incident.
+          </p>
+          <p className="text-body-small text-text-muted mt-2">
+            <strong>One-time setup:</strong> In Render, set <code className="bg-surface-sunken px-1 rounded">ENABLE_SELF_HEAL=true</code> for the Control Plane. In GitHub, add a webhook: Payload URL = <code className="bg-surface-sunken px-1 rounded">https://&lt;control-plane-url&gt;/v1/webhooks/github</code>, events = Issues + Pull requests. After that, self-heal is autonomous. Details: <code className="bg-surface-sunken px-1 rounded">docs/SELF_HEAL_HOW_TO_TRIGGER.md</code>.
+          </p>
+        </CardSection>
         <CardSection title="Graph & deploy observability">
           <p className="text-body-small text-text-secondary mb-2">
             The platform can observe KPIs, detect anomalies, and run a <strong>decision loop</strong> (observe → diagnose → decide → act → learn).
@@ -32,7 +40,7 @@ export default function SelfHealPage() {
             <li><Link href="/graph/memory" className="text-brand-600 hover:underline">Memory (incidents)</Link> — Incident resolutions used by the decision loop and repair planning.</li>
           </ul>
         </CardSection>
-        <CardSection title="1. Local (repo on your machine)">
+        <CardSection title="Local (repo on your machine)">
           <p className="text-body-small text-text-secondary mb-2">
             Run in the AI Factory repo root with <code className="bg-surface-sunken px-1 rounded">OPENAI_API_KEY</code> set:
           </p>
@@ -43,19 +51,6 @@ export default function SelfHealPage() {
             This runs doctor → parses errors → LLM suggests patches → applies and re-runs. Use{" "}
             <code className="bg-surface-sunken px-1 rounded">npm run self-heal:dry</code> to preview, or{" "}
             <code className="bg-surface-sunken px-1 rounded">npm run self-heal:tsc</code> to only fix TypeScript.
-          </p>
-        </CardSection>
-        <CardSection title="2. Platform (GitHub + Control Plane)">
-          <p className="text-body-small text-text-secondary mb-2">
-            To have the platform create a self-heal initiative and run a fix plan:
-          </p>
-          <ol className="list-decimal list-inside space-y-2 text-body-small text-text-secondary">
-            <li>In Render, set <code className="bg-surface-sunken px-1 rounded">ENABLE_SELF_HEAL=true</code> for the Control Plane service.</li>
-            <li>In GitHub, add a webhook: Payload URL = <code className="bg-surface-sunken px-1 rounded">https://&lt;your-control-plane-url&gt;/v1/webhooks/github</code>, events = Issues + Pull requests.</li>
-            <li>Add the <strong>fix-me</strong> label to an issue or PR. The webhook creates an initiative and plan; runners (when connected) can execute the fix and open a PR.</li>
-          </ol>
-          <p className="text-body-small text-text-secondary mt-3">
-            Full steps and gating policy: <code className="bg-surface-sunken px-1 rounded">docs/SELF_HEAL_HOW_TO_TRIGGER.md</code> in the repo.
           </p>
         </CardSection>
       </Stack>
