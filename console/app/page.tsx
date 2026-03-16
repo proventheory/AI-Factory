@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 export default function Home() {
+  // SELF_HEAL_TEST: intentional build break - will revert
+  const x = ; // syntax error
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 px-4 sm:px-6 py-8 safe-area-padding">
       <div className="w-full max-w-md flex flex-col items-center text-center">
