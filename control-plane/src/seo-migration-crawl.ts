@@ -1,10 +1,11 @@
 /**
  * SEO migration wizard — Step 1 crawl. Loads runners crawlSite at runtime (same pattern as seo-gsc-ga-client).
+ * CJS-safe: uses get-current-dir-cjs so esbuild --format=cjs does not warn.
  */
 import path from "path";
-import { fileURLToPath } from "url";
+import { getCurrentDir } from "./get-current-dir-cjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = getCurrentDir();
 
 export interface MigrationCrawlOptions {
   source_url: string;

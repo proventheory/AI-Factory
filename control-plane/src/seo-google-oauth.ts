@@ -181,6 +181,24 @@ export async function deleteGoogleCredentials(client: PoolClient, initiativeId: 
   await client.query("DELETE FROM initiative_google_credentials WHERE initiative_id = $1", [initiativeId]);
 }
 
+/** Get a short-lived access_token for the brand (for API calls, e.g. list GA4 properties). */
+export async function getAccessTokenForBrand(client: PoolClient, brandId: string): Promise<{ access_token: string; expires_in: number } | null> {
+  const r = await client.query<{ encrypted_refresh_token: string }>(
+    "SELECT encrypted_refresh_token FROM brand_google_credentials WHERE brand_profile_id = $1",
+    [brandId],
+  );
+  const encrypted = r.rows[0]?.encrypted_refresh_token ?? null;
+  if (!encrypted) return null;
+  const redirectUri = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "") + "/v1/seo/google/callback";
+  const oauth = await getOAuthClient(redirectUri);
+  oauth.setCredentials({ refresh_token: decrypt(encrypted) });
+  const { credentials } = await oauth.refreshAccessToken();
+  const access_token = credentials.access_token;
+  const expires_in = credentials.expiry_date ? Math.max(0, Math.floor((credentials.expiry_date - Date.now()) / 1000)) : 3600;
+  if (!access_token) return null;
+  return { access_token, expires_in };
+}
+
 /** Check if brand has Google credentials. */
 export async function hasGoogleCredentialsForBrand(client: PoolClient, brandId: string): Promise<boolean> {
   const r = await client.query("SELECT 1 FROM brand_google_credentials WHERE brand_profile_id = $1", [brandId]);

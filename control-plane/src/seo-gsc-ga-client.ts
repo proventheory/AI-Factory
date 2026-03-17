@@ -1,11 +1,13 @@
 /**
  * Runtime loader for runners SEO GSC/GA4 API. Uses dynamic path so control-plane
  * builds without depending on runners (rootDir).
+ * CJS-safe: getCurrentDir comes from get-current-dir-cjs.ts (no import.meta) so esbuild --format=cjs does not warn.
  */
 import path from "path";
-import { fileURLToPath } from "url";
+import { existsSync } from "fs";
+import { getCurrentDir } from "./get-current-dir-cjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const relRunners = path.join("runners", "src", "lib", "seo", "gsc-ga-api.js");
 
 export interface GscReport {
   site_url: string;
@@ -22,7 +24,12 @@ export interface Ga4Report {
 }
 
 async function loadRunnersSeo(): Promise<{ fetchGscReport: (url: string, opts?: { dateRange?: string; rowLimit?: number; accessToken?: string }) => Promise<GscReport>; fetchGa4Report: (propertyId: string, opts?: { rowLimit?: number }) => Promise<Ga4Report> }> {
-  const modulePath = path.join(__dirname, "..", "..", "runners", "src", "lib", "seo", "gsc-ga-api.js");
+  const base = getCurrentDir();
+  const candidates = [
+    path.join(base, "..", relRunners),
+    path.join(base, "..", "..", relRunners),
+  ];
+  const modulePath = candidates.find((p) => existsSync(p)) ?? candidates[0];
   const mod = await import(modulePath);
   return { fetchGscReport: mod.fetchGscReport, fetchGa4Report: mod.fetchGa4Report };
 }
