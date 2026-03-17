@@ -11,12 +11,16 @@ import {
   brandProfilesGoogleGa4Properties,
   brandProfilesGoogleGa4PropertyPatch,
   seoMigrationCrawl,
+  seoMigrationDryRun,
+  seoMigrationRun,
 } from "../controllers/seo.controller.js";
 
 const router = Router();
 
 router.post("/v1/sitemap/products", sitemapProducts);
 router.post("/v1/seo/migration/crawl", seoMigrationCrawl);
+router.post("/v1/seo/migration/dry_run", seoMigrationDryRun);
+router.post("/v1/seo/migration/run", seoMigrationRun);
 router.post("/v1/products/from_url", productsFromUrlHandler);
 router.post("/v1/seo/gsc_report", seoGscReport);
 router.post("/v1/seo/ga4_report", seoGa4Report);

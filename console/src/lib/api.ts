@@ -976,7 +976,7 @@ export async function seoMigrationCrawl(params: SeoMigrationCrawlParams): Promis
 }
 
 /** SEO migration wizard — Step 2: Google Search Console report. */
-export type SeoGscReportParams = { site_url: string; date_range?: string; row_limit?: number };
+export type SeoGscReportParams = { site_url: string; date_range?: string; row_limit?: number; brand_id?: string };
 export type SeoGscReport = {
   site_url: string;
   date_range: { start: string; end: string };
@@ -995,8 +995,8 @@ export async function seoGscReport(params: SeoGscReportParams): Promise<SeoGscRe
   return res.json();
 }
 
-/** SEO migration wizard — Step 2: GA4 report. */
-export type SeoGa4ReportParams = { property_id: string; row_limit?: number };
+/** SEO migration wizard — Step 2: GA4 report. Pass brand_id to use the brand's connected GA4 property and OAuth. */
+export type SeoGa4ReportParams = { property_id?: string; row_limit?: number; brand_id?: string };
 export type SeoGa4Report = {
   property_id: string;
   pages: Array<{
@@ -1011,6 +1011,46 @@ export type SeoGa4Report = {
 
 export async function seoGa4Report(params: SeoGa4ReportParams): Promise<SeoGa4Report> {
   const res = await fetch(`${API}/v1/seo/ga4_report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** SEO migration wizard — Step 3: WooCommerce → Shopify migration (Matrixify-style). Dry run: preview counts from WooCommerce API. */
+export type SeoMigrationDryRunParams = {
+  woo_server: string;
+  woo_consumer_key: string;
+  woo_consumer_secret: string;
+  entities: string[];
+};
+export type SeoMigrationDryRunResult = { counts?: Record<string, number>; message?: string };
+
+export async function seoMigrationDryRun(params: SeoMigrationDryRunParams): Promise<SeoMigrationDryRunResult> {
+  const res = await fetch(`${API}/v1/seo/migration/dry_run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** SEO migration wizard — Step 3: Run migration (WooCommerce → Shopify). */
+export type SeoMigrationRunParams = {
+  woo_server: string;
+  woo_consumer_key: string;
+  woo_consumer_secret: string;
+  shopify_store: string;
+  shopify_access_token: string;
+  entities: string[];
+};
+export type SeoMigrationRunResult = { job_id?: string; message?: string };
+
+export async function seoMigrationRun(params: SeoMigrationRunParams): Promise<SeoMigrationRunResult> {
+  const res = await fetch(`${API}/v1/seo/migration/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),

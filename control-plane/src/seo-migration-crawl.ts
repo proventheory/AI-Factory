@@ -3,6 +3,7 @@
  * CJS-safe: uses get-current-dir-cjs so esbuild --format=cjs does not warn.
  */
 import path from "path";
+import { existsSync } from "fs";
 import { getCurrentDir } from "./get-current-dir-cjs";
 
 const __dirname = getCurrentDir();
@@ -46,7 +47,14 @@ async function loadRunnersCrawl(): Promise<{
     stats: MigrationCrawlResult["stats"];
   }>;
 }> {
-  const modulePath = path.join(__dirname, "..", "..", "runners", "src", "lib", "seo", "crawl.js");
+  const base = getCurrentDir();
+  const relCrawl = path.join("runners", "src", "lib", "seo", "crawl.js");
+  const candidates = [
+    path.join(base, "runners", "src", "lib", "seo", "crawl.js"),
+    path.join(base, "..", relCrawl),
+    path.join(base, "..", "..", relCrawl),
+  ];
+  const modulePath = candidates.find((p) => existsSync(p)) ?? candidates[0];
   const mod = await import(modulePath);
   return { crawlSite: mod.crawlSite };
 }

@@ -26,6 +26,7 @@ export interface Ga4Report {
 async function loadRunnersSeo(): Promise<{ fetchGscReport: (url: string, opts?: { dateRange?: string; rowLimit?: number; accessToken?: string }) => Promise<GscReport>; fetchGa4Report: (propertyId: string, opts?: { rowLimit?: number }) => Promise<Ga4Report> }> {
   const base = getCurrentDir();
   const candidates = [
+    path.join(base, relRunners),
     path.join(base, "..", relRunners),
     path.join(base, "..", "..", relRunners),
   ];
@@ -44,7 +45,7 @@ export async function fetchGscReport(
 
 export async function fetchGa4Report(
   propertyId: string,
-  options?: { rowLimit?: number }
+  options?: { rowLimit?: number; accessToken?: string }
 ): Promise<Ga4Report> {
   const { fetchGa4Report: f } = await loadRunnersSeo();
   return f(propertyId, options);

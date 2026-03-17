@@ -98,16 +98,22 @@ export async function productsFromUrlHandler(req: Request, res: Response): Promi
 
 export async function seoGscReport(req: Request, res: Response): Promise<void> {
   try {
-    const body = req.body as { site_url?: string; date_range?: string; row_limit?: number };
+    const body = req.body as { site_url?: string; date_range?: string; row_limit?: number; brand_id?: string };
     const site_url = body.site_url ?? "";
     if (!site_url) {
       res.status(400).json({ error: "site_url is required" });
       return;
     }
+    let accessToken: string | undefined;
+    if (body.brand_id) {
+      const token = await withTransaction(async (client) => getAccessTokenForBrand(client, body.brand_id!));
+      if (token) accessToken = token.access_token;
+    }
     const { fetchGscReport } = await import("../../seo-gsc-ga-client.js");
     const report = await fetchGscReport(site_url, {
       dateRange: body.date_range ?? "last28days",
       rowLimit: Math.min(1000, Math.max(1, Number(body.row_limit) || 500)),
+      accessToken,
     });
     res.json(report);
   } catch (e) {
@@ -117,16 +123,38 @@ export async function seoGscReport(req: Request, res: Response): Promise<void> {
 
 export async function seoGa4Report(req: Request, res: Response): Promise<void> {
   try {
-    const body = req.body as { property_id?: string; row_limit?: number };
-    const property_id = body.property_id ?? "";
-    if (!property_id) {
-      res.status(400).json({ error: "property_id is required" });
+    const body = req.body as { property_id?: string; row_limit?: number; brand_id?: string };
+    const rowLimit = Math.min(1000, Math.max(1, Number(body.row_limit) || 500));
+    let property_id = body.property_id ?? "";
+    let accessToken: string | undefined;
+
+    if (body.brand_id) {
+      const row = await withTransaction(async (client) => {
+        const token = await getAccessTokenForBrand(client, body.brand_id!);
+        const r = await client.query<{ ga4_property_id: string | null }>(
+          "SELECT ga4_property_id FROM brand_google_credentials WHERE brand_profile_id = $1",
+          [body.brand_id],
+        );
+        const ga4_property_id = r.rows[0]?.ga4_property_id ?? null;
+        return { token, ga4_property_id };
+      });
+      if (!row.token) {
+        res.status(400).json({ error: "Brand has no Google account connected. Connect Google and select a GA4 property on the brand page." });
+        return;
+      }
+      if (!row.ga4_property_id) {
+        res.status(400).json({ error: "No GA4 property selected for this brand. Select a GA4 property on the brand page." });
+        return;
+      }
+      property_id = row.ga4_property_id;
+      accessToken = row.token.access_token;
+    } else if (!property_id) {
+      res.status(400).json({ error: "property_id is required, or provide brand_id to use the brand's connected GA4 property." });
       return;
     }
+
     const { fetchGa4Report } = await import("../../seo-gsc-ga-client.js");
-    const report = await fetchGa4Report(property_id, {
-      rowLimit: Math.min(1000, Math.max(1, Number(body.row_limit) || 500)),
-    });
+    const report = await fetchGa4Report(property_id, { rowLimit, accessToken });
     res.json(report);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
@@ -333,6 +361,99 @@ export async function seoMigrationCrawl(req: Request, res: Response): Promise<vo
       fetch_page_details: Boolean(body.fetch_page_details),
     });
     res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+/** WooCommerce API: get total count for an endpoint (GET with per_page=1, read X-WP-Total). */
+async function wooCount(
+  baseUrl: string,
+  authHeader: string,
+  path: string
+): Promise<number> {
+  const url = `${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}?per_page=1`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: authHeader, Accept: "application/json" },
+  });
+  if (!res.ok) return 0;
+  const total = res.headers.get("x-wp-total");
+  return total ? Math.max(0, parseInt(total, 10)) : 0;
+}
+
+/** SEO migration wizard — Step 3: Dry run (preview counts from WooCommerce/WP API). */
+export async function seoMigrationDryRun(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as {
+      woo_server?: string;
+      woo_consumer_key?: string;
+      woo_consumer_secret?: string;
+      entities?: string[];
+    };
+    const server = (body.woo_server ?? "").trim().replace(/\/$/, "");
+    const key = (body.woo_consumer_key ?? "").trim();
+    const secret = (body.woo_consumer_secret ?? "").trim();
+    if (!server || !key || !secret) {
+      res.status(400).json({ error: "woo_server, woo_consumer_key, and woo_consumer_secret are required" });
+      return;
+    }
+    const entities = Array.isArray(body.entities) ? body.entities : ["products", "categories"];
+    const auth = Buffer.from(`${key}:${secret}`).toString("base64");
+    const authHeader = `Basic ${auth}`;
+    const wcBase = `${server}/wp-json/wc/v3`;
+    const wpBase = `${server}/wp-json/wp/v2`;
+    const counts: Record<string, number> = {};
+    const wcPaths: Record<string, string> = {
+      products: "products",
+      categories: "products/categories",
+      customers: "customers",
+      discounts: "coupons",
+      orders: "orders",
+    };
+    for (const e of entities) {
+      if (e === "redirects") {
+        counts.redirects = 0;
+        continue;
+      }
+      if (wcPaths[e]) {
+        counts[e] = await wooCount(wcBase, authHeader, wcPaths[e]);
+        continue;
+      }
+      if (e === "blogs") {
+        counts.blogs = await wooCount(wpBase, authHeader, "posts");
+        continue;
+      }
+      if (e === "pages") {
+        counts.pages = await wooCount(wpBase, authHeader, "pages");
+        continue;
+      }
+    }
+    res.json({ counts });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+/** SEO migration wizard — Step 3: Run migration (WooCommerce → Shopify). Full ETL not yet implemented. */
+export async function seoMigrationRun(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as {
+      woo_server?: string;
+      woo_consumer_key?: string;
+      woo_consumer_secret?: string;
+      shopify_store?: string;
+      shopify_access_token?: string;
+      entities?: string[];
+    };
+    if (!body.shopify_store?.trim() || !body.shopify_access_token?.trim()) {
+      res.status(400).json({ error: "shopify_store and shopify_access_token are required" });
+      return;
+    }
+    res.json({
+      message:
+        "Full WooCommerce → Shopify migration is not yet implemented. Use dry run to preview counts. When implemented, it will pull from WooCommerce API and push to Shopify Admin API (Matrixify-style).",
+    });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
