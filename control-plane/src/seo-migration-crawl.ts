@@ -4,7 +4,7 @@
  */
 import path from "path";
 import { existsSync } from "fs";
-import { getCurrentDir } from "./get-current-dir-cjs";
+import { getCurrentDir } from "./get-current-dir-cjs.js";
 
 const __dirname = getCurrentDir();
 

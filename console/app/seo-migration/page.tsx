@@ -165,9 +165,9 @@ export default function SeoMigrationWizardPage() {
   };
 
   const runGa4 = async () => {
-    const useBrand = brandId && brandGoogle?.connected && brandGoogle?.ga4_property_id;
-    if (!useBrand && !ga4PropertyId.trim()) {
-      setGa4Error("Select a brand with GA4 connected, or enter a GA4 property ID.");
+    const useBrand = !!brandId;
+    if (!brandId && !ga4PropertyId.trim()) {
+      setGa4Error("Select a brand (with GA4 connected) in step 1, or enter a GA4 property ID.");
       return;
     }
     setGa4Loading(true);
@@ -175,7 +175,7 @@ export default function SeoMigrationWizardPage() {
     setGa4Result(null);
     try {
       const result = await api.seoGa4Report(
-        useBrand ? { brand_id: brandId, row_limit: 500 } : { property_id: ga4PropertyId.trim(), row_limit: 500 },
+        brandId ? { brand_id: brandId, row_limit: 500 } : { property_id: ga4PropertyId.trim(), row_limit: 500 },
       );
       setGa4Result(result);
     } catch (e) {

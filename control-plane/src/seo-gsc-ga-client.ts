@@ -5,7 +5,7 @@
  */
 import path from "path";
 import { existsSync } from "fs";
-import { getCurrentDir } from "./get-current-dir-cjs";
+import { getCurrentDir } from "./get-current-dir-cjs.js";
 
 const relRunners = path.join("runners", "src", "lib", "seo", "gsc-ga-api.js");
 

@@ -14,6 +14,7 @@ COPY . .
 RUN test -f control-plane/src/http/routers/usage.router.ts || (echo "Missing control-plane/src/http/routers - clear build cache and redeploy" && exit 1)
 # Build runners (TS → dist/runners) so control-plane bundle can load crawl.js and gsc-ga-api.js at runtime.
 RUN echo "Control-plane: tsc (runners)..." && npm run build
+RUN test -f dist/runners/src/lib/seo/crawl.js && test -f dist/runners/src/lib/seo/gsc-ga-api.js || (echo "Missing dist/runners - clear build cache and redeploy" && exit 1)
 RUN echo "Control-plane: esbuild..." && mkdir -p dist && NODE_OPTIONS="--max-old-space-size=2048" npx esbuild control-plane/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \
   --outfile=dist/control-plane-bundle.js --sourcemap \
