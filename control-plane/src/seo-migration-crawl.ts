@@ -1,12 +1,7 @@
 /**
- * SEO migration wizard — Step 1 crawl. Loads runners crawlSite at runtime (same pattern as seo-gsc-ga-client).
- * CJS-safe: uses get-current-dir-cjs so esbuild --format=cjs does not warn.
+ * SEO migration wizard — Step 1 crawl. Bundles runners crawlSite into control-plane (no runtime path).
  */
-import path from "path";
-import { existsSync } from "fs";
-import { getCurrentDir } from "./get-current-dir-cjs.js";
-
-const __dirname = getCurrentDir();
+import { crawlSite } from "../../runners/src/lib/seo/crawl.js";
 
 export interface MigrationCrawlOptions {
   source_url: string;
@@ -33,32 +28,6 @@ export interface MigrationCrawlResult {
   stats: { total_urls: number; by_type: Record<string, number>; status_counts: Record<string, number> };
 }
 
-async function loadRunnersCrawl(): Promise<{
-  crawlSite: (opts: {
-    baseUrl: string;
-    crawlDelayMs?: number;
-    maxUrls?: number;
-    useSitemapsFirst?: boolean;
-    useLinkCrawl?: boolean;
-    fetchPageDetails?: boolean;
-  }) => Promise<{
-    urls: MigrationCrawlResult["urls"];
-    crawl_mode: MigrationCrawlResult["crawl_mode"];
-    stats: MigrationCrawlResult["stats"];
-  }>;
-}> {
-  const base = getCurrentDir();
-  const relCrawl = path.join("runners", "src", "lib", "seo", "crawl.js");
-  const candidates = [
-    path.join(base, "runners", "src", "lib", "seo", "crawl.js"),
-    path.join(base, "..", relCrawl),
-    path.join(base, "..", "..", relCrawl),
-  ];
-  const modulePath = candidates.find((p) => existsSync(p)) ?? candidates[0];
-  const mod = await import(modulePath);
-  return { crawlSite: mod.crawlSite };
-}
-
 export async function runMigrationCrawl(options: MigrationCrawlOptions): Promise<MigrationCrawlResult> {
   const {
     source_url,
@@ -68,7 +37,6 @@ export async function runMigrationCrawl(options: MigrationCrawlOptions): Promise
     fetch_page_details = false,
   } = options;
   const baseUrl = source_url.replace(/\/$/, "") || "https://example.com";
-  const { crawlSite } = await loadRunnersCrawl();
   const result = await crawlSite({
     baseUrl,
     crawlDelayMs: Math.max(0, crawl_delay_ms),
