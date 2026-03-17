@@ -19,18 +19,15 @@ export const generalLimiter = rateLimit({
   standardHeaders: true,
 });
 
-/** Callback with error=missing_code_or_state: skip rate limit so handler can return 400 and break the loop. */
-function isOAuthErrorCallback(req: Request): boolean {
-  return (
-    req.method === "GET" &&
-    /\/v1\/seo\/google\/callback/.test(req.path) &&
-    req.query?.error === "missing_code_or_state"
-  );
+/** Exempt entire OAuth callback path from auth rate limit so error handler can always return 400 (no 429). */
+function isOAuthCallbackPath(req: Request): boolean {
+  const path = (req.path ?? req.url?.split("?")[0] ?? "").replace(/\/$/, "");
+  return req.method === "GET" && (path === "/v1/seo/google/callback" || path.endsWith("/v1/seo/google/callback"));
 }
 
 /** Select auth vs general rate limiter by path. Use as app.use(selectiveRateLimiter). */
 export function selectiveRateLimiter(req: Request, res: Response, next: NextFunction): void {
-  if (isOAuthErrorCallback(req)) {
+  if (isOAuthCallbackPath(req)) {
     next();
     return;
   }
