@@ -19,19 +19,40 @@ export const generalLimiter = rateLimit({
   standardHeaders: true,
 });
 
-/** Exempt entire OAuth callback path from auth rate limit so error handler can always return 400 (no 429). */
+/** Exempt all GET to OAuth callback — no rate limit so controller can return 400. Match by substring so proxy/mount cannot break it. */
 function isOAuthCallbackPath(req: Request): boolean {
-  const path = (req.path ?? req.url?.split("?")[0] ?? "").replace(/\/$/, "");
-  return req.method === "GET" && (path === "/v1/seo/google/callback" || path.endsWith("/v1/seo/google/callback"));
+  if (req.method !== "GET") return false;
+  const path = (req.path ?? "").replace(/\/$/, "");
+  const originalUrl = (req.originalUrl ?? req.url ?? "").replace(/\/$/, "");
+  const pathPart = originalUrl.split("?")[0];
+  return (
+    path.includes("seo/google/callback") ||
+    pathPart.includes("seo/google/callback") ||
+    originalUrl.includes("seo/google/callback")
+  );
 }
 
 /** Select auth vs general rate limiter by path. Use as app.use(selectiveRateLimiter). */
 export function selectiveRateLimiter(req: Request, res: Response, next: NextFunction): void {
-  if (isOAuthCallbackPath(req)) {
+  const exempt = isOAuthCallbackPath(req);
+  const path = req.path ?? "";
+  const originalUrl = req.originalUrl ?? req.url ?? "";
+  const isCallbackRequest = path.includes("seo/google/callback") || originalUrl.includes("seo/google/callback");
+  if (isCallbackRequest || isAuthPath(path)) {
+    console.log("AUTH LIMIT CHECK", {
+      method: req.method,
+      path,
+      originalUrl,
+      query: req.query,
+      exempt,
+      isCallbackRequest,
+    });
+  }
+  if (exempt) {
     next();
     return;
   }
-  if (isAuthPath(req.path)) {
+  if (isAuthPath(path)) {
     authLimiter(req, res, next);
   } else {
     generalLimiter(req, res, next);
