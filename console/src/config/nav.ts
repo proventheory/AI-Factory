@@ -70,6 +70,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/email-marketing", label: "Email Design Generator", branchId: "orchestration" },
       { href: "/klaviyo", label: "Klaviyo", branchId: "orchestration" },
       { href: "/landing-page-generator", label: "Landing Page Generator", branchId: "orchestration" },
+      { href: "/seo-migration", label: "SEO Migration Wizard", branchId: "orchestration" },
       { href: "/launches", label: "Launches", branchId: "orchestration" },
       { href: "/plans", label: "Plans", branchId: "orchestration" },
       { href: "/runs", label: "Pipeline Runs", branchId: "orchestration" },
@@ -83,6 +84,8 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "GRAPH & SELF-HEAL",
     items: [
+      { href: "/graph/ask", label: "Ask anything", branchId: "orchestration" },
+      { href: "/flows", label: "Saved flows", branchId: "orchestration" },
       { href: "/graph/explorer", label: "Graph Explorer", branchId: "orchestration" },
       { href: "/graph/decision-loop", label: "Decision loop", branchId: "orchestration" },
       { href: "/graph/deploys", label: "Deploy events", branchId: "orchestration" },
@@ -211,6 +214,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "email-marketing": "Email Design Generator",
   klaviyo: "Klaviyo",
   "landing-page-generator": "Landing Page Generator",
+  "seo-migration": "SEO Migration Wizard",
   launches: "Launches",
   "new": "New",
   "brand": "Brand",

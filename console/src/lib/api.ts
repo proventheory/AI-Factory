@@ -911,6 +911,86 @@ export async function fetchProductsFromUrl(params: {
   return res.json();
 }
 
+/** SEO migration wizard — Step 1: crawl source site (every live URL; optional link-following for WordPress). */
+export type SeoMigrationCrawlParams = {
+  source_url: string;
+  use_link_crawl?: boolean;
+  max_urls?: number;
+  crawl_delay_ms?: number;
+  fetch_page_details?: boolean;
+};
+
+export type SeoMigrationCrawlResult = {
+  source_url: string;
+  urls: Array<{
+    url: string;
+    normalized_url: string;
+    path: string;
+    status: number;
+    type: string;
+    source: "sitemap" | "crawl" | "both";
+    title?: string | null;
+    meta_description?: string | null;
+    h1?: string | null;
+  }>;
+  crawl_mode: "sitemap" | "crawl" | "hybrid";
+  stats: { total_urls: number; by_type: Record<string, number>; status_counts: Record<string, number> };
+};
+
+export async function seoMigrationCrawl(params: SeoMigrationCrawlParams): Promise<SeoMigrationCrawlResult> {
+  const res = await fetch(`${API}/v1/seo/migration/crawl`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** SEO migration wizard — Step 2: Google Search Console report. */
+export type SeoGscReportParams = { site_url: string; date_range?: string; row_limit?: number };
+export type SeoGscReport = {
+  site_url: string;
+  date_range: { start: string; end: string };
+  pages: Array<{ url: string; clicks: number; impressions: number; ctr: number; position: number }>;
+  queries: Array<{ query: string; clicks: number; impressions: number }>;
+  error?: string;
+};
+
+export async function seoGscReport(params: SeoGscReportParams): Promise<SeoGscReport> {
+  const res = await fetch(`${API}/v1/seo/gsc_report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** SEO migration wizard — Step 2: GA4 report. */
+export type SeoGa4ReportParams = { property_id: string; row_limit?: number };
+export type SeoGa4Report = {
+  property_id: string;
+  pages: Array<{
+    full_page_url?: string;
+    page_path?: string;
+    sessions: number;
+    screen_page_views?: number;
+    user_engagement_duration?: number;
+  }>;
+  error?: string;
+};
+
+export async function seoGa4Report(params: SeoGa4ReportParams): Promise<SeoGa4Report> {
+  const res = await fetch(`${API}/v1/seo/ga4_report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export type EmailTemplateRow = {
   id: string;
   type: string;

@@ -62,10 +62,14 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<{ stale_leases?: number; queue_depth?: number; workers_alive?: number } | null>(null);
   const [driftData, setDriftData] = useState<DriftData>(null);
   const [leases, setLeases] = useState<Lease[]>([]);
+  const [graphSummary, setGraphSummary] = useState<{ total_nodes: number; total_edges: number; graphs: { graph: string }[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API}/v1/dashboard`).then((r) => r.json()).then(setDashboardData).catch((e) => setError(formatApiError(e)));
+  }, []);
+  useEffect(() => {
+    fetch(`${API}/v1/graphs/summary`).then((r) => r.json()).then(setGraphSummary).catch(() => setGraphSummary(null));
   }, []);
   useEffect(() => {
     fetch(`${API}/v1/dashboard/drift?environment=${encodeURIComponent(environment)}&window_minutes=60`)
@@ -123,6 +127,14 @@ export default function DashboardPage() {
     <PageFrame>
       <Stack>
         <PageHeader title="Overview" description="Scheduler and pipeline health at a glance." />
+        {graphSummary && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 mb-4">
+            <p className="text-body-small text-slate-800">
+              {graphSummary.graphs?.length ?? 5} graphs, {graphSummary.total_nodes?.toLocaleString() ?? 0} nodes, {graphSummary.total_edges?.toLocaleString() ?? 0} edges — your platform is now traversable.{" "}
+              <Link href="/graph/ask" className="text-brand-600 hover:underline">Ask anything</Link>
+            </p>
+          </div>
+        )}
         <p className="text-body-small text-text-muted mb-2">
           <Link href="/health" className="text-brand-600 hover:underline">Scheduler Health</Link> · <Link href="/runs" className="text-brand-600 hover:underline">Pipeline Runs</Link> · <Link href="/planner" className="text-brand-600 hover:underline">Planner</Link> · <Link href="/graph/explorer" className="text-brand-600 hover:underline">Graph Explorer</Link> · <Link href="/operator-guide" className="text-brand-600 hover:underline">How it works</Link>
         </p>

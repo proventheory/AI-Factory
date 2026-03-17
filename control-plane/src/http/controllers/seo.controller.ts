@@ -182,6 +182,15 @@ function redirectOAuthError(res: Response, error: string): void {
 }
 
 export async function seoGoogleCallback(req: Request, res: Response): Promise<void> {
+  // Bulletproof: if we're already in the "missing code/state" error state, never redirect — return 400 to break any loop.
+  if (req.query.error === "missing_code_or_state") {
+    return res
+      .status(400)
+      .send(
+        "OAuth failed: missing code/state. Clear cookies for this site and try Connect Google again from the brand page. If it persists, check that the Authorized redirect URI in Google Cloud exactly matches this callback URL (no trailing slash)."
+      );
+  }
+
   const code = req.query.code as string;
   const state = req.query.state as string;
   const googleError = req.query.error as string | undefined; // e.g. access_denied when user cancels
