@@ -162,9 +162,27 @@ export async function deleteInitiativeGoogleCredentials(id: string): Promise<voi
   if (!res.ok) throw new Error(await res.text());
 }
 
-/** GET /v1/brand_profiles/:id/google_connected — whether brand has Google OAuth credentials (GSC/GA4). */
-export async function getBrandGoogleConnected(id: string): Promise<{ connected: boolean }> {
+/** GET /v1/brand_profiles/:id/google_connected — whether brand has Google OAuth credentials (GSC/GA4) and selected GA4 property. */
+export async function getBrandGoogleConnected(id: string): Promise<{ connected: boolean; ga4_property_id?: string }> {
   const res = await fetch(`${API}/v1/brand_profiles/${id}/google_connected`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** GET /v1/brand_profiles/:id/google_ga4_properties — list GA4 properties for the connected Google account. */
+export async function getBrandGoogleGa4Properties(id: string): Promise<{ properties: { propertyId: string; displayName: string; accountDisplayName?: string }[] }> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/google_ga4_properties`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** PATCH /v1/brand_profiles/:id/google_ga4_property — set selected GA4 property for this brand. */
+export async function patchBrandGoogleGa4Property(id: string, body: { property_id: string | null }): Promise<{ ok: boolean; ga4_property_id?: string }> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/google_ga4_property`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

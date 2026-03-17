@@ -9,7 +9,9 @@ import {
   handleOAuthCallback,
   hasGoogleCredentialsForBrand,
   deleteGoogleCredentialsForBrand,
+  getAccessTokenForBrand,
 } from "../../seo-google-oauth.js";
+import { listGa4Properties } from "../../seo-ga4-properties.js";
 import { CONTROL_PLANE_BASE, CONSOLE_URL, SEO_GOOGLE_CALLBACK_PATH } from "../constants.js";
 import { MAX_LIMIT } from "../lib/pagination.js";
 
@@ -229,17 +231,67 @@ export async function seoGoogleCallback(req: Request, res: Response): Promise<vo
 export async function brandProfilesGoogleConnected(req: Request, res: Response): Promise<void> {
   try {
     const id = String(req.params.id ?? "");
-    const connected = await withTransaction((client) =>
-      hasGoogleCredentialsForBrand(client, id)
-    );
-    res.json({ connected: !!connected });
+    const row = await withTransaction(async (client) => {
+      const connected = await hasGoogleCredentialsForBrand(client, id);
+      if (!connected) return { connected: false, ga4_property_id: null as string | null };
+      const r = await client.query<{ ga4_property_id: string | null }>(
+        "SELECT ga4_property_id FROM brand_google_credentials WHERE brand_profile_id = $1",
+        [id],
+      );
+      return { connected: true, ga4_property_id: r.rows[0]?.ga4_property_id ?? null };
+    });
+    res.json({ connected: row.connected, ga4_property_id: row.ga4_property_id ?? undefined });
   } catch (e: unknown) {
     const err = e as { code?: string; message?: string };
     if (err?.code === "42P01") {
-      res.json({ connected: false });
+      res.json({ connected: false, ga4_property_id: undefined });
+      return;
+    }
+    if (err?.code === "42703") {
+      res.json({ connected: true, ga4_property_id: undefined });
       return;
     }
     res.status(500).json({ error: String(err?.message ?? (e as Error).message) });
+  }
+}
+
+/** GET /v1/brand_profiles/:id/google_ga4_properties — list GA4 properties for the connected account. */
+export async function brandProfilesGoogleGa4Properties(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id ?? "");
+    const token = await withTransaction((client) => getAccessTokenForBrand(client, id));
+    if (!token) {
+      res.status(400).json({ error: "Connect Google first for this brand" });
+      return;
+    }
+    const properties = await listGa4Properties(token.access_token);
+    res.json({ properties });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+/** PATCH /v1/brand_profiles/:id/google_ga4_property — set selected GA4 property for this brand. */
+export async function brandProfilesGoogleGa4PropertyPatch(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id ?? "");
+    const property_id = (req.body as { property_id?: string })?.property_id?.trim() ?? null;
+    const updated = await withTransaction(async (client) => {
+      const has = await hasGoogleCredentialsForBrand(client, id);
+      if (!has) return false;
+      await client.query(
+        "UPDATE brand_google_credentials SET ga4_property_id = $2, updated_at = now() WHERE brand_profile_id = $1",
+        [id, property_id || null],
+      );
+      return true;
+    });
+    if (!updated) {
+      res.status(400).json({ error: "Connect Google first for this brand" });
+      return;
+    }
+    res.json({ ok: true, ga4_property_id: property_id || undefined });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
   }
 }
 

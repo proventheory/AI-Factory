@@ -99,12 +99,19 @@ export default function BrandDetailPage() {
   const { data: usage } = useBrandUsage(id ?? null);
   const archiveMut = useDeleteBrandProfile();
   const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
+  const [ga4PropertyId, setGa4PropertyId] = useState<string | null>(null);
+  const [ga4Properties, setGa4Properties] = useState<{ propertyId: string; displayName: string; accountDisplayName?: string }[]>([]);
+  const [ga4PropertiesLoading, setGa4PropertiesLoading] = useState(false);
+  const [ga4PropertySaveBusy, setGa4PropertySaveBusy] = useState(false);
   const [googleDisconnectBusy, setGoogleDisconnectBusy] = useState(false);
   const [googleConnectError, setGoogleConnectError] = useState<string | null>(null);
 
   const fetchGoogleConnected = useCallback(() => {
     if (!id) return;
-    api.getBrandGoogleConnected(id).then((r) => setGoogleConnected(r.connected)).catch(() => setGoogleConnected(false));
+    api.getBrandGoogleConnected(id).then((r) => {
+      setGoogleConnected(r.connected);
+      setGa4PropertyId(r.ga4_property_id ?? null);
+    }).catch(() => setGoogleConnected(false));
   }, [id]);
 
   useEffect(() => {
@@ -112,11 +119,18 @@ export default function BrandDetailPage() {
   }, [fetchGoogleConnected]);
 
   useEffect(() => {
+    if (!id || !googleConnected) return;
+    setGa4PropertiesLoading(true);
+    api.getBrandGoogleGa4Properties(id).then((r) => setGa4Properties(r.properties ?? [])).catch(() => setGa4Properties([])).finally(() => setGa4PropertiesLoading(false));
+  }, [id, googleConnected]);
+
+  useEffect(() => {
     const connected = searchParams.get("google_connected");
     const err = searchParams.get("error");
     if (connected === "1" || err) {
       setGoogleConnected(connected === "1");
       setGoogleConnectError(err ? decodeURIComponent(err) : null);
+      if (connected === "1" && id) api.getBrandGoogleConnected(id).then((r) => { setGa4PropertyId(r.ga4_property_id ?? null); });
       router.replace(`/brands/${id}`, { scroll: false });
     }
   }, [id, router, searchParams]);
@@ -133,8 +147,22 @@ export default function BrandDetailPage() {
     try {
       await api.deleteBrandGoogleCredentials(id);
       setGoogleConnected(false);
+      setGa4PropertyId(null);
+      setGa4Properties([]);
     } finally {
       setGoogleDisconnectBusy(false);
+    }
+  }
+
+  async function handleGa4PropertyChange(value: string) {
+    if (!id) return;
+    const propertyId = value === "" ? null : value;
+    setGa4PropertySaveBusy(true);
+    try {
+      await api.patchBrandGoogleGa4Property(id, { property_id: propertyId });
+      setGa4PropertyId(propertyId);
+    } finally {
+      setGa4PropertySaveBusy(false);
     }
   }
 
@@ -237,14 +265,40 @@ export default function BrandDetailPage() {
             </div>
           )}
           {googleConnected === true ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-sm">Google connected</span>
-              <a href={connectGoogleHref} className="text-body-small text-brand-600 hover:underline">
-                Use a different account
-              </a>
-              <Button variant="secondary" onClick={handleDisconnectGoogle} disabled={googleDisconnectBusy}>
-                {googleDisconnectBusy ? "Disconnecting…" : "Disconnect"}
-              </Button>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-sm">Google connected</span>
+                <a href={connectGoogleHref} className="text-body-small text-brand-600 hover:underline">
+                  Use a different account
+                </a>
+                <Button variant="secondary" onClick={handleDisconnectGoogle} disabled={googleDisconnectBusy}>
+                  {googleDisconnectBusy ? "Disconnecting…" : "Disconnect"}
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="ga4-property" className="text-body-small font-medium text-fg-muted shrink-0">
+                  GA4 property
+                </label>
+                {ga4PropertiesLoading ? (
+                  <span className="text-body-small text-fg-muted">Loading properties…</span>
+                ) : (
+                  <select
+                    id="ga4-property"
+                    value={ga4PropertyId ?? ""}
+                    onChange={(e) => handleGa4PropertyChange(e.target.value)}
+                    disabled={ga4PropertySaveBusy}
+                    className="rounded-md border border-border bg-bg px-2.5 py-1.5 text-body-small text-fg min-w-[200px] max-w-full"
+                  >
+                    <option value="">— Select a property —</option>
+                    {ga4Properties.map((p) => (
+                      <option key={p.propertyId} value={p.propertyId}>
+                        {p.displayName}{p.accountDisplayName ? ` (${p.accountDisplayName})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {ga4PropertySaveBusy && <span className="text-body-small text-fg-muted">Saving…</span>}
+              </div>
             </div>
           ) : (
             <a href={connectGoogleHref} className="inline-flex items-center justify-center rounded-md bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">
