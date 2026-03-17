@@ -228,14 +228,20 @@ export default function BrandDetailPage() {
           <p className="text-body-small text-text-secondary mb-3">
             Connect the Google account that has access to Search Console and GA4 for this brand. SEO initiatives that use this brand will use this connection.
           </p>
+          <p className="text-body-small text-text-muted mb-3">
+            When you connect, Google will ask you to choose an account if you have more than one. To use a different account later, use &quot;Use a different account&quot; below or disconnect and connect again.
+          </p>
           {googleConnectError && (
             <div className="mb-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
               {googleConnectError}
             </div>
           )}
           {googleConnected === true ? (
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-sm">Google connected</span>
+              <a href={connectGoogleHref} className="text-body-small text-brand-600 hover:underline">
+                Use a different account
+              </a>
               <Button variant="secondary" onClick={handleDisconnectGoogle} disabled={googleDisconnectBusy}>
                 {googleDisconnectBusy ? "Disconnecting…" : "Disconnect"}
               </Button>
