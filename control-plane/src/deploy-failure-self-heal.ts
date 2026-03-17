@@ -11,6 +11,11 @@
  * Requires: ENABLE_SELF_HEAL=true, RENDER_API_KEY set.
  * Optional: RENDER_STAGING_SERVICE_IDS=id1,id2,id3 (comma-separated) to monitor api + gateway + runner.
  * If unset, only the worker (RENDER_WORKER_SERVICE_ID or resolved runner) is monitored.
+ *
+ * Limitation: This scan runs inside the Control Plane process. When the Control Plane service itself
+ * (e.g. ai-factory-api-staging) has a failed deploy, the process never starts, so the scan never
+ * runs. The API cannot self-heal itself. Use manual redeploy (Render dashboard or
+ * scripts/render-trigger-deploy.mjs) or an external cron that calls the Render API when the API is down.
  */
 
 import { v4 as uuid } from "uuid";
