@@ -128,7 +128,8 @@ export default function BrandDetailPage() {
       setGa4PropertiesError(null);
     }).catch((err: Error) => {
       setGa4Properties([]);
-      setGa4PropertiesError(err?.message ?? "Could not load GA4 properties");
+      const raw = err?.message ?? "Could not load GA4 properties";
+      setGa4PropertiesError(raw.includes("<") ? "Could not load GA4 properties. If you just deployed, wait a minute and refresh." : raw);
     }).finally(() => setGa4PropertiesLoading(false));
   }, [id, googleConnected]);
 
