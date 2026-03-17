@@ -172,7 +172,17 @@ export async function getBrandGoogleConnected(id: string): Promise<{ connected: 
 /** GET /v1/brand_profiles/:id/google_ga4_properties — list GA4 properties for the connected Google account. */
 export async function getBrandGoogleGa4Properties(id: string): Promise<{ properties: { propertyId: string; displayName: string; accountDisplayName?: string }[] }> {
   const res = await fetch(`${API}/v1/brand_profiles/${id}/google_ga4_properties`);
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const body = await res.text();
+    let msg = body;
+    try {
+      const j = JSON.parse(body) as { error?: string };
+      if (typeof j?.error === "string") msg = j.error;
+    } catch {
+      /* use body as-is */
+    }
+    throw new Error(msg);
+  }
   return res.json();
 }
 

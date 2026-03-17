@@ -102,6 +102,7 @@ export default function BrandDetailPage() {
   const [ga4PropertyId, setGa4PropertyId] = useState<string | null>(null);
   const [ga4Properties, setGa4Properties] = useState<{ propertyId: string; displayName: string; accountDisplayName?: string }[]>([]);
   const [ga4PropertiesLoading, setGa4PropertiesLoading] = useState(false);
+  const [ga4PropertiesError, setGa4PropertiesError] = useState<string | null>(null);
   const [ga4PropertySaveBusy, setGa4PropertySaveBusy] = useState(false);
   const [googleDisconnectBusy, setGoogleDisconnectBusy] = useState(false);
   const [googleConnectError, setGoogleConnectError] = useState<string | null>(null);
@@ -121,7 +122,14 @@ export default function BrandDetailPage() {
   useEffect(() => {
     if (!id || !googleConnected) return;
     setGa4PropertiesLoading(true);
-    api.getBrandGoogleGa4Properties(id).then((r) => setGa4Properties(r.properties ?? [])).catch(() => setGa4Properties([])).finally(() => setGa4PropertiesLoading(false));
+    setGa4PropertiesError(null);
+    api.getBrandGoogleGa4Properties(id).then((r) => {
+      setGa4Properties(r.properties ?? []);
+      setGa4PropertiesError(null);
+    }).catch((err: Error) => {
+      setGa4Properties([]);
+      setGa4PropertiesError(err?.message ?? "Could not load GA4 properties");
+    }).finally(() => setGa4PropertiesLoading(false));
   }, [id, googleConnected]);
 
   useEffect(() => {
@@ -149,6 +157,7 @@ export default function BrandDetailPage() {
       setGoogleConnected(false);
       setGa4PropertyId(null);
       setGa4Properties([]);
+      setGa4PropertiesError(null);
     } finally {
       setGoogleDisconnectBusy(false);
     }
@@ -299,6 +308,12 @@ export default function BrandDetailPage() {
                 )}
                 {ga4PropertySaveBusy && <span className="text-body-small text-fg-muted">Saving…</span>}
               </div>
+              {ga4PropertiesError && (
+                <p className="text-body-small text-state-danger">{ga4PropertiesError}</p>
+              )}
+              {!ga4PropertiesLoading && !ga4PropertiesError && ga4Properties.length === 0 && (
+                <p className="text-body-small text-fg-muted">No GA4 properties in this account. Add a GA4 property in Google Analytics or choose an account that has access to one.</p>
+              )}
             </div>
           ) : (
             <a href={connectGoogleHref} className="inline-flex items-center justify-center rounded-md bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600">

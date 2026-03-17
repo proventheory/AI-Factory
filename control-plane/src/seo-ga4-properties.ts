@@ -24,12 +24,13 @@ export async function listGa4Properties(accessToken: string): Promise<Ga4Propert
   for (const account of data.accountSummaries ?? []) {
     const accountName = account.displayName ?? "";
     for (const prop of account.propertySummaries ?? []) {
-      const name = prop.name;
-      if (name?.startsWith("properties/")) {
-        const propertyId = name.replace("properties/", "");
+      // PropertySummary uses "property" (resource name "properties/123"), not "name"
+      const resource = (prop as { property?: string; name?: string }).property ?? (prop as { property?: string; name?: string }).name;
+      if (resource?.startsWith("properties/")) {
+        const propertyId = resource.replace("properties/", "");
         out.push({
           propertyId,
-          displayName: prop.displayName ?? propertyId,
+          displayName: (prop as { displayName?: string }).displayName ?? propertyId,
           accountDisplayName: accountName,
         });
       }

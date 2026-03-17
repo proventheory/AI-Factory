@@ -267,7 +267,9 @@ export async function brandProfilesGoogleGa4Properties(req: Request, res: Respon
     const properties = await listGa4Properties(token.access_token);
     res.json({ properties });
   } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
+    const msg = (e as Error).message;
+    const status = msg.includes("insufficient") || msg.includes("403") || msg.includes("permission") ? 403 : 500;
+    res.status(status).json({ error: msg });
   }
 }
 
