@@ -233,8 +233,13 @@ export async function brandProfilesGoogleConnected(req: Request, res: Response):
       hasGoogleCredentialsForBrand(client, id)
     );
     res.json({ connected: !!connected });
-  } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
+  } catch (e: unknown) {
+    const err = e as { code?: string; message?: string };
+    if (err?.code === "42P01") {
+      res.json({ connected: false });
+      return;
+    }
+    res.status(500).json({ error: String(err?.message ?? (e as Error).message) });
   }
 }
 

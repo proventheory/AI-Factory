@@ -2,7 +2,11 @@
 /**
  * Run core schemas and optional Supabase migrations using pg (no psql required).
  * Reads DATABASE_URL from env.
- * Order: 001_core_schema, 002, webhook_outbox, console_required_tables, brand_design_tokens_flat.
+ *
+ * Order: schemas/001_core_schema.sql, 002_state_machines..., then listed supabase/migrations.
+ * Note: supabase/migrations/20250303000000_ai_factory_core.sql through 20250303000005_multi_framework.sql
+ * are NOT run here — core schema comes from schemas/001_core_schema.sql (and 002). The 20250303* files
+ * are the Supabase-origin equivalents; run-migrate uses the schemas/ files and then picks up from 20250303000008.
  */
 import pg from "pg";
 import { readFileSync, existsSync } from "fs";
@@ -63,6 +67,7 @@ const migrations = [
   { path: "supabase/migrations/20250310200000_worker_registry_ensure.sql", name: "worker_registry_ensure" },
   { path: "supabase/migrations/20250317000000_intent_type_email_design_generator.sql", name: "intent_type_email_design_generator", skipIfErrorCodes: ["42701", "42P01"], skipMessage: "column already exists or table renamed" },
   { path: "supabase/migrations/20250320100000_initiative_google_credentials.sql", name: "initiative_google_credentials", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
+  { path: "supabase/migrations/20250320110000_brand_google_credentials.sql", name: "brand_google_credentials", skipIfErrorCode: "42710", skipMessage: "policy/table already exists" },
   { path: "supabase/migrations/20250320000000_seo_url_risk_snapshots.sql", name: "seo_url_risk_snapshots", skipIfErrorCode: "42710", skipMessage: "policy/table already exists" },
   { path: "supabase/migrations/20250331000010_artifact_consumption.sql", name: "artifact_consumption", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250331000011_capability_graph.sql", name: "capability_graph", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
