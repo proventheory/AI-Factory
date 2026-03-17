@@ -162,15 +162,22 @@ export async function seoGoogleAuth(req: Request, res: Response): Promise<void> 
   }
 }
 
-/** Redirect to Console with OAuth error, or return 400 to avoid redirect loop. */
+/** Redirect to Console with OAuth error, or return 400 to avoid redirect loop. Never redirect to our own API. */
 function redirectOAuthError(res: Response, error: string): void {
   const encoded = encodeURIComponent(error);
-  if (CONSOLE_URL) {
-    res.redirect(302, `${CONSOLE_URL}?google_oauth_error=${encoded}`);
+  const consoleUrl = CONSOLE_URL.trim();
+  const apiOrigin = CONTROL_PLANE_BASE.toLowerCase();
+  const isApiUrl =
+    !consoleUrl ||
+    consoleUrl.toLowerCase().startsWith(apiOrigin + "/") ||
+    consoleUrl.toLowerCase() === apiOrigin ||
+    consoleUrl.toLowerCase().includes(SEO_GOOGLE_CALLBACK_PATH);
+  if (consoleUrl && !isApiUrl) {
+    res.redirect(302, `${consoleUrl}?google_oauth_error=${encoded}`);
     return;
   }
   res.status(400).send(
-    `Google OAuth error: ${error}. Set CONSOLE_URL on the control-plane so failed OAuth redirects go to the Console instead of looping.`
+    `Google OAuth error: ${error}. Set CONSOLE_URL on the control-plane to your Console app URL (e.g. https://your-console.vercel.app), not the API URL.`
   );
 }
 
