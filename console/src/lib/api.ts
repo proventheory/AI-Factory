@@ -169,9 +169,9 @@ export async function getBrandGoogleConnected(id: string): Promise<{ connected: 
   return res.json();
 }
 
-/** GET /v1/brand_profiles/:id/google_ga4_properties — list GA4 properties for the connected Google account. */
+/** GET /v1/seo/google_ga4_properties?brand_id= or /v1/brand_profiles/:id/google_ga4_properties — list GA4 properties for the connected Google account. */
 export async function getBrandGoogleGa4Properties(id: string): Promise<{ properties: { propertyId: string; displayName: string; accountDisplayName?: string }[] }> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/google_ga4_properties`);
+  const res = await fetch(`${API}/v1/seo/google_ga4_properties?brand_id=${encodeURIComponent(id)}`);
   if (!res.ok) {
     const body = await res.text();
     let msg = body;

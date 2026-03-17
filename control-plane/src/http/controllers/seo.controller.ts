@@ -255,10 +255,10 @@ export async function brandProfilesGoogleConnected(req: Request, res: Response):
   }
 }
 
-/** GET /v1/brand_profiles/:id/google_ga4_properties — list GA4 properties for the connected account. */
+/** GET /v1/brand_profiles/:id/google_ga4_properties or GET /v1/seo/google_ga4_properties?brand_id= — list GA4 properties for the connected account. */
 export async function brandProfilesGoogleGa4Properties(req: Request, res: Response): Promise<void> {
   try {
-    const id = String(req.params.id ?? "");
+    const id = String(req.params.id ?? req.query.brand_id ?? "");
     const token = await withTransaction((client) => getAccessTokenForBrand(client, id));
     if (!token) {
       res.status(400).json({ error: "Connect Google first for this brand" });
