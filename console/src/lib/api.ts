@@ -226,6 +226,32 @@ export async function deleteBrandKlaviyoCredentials(id: string): Promise<void> {
   if (!res.ok) throw new Error(await res.text());
 }
 
+/** GET /v1/brand_profiles/:id/shopify_connected — whether brand has Shopify connector (shop_domain). */
+export async function getBrandShopifyConnected(id: string): Promise<{ connected: boolean; shop_domain?: string }> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/shopify_connected`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** PUT /v1/brand_profiles/:id/shopify_credentials — set Shopify connector (Dev Dashboard: shop_domain, client_id, client_secret). */
+export async function putBrandShopifyCredentials(
+  id: string,
+  body: { shop_domain: string; client_id: string; client_secret: string; scopes?: string[] }
+): Promise<void> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/shopify_credentials`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+/** DELETE /v1/brand_profiles/:id/shopify_credentials — disconnect Shopify for this brand. */
+export async function deleteBrandShopifyCredentials(id: string): Promise<void> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/shopify_credentials`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 export async function createInitiative(body: { intent_type: string; title?: string | null; risk_level: string; source_ref?: string; brand_profile_id?: string | null }): Promise<InitiativeRow> {
   const res = await fetch(`${API}/v1/initiatives`, {
     method: "POST",
@@ -1038,13 +1064,13 @@ export async function seoMigrationDryRun(params: SeoMigrationDryRunParams): Prom
   return res.json();
 }
 
-/** SEO migration wizard — Step 3: Run migration (WooCommerce → Shopify). */
+/** SEO migration wizard — Step 3: Run migration (WooCommerce → Shopify). Shopify is always from the brand connector (Brands → Edit → Shopify). */
 export type SeoMigrationRunParams = {
   woo_server: string;
   woo_consumer_key: string;
   woo_consumer_secret: string;
-  shopify_store: string;
-  shopify_access_token: string;
+  /** Brand with Shopify connected (Brands → Edit → Shopify). Required for migration. */
+  brand_id: string;
   entities: string[];
 };
 export type SeoMigrationRunResult = { job_id?: string; message?: string };

@@ -11,6 +11,13 @@ import {
   deleteGoogleCredentialsForBrand,
   getAccessTokenForBrand,
 } from "../../seo-google-oauth.js";
+import {
+  hasShopifyCredentialsForBrand,
+  getShopifyShopForBrand,
+  saveShopifyCredentialsForBrand,
+  deleteShopifyCredentialsForBrand,
+  getShopifyAccessTokenForBrand,
+} from "../../shopify-brand-connector.js";
 import { listGa4Properties } from "../../seo-ga4-properties.js";
 import { CONTROL_PLANE_BASE, CONSOLE_URL, SEO_GOOGLE_CALLBACK_PATH } from "../constants.js";
 import { MAX_LIMIT } from "../lib/pagination.js";
@@ -339,6 +346,59 @@ export async function brandProfilesGoogleCredentialsDelete(
   }
 }
 
+/** GET /v1/brand_profiles/:id/shopify_connected — whether brand has Shopify credentials and shop_domain. */
+export async function brandProfilesShopifyConnected(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id ?? "");
+    const row = await withTransaction(async (client) => {
+      const connected = await hasShopifyCredentialsForBrand(client, id);
+      if (!connected) return { connected: false, shop_domain: null as string | null };
+      const shop = await getShopifyShopForBrand(client, id);
+      return { connected: true, shop_domain: shop?.shop_domain ?? null };
+    });
+    res.json({ connected: row.connected, shop_domain: row.shop_domain ?? undefined });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+/** PUT /v1/brand_profiles/:id/shopify_credentials — set Shopify connector (shop_domain, client_id, client_secret). */
+export async function brandProfilesShopifyCredentialsPut(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id ?? "");
+    const body = req.body as { shop_domain?: string; client_id?: string; client_secret?: string; scopes?: string[] };
+    const shop_domain = body.shop_domain?.trim();
+    const client_id = body.client_id?.trim();
+    const client_secret = body.client_secret?.trim();
+    if (!shop_domain || !client_id || !client_secret) {
+      res.status(400).json({ error: "shop_domain, client_id, and client_secret are required" });
+      return;
+    }
+    await withTransaction((client) =>
+      saveShopifyCredentialsForBrand(client, id, {
+        shop_domain,
+        client_id,
+        client_secret,
+        scopes: body.scopes,
+      })
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+/** DELETE /v1/brand_profiles/:id/shopify_credentials — disconnect Shopify for this brand. */
+export async function brandProfilesShopifyCredentialsDelete(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id ?? "");
+    await withTransaction((client) => deleteShopifyCredentialsForBrand(client, id));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
 /** SEO migration wizard — Step 1: crawl source site (every live URL, optional link-following for WordPress). */
 export async function seoMigrationCrawl(req: Request, res: Response): Promise<void> {
   try {
@@ -436,24 +496,33 @@ export async function seoMigrationDryRun(req: Request, res: Response): Promise<v
   }
 }
 
-/** SEO migration wizard — Step 3: Run migration (WooCommerce → Shopify). Full ETL not yet implemented. */
+/** SEO migration wizard — Step 3: Run migration (WooCommerce → Shopify). Shopify is always from the brand connector (Brands → Edit → Shopify). Full ETL not yet implemented. */
 export async function seoMigrationRun(req: Request, res: Response): Promise<void> {
   try {
     const body = req.body as {
       woo_server?: string;
       woo_consumer_key?: string;
       woo_consumer_secret?: string;
-      shopify_store?: string;
-      shopify_access_token?: string;
+      brand_id?: string;
       entities?: string[];
     };
-    if (!body.shopify_store?.trim() || !body.shopify_access_token?.trim()) {
-      res.status(400).json({ error: "shopify_store and shopify_access_token are required" });
+    const brand_id = body.brand_id?.trim();
+    if (!brand_id) {
+      res.status(400).json({
+        error: "brand_id is required. Connect Shopify for the brand in Brands → Edit brand → Shopify.",
+      });
+      return;
+    }
+    const hasShopify = await withTransaction((client) => hasShopifyCredentialsForBrand(client, brand_id));
+    if (!hasShopify) {
+      res.status(400).json({
+        error: "This brand has no Shopify connector. Connect Shopify in Brands → Edit this brand → Shopify (shop domain, Client ID, Client Secret).",
+      });
       return;
     }
     res.json({
       message:
-        "Full WooCommerce → Shopify migration is not yet implemented. Use dry run to preview counts. When implemented, it will pull from WooCommerce API and push to Shopify Admin API (Matrixify-style).",
+        "Full WooCommerce → Shopify migration is not yet implemented. When implemented, AI Factory will use this brand's Shopify connector (tokenized) and push to the Admin API (Matrixify-style).",
     });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });

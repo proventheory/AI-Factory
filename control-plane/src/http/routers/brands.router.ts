@@ -22,6 +22,9 @@ import {
   brandProfilesGoogleGa4Properties,
   brandProfilesGoogleGa4PropertyPatch,
   brandProfilesGoogleCredentialsDelete,
+  brandProfilesShopifyConnected,
+  brandProfilesShopifyCredentialsPut,
+  brandProfilesShopifyCredentialsDelete,
 } from "../controllers/seo.controller.js";
 
 const router = Router();
@@ -34,6 +37,9 @@ router.get("/v1/brand_profiles/:id/google_connected", brandProfilesGoogleConnect
 router.get("/v1/brand_profiles/:id/google_ga4_properties", brandProfilesGoogleGa4Properties);
 router.patch("/v1/brand_profiles/:id/google_ga4_property", brandProfilesGoogleGa4PropertyPatch);
 router.delete("/v1/brand_profiles/:id/google_credentials", brandProfilesGoogleCredentialsDelete);
+router.get("/v1/brand_profiles/:id/shopify_connected", brandProfilesShopifyConnected);
+router.put("/v1/brand_profiles/:id/shopify_credentials", brandProfilesShopifyCredentialsPut);
+router.delete("/v1/brand_profiles/:id/shopify_credentials", brandProfilesShopifyCredentialsDelete);
 router.get("/v1/brand_profiles/:id", getBrandProfile);
 router.post("/v1/brand_profiles/prefill_from_url", prefillBrandFromUrl);
 router.post("/v1/brand_profiles", createBrandProfile);

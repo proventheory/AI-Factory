@@ -46,7 +46,7 @@ export type BranchDef = {
 
 export const BRANCH_GROUP_IDS: Record<BranchId, string[]> = {
   command: ["DASHBOARD"],
-  orchestration: ["ORCHESTRATION", "GRAPH & SELF-HEAL"],
+  orchestration: ["ORCHESTRATION", "TOOLS", "GRAPH & SELF-HEAL"],
   "data-config": ["CONFIG"],
   studio: ["BRAND & DESIGN"],
   system: ["MONITORING", "OTHER"],
@@ -67,10 +67,6 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "ORCHESTRATION",
     items: [
       { href: "/initiatives", label: "Initiatives", branchId: "orchestration" },
-      { href: "/email-marketing", label: "Email Design Generator", branchId: "orchestration" },
-      { href: "/klaviyo", label: "Klaviyo", branchId: "orchestration" },
-      { href: "/landing-page-generator", label: "Landing Page Generator", branchId: "orchestration" },
-      { href: "/seo-migration", label: "SEO Migration Wizard", branchId: "orchestration" },
       { href: "/launches", label: "Launches", branchId: "orchestration" },
       { href: "/plans", label: "Plans", branchId: "orchestration" },
       { href: "/runs", label: "Pipeline Runs", branchId: "orchestration" },
@@ -79,6 +75,15 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/artifacts", label: "Artifacts", branchId: "orchestration" },
       { href: "/approvals", label: "Approvals", branchId: "orchestration" },
       { href: "/ai-calls", label: "AI Calls", branchId: "orchestration" },
+    ],
+  },
+  {
+    title: "TOOLS",
+    items: [
+      { href: "/email-marketing", label: "Email Design Generator", branchId: "orchestration" },
+      { href: "/klaviyo", label: "Klaviyo", branchId: "orchestration" },
+      { href: "/landing-page-generator", label: "Landing Page Generator", branchId: "orchestration" },
+      { href: "/seo-migration", label: "SEO Migration Wizard", branchId: "orchestration" },
     ],
   },
   {
@@ -215,6 +220,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   klaviyo: "Klaviyo",
   "landing-page-generator": "Landing Page Generator",
   "seo-migration": "SEO Migration Wizard",
+  tools: "Tools",
   launches: "Launches",
   "new": "New",
   "brand": "Brand",

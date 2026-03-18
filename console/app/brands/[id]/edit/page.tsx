@@ -68,6 +68,14 @@ export default function EditBrandPage() {
   const [klaviyoApiKey, setKlaviyoApiKey] = useState("");
   const [klaviyoDefaultListId, setKlaviyoDefaultListId] = useState("");
   const [klaviyoConnectBusy, setKlaviyoConnectBusy] = useState(false);
+  const [shopifyConnected, setShopifyConnected] = useState<boolean | null>(null);
+  const [shopifyShopDomain, setShopifyShopDomain] = useState<string | null>(null);
+  const [shopifyDisconnectBusy, setShopifyDisconnectBusy] = useState(false);
+  const [shopifyConnectError, setShopifyConnectError] = useState<string | null>(null);
+  const [shopifyConnectBusy, setShopifyConnectBusy] = useState(false);
+  const [shopifyShopDomainInput, setShopifyShopDomainInput] = useState("");
+  const [shopifyClientId, setShopifyClientId] = useState("");
+  const [shopifyClientSecret, setShopifyClientSecret] = useState("");
 
   const fetchGoogleConnected = useCallback(() => {
     if (!id) return;
@@ -79,6 +87,14 @@ export default function EditBrandPage() {
     api.getBrandKlaviyoConnected(id).then((r) => setKlaviyoConnected(r.connected)).catch(() => setKlaviyoConnected(false));
   }, [id]);
 
+  const fetchShopifyConnected = useCallback(() => {
+    if (!id) return;
+    api.getBrandShopifyConnected(id).then((r) => {
+      setShopifyConnected(r.connected);
+      setShopifyShopDomain(r.shop_domain ?? null);
+    }).catch(() => setShopifyConnected(false));
+  }, [id]);
+
   useEffect(() => {
     fetchGoogleConnected();
   }, [fetchGoogleConnected]);
@@ -86,6 +102,10 @@ export default function EditBrandPage() {
   useEffect(() => {
     fetchKlaviyoConnected();
   }, [fetchKlaviyoConnected]);
+
+  useEffect(() => {
+    fetchShopifyConnected();
+  }, [fetchShopifyConnected]);
 
   useEffect(() => {
     const connected = searchParams.get("google_connected");
@@ -142,6 +162,41 @@ export default function EditBrandPage() {
       setKlaviyoConnected(false);
     } finally {
       setKlaviyoDisconnectBusy(false);
+    }
+  }
+
+  async function handleConnectShopify(e: React.FormEvent) {
+    e.preventDefault();
+    if (!id || !shopifyShopDomainInput.trim() || !shopifyClientId.trim() || !shopifyClientSecret.trim()) return;
+    setShopifyConnectBusy(true);
+    setShopifyConnectError(null);
+    try {
+      await api.putBrandShopifyCredentials(id, {
+        shop_domain: shopifyShopDomainInput.trim(),
+        client_id: shopifyClientId.trim(),
+        client_secret: shopifyClientSecret.trim(),
+      });
+      setShopifyConnected(true);
+      setShopifyShopDomain(shopifyShopDomainInput.trim());
+      setShopifyShopDomainInput("");
+      setShopifyClientId("");
+      setShopifyClientSecret("");
+    } catch (err) {
+      setShopifyConnectError(err instanceof Error ? err.message : "Failed to connect");
+    } finally {
+      setShopifyConnectBusy(false);
+    }
+  }
+
+  async function handleDisconnectShopify() {
+    if (!id) return;
+    setShopifyDisconnectBusy(true);
+    try {
+      await api.deleteBrandShopifyCredentials(id);
+      setShopifyConnected(false);
+      setShopifyShopDomain(null);
+    } finally {
+      setShopifyDisconnectBusy(false);
     }
   }
 
@@ -568,6 +623,65 @@ export default function EditBrandPage() {
                 </div>
                 <Button type="submit" variant="primary" disabled={klaviyoConnectBusy || !klaviyoApiKey.trim()}>
                   {klaviyoConnectBusy ? "Connecting…" : "Connect Klaviyo"}
+                </Button>
+              </form>
+            )}
+          </CardSection>
+
+          <CardSection title="Shopify">
+            <p className="text-body-small text-text-secondary mb-3">
+              Connect Shopify for this brand (Dev Dashboard app: Client ID + Secret). Used by SEO Migration Wizard, MCP, and other tools. AI Factory exchanges credentials for short-lived Admin API tokens; the secret is stored encrypted and tokenized at the brand level.
+            </p>
+            {shopifyConnectError && (
+              <div className="mb-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
+                {shopifyConnectError}
+              </div>
+            )}
+            {shopifyConnected === true ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-sm font-medium">
+                  Shopify connected {shopifyShopDomain ? `(${shopifyShopDomain})` : ""}
+                </span>
+                <Button type="button" variant="secondary" onClick={handleDisconnectShopify} disabled={shopifyDisconnectBusy}>
+                  {shopifyDisconnectBusy ? "Disconnecting…" : "Disconnect Shopify"}
+                </Button>
+                <Link href="/seo-migration" className="text-body-small text-brand-600 hover:underline">SEO Migration Wizard →</Link>
+              </div>
+            ) : (
+              <form onSubmit={handleConnectShopify} className="space-y-4 max-w-md">
+                <div>
+                  <label className={labelCls}>Shop domain <span className="text-state-danger">*</span></label>
+                  <p className="text-body-small text-text-muted mb-1">Your store’s .myshopify.com domain (e.g. your-store.myshopify.com).</p>
+                  <Input
+                    value={shopifyShopDomainInput}
+                    onChange={(e) => setShopifyShopDomainInput(e.target.value)}
+                    placeholder="your-store.myshopify.com"
+                    autoComplete="off"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Client ID <span className="text-state-danger">*</span></label>
+                  <p className="text-body-small text-text-muted mb-1">From Shopify Dev Dashboard → Settings.</p>
+                  <Input
+                    value={shopifyClientId}
+                    onChange={(e) => setShopifyClientId(e.target.value)}
+                    placeholder="Client ID"
+                    autoComplete="off"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Client Secret <span className="text-state-danger">*</span></label>
+                  <p className="text-body-small text-text-muted mb-1">Store securely. Rotate if ever exposed. Never commit to repos.</p>
+                  <Input
+                    type="password"
+                    value={shopifyClientSecret}
+                    onChange={(e) => setShopifyClientSecret(e.target.value)}
+                    placeholder="Client Secret"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <Button type="submit" variant="primary" disabled={shopifyConnectBusy || !shopifyShopDomainInput.trim() || !shopifyClientId.trim() || !shopifyClientSecret.trim()}>
+                  {shopifyConnectBusy ? "Connecting…" : "Connect Shopify"}
                 </Button>
               </form>
             )}
