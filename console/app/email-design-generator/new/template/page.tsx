@@ -44,7 +44,7 @@ function TemplateCardPreview({ templateId, className }: { templateId: string; cl
   );
 }
 
-const WIZARD_KEY = "email_marketing_wizard";
+const WIZARD_KEY = "email_design_generator_wizard";
 const CARD_HEIGHT = 320;
 
 /** Resolve API host for debugging (no secrets). */
@@ -178,7 +178,7 @@ export default function EmailMarketingNewTemplatePage() {
         params.set("template_id", templateId);
         const bid = ws.brand_profile_id as string | undefined;
         if (bid) params.set("brand_profile_id", bid);
-        router.push(`/email-marketing/new/content?${params.toString()}`);
+        router.push(`/email-design-generator/new/content?${params.toString()}`);
       } catch (_e) {
         setWizardState({ template_id: templateId });
         const ws = getWizardState();
@@ -186,7 +186,7 @@ export default function EmailMarketingNewTemplatePage() {
         params.set("template_id", templateId);
         const bid = ws.brand_profile_id as string | undefined;
         if (bid) params.set("brand_profile_id", bid);
-        router.push(`/email-marketing/new/content?${params.toString()}`);
+        router.push(`/email-design-generator/new/content?${params.toString()}`);
       } finally {
         setValidationLoading(false);
       }
@@ -203,7 +203,7 @@ export default function EmailMarketingNewTemplatePage() {
       params.set("template_id", validationModal.templateId);
       const bid = ws.brand_profile_id as string | undefined;
       if (bid) params.set("brand_profile_id", bid);
-      router.push(`/email-marketing/new/content?${params.toString()}`);
+      router.push(`/email-design-generator/new/content?${params.toString()}`);
       closeValidationModal();
     }
   };
@@ -322,13 +322,13 @@ export default function EmailMarketingNewTemplatePage() {
               const params = new URLSearchParams();
               if (tid) params.set("template_id", tid);
               if (bid) params.set("brand_profile_id", bid);
-              router.push(params.toString() ? `/email-marketing/new/content?${params.toString()}` : "/email-marketing/new/content");
+              router.push(params.toString() ? `/email-design-generator/new/content?${params.toString()}` : "/email-design-generator/new/content");
             }}
           >
             Next: Products & images
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/email-marketing/new/brand">Back</Link>
+            <Link href="/email-design-generator/new/brand">Back</Link>
           </Button>
         </div>
       </Stack>
@@ -371,7 +371,7 @@ export default function EmailMarketingNewTemplatePage() {
                       const bid = ws.brand_profile_id as string | undefined;
                       if (bid) params.set("brand_profile_id", bid);
                       const q = params.toString();
-                      return q ? `/email-marketing/new/content?${q}` : "/email-marketing/new/content";
+                      return q ? `/email-design-generator/new/content?${q}` : "/email-design-generator/new/content";
                     })()}
                     onClick={closeValidationModal}
                   >

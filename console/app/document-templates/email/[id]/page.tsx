@@ -101,7 +101,7 @@ export default function EmailTemplateDetailPage() {
           actions={
             <div className="flex flex-wrap gap-2">
               <Button variant="primary" asChild>
-                <Link href="/email-marketing/new/template">Use in email wizard</Link>
+                <Link href="/email-design-generator/new/template">Use in email wizard</Link>
               </Button>
               <Button variant="secondary" onClick={() => router.push("/document-templates")}>
                 Back to templates

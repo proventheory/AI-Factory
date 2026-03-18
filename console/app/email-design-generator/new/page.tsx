@@ -13,10 +13,10 @@ export default function EmailMarketingNewPage() {
         />
         <div className="flex flex-wrap gap-3">
           <Button variant="primary" asChild>
-            <Link href="/email-marketing/new/brand">Start: Brand</Link>
+            <Link href="/email-design-generator/new/brand">Start: Brand</Link>
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/email-marketing">Back to Email Design Generator</Link>
+            <Link href="/email-design-generator">Back to Email Design Generator</Link>
           </Button>
         </div>
       </Stack>

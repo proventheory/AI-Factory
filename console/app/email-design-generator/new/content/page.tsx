@@ -21,7 +21,7 @@ import {
 import { updateBrandProfile, pexelsSearch, copyCampaignImageToCdn } from "@/lib/api";
 import { readDesignTokensFromBrand } from "../../../brands/token-helpers";
 
-const WIZARD_KEY = "email_marketing_wizard";
+const WIZARD_KEY = "email_design_generator_wizard";
 const PAGE_SIZE = 24;
 
 function getWizardState(): Record<string, unknown> {
@@ -339,7 +339,7 @@ function ContentPageInner() {
       if (templateId) params.set("template_id", templateId);
       if (brandId) params.set("brand_profile_id", brandId);
       const q = params.toString();
-      return q ? `/email-marketing/new/generate?${q}` : "/email-marketing/new/generate";
+      return q ? `/email-design-generator/new/generate?${q}` : "/email-design-generator/new/generate";
     };
     if (toCopy.length === 0) {
       setWizardState({ selected_images: cdnAlready });
@@ -574,7 +574,7 @@ function ContentPageInner() {
             {nextLoading ? "Copying images…" : saving ? "Saving…" : "Next: Enter email prompt"}
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/email-marketing/new/template">Back</Link>
+            <Link href="/email-design-generator/new/template">Back</Link>
           </Button>
         </div>
       </Stack>

@@ -44,7 +44,7 @@ export default function LandingPageGeneratorPage() {
       header: "Actions",
       render: (r) => (
         <>
-          <Link href={`/email-marketing/campaigns/${r.id}/edit`} className="text-body-small text-brand-600 hover:underline mr-3">
+          <Link href={`/email-design-generator/campaigns/${r.id}/edit`} className="text-body-small text-brand-600 hover:underline mr-3">
             Edit
           </Link>
           <Link href={`/initiatives/${r.id}`} className="text-body-small text-brand-600 hover:underline">
@@ -63,7 +63,7 @@ export default function LandingPageGeneratorPage() {
           description="Create landing pages from brand, template, and content. Same flow as Email Design Generator for now; workflow will use pre-built landing page templates next."
         />
         <p className="text-body-small text-text-muted mb-2">
-          <Link href="/email-marketing" className="text-brand-600 hover:underline">Email Design Generator</Link> · <Link href="/initiatives" className="text-brand-600 hover:underline">Initiatives</Link> · <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link>
+          <Link href="/email-design-generator" className="text-brand-600 hover:underline">Email Design Generator</Link> · <Link href="/initiatives" className="text-brand-600 hover:underline">Initiatives</Link> · <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link>
         </p>
         {isLoading ? (
           <LoadingSkeleton className="h-64 rounded-lg" />

@@ -46,7 +46,7 @@ export default function EmailMarketingPage() {
       header: "Actions",
       render: (r) => (
         <>
-            <Link href={`/email-marketing/campaigns/${r.id}/edit`} className="text-body-small text-brand-600 hover:underline mr-3">
+            <Link href={`/email-design-generator/campaigns/${r.id}/edit`} className="text-body-small text-brand-600 hover:underline mr-3">
               Edit
             </Link>
             <Link href={`/initiatives/${r.id}`} className="text-body-small text-brand-600 hover:underline">
@@ -76,7 +76,7 @@ export default function EmailMarketingPage() {
             action={
               <div className="flex gap-2">
                 <Button variant="primary" asChild>
-                  <Link href="/email-marketing/new">New email design (wizard)</Link>
+                  <Link href="/email-design-generator/new">New email design (wizard)</Link>
                 </Button>
                 <Button
                   variant="secondary"
@@ -92,7 +92,7 @@ export default function EmailMarketingPage() {
           <>
             <div className="flex justify-end gap-2 flex-wrap">
               <Button variant="primary" asChild>
-                <Link href="/email-marketing/new">New email design (wizard)</Link>
+                <Link href="/email-design-generator/new">New email design (wizard)</Link>
               </Button>
               <Button
                 variant="secondary"

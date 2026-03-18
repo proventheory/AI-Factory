@@ -134,8 +134,8 @@ export default function EditBrandPage() {
     }
   }
 
-  async function handleConnectKlaviyo(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleConnectKlaviyo(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!id || !klaviyoApiKey.trim()) return;
     setKlaviyoConnectBusy(true);
     setKlaviyoConnectError(null);
@@ -165,8 +165,8 @@ export default function EditBrandPage() {
     }
   }
 
-  async function handleConnectShopify(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleConnectShopify(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!id || !shopifyShopDomainInput.trim() || !shopifyClientId.trim() || !shopifyClientSecret.trim()) return;
     setShopifyConnectBusy(true);
     setShopifyConnectError(null);
@@ -601,7 +601,7 @@ export default function EditBrandPage() {
                 <Link href="/klaviyo" className="text-body-small text-brand-600 hover:underline">Go to Klaviyo page →</Link>
               </div>
             ) : (
-              <form onSubmit={handleConnectKlaviyo} className="space-y-4 max-w-md">
+              <div className="space-y-4 max-w-md">
                 <div>
                   <label className={labelCls}>Private API key <span className="text-state-danger">*</span></label>
                   <p className="text-body-small text-text-muted mb-1">Get your key from Klaviyo → Settings → API Keys (create a Private key with Campaigns and Templates scope).</p>
@@ -621,10 +621,10 @@ export default function EditBrandPage() {
                     placeholder="Used as default audience when scheduling campaigns"
                   />
                 </div>
-                <Button type="submit" variant="primary" disabled={klaviyoConnectBusy || !klaviyoApiKey.trim()}>
+                <Button type="button" variant="primary" disabled={klaviyoConnectBusy || !klaviyoApiKey.trim()} onClick={handleConnectKlaviyo}>
                   {klaviyoConnectBusy ? "Connecting…" : "Connect Klaviyo"}
                 </Button>
-              </form>
+              </div>
             )}
           </CardSection>
 
@@ -648,7 +648,7 @@ export default function EditBrandPage() {
                 <Link href="/seo-migration" className="text-body-small text-brand-600 hover:underline">SEO Migration Wizard →</Link>
               </div>
             ) : (
-              <form onSubmit={handleConnectShopify} className="space-y-4 max-w-md">
+              <div className="space-y-4 max-w-md">
                 <div>
                   <label className={labelCls}>Shop domain <span className="text-state-danger">*</span></label>
                   <p className="text-body-small text-text-muted mb-1">Your store’s .myshopify.com domain (e.g. your-store.myshopify.com).</p>
@@ -680,10 +680,10 @@ export default function EditBrandPage() {
                     autoComplete="new-password"
                   />
                 </div>
-                <Button type="submit" variant="primary" disabled={shopifyConnectBusy || !shopifyShopDomainInput.trim() || !shopifyClientId.trim() || !shopifyClientSecret.trim()}>
+                <Button type="button" variant="primary" disabled={shopifyConnectBusy || !shopifyShopDomainInput.trim() || !shopifyClientId.trim() || !shopifyClientSecret.trim()} onClick={handleConnectShopify}>
                   {shopifyConnectBusy ? "Connecting…" : "Connect Shopify"}
                 </Button>
-              </form>
+              </div>
             )}
           </CardSection>
 

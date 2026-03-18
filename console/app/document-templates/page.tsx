@@ -241,7 +241,7 @@ export default function DocumentTemplatesPage() {
           description="Deck, report, and email templates. Email templates show image and product slot capacity; use them in the email wizard to build campaigns. Brand embeddings are managed per brand: open a brand → Brand Embeddings → Manage."
         />
         <p className="text-body-small text-text-muted mb-2">
-          <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link> · <Link href="/email-marketing" className="text-brand-600 hover:underline">Email Design Generator</Link>
+          <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link> · <Link href="/email-design-generator" className="text-brand-600 hover:underline">Email Design Generator</Link>
         </p>
         <CardSection className="overflow-hidden rounded-lg border border-border shadow-sm">
           {isLoading ? (

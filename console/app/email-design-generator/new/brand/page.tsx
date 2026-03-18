@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { PageFrame, Stack, PageHeader, Button, LoadingSkeleton } from "@/components/ui";
 import { useBrandProfiles } from "@/hooks/use-api";
 
-const WIZARD_KEY = "email_marketing_wizard";
+const WIZARD_KEY = "email_design_generator_wizard";
 
 function getWizardState(): Record<string, unknown> {
   if (typeof window === "undefined") return {};
@@ -32,7 +32,7 @@ export default function EmailMarketingNewBrandPage() {
 
   const handleSelect = (brandId: string) => {
     setWizardState({ brand_profile_id: brandId });
-    router.push("/email-marketing/new/template");
+    router.push("/email-design-generator/new/template");
   };
 
   return (
@@ -66,10 +66,10 @@ export default function EmailMarketingNewBrandPage() {
         )}
         <div className="flex flex-wrap gap-3">
           <Button variant="primary" asChild>
-            <Link href="/email-marketing/new/template">Next: Template</Link>
+            <Link href="/email-design-generator/new/template">Next: Template</Link>
           </Button>
           <Button variant="secondary" asChild>
-            <Link href="/email-marketing/new">Back</Link>
+            <Link href="/email-design-generator/new">Back</Link>
           </Button>
         </div>
       </Stack>

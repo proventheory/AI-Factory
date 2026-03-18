@@ -127,7 +127,7 @@ function GeneratePageContent() {
             if (!emailArtifact?.id && items.length === 1) emailArtifact = items[0];
             if (emailArtifact?.id) {
               clearWizardState();
-              router.push(`/email-marketing/runs/${runId}/artifacts/${emailArtifact.id}/edit`);
+              router.push(`/email-design-generator/runs/${runId}/artifacts/${emailArtifact.id}/edit`);
               return;
             }
           }

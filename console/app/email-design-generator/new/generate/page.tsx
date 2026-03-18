@@ -8,7 +8,7 @@ import { useCreateEmailCampaign } from "@/hooks/use-api";
 import { getRunStatus, getRunArtifacts } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
-const WIZARD_KEY = "email_marketing_wizard";
+const WIZARD_KEY = "email_design_generator_wizard";
 
 function getWizardState(): Record<string, unknown> {
   if (typeof window === "undefined") return {};
@@ -135,7 +135,7 @@ function GeneratePageContent() {
             if (!emailArtifact?.id && items.length === 1) emailArtifact = items[0];
             if (emailArtifact?.id) {
               clearWizardState();
-              router.push(`/email-marketing/runs/${runId}/artifacts/${emailArtifact.id}/edit`);
+              router.push(`/email-design-generator/runs/${runId}/artifacts/${emailArtifact.id}/edit`);
               return;
             }
           }
@@ -213,10 +213,10 @@ function GeneratePageContent() {
             );
           })()}
           <Button variant="secondary" asChild disabled={busy}>
-            <Link href="/email-marketing/new/content">Back</Link>
+            <Link href="/email-design-generator/new/content">Back</Link>
           </Button>
           <Button variant="secondary" asChild disabled={busy}>
-            <Link href="/email-marketing">Cancel</Link>
+            <Link href="/email-design-generator">Cancel</Link>
           </Button>
         </div>
       </Stack>

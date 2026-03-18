@@ -97,7 +97,7 @@ export function EmailArtifactEditor({ artifactId, runIdFromParams }: EmailArtifa
           <p className="text-body-small text-fg-danger">{artifactError instanceof Error ? artifactError.message : "Artifact not found"}</p>
           <div className="flex flex-wrap gap-3">
             <Button variant="secondary" onClick={() => refetchArtifact()}>Retry</Button>
-            <Button variant="secondary" asChild><Link href="/email-marketing">Back to Email Design Generator</Link></Button>
+            <Button variant="secondary" asChild><Link href="/email-design-generator">Back to Email Design Generator</Link></Button>
             {runId && <Button variant="secondary" asChild><Link href={`/runs/${runId}`}>View run</Link></Button>}
           </div>
         </Stack>
@@ -113,7 +113,7 @@ export function EmailArtifactEditor({ artifactId, runIdFromParams }: EmailArtifa
           <p className="text-body-small text-fg-danger">{contentError instanceof Error ? contentError.message : "Content not available"}</p>
           <div className="flex flex-wrap gap-3">
             <Button variant="secondary" onClick={() => refetchContent()}>Retry</Button>
-            <Button variant="secondary" asChild><Link href="/email-marketing">Back to Email Design Generator</Link></Button>
+            <Button variant="secondary" asChild><Link href="/email-design-generator">Back to Email Design Generator</Link></Button>
             {runId && <Button variant="secondary" asChild><Link href={`/runs/${runId}`}>View run</Link></Button>}
           </div>
         </Stack>
@@ -128,7 +128,7 @@ export function EmailArtifactEditor({ artifactId, runIdFromParams }: EmailArtifa
           <PageHeader title="Edit email artifact" description="This artifact is not an email template." />
           <p className="text-body-small text-fg-muted">Only email_template artifacts can be edited here.</p>
           <div className="flex flex-wrap gap-3">
-            <Button variant="secondary" asChild><Link href="/email-marketing">Back to Email Design Generator</Link></Button>
+            <Button variant="secondary" asChild><Link href="/email-design-generator">Back to Email Design Generator</Link></Button>
             {runId && <Button variant="secondary" asChild><Link href={`/runs/${runId}`}>View run</Link></Button>}
           </div>
         </Stack>
@@ -146,7 +146,7 @@ export function EmailArtifactEditor({ artifactId, runIdFromParams }: EmailArtifa
           />
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" asChild>
-              <Link href="/email-marketing">Back to Email Design Generator</Link>
+              <Link href="/email-design-generator">Back to Email Design Generator</Link>
             </Button>
             {runId && (
               <Button variant="secondary" asChild>
@@ -164,7 +164,7 @@ export function EmailArtifactEditor({ artifactId, runIdFromParams }: EmailArtifa
 
         <p className="text-body-small text-fg-muted">
           Image mapping wrong? If every image shows as a product, this run had no campaign images in metadata.{" "}
-          <Link href="/email-marketing/new" className="text-brand-600 hover:underline">Create a new campaign</Link>
+          <Link href="/email-design-generator/new" className="text-brand-600 hover:underline">Create a new campaign</Link>
           {" "}and select campaign images in the Images step, then add products—Re-run uses the same inputs and won’t fix it.
         </p>
 

@@ -198,9 +198,11 @@ export default function SeoMigrationWizardPage() {
       .finally(() => setGa4Loading(false));
   }, [step, brandId, brandGoogle?.connected, brandGoogle?.ga4_property_id, sourceUrl]);
 
-  // Step 4: Seed keyword rows from crawl + GSC + GA4 when entering step 4 (only if keywordRows empty and we have crawl)
+  // Step 4: Seed keyword rows from crawl + GA4 union (no duplicates) + GSC when entering step 4 (only if keywordRows empty)
   useEffect(() => {
-    if (step !== 4 || !crawlResult?.urls?.length || keywordRows.length > 0) return;
+    const hasCrawl = (crawlResult?.urls?.length ?? 0) > 0;
+    const hasGa4 = (ga4Result?.pages?.length ?? 0) > 0;
+    if (step !== 4 || (!hasCrawl && !hasGa4) || keywordRows.length > 0) return;
     const gscByPath = new Map<string, { clicks: number; impressions: number }>();
     (gscResult?.pages ?? []).forEach((p) => {
       const path = (p.url || "").replace(/^https?:\/\/[^/]+/, "") || "/";
@@ -211,34 +213,89 @@ export default function SeoMigrationWizardPage() {
       const path = (p.page_path ?? p.full_page_url ?? "").replace(/^https?:\/\/[^/]+/, "") || "/";
       ga4ByPath.set(path, (ga4ByPath.get(path) ?? 0) + (p.sessions ?? 0));
     });
-    const rows: KeywordRow[] = crawlResult.urls.map((u) => {
-      const path = u.path || "/";
-      const gsc = gscByPath.get(path);
-      const sessions = ga4ByPath.get(path) ?? 0;
-      return {
-        path,
-        type: u.type ?? "page",
+    const pathToType = new Map<string, string>();
+    (crawlResult?.urls ?? []).forEach((u) => {
+      const p = u.path || "/";
+      pathToType.set(p, u.type ?? "page");
+    });
+    const pathsSeen = new Set<string>();
+    const rows: KeywordRow[] = [];
+    const addPath = (path: string, type: string) => {
+      const norm = path.replace(/\/+$/, "") || "/";
+      if (pathsSeen.has(norm)) return;
+      pathsSeen.add(norm);
+      const gsc = gscByPath.get(norm);
+      const sessions = ga4ByPath.get(norm) ?? 0;
+      rows.push({
+        path: norm,
+        type,
         clicks: gsc?.clicks ?? 0,
         sessions,
         theme: "",
         action: "keep" as KeywordAction,
         consolidateInto: "",
-      };
+      });
+    };
+    (crawlResult?.urls ?? []).forEach((u) => addPath(u.path || "/", u.type ?? "page"));
+    (ga4Result?.pages ?? []).forEach((p) => {
+      const path = (p.page_path ?? p.full_page_url ?? "").replace(/^https?:\/\/[^/]+/, "") || "/";
+      const norm = path.replace(/\/+$/, "") || "/";
+      if (pathsSeen.has(norm)) return;
+      addPath(norm, pathToType.get(norm) ?? "page");
     });
+    rows.sort((a, b) => a.path.localeCompare(b.path));
     setKeywordRows(rows);
   }, [step, crawlResult?.urls, gscResult?.pages, ga4Result?.pages]);
 
-  // Step 6: Seed redirect map from crawl when entering step 6 (only if redirectMap empty)
-  useEffect(() => {
-    if (step !== 6 || !crawlResult?.urls?.length || redirectMap.length > 0) return;
+  // Build redirect map from crawl + GA4 union (no duplicates). Used by step 6 seed and Re-seed button.
+  const buildRedirectMapFromCrawlAndGa4 = (): RedirectRow[] => {
+    const hasCrawl = (crawlResult?.urls?.length ?? 0) > 0;
+    const hasGa4 = (ga4Result?.pages?.length ?? 0) > 0;
+    if (!hasCrawl && !hasGa4) return [];
     const base = (sourceUrl || "").replace(/\/+$/, "");
-    const rows: RedirectRow[] = crawlResult.urls.map((u) => ({
-      old_url: base ? `${base}${(u.path || "/").startsWith("/") ? u.path : `/${u.path}`}` : (u.path || "/"),
-      new_url: "",
-      status: "301" as RedirectStatus,
-    }));
+    const normalize = (url: string): string => {
+      const u = url.trim().toLowerCase().replace(/\/+$/, "") || "/";
+      try {
+        const full = u.startsWith("http") ? u : `${base || "https://example.com"}${u.startsWith("/") ? u : `/${u}`}`;
+        const parsed = new URL(full);
+        return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "") || "/"}`;
+      } catch {
+        return u;
+      }
+    };
+    const seen = new Map<string, string>();
+    const add = (oldUrl: string) => {
+      const key = normalize(oldUrl);
+      if (seen.has(key)) return;
+      seen.set(key, oldUrl);
+    };
+    if (hasCrawl) {
+      crawlResult!.urls.forEach((u) => {
+        const path = (u.path || "/").startsWith("/") ? u.path || "/" : `/${u.path || "/"}`;
+        const full = base ? `${base}${path}` : path;
+        add(full);
+      });
+    }
+    if (hasGa4) {
+      ga4Result!.pages.forEach((p) => {
+        const raw = p.full_page_url ?? p.page_path ?? "";
+        const path = raw.replace(/^https?:\/\/[^/]+/, "") || "/";
+        const full = raw.startsWith("http") ? raw : base ? `${base}${path.startsWith("/") ? path : `/${path}`}` : path;
+        add(full);
+      });
+    }
+    return Array.from(seen.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, old_url]) => ({ old_url, new_url: "", status: "301" as RedirectStatus }));
+  };
+
+  // Step 6: Seed redirect map from crawl + GA4 union when entering step 6 (only if redirectMap empty)
+  useEffect(() => {
+    if (step !== 6 || redirectMap.length > 0) return;
+    const rows = buildRedirectMapFromCrawlAndGa4();
+    if (rows.length === 0) return;
     setRedirectMap(rows);
-  }, [step, crawlResult?.urls, sourceUrl]);
+  }, [step, crawlResult?.urls, ga4Result?.pages, sourceUrl]);
 
   const runCrawl = async () => {
     setCrawlLoading(true);
@@ -964,8 +1021,13 @@ export default function SeoMigrationWizardPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-body-small text-fg-muted mb-3">Map every old URL to a new destination (path or full URL). Status: 301/302 permanent/temporary redirect, or drop/consolidate.</p>
-                {redirectMap.length === 0 && !crawlResult?.urls?.length && (
-                  <p className="text-body-small text-fg-muted">Run the crawl in step 1 first to seed the redirect map.</p>
+                {(crawlResult?.urls?.length || ga4Result?.pages?.length) ? (
+                  <Button type="button" variant="secondary" size="sm" className="mb-3" onClick={() => setRedirectMap(buildRedirectMapFromCrawlAndGa4())}>
+                    Re-seed from crawl + GA4 (union, no duplicates)
+                  </Button>
+                ) : null}
+                {redirectMap.length === 0 && !(crawlResult?.urls?.length || ga4Result?.pages?.length) && (
+                  <p className="text-body-small text-fg-muted">Run the crawl in step 1 and/or fetch GA4 in step 2 to seed the redirect map (union of all URLs, no duplicates).</p>
                 )}
                 {redirectMap.length > 0 && (
                   <>

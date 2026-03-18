@@ -365,7 +365,7 @@ export default function RunDetailPage() {
         }
         if (r.artifact_type === "email_template") {
           return (
-            <Link href={`/email-marketing/artifacts/${r.id}/edit`} className="text-brand-600 hover:underline text-sm font-medium">
+            <Link href={`/email-design-generator/artifacts/${r.id}/edit`} className="text-brand-600 hover:underline text-sm font-medium">
               Edit / preview
             </Link>
           );

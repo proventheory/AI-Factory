@@ -101,7 +101,7 @@ export default function KlaviyoPage() {
           description="Push email templates and campaigns from the Email Design Generator, create flow drafts, and set flow status (draft / manual / live). Connect Klaviyo per brand in Brands → select a brand → Edit → Klaviyo."
         />
         <p className="text-body-small text-text-muted mb-4">
-          <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link> · <Link href="/email-marketing" className="text-brand-600 hover:underline">Email Design Generator</Link> · <Link href="/initiatives" className="text-brand-600 hover:underline">Initiatives</Link>
+          <Link href="/brands" className="text-brand-600 hover:underline">Brands</Link> · <Link href="/email-design-generator" className="text-brand-600 hover:underline">Email Design Generator</Link> · <Link href="/initiatives" className="text-brand-600 hover:underline">Initiatives</Link>
         </p>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
