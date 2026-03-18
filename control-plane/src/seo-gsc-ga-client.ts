@@ -18,6 +18,8 @@ export interface GscReport {
 export interface Ga4Report {
   property_id: string;
   pages: { full_page_url?: string; page_path?: string; sessions: number; screen_page_views?: number; user_engagement_duration?: number }[];
+  /** When GA4 has Search Console linked: query-level keywords (no per-page in GA4 API). */
+  search_console_queries?: { query: string; clicks: number; impressions: number }[];
   error?: string;
 }
 

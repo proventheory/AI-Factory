@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
   PageFrame,
@@ -60,6 +60,53 @@ function normalizeCrawlCacheKey(url: string): string {
   } catch {
     return url.trim().toLowerCase();
   }
+}
+
+/** Infer URL type from path when crawl didn't provide it or returned "page" (e.g. GA4-only rows, product-tag). */
+function inferTypeFromPath(path: string): string {
+  const p = path.toLowerCase().replace(/\/+/g, "/").replace(/^\//, "").replace(/\/$/, "") || "";
+  if (/\/(product|prod)\//.test("/" + p) || /^product\//.test(p) || /^prod\//.test(p)) return "product";
+  if (/\/(products)\//.test("/" + p) || /^products\//.test(p)) return "product";
+  if (/\/(category|categories|product-category)\//.test("/" + p) || /^product-category\//.test(p)) return "category";
+  if (/\/(tag|tags)\//.test("/" + p) || /^tag\//.test(p)) return "tag";
+  if (/\/(blog|blogs|post|posts)\//.test("/" + p) || /^blog\//.test(p)) return "post";
+  return "page";
+}
+
+/** Normalize full URL or path to pathname only (no query, no hash) so GA4/GSC rows match. */
+function normalizeUrlToPath(urlOrPath: string, baseOrigin = "https://example.com"): string {
+  const raw = (urlOrPath || "").trim();
+  if (!raw) return "/";
+  try {
+    const url = raw.startsWith("http") ? new URL(raw) : new URL(raw.startsWith("/") ? raw : `/${raw}`, baseOrigin);
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    return path;
+  } catch {
+    const pathOnly = raw.split("?")[0].split("#")[0].replace(/\/+$/, "") || "/";
+    return pathOnly.startsWith("/") ? pathOnly : `/${pathOnly}`;
+  }
+}
+
+/** Return true only if urlOrPath is same host as sourceOrigin (or is a path-only string, treated as same origin). */
+function isSameOrigin(urlOrPath: string, sourceOrigin: string): boolean {
+  const raw = (urlOrPath || "").trim();
+  if (!raw) return false;
+  if (!raw.startsWith("http")) return true; // path-only, assume same origin
+  try {
+    const sourceHost = new URL(sourceOrigin.startsWith("http") ? sourceOrigin : `https://${sourceOrigin}`).hostname.replace(/^www\./, "");
+    const url = new URL(raw);
+    const host = url.hostname.replace(/^www\./, "");
+    return host === sourceHost;
+  } catch {
+    return false;
+  }
+}
+
+/** Collapse pagination and trailing segments like /page/2 so we dedupe e.g. /tag/foo and /tag/foo/page/2. */
+function toCanonicalPath(path: string): string {
+  let p = (path || "/").replace(/\/+$/, "") || "/";
+  p = p.replace(/\/page\/\d+$/i, "").replace(/\/+$/, "") || "/";
+  return p;
 }
 function getCrawlCache(): Record<string, { crawledAt: string; result: SeoMigrationCrawlResult }> {
   if (typeof window === "undefined") return {};
@@ -124,6 +171,9 @@ export default function SeoMigrationWizardPage() {
 
   // Step 4: Keyword strategy (merged URL list + theme/action)
   const [keywordRows, setKeywordRows] = useState<KeywordRow[]>([]);
+  const [keywordVolumeMap, setKeywordVolumeMap] = useState<Record<string, number>>({});
+  const [keywordVolumeLoading, setKeywordVolumeLoading] = useState(false);
+  const [keywordVolumeError, setKeywordVolumeError] = useState<string | null>(null);
   const [targetBaseUrl, setTargetBaseUrl] = useState(""); // New site base URL for steps 5–6
   // Step 5: Page plan
   const [pagePlan, setPagePlan] = useState<PagePlanRow[]>([]);
@@ -155,9 +205,9 @@ export default function SeoMigrationWizardPage() {
     api.getBrandProfiles({ status: "active", limit: 200 }).then((r) => setBrands(r.items)).catch(() => setBrands([]));
   }, []);
 
-  // Restore cached crawl for current source URL when URL or step changes (so switching back to step 1 or changing URL shows cache)
-  useEffect(() => {
-    if (step !== 1 || !sourceUrl.trim()) return;
+  // Restore cached crawl for current source URL on load and when URL changes so the table shows without re-running crawl
+  useLayoutEffect(() => {
+    if (typeof window === "undefined" || !sourceUrl.trim()) return;
     const key = normalizeCrawlCacheKey(sourceUrl);
     const cache = getCrawlCache();
     const entry = cache[key];
@@ -169,7 +219,7 @@ export default function SeoMigrationWizardPage() {
       setCrawlResult(null);
       setCrawlCachedAt(null);
     }
-  }, [step, sourceUrl]);
+  }, [sourceUrl]);
 
   // When brand changes, load Google/GA4 and Shopify status for steps 2 and 3
   useEffect(() => {
@@ -203,25 +253,44 @@ export default function SeoMigrationWizardPage() {
     const hasCrawl = (crawlResult?.urls?.length ?? 0) > 0;
     const hasGa4 = (ga4Result?.pages?.length ?? 0) > 0;
     if (!hasCrawl && !hasGa4) return [];
+    const baseOrigin = (sourceUrl || "").trim().replace(/\/+$/, "") || "https://example.com";
+    if (!baseOrigin.startsWith("http")) {
+      try {
+        new URL(baseOrigin);
+      } catch {
+        // leave as-is for path-only sourceUrl
+      }
+    }
+    const safeBase = baseOrigin.startsWith("http") ? baseOrigin : "https://example.com";
     const gscByPath = new Map<string, { clicks: number; impressions: number }>();
     (gscResult?.pages ?? []).forEach((p) => {
-      const path = (p.url || "").replace(/^https?:\/\/[^/]+/, "") || "/";
-      gscByPath.set(path, { clicks: p.clicks ?? 0, impressions: p.impressions ?? 0 });
+      const path = toCanonicalPath(normalizeUrlToPath(p.url || "", safeBase));
+      const existing = gscByPath.get(path);
+      gscByPath.set(path, {
+        clicks: (existing?.clicks ?? 0) + (p.clicks ?? 0),
+        impressions: (existing?.impressions ?? 0) + (p.impressions ?? 0),
+      });
     });
     const ga4ByPath = new Map<string, number>();
     (ga4Result?.pages ?? []).forEach((p) => {
-      const path = (p.page_path ?? p.full_page_url ?? "").replace(/^https?:\/\/[^/]+/, "") || "/";
-      ga4ByPath.set(path, (ga4ByPath.get(path) ?? 0) + (p.sessions ?? 0));
+      const raw = p.page_path ?? p.full_page_url ?? "";
+      if (!raw || !isSameOrigin(raw, safeBase)) return;
+      const path = normalizeUrlToPath(raw, safeBase);
+      const canonical = toCanonicalPath(path);
+      ga4ByPath.set(canonical, (ga4ByPath.get(canonical) ?? 0) + (p.sessions ?? 0));
     });
     const pathToType = new Map<string, string>();
     (crawlResult?.urls ?? []).forEach((u) => {
-      const p = u.path || "/";
-      pathToType.set(p, u.type ?? "page");
+      const raw = u.path || "/";
+      if (!isSameOrigin(raw, safeBase)) return;
+      const p = toCanonicalPath(normalizeUrlToPath(raw, safeBase));
+      const inferred = inferTypeFromPath(raw);
+      pathToType.set(p, (u.type && u.type !== "page") ? u.type : inferred);
     });
     const pathsSeen = new Set<string>();
     const rows: KeywordRow[] = [];
     const addPath = (path: string, type: string) => {
-      const norm = path.replace(/\/+$/, "") || "/";
+      const norm = toCanonicalPath(path.replace(/\/+$/, "") || "/");
       if (pathsSeen.has(norm)) return;
       pathsSeen.add(norm);
       const gsc = gscByPath.get(norm);
@@ -236,28 +305,64 @@ export default function SeoMigrationWizardPage() {
         consolidateInto: "",
       });
     };
-    (crawlResult?.urls ?? []).forEach((u) => addPath(u.path || "/", u.type ?? "page"));
+    (crawlResult?.urls ?? []).forEach((u) => {
+      const raw = u.path || "/";
+      if (!isSameOrigin(raw, safeBase)) return;
+      const path = normalizeUrlToPath(raw, safeBase);
+      const inferred = inferTypeFromPath(path);
+      addPath(path, (u.type && u.type !== "page") ? u.type : inferred);
+    });
     (ga4Result?.pages ?? []).forEach((p) => {
-      const path = (p.page_path ?? p.full_page_url ?? "").replace(/^https?:\/\/[^/]+/, "") || "/";
-      const norm = path.replace(/\/+$/, "") || "/";
+      const raw = p.page_path ?? p.full_page_url ?? "";
+      if (!raw || !isSameOrigin(raw, safeBase)) return;
+      const path = normalizeUrlToPath(raw, safeBase);
+      const norm = toCanonicalPath(path);
       if (pathsSeen.has(norm)) return;
-      addPath(norm, pathToType.get(norm) ?? "page");
+      addPath(norm, pathToType.get(norm) ?? inferTypeFromPath(norm));
     });
     rows.sort((a, b) => a.path.localeCompare(b.path));
     return rows;
   };
 
-  // Step 4: Map path → list of GSC keywords (query + clicks/impressions) for Traffic keywords column
+  // Step 4: Map path → list of GSC keywords (query + clicks/impressions) for Traffic keywords column. Use canonical path so /tag/foo and /tag/foo/page/2 merge.
   const pathToGscKeywords = useMemo(() => {
+    const baseOrigin = (sourceUrl || "").trim().startsWith("http") ? (sourceUrl || "").trim().replace(/\/+$/, "") : "https://example.com";
     const m = new Map<string, Array<{ query: string; clicks: number; impressions: number }>>();
     (gscResult?.page_queries ?? []).forEach((pq) => {
-      const path = (pq.page || "").replace(/^https?:\/\/[^/]+/, "") || "/";
-      const norm = path.replace(/\/+$/, "") || "/";
+      const path = normalizeUrlToPath(pq.page || "", baseOrigin);
+      const norm = toCanonicalPath(path);
       if (!m.has(norm)) m.set(norm, []);
       m.get(norm)!.push({ query: pq.query, clicks: pq.clicks, impressions: pq.impressions });
     });
     return m;
-  }, [gscResult?.page_queries]);
+  }, [gscResult?.page_queries, sourceUrl]);
+
+  // Step 4: All unique keywords from GSC and/or GA4 Search Console (for volume fetch and display)
+  const allUniqueGscKeywords = useMemo(() => {
+    const set = new Set<string>();
+    pathToGscKeywords.forEach((list) => list.forEach((k) => set.add((k.query || "").trim())));
+    (ga4Result?.search_console_queries ?? []).forEach((q) => set.add((q.query || "").trim()));
+    return Array.from(set).filter(Boolean);
+  }, [pathToGscKeywords, ga4Result?.search_console_queries]);
+
+  const fetchKeywordVolumes = async () => {
+    if (allUniqueGscKeywords.length === 0) return;
+    setKeywordVolumeLoading(true);
+    setKeywordVolumeError(null);
+    try {
+      const result = await api.seoKeywordVolume({ keywords: allUniqueGscKeywords });
+      const map: Record<string, number> = {};
+      (result.volumes ?? []).forEach((v) => {
+        map[v.keyword] = v.monthly_search_volume;
+      });
+      setKeywordVolumeMap((prev) => ({ ...prev, ...map }));
+      if (result.error) setKeywordVolumeError(result.error);
+    } catch (e) {
+      setKeywordVolumeError(formatApiError(e));
+    } finally {
+      setKeywordVolumeLoading(false);
+    }
+  };
 
   // Step 4: Seed keyword rows from crawl + GA4 union when entering step 4 (only if keywordRows empty)
   useEffect(() => {
@@ -267,41 +372,43 @@ export default function SeoMigrationWizardPage() {
     setKeywordRows(buildKeywordRowsFromCrawlAndGa4());
   }, [step, crawlResult?.urls, gscResult?.pages, ga4Result?.pages]);
 
-  // Build redirect map from crawl + GA4 union (no duplicates). Used by step 6 seed and Re-seed button.
+  // Build redirect map from crawl + GA4 union (no duplicates, same-origin only, canonical paths).
   const buildRedirectMapFromCrawlAndGa4 = (): RedirectRow[] => {
     const hasCrawl = (crawlResult?.urls?.length ?? 0) > 0;
     const hasGa4 = (ga4Result?.pages?.length ?? 0) > 0;
     if (!hasCrawl && !hasGa4) return [];
     const base = (sourceUrl || "").replace(/\/+$/, "");
+    const safeBase = base.startsWith("http") ? base : "https://example.com";
     const normalize = (url: string): string => {
       const u = url.trim().toLowerCase().replace(/\/+$/, "") || "/";
       try {
         const full = u.startsWith("http") ? u : `${base || "https://example.com"}${u.startsWith("/") ? u : `/${u}`}`;
         const parsed = new URL(full);
-        return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "") || "/"}`;
+        const path = toCanonicalPath(parsed.pathname || "/");
+        return `${parsed.origin}${path}`;
       } catch {
         return u;
       }
     };
     const seen = new Map<string, string>();
     const add = (oldUrl: string) => {
+      if (!isSameOrigin(oldUrl, safeBase)) return;
       const key = normalize(oldUrl);
       if (seen.has(key)) return;
       seen.set(key, oldUrl);
     };
     if (hasCrawl) {
       crawlResult!.urls.forEach((u) => {
-        const path = (u.path || "/").startsWith("/") ? u.path || "/" : `/${u.path || "/"}`;
-        const full = base ? `${base}${path}` : path;
+        const raw = u.path || "/";
+        const full = raw.startsWith("http") ? raw : base ? `${base}${raw.startsWith("/") ? raw : `/${raw}`}` : raw;
         add(full);
       });
     }
     if (hasGa4) {
       ga4Result!.pages.forEach((p) => {
         const raw = p.full_page_url ?? p.page_path ?? "";
-        const path = raw.replace(/^https?:\/\/[^/]+/, "") || "/";
-        const full = raw.startsWith("http") ? raw : base ? `${base}${path.startsWith("/") ? path : `/${path}`}` : path;
-        add(full);
+        if (!raw || !isSameOrigin(raw, safeBase)) return;
+        add(raw);
       });
     }
     return Array.from(seen.entries())
@@ -329,7 +436,8 @@ export default function SeoMigrationWizardPage() {
         max_urls: maxUrls,
       });
       setCrawlResult(result);
-      setCrawlCachedAt(null);
+      const cachedAt = new Date().toISOString();
+      setCrawlCachedAt(cachedAt);
       setCrawlCacheEntry(normalizeCrawlCacheKey(sourceUrl.trim()), result);
     } catch (e) {
       setCrawlError(formatApiError(e));
@@ -451,8 +559,8 @@ export default function SeoMigrationWizardPage() {
   ];
 
   return (
-    <PageFrame>
-      <Stack>
+    <PageFrame className="min-w-0 overflow-x-hidden">
+      <Stack className="min-w-0">
         <PageHeader
           title="SEO Migration Wizard"
           description="WordPress → Shopify (or any platform). Crawl source, pull GSC/GA4, then plan keyword strategy, redirects, and launch."
@@ -608,6 +716,14 @@ export default function SeoMigrationWizardPage() {
                 <p className="text-body-small text-fg-muted mt-1">Site URL (e.g. sc-domain:stigmahemp.com or https://stigmahemp.com/)</p>
               </CardHeader>
               <CardContent>
+                <p className="text-body-small text-fg-muted mb-2">
+                  Select a brand with Google connected, then fetch. <strong>Traffic keywords</strong> in Step 4 come from GSC (per-URL; enable{" "}
+                  <a href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">
+                    Search Console API
+                  </a>
+                  ) or from GA4 when the property has Search Console linked (site-level).
+                  in your Google Cloud project (same project as your OAuth client).
+                </p>
                 <div className="flex flex-wrap gap-2">
                   <Input
                     value={gscSiteUrl}
@@ -672,6 +788,9 @@ export default function SeoMigrationWizardPage() {
                   <div className="mt-4">
                     <p className="text-body-small text-fg-muted mb-2">
                       {ga4Result.pages?.length ?? 0} pages from GA4 property {ga4Result.property_id}.
+                      {ga4Result.search_console_queries && ga4Result.search_console_queries.length > 0 && (
+                        <> Search Console (via GA4): {ga4Result.search_console_queries.length} queries.</>
+                      )}
                     </p>
                     {ga4Result.error && (
                       <p className="text-body-small text-state-warning mb-2">{ga4Result.error}</p>
@@ -849,27 +968,49 @@ export default function SeoMigrationWizardPage() {
                   <p className="text-body-small text-fg-muted">Run the crawl in step 1 and/or fetch GA4 in step 2 to populate this list (union of all URLs, no duplicates).</p>
                 ) : (
                   <>
-                    <div className="mb-2 flex flex-wrap gap-2">
+                    {(!gscResult?.page_queries?.length && !ga4Result?.search_console_queries?.length) && (
+                      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 px-3 py-2 text-body-small">
+                        <strong>Traffic keywords</strong> and <strong>Monthly search volume</strong> need GSC or GA4 Search Console data. In <strong>Step 2</strong>: fetch <strong>GSC report</strong> (needs Search Console API) and/or <strong>GA4 report</strong> (when the property has Search Console linked, we pull query data from GA4). Enable <a href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">Search Console API</a> for per-URL keywords.
+                      </div>
+                    )}
+                    {!gscResult?.page_queries?.length && (ga4Result?.search_console_queries?.length ?? 0) > 0 && (
+                      <div className="mb-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2 text-body-small">
+                        <strong>Traffic keywords</strong> are from GA4 Search Console (site-level; {ga4Result.search_console_queries.length} queries). Connect Search Console API and fetch GSC report in Step 2 for per-URL keywords. You can still fetch monthly search volume for these keywords below.
+                      </div>
+                    )}
+                    <div className="mb-2 flex flex-wrap gap-2 items-center">
                       <Button variant="secondary" size="sm" onClick={() => setKeywordRows([])} disabled={!keywordRows.length}>
                         Clear
                       </Button>
                       <Button variant="secondary" size="sm" onClick={() => setKeywordRows(buildKeywordRowsFromCrawlAndGa4())}>
                         Reset from crawl + GSC/GA4 (union, no duplicates)
                       </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={fetchKeywordVolumes}
+                        disabled={keywordVolumeLoading || allUniqueGscKeywords.length === 0}
+                        title={allUniqueGscKeywords.length === 0 ? "Fetch GSC report in Step 2 first to get keywords" : undefined}
+                      >
+                        {keywordVolumeLoading ? "Fetching…" : "Fetch monthly search volume (Google Ads)"}
+                      </Button>
                     </div>
-                    <div className="max-h-[60vh] overflow-auto rounded-lg border border-border">
-                      <table className="w-full border-collapse text-body-small">
-                        <thead className="sticky top-0 bg-fg-muted/10">
+                    {keywordVolumeError && (
+                      <p className="text-body-small text-state-danger mb-2">{keywordVolumeError}</p>
+                    )}
+                    <div className="w-full max-w-full overflow-auto max-h-[60vh] rounded-lg border border-border">
+                      <table className="w-full min-w-[900px] border-collapse text-body-small">
+                        <thead className="sticky top-0 z-10 bg-bg border-b border-border shadow-sm">
                           <tr>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Path</th>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Type</th>
-                            <th className="border-b border-border px-2 py-2 text-right font-medium">Clicks</th>
-                            <th className="border-b border-border px-2 py-2 text-right font-medium">Sessions</th>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Primary Keyword</th>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Traffic keywords (GSC)</th>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Monthly search volume</th>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Action</th>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Consolidate into</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Path</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Type</th>
+                            <th className="px-2 py-2 text-right font-medium whitespace-nowrap">Clicks</th>
+                            <th className="px-2 py-2 text-right font-medium whitespace-nowrap">Sessions</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Primary Keyword</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Traffic keywords (GSC)</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Monthly search volume</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Action</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Consolidate into</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -877,8 +1018,8 @@ export default function SeoMigrationWizardPage() {
                             const keywords = pathToGscKeywords.get(r.path) ?? [];
                             return (
                             <tr key={`${r.path}-${i}`} className="border-b border-border/50">
-                              <td className="px-2 py-1"><code className="text-body-small">{r.path}</code></td>
-                              <td className="px-2 py-1">{r.type}</td>
+                              <td className="px-2 py-1 whitespace-nowrap"><code className="text-body-small">{r.path}</code></td>
+                              <td className="px-2 py-1 whitespace-nowrap"><Badge variant="neutral">{r.type}</Badge></td>
                               <td className="px-2 py-1 text-right">{r.clicks}</td>
                               <td className="px-2 py-1 text-right">{r.sessions}</td>
                               <td className="px-2 py-1">
@@ -889,17 +1030,27 @@ export default function SeoMigrationWizardPage() {
                                   <span className="text-fg-muted">—</span>
                                 ) : (
                                   <ul className="list-disc list-inside text-body-small space-y-0.5">
-                                    {keywords.slice(0, 8).map((k, ki) => (
-                                      <li key={ki} title={`${k.clicks} clicks, ${k.impressions} impressions`}>
-                                        {k.query} <span className="text-fg-muted">({k.clicks})</span>
-                                      </li>
-                                    ))}
+                                    {keywords.slice(0, 8).map((k, ki) => {
+                                      const vol = keywordVolumeMap[k.query];
+                                      const volStr = vol !== undefined && vol > 0 ? (vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : String(vol)) : null;
+                                      return (
+                                        <li key={ki} title={`${k.clicks} clicks, ${k.impressions} impressions${volStr ? `, ${vol} monthly searches` : ""}`}>
+                                          {k.query} <span className="text-fg-muted">({k.clicks}{volStr ? `, ${volStr} vol` : ""})</span>
+                                        </li>
+                                      );
+                                    })}
                                     {keywords.length > 8 && <li className="text-fg-muted">+{keywords.length - 8} more</li>}
                                   </ul>
                                 )}
                               </td>
-                              <td className="px-2 py-1 text-fg-muted text-body-small">
-                                — <span className="sr-only">Google Ads API integration coming soon</span>
+                              <td className="px-2 py-1 text-body-small">
+                                {keywords.length === 0 ? (
+                                  <span className="text-fg-muted">—</span>
+                                ) : (() => {
+                                  const total = keywords.reduce((s, k) => s + (keywordVolumeMap[k.query] ?? 0), 0);
+                                  if (total === 0) return <span className="text-fg-muted">—</span>;
+                                  return total >= 1000 ? `${(total / 1000).toFixed(1)}k` : String(total);
+                                })()}
                               </td>
                               <td className="px-2 py-1">
                                 <Select
@@ -958,7 +1109,7 @@ export default function SeoMigrationWizardPage() {
                         setPagePlan(
                           kept.slice(0, 50).map((r) => ({
                             path: r.path.replace(/^\//, "") || "home",
-                            type: (r.type === "category" ? "collection" : r.type === "tag" ? "blog" : "page") as PagePlanRow["type"],
+                            type: (r.type === "category" ? "collection" : r.type === "tag" ? "blog" : r.type === "product" ? "product" : "page") as PagePlanRow["type"],
                             priority: (r.clicks + r.sessions > 100 ? "high" : r.clicks + r.sessions > 10 ? "medium" : "low") as PagePlanRow["priority"],
                             placement: "deep" as const,
                           }))
@@ -969,15 +1120,15 @@ export default function SeoMigrationWizardPage() {
                     </Button>
                   )}
                 </div>
-                <div className="max-h-[50vh] overflow-auto rounded-lg border border-border">
+                <div className="w-full max-w-full overflow-auto max-h-[50vh] rounded-lg border border-border">
                   <table className="w-full border-collapse text-body-small">
-                    <thead className="sticky top-0 bg-fg-muted/10">
+                    <thead className="sticky top-0 z-10 bg-bg border-b border-border shadow-sm">
                       <tr>
-                        <th className="border-b border-border px-2 py-2 text-left font-medium">Path</th>
-                        <th className="border-b border-border px-2 py-2 text-left font-medium">Type</th>
-                        <th className="border-b border-border px-2 py-2 text-left font-medium">Priority</th>
-                        <th className="border-b border-border px-2 py-2 text-left font-medium">Placement</th>
-                        <th className="border-b border-border px-2 py-2 w-8"></th>
+                        <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Path</th>
+                        <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Type</th>
+                        <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Priority</th>
+                        <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Placement</th>
+                        <th className="px-2 py-2 w-8"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1042,13 +1193,13 @@ export default function SeoMigrationWizardPage() {
                 )}
                 {redirectMap.length > 0 && (
                   <>
-                    <div className="max-h-[60vh] overflow-auto rounded-lg border border-border">
+                    <div className="w-full max-w-full overflow-auto max-h-[60vh] rounded-lg border border-border">
                       <table className="w-full border-collapse text-body-small">
-                        <thead className="sticky top-0 bg-fg-muted/10">
+                        <thead className="sticky top-0 z-10 bg-bg border-b border-border shadow-sm">
                           <tr>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Old URL</th>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">New URL (path or full)</th>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Status</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Old URL</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">New URL (path or full)</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Status</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1096,14 +1247,14 @@ export default function SeoMigrationWizardPage() {
                 {redirectMap.length === 0 ? (
                   <p className="text-body-small text-fg-muted">Define redirects in step 6 first.</p>
                 ) : (
-                  <div className="max-h-[60vh] overflow-auto rounded-lg border border-border">
+                  <div className="w-full max-w-full overflow-auto max-h-[60vh] rounded-lg border border-border">
                     <table className="w-full border-collapse text-body-small">
-                      <thead className="sticky top-0 bg-fg-muted/10">
+                      <thead className="sticky top-0 z-10 bg-bg border-b border-border shadow-sm">
                         <tr>
-                          <th className="border-b border-border px-2 py-2 text-left font-medium">Old → New</th>
-                          <th className="border-b border-border px-2 py-2 text-left font-medium">Status</th>
-                          <th className="border-b border-border px-2 py-2 text-left font-medium">Destination OK</th>
-                          <th className="border-b border-border px-2 py-2 text-left font-medium">Issue</th>
+                          <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Old → New</th>
+                          <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Status</th>
+                          <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Destination OK</th>
+                          <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Issue</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1154,15 +1305,15 @@ export default function SeoMigrationWizardPage() {
                 <Button variant="primary" size="sm" className="mb-2" onClick={() => setInternalLinkPlan((prev) => [...prev, { from_url: "/", to_url: "", anchor: "", placement: "homepage" }])}>
                   Add link
                 </Button>
-                <div className="max-h-[50vh] overflow-auto rounded-lg border border-border">
+                <div className="w-full max-w-full overflow-auto max-h-[50vh] rounded-lg border border-border">
                   <table className="w-full border-collapse text-body-small">
-                    <thead className="sticky top-0 bg-fg-muted/10">
+                    <thead className="sticky top-0 z-10 bg-bg border-b border-border shadow-sm">
                       <tr>
-                        <th className="border-b border-border px-2 py-2 text-left font-medium">From URL</th>
-                        <th className="border-b border-border px-2 py-2 text-left font-medium">To URL</th>
-                        <th className="border-b border-border px-2 py-2 text-left font-medium">Anchor</th>
-                        <th className="border-b border-border px-2 py-2 text-left font-medium">Placement</th>
-                        <th className="border-b border-border px-2 py-2 w-8"></th>
+                        <th className="px-2 py-2 text-left font-medium whitespace-nowrap">From URL</th>
+                        <th className="px-2 py-2 text-left font-medium whitespace-nowrap">To URL</th>
+                        <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Anchor</th>
+                        <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Placement</th>
+                        <th className="px-2 py-2 w-8"></th>
                       </tr>
                     </thead>
                     <tbody>

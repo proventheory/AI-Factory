@@ -528,3 +528,23 @@ export async function seoMigrationRun(req: Request, res: Response): Promise<void
     res.status(500).json({ error: String((e as Error).message) });
   }
 }
+
+export async function seoKeywordVolume(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as { keywords?: string[] };
+    const keywords = Array.isArray(body.keywords) ? body.keywords.filter((k) => typeof k === "string") : [];
+    if (keywords.length === 0) {
+      res.status(400).json({ error: "keywords array is required (non-empty)" });
+      return;
+    }
+    if (keywords.length > 500) {
+      res.status(400).json({ error: "At most 500 keywords per request" });
+      return;
+    }
+    const { fetchKeywordVolumes } = await import("../../seo-keyword-volume.js");
+    const result = await fetchKeywordVolumes(keywords);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}

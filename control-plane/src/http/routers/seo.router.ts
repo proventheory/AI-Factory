@@ -4,6 +4,7 @@ import {
   productsFromUrlHandler,
   seoGscReport,
   seoGa4Report,
+  seoKeywordVolume,
   seoGoogleAuth,
   seoGoogleCallback,
   brandProfilesGoogleConnected,
@@ -24,6 +25,7 @@ router.post("/v1/seo/migration/run", seoMigrationRun);
 router.post("/v1/products/from_url", productsFromUrlHandler);
 router.post("/v1/seo/gsc_report", seoGscReport);
 router.post("/v1/seo/ga4_report", seoGa4Report);
+router.post("/v1/seo/keyword_volume", seoKeywordVolume);
 router.get("/v1/seo/google/auth", seoGoogleAuth);
 router.get("/v1/seo/google/callback", seoGoogleCallback);
 router.get("/v1/seo/google_ga4_properties", brandProfilesGoogleGa4Properties);

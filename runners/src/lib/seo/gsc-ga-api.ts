@@ -42,9 +42,18 @@ export interface Ga4PageRow {
   user_engagement_duration?: number;
 }
 
+/** Search Console–style query data from GA4 (when property has Search Console linked). Query-level only; no per-URL in GA4 API. */
+export interface Ga4SearchConsoleQueryRow {
+  query: string;
+  clicks: number;
+  impressions: number;
+}
+
 export interface Ga4Report {
   property_id: string;
   pages: Ga4PageRow[];
+  /** When GA4 has Search Console linked: query-level keywords (no per-page in API). */
+  search_console_queries?: Ga4SearchConsoleQueryRow[];
   error?: string;
 }
 
@@ -204,7 +213,30 @@ export async function fetchGa4Report(
       user_engagement_duration: Number(r.metricValues?.[2]?.value ?? 0),
     }));
 
-    return { property_id: propertyId, pages };
+    // When property has Search Console linked, pull query-level data (GA4 only allows query + Country/Device, not page+query).
+    let search_console_queries: Ga4SearchConsoleQueryRow[] | undefined;
+    try {
+      const scRes = await analytics.properties.runReport({
+        property: `properties/${propertyId}`,
+        requestBody: {
+          dateRanges: [{ startDate: "28daysAgo", endDate: "today" }],
+          dimensions: [{ name: "organicGoogleSearchQuery" }],
+          metrics: [{ name: "organicGoogleSearchClicks" }, { name: "organicGoogleSearchImpressions" }],
+          limit: 5000,
+        },
+      });
+      const scRows = (scRes.data.rows ?? []) as Ga4Row[];
+      search_console_queries = scRows.map((r: Ga4Row) => ({
+        query: (r.dimensionValues?.[0]?.value as string) ?? "",
+        clicks: Number(r.metricValues?.[0]?.value ?? 0),
+        impressions: Number(r.metricValues?.[1]?.value ?? 0),
+      })).filter((q) => q.query.length > 0);
+      if (search_console_queries.length === 0) search_console_queries = undefined;
+    } catch {
+      // No Search Console link or API restriction; leave search_console_queries undefined.
+    }
+
+    return { property_id: propertyId, pages, search_console_queries };
   } catch (err) {
     const message = (err as Error).message ?? String(err);
     return { property_id: propertyId, pages: [], error: message };

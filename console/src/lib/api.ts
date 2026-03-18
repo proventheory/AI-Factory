@@ -1034,11 +1034,30 @@ export type SeoGa4Report = {
     screen_page_views?: number;
     user_engagement_duration?: number;
   }>;
+  /** When GA4 has Search Console linked: query-level keywords (no per-URL in GA4 API). */
+  search_console_queries?: Array<{ query: string; clicks: number; impressions: number }>;
   error?: string;
 };
 
 export async function seoGa4Report(params: SeoGa4ReportParams): Promise<SeoGa4Report> {
   const res = await fetch(`${API}/v1/seo/ga4_report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** SEO migration wizard — Keyword Planner: monthly search volume for a list of keywords (Google Ads API). */
+export type SeoKeywordVolumeParams = { keywords: string[] };
+export type SeoKeywordVolumeResult = {
+  volumes: Array<{ keyword: string; monthly_search_volume: number }>;
+  error?: string;
+};
+
+export async function seoKeywordVolume(params: SeoKeywordVolumeParams): Promise<SeoKeywordVolumeResult> {
+  const res = await fetch(`${API}/v1/seo/keyword_volume`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
