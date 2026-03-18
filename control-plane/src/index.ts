@@ -3,6 +3,22 @@ import * as Sentry from "@sentry/node";
 import { spawnSync } from "child_process";
 import path from "path";
 
+/** Validate required env before migrations. Exits if DATABASE_URL missing; logs warnings for self-heal config. */
+function validateEnv(): void {
+  if (!process.env.DATABASE_URL?.trim()) {
+    console.error("[control-plane] DATABASE_URL is not set. Set it in .env or Render env so the API and migrations can run.");
+    process.exit(1);
+  }
+  if (process.env.ENABLE_SELF_HEAL === "true") {
+    if (!process.env.RENDER_API_KEY?.trim()) {
+      console.warn("[control-plane] ENABLE_SELF_HEAL=true but RENDER_API_KEY is not set; deploy-failure self-heal will not trigger redeploys.");
+    }
+    if (!process.env.RENDER_STAGING_SERVICE_IDS?.trim()) {
+      console.warn("[control-plane] ENABLE_SELF_HEAL=true but RENDER_STAGING_SERVICE_IDS is not set; set comma-separated api, gateway, runner service IDs. See docs/OPERATIONS_RUNBOOK.md.");
+    }
+  }
+}
+
 /** App root: parent of the directory containing the bundle (dist/). So scripts/ and schemas/ resolve correctly. */
 function getAppRoot(): string {
   const bundleDir = typeof __dirname !== "undefined" ? __dirname : path.dirname(process.argv[1] ?? ".");
@@ -24,6 +40,8 @@ function runMigrationsOnStartup(): void {
   }
   console.log("[control-plane] Migrations complete.");
 }
+
+validateEnv();
 
 if (process.env.SENTRY_DSN?.trim()) {
   Sentry.init({
@@ -219,6 +237,10 @@ function startEvalInitiativeLoop(): void {
 async function main(): Promise<void> {
   console.log("[control-plane] Starting AI Factory Control Plane...");
 
+  // Start HTTP server first so Render health check gets 200 before migrations/reaper (avoids deploy stuck in "Deploying").
+  startApi();
+  console.log("[control-plane] API started (health check available)");
+
   runMigrationsOnStartup();
 
   await startReaperLoop();
@@ -239,9 +261,6 @@ async function main(): Promise<void> {
   startEvalInitiativeLoop();
 
   startSchemaDriftAlertLoop();
-
-  startApi();
-  console.log("[control-plane] API started");
 
   console.log("[control-plane] Ready");
 }
