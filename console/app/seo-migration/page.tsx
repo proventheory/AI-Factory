@@ -198,11 +198,11 @@ export default function SeoMigrationWizardPage() {
       .finally(() => setGa4Loading(false));
   }, [step, brandId, brandGoogle?.connected, brandGoogle?.ga4_property_id, sourceUrl]);
 
-  // Step 4: Seed keyword rows from crawl + GA4 union (no duplicates) + GSC when entering step 4 (only if keywordRows empty)
-  useEffect(() => {
+  // Build keyword rows from crawl + GA4 union (no duplicates) with GSC/GA4 stats. Used by step 4 seed and Reset button.
+  const buildKeywordRowsFromCrawlAndGa4 = (): KeywordRow[] => {
     const hasCrawl = (crawlResult?.urls?.length ?? 0) > 0;
     const hasGa4 = (ga4Result?.pages?.length ?? 0) > 0;
-    if (step !== 4 || (!hasCrawl && !hasGa4) || keywordRows.length > 0) return;
+    if (!hasCrawl && !hasGa4) return [];
     const gscByPath = new Map<string, { clicks: number; impressions: number }>();
     (gscResult?.pages ?? []).forEach((p) => {
       const path = (p.url || "").replace(/^https?:\/\/[^/]+/, "") || "/";
@@ -244,7 +244,15 @@ export default function SeoMigrationWizardPage() {
       addPath(norm, pathToType.get(norm) ?? "page");
     });
     rows.sort((a, b) => a.path.localeCompare(b.path));
-    setKeywordRows(rows);
+    return rows;
+  };
+
+  // Step 4: Seed keyword rows from crawl + GA4 union when entering step 4 (only if keywordRows empty)
+  useEffect(() => {
+    const hasCrawl = (crawlResult?.urls?.length ?? 0) > 0;
+    const hasGa4 = (ga4Result?.pages?.length ?? 0) > 0;
+    if (step !== 4 || (!hasCrawl && !hasGa4) || keywordRows.length > 0) return;
+    setKeywordRows(buildKeywordRowsFromCrawlAndGa4());
   }, [step, crawlResult?.urls, gscResult?.pages, ga4Result?.pages]);
 
   // Build redirect map from crawl + GA4 union (no duplicates). Used by step 6 seed and Re-seed button.
@@ -825,47 +833,16 @@ export default function SeoMigrationWizardPage() {
                 <p className="text-body-small text-fg-muted mb-3">
                   Use crawl + GSC/GA4 from steps 1–2. Assign a <strong>theme</strong> and <strong>action</strong> (keep, consolidate into another URL, or drop) per page.
                 </p>
-                {!crawlResult?.urls?.length ? (
-                  <p className="text-body-small text-fg-muted">Run the crawl in step 1 first to populate this list.</p>
+                {!(crawlResult?.urls?.length || ga4Result?.pages?.length) ? (
+                  <p className="text-body-small text-fg-muted">Run the crawl in step 1 and/or fetch GA4 in step 2 to populate this list (union of all URLs, no duplicates).</p>
                 ) : (
                   <>
                     <div className="mb-2 flex flex-wrap gap-2">
                       <Button variant="secondary" size="sm" onClick={() => setKeywordRows([])} disabled={!keywordRows.length}>
                         Clear
                       </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          const gscByPath = new Map<string, number>();
-                          (gscResult?.pages ?? []).forEach((p) => {
-                            const path = (p.url || "").replace(/^https?:\/\/[^/]+/, "") || "/";
-                            gscByPath.set(path, (gscByPath.get(path) ?? 0) + (p.clicks ?? 0));
-                          });
-                          const ga4ByPath = new Map<string, number>();
-                          (ga4Result?.pages ?? []).forEach((p) => {
-                            const path = (p.page_path ?? p.full_page_url ?? "").replace(/^https?:\/\/[^/]+/, "") || "/";
-                            ga4ByPath.set(path, (ga4ByPath.get(path) ?? 0) + (p.sessions ?? 0));
-                          });
-                          setKeywordRows(
-                            (crawlResult?.urls ?? []).map((u) => {
-                              const path = u.path || "/";
-                              const gsc = gscByPath.get(path);
-                              const sessions = ga4ByPath.get(path) ?? 0;
-                              return {
-                                path,
-                                type: u.type ?? "page",
-                                clicks: gsc ?? 0,
-                                sessions,
-                                theme: "",
-                                action: "keep" as KeywordAction,
-                                consolidateInto: "",
-                              };
-                            })
-                          );
-                        }}
-                      >
-                        Reset from crawl + GSC/GA4
+                      <Button variant="secondary" size="sm" onClick={() => setKeywordRows(buildKeywordRowsFromCrawlAndGa4())}>
+                        Reset from crawl + GSC/GA4 (union, no duplicates)
                       </Button>
                     </div>
                     <div className="max-h-[60vh] overflow-auto rounded-lg border border-border">
