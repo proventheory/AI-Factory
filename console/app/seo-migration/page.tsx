@@ -605,7 +605,7 @@ export default function SeoMigrationWizardPage() {
                           <DataTable
                             columns={ga4Columns}
                             data={ga4Result.pages}
-                            keyExtractor={(r, i) => r.page_path ?? r.full_page_url ?? String(i)}
+                            keyExtractor={(r) => r.page_path ?? r.full_page_url ?? String(r.sessions)}
                           />
                         </TableFrame>
                       </div>
