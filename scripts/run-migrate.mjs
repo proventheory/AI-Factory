@@ -68,6 +68,7 @@ const migrations = [
   { path: "supabase/migrations/20250317000000_intent_type_email_design_generator.sql", name: "intent_type_email_design_generator", skipIfErrorCodes: ["42701", "42P01"], skipMessage: "column already exists or table renamed" },
   { path: "supabase/migrations/20250320100000_initiative_google_credentials.sql", name: "initiative_google_credentials", skipIfErrorCode: "42710", skipMessage: "policy/objects already exist" },
   { path: "supabase/migrations/20250320110000_brand_google_credentials.sql", name: "brand_google_credentials", skipIfErrorCode: "42710", skipMessage: "policy/table already exists" },
+  { path: "supabase/migrations/20250320120000_brand_google_ga4_property_id.sql", name: "brand_google_ga4_property_id", skipIfErrorCode: "42701", skipMessage: "column already exists" },
   { path: "supabase/migrations/20250320000000_seo_url_risk_snapshots.sql", name: "seo_url_risk_snapshots", skipIfErrorCode: "42710", skipMessage: "policy/table already exists" },
   { path: "supabase/migrations/20250331000010_artifact_consumption.sql", name: "artifact_consumption", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250331000011_capability_graph.sql", name: "capability_graph", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
@@ -116,6 +117,7 @@ const migrations = [
   { path: "supabase/migrations/20250403000012_repair_recipes_rollback_then_branch_patch.sql", name: "repair_recipes_rollback_then_branch_patch", skipIfErrorCodes: ["42P07", "42703"], skipMessage: "constraint already updated or column missing" },
   { path: "supabase/migrations/20250404000000_evolution_loop_v1.sql", name: "evolution_loop_v1", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250404000001_evolution_targets_seed.sql", name: "evolution_targets_seed", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20260318000000_brand_shopify_credentials.sql", name: "brand_shopify_credentials", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
 ];
 
 async function run() {
