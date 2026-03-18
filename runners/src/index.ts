@@ -294,6 +294,8 @@ const WORKER_REGISTRY_HEARTBEAT_MS = 2 * 60 * 1000; // 2 minutes
 
 async function main(): Promise<void> {
   console.log(`[runner] Starting worker ${config.workerId} (v${config.runnerVersion})`);
+  // Start health server first so Render/Docker health checks pass before DB work
+  startHealthServer();
   await registerWorker(pool, config);
   setInterval(() => {
     registerWorker(pool, config).catch((err) =>
@@ -343,8 +345,6 @@ async function main(): Promise<void> {
       evolutionBusy = false;
     }
   }, EVOLUTION_POLL_INTERVAL_MS);
-
-  startHealthServer();
 
   // Deploy-failure self-heal (staging): when api-staging is down, runner can still trigger redeploys for api/gateway/runner.
   if (process.env.ENABLE_SELF_HEAL === "true" && process.env.RENDER_API_KEY?.trim()) {
