@@ -99,3 +99,12 @@ body {
     --chart-5: 340 75% 55%;
   }
 }
+
+/* Indeterminate progress bar (e.g. SEO crawl in progress) */
+@keyframes crawl-progress {
+  0%, 100% { transform: translateX(-100%); }
+  50% { transform: translateX(233%); }
+}
+.animate-crawl-progress {
+  animation: crawl-progress 2s ease-in-out infinite;
+}

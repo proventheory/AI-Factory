@@ -332,14 +332,31 @@ export default function SeoMigrationWizardPage() {
                   Use link-following crawl (discovers pages not in sitemap, e.g. WordPress)
                 </label>
               </div>
-              <div className="mt-4 flex gap-2">
-                <Button
-                  variant="primary"
-                  onClick={runCrawl}
-                  disabled={crawlLoading || !sourceUrl.trim()}
-                >
-                  {crawlLoading ? "Crawling…" : "Run crawl"}
-                </Button>
+              <div className="mt-4 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="primary"
+                    onClick={runCrawl}
+                    disabled={crawlLoading || !sourceUrl.trim()}
+                  >
+                    {crawlLoading ? "Crawling…" : "Run crawl"}
+                  </Button>
+                  {crawlLoading && (
+                    <span className="text-body-small text-fg-muted">
+                      Crawl in progress — do not close this page
+                    </span>
+                  )}
+                </div>
+                {crawlLoading && (
+                  <div className="w-full overflow-hidden rounded-full bg-fg-muted/20" role="progressbar" aria-label="Crawl in progress">
+                    <div className="h-2 w-[30%] min-w-[30%] rounded-full bg-brand-500 animate-crawl-progress" />
+                  </div>
+                )}
+                {crawlLoading && (
+                  <p className="text-body-small text-fg-muted">
+                    Fetching sitemaps and discovering URLs from <strong>{sourceUrl}</strong>. With link-following and {maxUrls} max URLs this can take <strong>1–5 minutes</strong>. The request is running on the server; you will see results when it finishes.
+                  </p>
+                )}
               </div>
               {crawlError && (
                 <div className="mt-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
