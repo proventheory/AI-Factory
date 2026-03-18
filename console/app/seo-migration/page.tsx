@@ -975,7 +975,7 @@ export default function SeoMigrationWizardPage() {
                     )}
                     {!gscResult?.page_queries?.length && (ga4Result?.search_console_queries?.length ?? 0) > 0 && (
                       <div className="mb-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2 text-body-small">
-                        <strong>Traffic keywords</strong> are from GA4 Search Console (site-level; {ga4Result.search_console_queries.length} queries). Connect Search Console API and fetch GSC report in Step 2 for per-URL keywords. You can still fetch monthly search volume for these keywords below.
+                        <strong>Traffic keywords</strong> are from GA4 Search Console (site-level; {ga4Result?.search_console_queries?.length ?? 0} queries). Connect Search Console API and fetch GSC report in Step 2 for per-URL keywords. You can still fetch monthly search volume for these keywords below.
                       </div>
                     )}
                     <div className="mb-2 flex flex-wrap gap-2 items-center">
