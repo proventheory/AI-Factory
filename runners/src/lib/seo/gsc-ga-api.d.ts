@@ -14,6 +14,12 @@ export interface GscQueryRow {
     clicks: number;
     impressions: number;
 }
+export interface GscPageQueryRow {
+    page: string;
+    query: string;
+    clicks: number;
+    impressions: number;
+}
 export interface GscReport {
     site_url: string;
     date_range: {
@@ -22,6 +28,7 @@ export interface GscReport {
     };
     pages: GscPageRow[];
     queries: GscQueryRow[];
+    page_queries: GscPageQueryRow[];
     error?: string;
 }
 export interface Ga4PageRow {

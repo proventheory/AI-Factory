@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
   PageFrame,
@@ -46,7 +46,7 @@ const MIGRATION_ENTITIES = [
 
 // Steps 4–9: in-memory strategy state (driven by crawl + GSC/GA4 from 1–3)
 type KeywordAction = "keep" | "consolidate" | "drop";
-type KeywordRow = { path: string; type: string; clicks: number; sessions: number; theme: string; action: KeywordAction; consolidateInto: string };
+type KeywordRow = { path: string; type: string; clicks: number; sessions: number; primaryKeyword: string; action: KeywordAction; consolidateInto: string };
 type PagePlanRow = { path: string; type: "collection" | "product" | "landing" | "blog" | "page"; priority: "high" | "medium" | "low"; placement: "nav" | "footer" | "deep" };
 type RedirectStatus = "301" | "302" | "drop" | "consolidate";
 type RedirectRow = { old_url: string; new_url: string; status: RedirectStatus; destinationOk?: boolean; issue?: string };
@@ -231,7 +231,7 @@ export default function SeoMigrationWizardPage() {
         type,
         clicks: gsc?.clicks ?? 0,
         sessions,
-        theme: "",
+        primaryKeyword: "",
         action: "keep" as KeywordAction,
         consolidateInto: "",
       });
@@ -246,6 +246,18 @@ export default function SeoMigrationWizardPage() {
     rows.sort((a, b) => a.path.localeCompare(b.path));
     return rows;
   };
+
+  // Step 4: Map path → list of GSC keywords (query + clicks/impressions) for Traffic keywords column
+  const pathToGscKeywords = useMemo(() => {
+    const m = new Map<string, Array<{ query: string; clicks: number; impressions: number }>>();
+    (gscResult?.page_queries ?? []).forEach((pq) => {
+      const path = (pq.page || "").replace(/^https?:\/\/[^/]+/, "") || "/";
+      const norm = path.replace(/\/+$/, "") || "/";
+      if (!m.has(norm)) m.set(norm, []);
+      m.get(norm)!.push({ query: pq.query, clicks: pq.clicks, impressions: pq.impressions });
+    });
+    return m;
+  }, [gscResult?.page_queries]);
 
   // Step 4: Seed keyword rows from crawl + GA4 union when entering step 4 (only if keywordRows empty)
   useEffect(() => {
@@ -831,7 +843,7 @@ export default function SeoMigrationWizardPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-body-small text-fg-muted mb-3">
-                  Use crawl + GSC/GA4 from steps 1–2. Assign a <strong>theme</strong> and <strong>action</strong> (keep, consolidate into another URL, or drop) per page.
+                  Use crawl + GSC/GA4 from steps 1–2. Assign a <strong>primary keyword</strong> and <strong>action</strong> (keep, consolidate into another URL, or drop) per page.
                 </p>
                 {!(crawlResult?.urls?.length || ga4Result?.pages?.length) ? (
                   <p className="text-body-small text-fg-muted">Run the crawl in step 1 and/or fetch GA4 in step 2 to populate this list (union of all URLs, no duplicates).</p>
@@ -853,20 +865,41 @@ export default function SeoMigrationWizardPage() {
                             <th className="border-b border-border px-2 py-2 text-left font-medium">Type</th>
                             <th className="border-b border-border px-2 py-2 text-right font-medium">Clicks</th>
                             <th className="border-b border-border px-2 py-2 text-right font-medium">Sessions</th>
-                            <th className="border-b border-border px-2 py-2 text-left font-medium">Theme</th>
+                            <th className="border-b border-border px-2 py-2 text-left font-medium">Primary Keyword</th>
+                            <th className="border-b border-border px-2 py-2 text-left font-medium">Traffic keywords (GSC)</th>
+                            <th className="border-b border-border px-2 py-2 text-left font-medium">Monthly search volume</th>
                             <th className="border-b border-border px-2 py-2 text-left font-medium">Action</th>
                             <th className="border-b border-border px-2 py-2 text-left font-medium">Consolidate into</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {keywordRows.map((r, i) => (
+                          {keywordRows.map((r, i) => {
+                            const keywords = pathToGscKeywords.get(r.path) ?? [];
+                            return (
                             <tr key={`${r.path}-${i}`} className="border-b border-border/50">
                               <td className="px-2 py-1"><code className="text-body-small">{r.path}</code></td>
                               <td className="px-2 py-1">{r.type}</td>
                               <td className="px-2 py-1 text-right">{r.clicks}</td>
                               <td className="px-2 py-1 text-right">{r.sessions}</td>
                               <td className="px-2 py-1">
-                                <Input value={r.theme} onChange={(e) => setKeywordRows((prev) => prev.map((row, j) => (j === i ? { ...row, theme: e.target.value } : row)))} className="min-w-[120px]" placeholder="e.g. THC tonics" />
+                                <Input value={r.primaryKeyword} onChange={(e) => setKeywordRows((prev) => prev.map((row, j) => (j === i ? { ...row, primaryKeyword: e.target.value } : row)))} className="min-w-[120px]" placeholder="e.g. THC tonics" />
+                              </td>
+                              <td className="px-2 py-1 max-w-[220px]">
+                                {keywords.length === 0 ? (
+                                  <span className="text-fg-muted">—</span>
+                                ) : (
+                                  <ul className="list-disc list-inside text-body-small space-y-0.5">
+                                    {keywords.slice(0, 8).map((k, ki) => (
+                                      <li key={ki} title={`${k.clicks} clicks, ${k.impressions} impressions`}>
+                                        {k.query} <span className="text-fg-muted">({k.clicks})</span>
+                                      </li>
+                                    ))}
+                                    {keywords.length > 8 && <li className="text-fg-muted">+{keywords.length - 8} more</li>}
+                                  </ul>
+                                )}
+                              </td>
+                              <td className="px-2 py-1 text-fg-muted text-body-small">
+                                — <span className="sr-only">Google Ads API integration coming soon</span>
                               </td>
                               <td className="px-2 py-1">
                                 <Select
@@ -888,7 +921,8 @@ export default function SeoMigrationWizardPage() {
                                 />
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

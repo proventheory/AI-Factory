@@ -11,6 +11,7 @@ export interface GscReport {
   date_range: { start: string; end: string };
   pages: { url: string; clicks: number; impressions: number; ctr: number; position: number }[];
   queries: { query: string; clicks: number; impressions: number }[];
+  page_queries: { page: string; query: string; clicks: number; impressions: number }[];
   error?: string;
 }
 

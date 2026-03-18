@@ -1008,6 +1008,8 @@ export type SeoGscReport = {
   date_range: { start: string; end: string };
   pages: Array<{ url: string; clicks: number; impressions: number; ctr: number; position: number }>;
   queries: Array<{ query: string; clicks: number; impressions: number }>;
+  /** Keywords that generated traffic per page (GSC dimensions: page + query). */
+  page_queries: Array<{ page: string; query: string; clicks: number; impressions: number }>;
   error?: string;
 };
 

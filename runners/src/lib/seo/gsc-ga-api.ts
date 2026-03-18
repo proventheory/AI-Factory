@@ -17,11 +17,20 @@ export interface GscQueryRow {
   impressions: number;
 }
 
+export interface GscPageQueryRow {
+  page: string;
+  query: string;
+  clicks: number;
+  impressions: number;
+}
+
 export interface GscReport {
   site_url: string;
   date_range: { start: string; end: string };
   pages: GscPageRow[];
   queries: GscQueryRow[];
+  /** Keywords that generated traffic per page (GSC dimensions: page + query). */
+  page_queries: GscPageQueryRow[];
   error?: string;
 }
 
@@ -89,7 +98,8 @@ export async function fetchGscReport(
     const { google } = loadGoogle();
     const searchconsole = google.searchconsole({ version: "v1", auth });
 
-    const [pageRes, queryRes] = await Promise.all([
+    const pageQueryLimit = Math.min(10000, (rowLimit ?? 500) * 20); // allow more rows for page+query
+    const [pageRes, queryRes, pageQueryRes] = await Promise.all([
       searchconsole.searchanalytics.query({
         siteUrl,
         requestBody: {
@@ -106,6 +116,15 @@ export async function fetchGscReport(
           endDate: endStr,
           dimensions: ["query"],
           rowLimit,
+        },
+      }),
+      searchconsole.searchanalytics.query({
+        siteUrl,
+        requestBody: {
+          startDate: startStr,
+          endDate: endStr,
+          dimensions: ["page", "query"],
+          rowLimit: pageQueryLimit,
         },
       }),
     ]);
@@ -125,7 +144,14 @@ export async function fetchGscReport(
       impressions: (r.impressions as number) ?? 0,
     }));
 
-    return { site_url: siteUrl, date_range: { start: startStr, end: endStr }, pages, queries };
+    const page_queries: GscPageQueryRow[] = ((pageQueryRes.data.rows ?? []) as GscRow[]).map((r: GscRow) => ({
+      page: (r.keys?.[0] as string) ?? "",
+      query: (r.keys?.[1] as string) ?? "",
+      clicks: (r.clicks as number) ?? 0,
+      impressions: (r.impressions as number) ?? 0,
+    }));
+
+    return { site_url: siteUrl, date_range: { start: startStr, end: endStr }, pages, queries, page_queries };
   } catch (err) {
     const message = (err as Error).message ?? String(err);
     return {
@@ -133,6 +159,7 @@ export async function fetchGscReport(
       date_range: { start: startStr, end: endStr },
       pages: [],
       queries: [],
+      page_queries: [],
       error: message,
     };
   }
