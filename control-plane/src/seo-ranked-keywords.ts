@@ -132,12 +132,12 @@ export async function fetchRankedKeywordsFromDataForSeo(
   if (data.status_code && data.status_code !== 20000) {
     throw new Error(data.status_message ?? `DataForSEO status ${data.status_code}`);
   }
-  const task = data.tasks?.[0];
-  const statusCode = task?.status_code;
+  const taskResult = data.tasks?.[0];
+  const statusCode = taskResult?.status_code;
   if (statusCode && statusCode !== 20000) {
-    throw new Error((task as { status_message?: string }).status_message ?? `Task status ${statusCode}`);
+    throw new Error((taskResult as { status_message?: string }).status_message ?? `Task status ${statusCode}`);
   }
-  const resultList = task?.result ?? [];
+  const resultList = taskResult?.result ?? [];
   const firstResult = resultList[0] as { items?: unknown[] } | undefined;
   const items = firstResult?.items ?? [];
   return parseApiItems(Array.isArray(items) ? items : []);
