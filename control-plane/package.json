@@ -8,12 +8,13 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@sentry/node": "^8.49.0",
+    "@sentry/node": "^8.55.0",
     "@supabase/supabase-js": "^2.98.0",
-    "axios": "^1.7.9",
+    "axios": "^1.8.0",
     "cheerio": "^1.0.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
     "google-auth-library": "^9.15.1",
     "googleapis": "^144.0.0",
     "mjml": "^4.18.0",

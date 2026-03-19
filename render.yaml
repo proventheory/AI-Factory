@@ -1,12 +1,16 @@
 # Render Blueprint: AI Factory Control Plane + Runner + LLM Gateway
-# Set in Dashboard: DATABASE_URL, CORS_ORIGIN (API), CONTROL_PLANE_URL + LLM_GATEWAY_URL or OPENAI_API_KEY (runner).
-# Gateway: set OPENAI_API_KEY and optionally ANTHROPIC_API_KEY on ai-factory-gateway-staging; then set LLM_GATEWAY_URL on runner to this service URL.
 #
-# Control Plane (API) self-heal: migrations run on every start when built from GitHub (or any deploy) only if:
-#   - dockerContext: .   (repo root; leave Root Directory blank so context is full repo)
-#   - dockerfilePath: ./Dockerfile.control-plane   (or control-plane/Dockerfile with context .)
-#   - Start Command: leave EMPTY so the image CMD runs migrate then the API.
-# If Root Directory is set to control-plane, or Start Command overrides CMD, the image may omit migrations and Console shows "Control Plane database schema is missing."
+# Service URLs (set in Dashboard per service):
+#   Runner: CONTROL_PLANE_URL = API service URL (e.g. https://ai-factory-api-staging.onrender.com); LLM_GATEWAY_URL = gateway service URL (or set OPENAI_API_KEY to call OpenAI directly).
+#   API: CORS_ORIGIN = Console URL (e.g. https://your-console.vercel.app). Optional RATE_LIMIT_MAX_PER_MIN (default 300).
+#   API + Runner: DATABASE_URL (same Supabase/Neon pooler URL). Optional DATABASE_POOL_MAX (default 5).
+# Gateway: OPENAI_API_KEY (required), ANTHROPIC_API_KEY (optional), REDIS_URL (optional, for caching).
+#
+# Health paths: API and Runner use /health; Gateway uses /health/readiness (LiteLLM convention).
+#
+# Self-heal (Control Plane): ENABLE_SELF_HEAL=true, RENDER_API_KEY, RENDER_STAGING_SERVICE_IDS (api, gateway, runner IDs), optionally VERCEL_TOKEN + VERCEL_PROJECT_IDS. See docs/OPERATIONS_RUNBOOK.md.
+#
+# Docker: All services use dockerContext: . (repo root) so Dockerfiles can COPY . and build from root; migrations and scripts live at repo root. Start Command left EMPTY so image CMD runs (migrate then API for Control Plane).
 
 services:
   - type: web
@@ -16,6 +20,19 @@ services:
     dockerContext: .
     dockerfilePath: ./Dockerfile.gateway
     branch: main
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set in Dashboard: OPENAI_API_KEY (required), ANTHROPIC_API_KEY (optional), REDIS_URL (optional)
+    healthCheckPath: /health/readiness
+
+  - type: web
+    name: ai-factory-gateway-prod
+    runtime: docker
+    plan: standard
+    dockerContext: .
+    dockerfilePath: ./Dockerfile.gateway
+    branch: prod
     envVars:
       - key: NODE_ENV
         value: production
@@ -34,7 +51,7 @@ services:
         value: "10000"
       - key: NODE_ENV
         value: production
-      # Set in Dashboard: DATABASE_URL (staging), CORS_ORIGIN (staging console URL)
+      # Set in Dashboard: DATABASE_URL (staging), CORS_ORIGIN (staging console URL). Optional: DATABASE_POOL_MAX (default 5). Health check timeout: set in Render Dashboard if needed (defaults ~30s).
     healthCheckPath: /health
 
   - type: web
@@ -46,7 +63,7 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Render sets PORT for web services; runner listens for GET /health so service check (and MCP) can pass. Set in Dashboard: DATABASE_URL (same as API), CONTROL_PLANE_URL, and either LLM_GATEWAY_URL or OPENAI_API_KEY
+      # Render sets PORT for web services; runner listens for GET /health. Set in Dashboard: DATABASE_URL (same as API), CONTROL_PLANE_URL, LLM_GATEWAY_URL or OPENAI_API_KEY. Optional: DATABASE_POOL_MAX.
     healthCheckPath: /health
 
   - type: web

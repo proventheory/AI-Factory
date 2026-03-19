@@ -78,6 +78,18 @@ export async function getJobContext(client, jobRun) {
             // initiatives may not have goal_metadata column in older migrations
         }
     }
+    let runner_image_digest = null;
+    let environment = null;
+    try {
+        const relResult = await client.query("SELECT rel.runner_image_digest, r.environment FROM runs r LEFT JOIN releases rel ON rel.id = r.release_id WHERE r.id = $1", [jobRun.run_id]);
+        if (relResult.rows[0]) {
+            runner_image_digest = relResult.rows[0].runner_image_digest ?? null;
+            environment = relResult.rows[0].environment ?? null;
+        }
+    }
+    catch {
+        // releases.runner_image_digest or runs.release_id may not exist
+    }
     return {
         run_id: jobRun.run_id,
         initiative_id,
@@ -91,6 +103,8 @@ export async function getJobContext(client, jobRun) {
         predecessor_artifacts: predecessorArtifacts,
         llm_source,
         goal_metadata: goal_metadata ?? undefined,
+        runner_image_digest: runner_image_digest ?? undefined,
+        environment: environment ?? undefined,
     };
 }
 /**

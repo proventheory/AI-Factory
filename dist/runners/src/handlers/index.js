@@ -2,8 +2,15 @@
  * Node handler registry: job_type → handler.
  * Handlers receive JobContext and return success; they write artifacts with producer_plan_node_id.
  */
+import { execSync } from "child_process";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { loadArtifactContentForLlm } from "../artifact-content.js";
+import { applyPatchInDir } from "../deploy-fix-apply.js";
 import { chat, isGatewayConfigured, resolveTier } from "../llm-client.js";
 import { getBudgetsForJob, recordUsage } from "../llm-budgets.js";
+import { runEvolutionReplay } from "./evolution-replay.js";
 const registry = new Map();
 export function registerHandler(jobType, handler) {
     registry.set(jobType, handler);
@@ -107,17 +114,29 @@ export function registerCodeReviewHandler() {
         await writeArtifact(client, context, params, "review_verdict", JSON.stringify(verdict));
     });
 }
-/** Analyze repo: produce repo summary */
+/** Analyze repo: produce repo summary; when goal_metadata.deploy_failure is set, include logs so the LLM can diagnose the failure. */
 export function registerAnalyzeRepoHandler() {
     registry.set("analyze_repo", async (client, context, params) => {
-        const content = await callLlmAndRecord(client, context, params, "You are a codebase analyst. Produce a repo summary including language, framework, architecture, and key directories.", `Workspace: ${context.workspace_path ?? "not specified"}`);
+        const deployFailure = context.goal_metadata?.deploy_failure;
+        const systemPrompt = deployFailure?.logs
+            ? "You are a codebase analyst and deploy-failure diagnostician. This initiative was created because a deploy failed repeatedly (self-heal). Your tasks: (1) Use the deploy logs below to identify the exact error (e.g. relation does not exist, policy already exists, migration order). (2) Produce a concise repo summary and point to the files that likely need to change (e.g. migration runner order, migration SQL). Output format: a short 'Diagnosis' section with the error and root cause, then 'Repo summary' with language, framework, key dirs, and 'Suggested fix location' (file paths and what to change)."
+            : "You are a codebase analyst. Produce a repo summary including language, framework, architecture, and key directories.";
+        const userPrompt = deployFailure?.logs
+            ? `Deploy failure context: service_id=${deployFailure.service_id ?? "?"} deploy_id=${deployFailure.deploy_id ?? "?"} commit=${deployFailure.commit ?? "?"}\n\nDeploy logs (most recent last):\n${deployFailure.logs}\n\nWorkspace: ${context.workspace_path ?? "not specified"}`
+            : `Workspace: ${context.workspace_path ?? "not specified"}`;
+        const content = await callLlmAndRecord(client, context, params, systemPrompt, userPrompt);
         await writeArtifact(client, context, params, "repo_summary", content);
     });
 }
-/** Write patch: produce code patch */
+/** Write patch: produce code patch; when goal_metadata.deploy_failure is set, emphasize fixing the deploy error from the repo summary. */
 export function registerWritePatchHandler() {
     registry.set("write_patch", async (client, context, params) => {
-        const content = await callLlmAndRecord(client, context, params, "You are a software engineer. Write a code patch to fix the issue described by predecessor artifacts.", `Predecessor artifacts: ${context.predecessor_artifacts.map(a => `${a.artifact_type}:${a.uri}`).join(", ") || "none"}`);
+        const deployFailure = context.goal_metadata?.deploy_failure;
+        const systemPrompt = deployFailure?.logs
+            ? "You are a software engineer. The predecessor repo_summary contains a deploy-failure diagnosis (e.g. migration order, missing file, missing DROP POLICY IF EXISTS). Produce a minimal, correct code patch that fixes the root cause. Use this exact format: for new files use <<<<<<< ADD_FILE: path/to/file\n<content>\n>>>>>>> END; for edits use <<<<<<< SEARCH\n<exact lines>\n======= REPLACE\n<new lines>\n>>>>>>> FILE: path/to/file. Prefer: adding missing migration stubs; reordering migration entries; making migration SQL idempotent (e.g. DROP POLICY IF EXISTS before CREATE POLICY). Output only the patch blocks."
+            : "You are a software engineer. Write a code patch to fix the issue described by predecessor artifacts.";
+        const userPrompt = `Predecessor artifacts: ${context.predecessor_artifacts.map(a => `${a.artifact_type}:${a.uri}`).join(", ") || "none"}`;
+        const content = await callLlmAndRecord(client, context, params, systemPrompt, userPrompt);
         await writeArtifact(client, context, params, "patch", content);
     });
 }
@@ -126,6 +145,72 @@ export function registerSubmitPRHandler() {
     registry.set("submit_pr", async (client, context, params) => {
         const prUrl = `https://github.com/example/repo/pull/0`;
         await writeArtifact(client, context, params, "pr_url", prUrl, "external_object_refs");
+    });
+}
+/** Push fix: apply patch and push to main. Used by deploy_fix template when ALLOW_SELF_HEAL_PUSH=true. */
+export function registerPushFixHandler() {
+    registry.set("push_fix", async (client, context, params) => {
+        const allowPush = process.env.ALLOW_SELF_HEAL_PUSH === "true";
+        const token = process.env.GITHUB_TOKEN?.trim();
+        const repo = process.env.GITHUB_REPOSITORY?.trim() || process.env.REPO_URL?.replace(/^https:\/\/(?:[^@]+@)?github\.com\/|\.git$/g, "").trim();
+        if (!allowPush || !token || !repo) {
+            const msg = !allowPush
+                ? "push_skipped (ALLOW_SELF_HEAL_PUSH not true)"
+                : !token
+                    ? "push_skipped (GITHUB_TOKEN not set)"
+                    : "push_skipped (GITHUB_REPOSITORY or REPO_URL not set)";
+            await writeArtifact(client, context, params, "push_fix_result", msg, "docs");
+            return;
+        }
+        const patchArtifact = context.predecessor_artifacts?.find((a) => a.artifact_type === "patch");
+        if (!patchArtifact?.id) {
+            await writeArtifact(client, context, params, "push_fix_result", "push_failed: no patch artifact", "docs");
+            return;
+        }
+        const patchContent = await loadArtifactContentForLlm(client, patchArtifact.id, 200_000, 500_000);
+        if (!patchContent?.trim()) {
+            await writeArtifact(client, context, params, "push_fix_result", "push_failed: patch content empty", "docs");
+            return;
+        }
+        const tmpBase = join(tmpdir(), "self-heal-push-");
+        const cloneDir = mkdtempSync(tmpBase);
+        try {
+            if (!repo.includes("/")) {
+                rmSync(cloneDir, { recursive: true, force: true });
+                await writeArtifact(client, context, params, "push_fix_result", "push_failed: GITHUB_REPOSITORY must be owner/repo", "docs");
+                return;
+            }
+            const [owner, repoName] = repo.split("/");
+            const cloneUrl = `https://x-access-token:${token}@github.com/${owner}/${repoName}.git`;
+            execSync(`git clone --depth 1 --branch main "${cloneUrl}" "${cloneDir}"`, {
+                stdio: "pipe",
+                timeout: 60_000,
+            });
+            const results = applyPatchInDir(patchContent, cloneDir, false);
+            const applied = results.filter((r) => r.applied);
+            if (applied.length === 0) {
+                const detail = results.map((r) => r.detail ?? r.block.file).join("; ");
+                await writeArtifact(client, context, params, "push_fix_result", `push_failed: no blocks applied. ${detail}`, "docs");
+                return;
+            }
+            const message = process.env.GIT_COMMIT_MESSAGE?.trim() || `fix(deploy): self-heal apply patch (${applied.length} file(s))`;
+            execSync("git add -A", { cwd: cloneDir, stdio: "pipe" });
+            execSync(`git commit -m ${JSON.stringify(message)}`, { cwd: cloneDir, stdio: "pipe" });
+            execSync("git push origin main", { cwd: cloneDir, stdio: "pipe", timeout: 30_000 });
+            await writeArtifact(client, context, params, "push_fix_result", `pushed to main (${applied.length} file(s) applied)`, "docs");
+        }
+        catch (err) {
+            const msg = err.message?.slice(0, 500) ?? String(err);
+            await writeArtifact(client, context, params, "push_fix_result", `push_failed: ${msg}`, "docs");
+        }
+        finally {
+            try {
+                rmSync(cloneDir, { recursive: true, force: true });
+            }
+            catch {
+                /* ignore */
+            }
+        }
     });
 }
 /** Plan migration: produce migration plan */
@@ -200,6 +285,7 @@ export function registerAllHandlers() {
     registerAnalyzeRepoHandler();
     registerWritePatchHandler();
     registerSubmitPRHandler();
+    registerPushFixHandler();
     registerPlanMigrationHandler();
     registerApplyBatchHandler();
     registerResearchHandler();
@@ -386,6 +472,16 @@ export function registerAllHandlers() {
     registry.set("landing_page_generate", async (client, context, params) => {
         const { handleLandingPageGenerate } = await import("./landing-page-generate.js");
         await handleLandingPageGenerate({ client, context, params, writeArtifact });
+    });
+    // Evolution Loop V1: replay (cohort evaluation) and shadow (stub)
+    registry.set("evolution_replay", async (client, context) => {
+        const experiment_run_id = context.goal_metadata?.experiment_run_id;
+        if (!experiment_run_id)
+            throw new Error("evolution_replay requires goal_metadata.experiment_run_id");
+        await runEvolutionReplay(client, { experiment_run_id });
+    });
+    registry.set("evolution_shadow", async () => {
+        throw new Error("evolution_shadow not implemented in V1; use traffic_strategy=replay");
     });
     // deploy_preview and seo_* handlers require modules not yet in repo; register when those files are added
 }

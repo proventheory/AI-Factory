@@ -2,6 +2,21 @@ import "dotenv/config";
 import * as Sentry from "@sentry/node";
 import { spawnSync } from "child_process";
 import path from "path";
+/** Validate required env before migrations. Exits if DATABASE_URL missing; logs warnings for self-heal config. */
+function validateEnv() {
+    if (!process.env.DATABASE_URL?.trim()) {
+        console.error("[control-plane] DATABASE_URL is not set. Set it in .env or Render env so the API and migrations can run.");
+        process.exit(1);
+    }
+    if (process.env.ENABLE_SELF_HEAL === "true") {
+        if (!process.env.RENDER_API_KEY?.trim()) {
+            console.warn("[control-plane] ENABLE_SELF_HEAL=true but RENDER_API_KEY is not set; deploy-failure self-heal will not trigger redeploys.");
+        }
+        if (!process.env.RENDER_STAGING_SERVICE_IDS?.trim()) {
+            console.warn("[control-plane] ENABLE_SELF_HEAL=true but RENDER_STAGING_SERVICE_IDS is not set; set comma-separated api, gateway, runner service IDs. See docs/OPERATIONS_RUNBOOK.md.");
+        }
+    }
+}
 /** App root: parent of the directory containing the bundle (dist/). So scripts/ and schemas/ resolve correctly. */
 function getAppRoot() {
     const bundleDir = typeof __dirname !== "undefined" ? __dirname : path.dirname(process.argv[1] ?? ".");
@@ -22,6 +37,7 @@ function runMigrationsOnStartup() {
     }
     console.log("[control-plane] Migrations complete.");
 }
+validateEnv();
 if (process.env.SENTRY_DSN?.trim()) {
     Sentry.init({
         dsn: process.env.SENTRY_DSN,
@@ -32,8 +48,9 @@ if (process.env.SENTRY_DSN?.trim()) {
 }
 import { pool } from "./db.js";
 import { startApi } from "./api.js";
-import { reapStaleLeases, reconcileRunStatuses, reconcileRunningRunsWithNoPendingJobs, reconcileRunningRunsWithStaleQueuedJobs } from "./reaper.js";
+import { reapStaleLeases, reconcileRunStatuses, reconcileRunningRunsWithNoPendingJobs, reconcileRunningRunsWithStaleQueuedJobs, sweepDelayedRetries } from "./reaper.js";
 import { computeDrift, executeRollback, routeRun } from "./release-manager.js";
+import { tightenPoliciesOnDrift } from "./policy-auto-tighten.js";
 import { scanAndRemediateNoArtifactsRuns, scanAndRemediateBadArtifactRuns } from "./no-artifacts-self-heal.js";
 import { scanAndRemediateDeployFailure } from "./deploy-failure-self-heal.js";
 import { scanAndRemediateVercelDeployFailure } from "./vercel-redeploy-self-heal.js";
@@ -44,6 +61,7 @@ const DRIFT_CHECK_INTERVAL_MS = 60_000;
 const SCHEMA_DRIFT_ALERT_INTERVAL_MS = 10 * 60_000; // 10 minutes — automated schema drift alerts
 const NO_ARTIFACTS_SCAN_INTERVAL_MS = 3 * 60_000; // 3 minutes
 const DEPLOY_FAILURE_SCAN_INTERVAL_MS = 5 * 60_000; // 5 minutes — Render + Vercel failed deploys
+const AUTONOMOUS_RECOVERY_INTERVAL_MS = 2 * 60_000; // 2 minutes — incident watcher → evidence → classify → plan → execute
 const EVAL_INITIATIVE_INTERVAL_MS = Number(process.env.EVAL_INITIATIVE_INTERVAL_MS) || 24 * 60 * 60 * 1000; // 24h default
 async function startReaperLoop() {
     try {
@@ -67,6 +85,9 @@ async function startReaperLoop() {
             const reaped = await reapStaleLeases(pool);
             if (reaped > 0)
                 console.log(`[reaper] Reclaimed ${reaped} stale leases`);
+            const swept = await sweepDelayedRetries(pool);
+            if (swept > 0)
+                console.log(`[reaper] Swept ${swept} delayed retry(ies)`);
             const reconciled = await reconcileRunStatuses(pool);
             if (reconciled > 0)
                 console.log(`[reaper] Reconciled ${reconciled} run(s) to succeeded`);
@@ -94,6 +115,10 @@ async function startDriftMonitor() {
                     const route = await routeRun(pool, env);
                     if (route.cohort === "canary") {
                         await executeRollback(pool, route.releaseId, env);
+                        const tightened = await tightenPoliciesOnDrift(pool, env).catch(() => ({ rulesUpdated: false, capabilityGrantsUpdated: 0 }));
+                        if (tightened.rulesUpdated || tightened.capabilityGrantsUpdated > 0) {
+                            console.warn(`[drift] Policy auto-tightening: rules=${tightened.rulesUpdated}, capability_grants=${tightened.capabilityGrantsUpdated}`);
+                        }
                         console.warn(`[drift] Rolled back release ${route.releaseId} in ${env}`);
                     }
                 }
@@ -172,6 +197,26 @@ function startDeployFailureScanLoop() {
     setInterval(run, DEPLOY_FAILURE_SCAN_INTERVAL_MS);
     console.log("[control-plane] Deploy-failure self-heal scan started (every 5 min)");
 }
+/** Autonomous recovery: incident watcher → evidence → classify → plan → execute. Requires ENABLE_AUTONOMOUS_RECOVERY=true and incident tables (20250403* migrations). */
+function startAutonomousRecoveryLoop() {
+    if (process.env.ENABLE_AUTONOMOUS_RECOVERY !== "true")
+        return;
+    const run = async () => {
+        const { runRecoveryCycle } = await import("./autonomous-recovery/index.js");
+        try {
+            const result = await runRecoveryCycle();
+            if (result.watched.opened + result.watched.updated + result.evidence.processed + result.classified + result.planned + result.executed > 0) {
+                console.log("[autonomous-recovery] Cycle:", result.watched, "evidence:", result.evidence.processed, "classified:", result.classified, "planned:", result.planned, "executed:", result.executed);
+            }
+        }
+        catch (err) {
+            console.error("[autonomous-recovery] Error:", err);
+        }
+    };
+    setTimeout(run, 45_000); // after deploy-failure first run
+    setInterval(run, AUTONOMOUS_RECOVERY_INTERVAL_MS);
+    console.log("[control-plane] Autonomous recovery loop started (every 2 min)");
+}
 function startEvalInitiativeLoop() {
     if (process.env.ENABLE_EVAL_INITIATIVE !== "true")
         return;
@@ -201,6 +246,7 @@ async function main() {
     console.log("[control-plane] No-artifacts self-heal scan started");
     startRenderLogIngestLoop();
     startDeployFailureScanLoop();
+    startAutonomousRecoveryLoop();
     startEvalInitiativeLoop();
     startSchemaDriftAlertLoop();
     startApi();

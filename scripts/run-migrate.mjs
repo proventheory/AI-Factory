@@ -118,6 +118,7 @@ const migrations = [
   { path: "supabase/migrations/20250404000000_evolution_loop_v1.sql", name: "evolution_loop_v1", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20250404000001_evolution_targets_seed.sql", name: "evolution_targets_seed", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20260318000000_brand_shopify_credentials.sql", name: "brand_shopify_credentials", skipIfErrorCodes: ["42P07", "42710"], skipMessage: "table or policy already exists" },
+  { path: "supabase/migrations/20250416000000_seo_ranked_keywords_cache.sql", name: "seo_ranked_keywords_cache", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
 ];
 
 async function run() {

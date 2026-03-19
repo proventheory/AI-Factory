@@ -45,6 +45,35 @@ export async function generateScorecard(pool, releaseId, environment, windowMinu
      JOIN runs r ON r.id = v.run_id
      WHERE r.release_id = $1 AND r.environment = $2 AND r.started_at >= $3
        AND v.validator_type = 'golden_test'`, [releaseId, environment, cutoff]);
+    // Determinism: reproducibility (replay same root_idempotency_key → same outcome) and idempotency conflicts
+    const replayGroups = await pool.query(`WITH keys AS (
+       SELECT root_idempotency_key AS key, count(*) AS runs,
+              count(DISTINCT status) AS distinct_status
+       FROM runs
+       WHERE release_id = $1 AND environment = $2 AND started_at >= $3
+       GROUP BY root_idempotency_key
+       HAVING count(*) > 1
+     )
+     SELECT key, runs,
+            CASE WHEN distinct_status = 1 THEN runs ELSE 0 END AS same_status
+     FROM keys`, [releaseId, environment, cutoff]);
+    let replayPairs = 0;
+    let sameOutcomePairs = 0;
+    for (const row of replayGroups.rows) {
+        const n = Number(row.runs);
+        replayPairs += (n * (n - 1)) / 2;
+        if (Number(row.same_status) === n)
+            sameOutcomePairs += (n * (n - 1)) / 2;
+    }
+    const reproducibilityRate = replayPairs > 0 ? sameOutcomePairs / replayPairs : 1;
+    const idempotencyConflicts = await pool.query(`SELECT count(*) AS count
+     FROM job_runs jr
+     JOIN runs r ON r.id = jr.run_id
+     WHERE r.release_id = $1 AND r.environment = $2 AND r.started_at >= $3
+       AND (jr.error_signature ILIKE '%conflict%' OR jr.error_signature ILIKE '%duplicate%' OR jr.error_signature ILIKE '%idempotency%')`, [releaseId, environment, cutoff]);
+    const idempotencyConflictRate = totalJobs > 0
+        ? Number(idempotencyConflicts.rows[0]?.count ?? 0) / totalJobs
+        : 0;
     const scorecard = {
         releaseId,
         environment,
@@ -56,8 +85,8 @@ export async function generateScorecard(pool, releaseId, environment, windowMinu
             retryRate: totalJobs > 0 ? retriedJobs / totalJobs : 0,
         },
         determinism: {
-            reproducibilityRate: 1, // Requires replay comparison; placeholder
-            idempotencyConflictRate: 0, // Would need tool_calls conflict tracking
+            reproducibilityRate,
+            idempotencyConflictRate,
         },
         safety: {
             policyViolationCount: 0,

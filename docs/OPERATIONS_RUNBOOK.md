@@ -11,8 +11,8 @@
 | What | Command or API |
 |------|----------------|
 | **Migrations** | `npm run db:migrate` (uses `scripts/run-migrate.mjs`; set `DATABASE_URL`). Runner also runs this on startup. |
-| **Verify migrations registered** | `npm run verify:migrations` — fails if any `supabase/migrations/*.sql` is missing from `run-migrate.mjs`. Run before every PR that adds migrations. |
-| **Health** | Control Plane: `GET /health`, `GET /health/db`, `GET /v1/health`. |
+| **Verify migrations registered** | `npm run verify:migrations` — fails if any `supabase/migrations/*.sql` is missing from `run-migrate.mjs`. **Run before every PR that adds or changes migrations** (required). |
+| **Health** | Control Plane: `GET /health`, `GET /health/db`, `GET /v1/health`. Console (probes): `GET /api/health` returns JSON; UI at `/health`. Static: `/robots.txt`, `/.well-known/security.txt`. |
 | **Lineage** | `GET /v1/graph/lineage/:artifactId` — declared producer + observed consumers. |
 | **Capability resolve** | `GET /v1/capability/resolve?produces=copy` — which operator produces that artifact type. |
 | **Run by artifact type** | `POST /v1/runs/by-artifact-type` body `{ produces: "copy" }` — resolve → create run → runner produces artifact. |
@@ -22,6 +22,7 @@
 | **Deploy Console (Vercel)** | Console is on Vercel. Push to `main` to trigger auto-deploy, or use Vercel Dashboard → Project → Deployments → Redeploy. No script in repo; use Git push or Vercel UI. |
 | **Self-heal (local)** | `npm run self-heal` (see [SELF_HEAL_HOW_TO_TRIGGER.md](SELF_HEAL_HOW_TO_TRIGGER.md)). |
 | **Migrations (autonomous)** | Control Plane runs `node scripts/run-migrate.mjs` on **every startup** (Docker CMD). No manual step after deploy if the Control Plane starts successfully. |
+| **API refactor smoke test** | With Control Plane running: `node --env-file=.env scripts/api-refactor-smoke.mjs` (or set `BASE_URL`). See [API_REFACTOR_TEST.md](API_REFACTOR_TEST.md) for full MCP + Console + .env checklist. |
 
 ---
 
@@ -34,6 +35,10 @@
 **Eval Initiative (nightly failure replay):** Set `ENABLE_EVAL_INITIATIVE=true` on the Control Plane. A 24h loop (or `EVAL_INITIATIVE_INTERVAL_MS`) queries failure clusters, creates initiatives for clusters without a recent eval, and triggers one sandbox replay per cluster. See `control-plane/src/eval-initiative-scan.ts`.
 
 **If a failed deploy (Render or Vercel) isn't self-healing,** check that the provider's failure status is in our list: **[SELF_HEAL_PROVIDER_STATUS_REFERENCE.md](SELF_HEAL_PROVIDER_STATUS_REFERENCE.md)** (canonical list; add any missing status there and in code). **To verify what each system actually returns:** run `node --env-file=.env scripts/verify-provider-status-values.mjs` (calls Render and Vercel APIs and prints status/state values).
+
+**Dockerfile and root context:** All Render services use `dockerContext: .` (repo root) and a Dockerfile at repo root (e.g. `./Dockerfile.control-plane`). This lets the image COPY the full repo so `scripts/run-migrate.mjs`, `schemas/`, and `supabase/migrations/` are available. The Control Plane CMD runs migrate then the API; there is no separate "migrations container." Do not set Root Directory in Render to a subfolder (e.g. control-plane) or migrations and scripts would be missing.
+
+**Service startup:** There is no strict startup order between API, runner, and gateway. The runner and API both need DATABASE_URL; the runner optionally needs CONTROL_PLANE_URL and LLM_GATEWAY_URL. If the gateway is down, the runner can still claim jobs but LLM-backed handlers may fail until the gateway is up. Self-heal runs on the Control Plane (and on the runner when API is down), so at least one of API or runner should be up for redeploys to be triggered.
 
 **Terraform (infra/):** Terraform still provisions **Supabase** (staging + optional prod) and **Vercel** (Console project + env vars). It reads **VERCEL_API_TOKEN** and **SUPABASE_ACCESS_TOKEN** from the environment. The Control Plane and `scripts/set-render-vercel-self-heal-env.mjs` accept **VERCEL_API_TOKEN** as well as **VERCEL_TOKEN**, so the same token in `.env` works for both Terraform and deploy-failure self-heal. Run Terraform from `infra/` with env loaded (e.g. `export VERCEL_API_TOKEN=...` or `node --env-file=../.env` in a wrapper) so your AI Factory token is used. See [infra/README.md](../infra/README.md).
 
@@ -125,8 +130,10 @@ See [VERCEL_SELF_HEAL.md](VERCEL_SELF_HEAL.md) for register API and webhook setu
 | [runbooks/console-data-safety-and-traceability.md](runbooks/console-data-safety-and-traceability.md) | Never leave Console empty; export/commit/repopulate; recovery. |
 | [runbooks/phase-0-verification-baseline.md](runbooks/phase-0-verification-baseline.md) | Phase 0 verification baseline. |
 | [VERCEL_SELF_HEAL.md](VERCEL_SELF_HEAL.md) | Vercel webhook + redeploy self-heal (Console and AI Factory–launched projects). |
+| [EVOLUTION_OPERATIONAL_PROOF.md](EVOLUTION_OPERATIONAL_PROOF.md) | Evolution Loop V1: prove it runs in a live env (API, MCP, webhooks). |
+| [MIGRATIONS.md](MIGRATIONS.md) | Migration numbering scheme, how run-migrate.mjs works, adding new migrations. |
 
-See also: [DEPLOY_AND_DATA_SAFETY.md](DEPLOY_AND_DATA_SAFETY.md), [GRAPH_ENGINE_AND_SELF_HEAL.md](GRAPH_ENGINE_AND_SELF_HEAL.md).
+See also: [DEPLOY_AND_DATA_SAFETY.md](DEPLOY_AND_DATA_SAFETY.md), [GRAPH_ENGINE_AND_SELF_HEAL.md](GRAPH_ENGINE_AND_SELF_HEAL.md). Local env template: [.env.example](../.env.example).
 
 ---
 
@@ -148,5 +155,7 @@ For the system to **commit/push**, **deploy staging**, **migrate**, and **self-h
 | **Render — ai-factory-api-staging** | `VERCEL_PROJECT_IDS` or `VERCEL_PROJECT_ID` | Comma-separated Vercel project IDs (or single ID) to monitor for deploy-failure. Use Console project + any AI Factory–launched sites. Optional `VERCEL_TEAM_ID` for team-scoped projects. |
 | **Vercel (new project)** | **100% automatic:** Call **POST /v1/vercel/register** with `{ "projectId": "<id>", "teamId": "<optional>" }`. Control Plane creates the webhook on Vercel (via API) and adds the project to the redeploy scan. No Vercel dashboard or env edit needed. See [VERCEL_SELF_HEAL.md](VERCEL_SELF_HEAL.md). |
 | **Vercel (Console)** | Console env (e.g. `NEXT_PUBLIC_*`, API URL) | Per [STAGING_RENDER_CHECKLIST](STAGING_RENDER_CHECKLIST.md). |
+
+**CORS and rate limiting:** Set **CORS_ORIGIN** on the Control Plane to the Console origin (e.g. `https://your-console.vercel.app` or `*` for dev). Rate limiting is implemented in code (express-rate-limit); optional **RATE_LIMIT_MAX_PER_MIN** (default 300) can be set on the API in Render.
 
 **RENDER_STAGING_SERVICE_IDS** is set on **ai-factory-api-staging** (via Render dashboard or MCP `update_environment_variables`). After changing env on Render, a new deploy is triggered automatically.

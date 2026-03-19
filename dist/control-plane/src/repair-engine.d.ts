@@ -19,16 +19,18 @@ export interface RepairRecipe {
 }
 /**
  * Look up known repair recipes for an error signature.
- * Ordered by success rate (most reliable first).
+ * Supports both schemas: (1) 20250403 applies_to_class/strategy_type, (2) core error_signature/patch_pattern.
+ * Returns legacy RepairRecipe shape for executeRepairLoop.
  */
 export declare function findRepairRecipes(pool: pg.Pool, errorSignature: string, jobType?: string, adapterId?: string): Promise<RepairRecipe[]>;
 /**
  * Record the outcome of applying a repair recipe.
+ * No-op for 20250403 schema (no success_count/failure_count). For core schema, updates counts.
  */
 export declare function recordRepairOutcome(pool: pg.Pool, recipeId: string, succeeded: boolean): Promise<void>;
 /**
  * Promote a new repair into the recipe library.
- * Called when a novel hypothesis repair succeeds and validators pass.
+ * For core schema: INSERT. For 20250403 schema: no-op (use evolution or seed to add recipes).
  */
 export declare function promoteRepairRecipe(pool: pg.Pool, errorSignature: string, patchPattern: string, validationRequired: string, createdFromJobRunId: string, jobType?: string, adapterId?: string): Promise<string>;
 /**

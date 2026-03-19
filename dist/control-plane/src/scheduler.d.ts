@@ -11,6 +11,8 @@ export interface CreateRunParams {
     environment: Environment;
     cohort: Cohort | null;
     rootIdempotencyKey: string;
+    /** Pinned git ref/commit for this run (Plan §2.4 Invariant 3). */
+    repoCommitBase?: string | null;
     routingReason?: string;
     routingRuleId?: string;
     promptTemplateVersion?: string;

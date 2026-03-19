@@ -19,12 +19,15 @@ export async function handleSeoSourceInventory(
   const crawlDelayMs = Math.max(0, Number(meta.crawl_delay_ms) || 500);
   const maxUrls = Math.min(5000, Math.max(1, Number(meta.max_depth) || Number(meta.max_urls) || 2000));
   const fetchPageDetails = Boolean(meta.fetch_page_details);
+  /** When true, discover URLs by following internal links (WordPress etc.) in addition to sitemap. */
+  const useLinkCrawl = Boolean(meta.use_link_crawl);
 
   const result = await crawlSite({
     baseUrl,
     crawlDelayMs,
     maxUrls,
     useSitemapsFirst: true,
+    useLinkCrawl,
     fetchPageDetails,
   });
 

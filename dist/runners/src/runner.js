@@ -99,6 +99,8 @@ export async function completeJobSuccess(client, jobRunId, runId, planNodeId, wo
 export async function completeJobFailure(client, jobRunId, runId, planNodeId, workerId, errorSignature) {
     await client.query(`UPDATE job_runs SET status = 'failed', ended_at = now(), error_signature = $2
      WHERE id = $1`, [jobRunId, errorSignature]);
+    // Plan §10: set next_retry_at so control-plane sweepDelayedRetries can create attempt+1
+    await client.query(`UPDATE job_runs SET next_retry_at = now() WHERE id = $1`, [jobRunId]).catch(() => { });
     await client.query(`INSERT INTO job_events (job_run_id, event_type, payload_json)
      VALUES ($1, 'attempt_failed', $2::jsonb)`, [jobRunId, JSON.stringify({ error_signature: errorSignature })]);
     await client.query(`UPDATE job_claims SET released_at = now()

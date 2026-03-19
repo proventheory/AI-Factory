@@ -1,0 +1,16 @@
+{
+  "name": "ai-factory-runners",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Factory runner workers: claim job_runs from Control Plane, execute handlers, report artifacts. Built from repo root (root package.json + tsconfig). Dependencies are provided by the root workspace — run npm install from repo root only; this package has no own dependencies.",
+  "type": "module",
+  "scripts": {
+    "build": "echo 'Build from repo root: npm run build'",
+    "dev": "echo 'Run from repo root: npm run dev:runner'"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "node": ">=20"
+  }
+}

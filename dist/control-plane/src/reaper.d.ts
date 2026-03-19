@@ -6,6 +6,12 @@ import type pg from "pg";
  */
 export declare function reapStaleLeases(pool: pg.Pool, maxAttemptsPerNode?: number): Promise<number>;
 /**
+ * Sweep delayed retries (Plan §10): job_runs with status = 'failed', next_retry_at <= now(),
+ * attempt < max → insert attempt+1 (queued) and clear next_retry_at.
+ * Call this from the control-plane loop next to reapStaleLeases.
+ */
+export declare function sweepDelayedRetries(pool: pg.Pool, maxAttemptsPerNode?: number): Promise<number>;
+/**
  * Reconcile run status: runs that are still "running" but have all node_progress
  * succeeded (e.g. runner died or errored before calling checkRunCompletion) get
  * marked "succeeded" so the UI shows the correct state.

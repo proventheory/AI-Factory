@@ -2,9 +2,19 @@
 /**
  * CI check (required by plan: Graphs, Artifact Hygiene, Capability Graph, Self-Heal):
  * 1. Every path in run-migrate.mjs under supabase/migrations/ must exist on disk.
- * 2. Every file in supabase/migrations/*.sql must be listed in run-migrate.mjs.
+ * 2. Every file in supabase/migrations/*.sql must be listed in run-migrate.mjs, except those in SKIP_NOT_IN_RUN_MIGRATE (core schema is applied from schemas/001 and 002; see docs/MIGRATIONS.md).
  * Exit 1 if either check fails. New migrations must be added to run-migrate.mjs in the same PR.
  */
+const SKIP_NOT_IN_RUN_MIGRATE = new Set([
+  "supabase/migrations/20250303000000_ai_factory_core.sql",
+  "supabase/migrations/20250303000001_ai_factory_state_machines.sql",
+  "supabase/migrations/20250303000002_ai_factory_rls.sql",
+  "supabase/migrations/20250303000003_brand_themes.sql",
+  "supabase/migrations/20250303000005_multi_framework.sql",
+  "supabase/migrations/20250303000006_gateway_and_mcp.sql",
+  "supabase/migrations/20250303000007_brand_engine.sql",
+  "supabase/migrations/20250303100005_runs_llm_source.sql",
+]);
 import { readFileSync, existsSync, readdirSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -38,7 +48,7 @@ for (const p of registered) {
   }
 }
 
-const missingFromRunMigrate = [...onDisk].filter((p) => !registered.has(p)).sort();
+const missingFromRunMigrate = [...onDisk].filter((p) => !registered.has(p) && !SKIP_NOT_IN_RUN_MIGRATE.has(p)).sort();
 if (missingFromRunMigrate.length > 0) {
   console.error("CI migration check failed: these migration files are not in run-migrate.mjs:");
   missingFromRunMigrate.forEach((p) => console.error("  -", p));

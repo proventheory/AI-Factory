@@ -5,6 +5,9 @@
  *
  * Usage:
  *   CONTROL_PLANE_API=http://localhost:3001 node scripts/evolution-smoke.mjs
+ *
+ * Local: Use npm run start:control-plane (builds first so /v1/evolution is always included)
+ * or npm run dev:control-plane. A 404 on targets means the server was started from stale dist — use start:control-plane so prestart runs build.
  */
 const API = process.env.CONTROL_PLANE_API ?? "http://localhost:3001";
 
@@ -19,8 +22,12 @@ async function main() {
   const targetsRes = await fetch(`${API}/v1/evolution/targets`);
   if (!targetsRes.ok) {
     if (targetsRes.status === 404) {
+      const isLocal = API.includes("localhost") || API.startsWith("http://127.0.0.1");
+      const hint = isLocal
+        ? "\nFrom repo root, run: npm run start:control-plane (builds first) or npm run dev:control-plane"
+        : "\nRedeploy the service from a commit that includes /v1/evolution.";
       throw new Error(
-        `Evolution targets failed: 404. The control plane may need a restart to load /v1/evolution routes (or run migrations).`
+        `Evolution targets failed: 404 (route not found). The server at ${API} is not serving /v1/evolution (stale build or wrong host).${hint}`
       );
     }
     throw new Error(`Evolution targets failed: ${targetsRes.status}`);

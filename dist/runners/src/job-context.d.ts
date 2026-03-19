@@ -29,6 +29,10 @@ export interface JobContext {
     };
     /** Initiative goal_metadata (e.g. for seo_migration_audit: source_url, target_url, crawl options). */
     goal_metadata?: Record<string, unknown> | null;
+    /** Release runner_image_digest for this run (if set); runner must match or job fails. */
+    runner_image_digest?: string | null;
+    /** Run's environment for secret_access_events. */
+    environment?: string | null;
 }
 /**
  * Build full job context for a claimed job run.

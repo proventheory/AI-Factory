@@ -36,6 +36,8 @@ export interface CrawlOptions {
   crawlDelayMs?: number;
   maxUrls?: number;
   useSitemapsFirst?: boolean;
+  /** When true, discover URLs by following same-origin links from seed URLs (homepage + sitemap). Captures pages not listed in sitemap (e.g. some WordPress pages). */
+  useLinkCrawl?: boolean;
   fetchPageDetails?: boolean;
 }
 
@@ -88,7 +90,7 @@ async function fetchSitemapUrls(
 }
 
 /**
- * Try common sitemap URLs for a base URL.
+ * Try common sitemap URLs for a base URL (generic + WordPress 5.5+).
  */
 function sitemapCandidates(baseUrl: string): string[] {
   const origin = new URL(baseUrl).origin;
@@ -96,10 +98,79 @@ function sitemapCandidates(baseUrl: string): string[] {
     `${origin}/sitemap.xml`,
     `${origin}/sitemap_index.xml`,
     `${origin}/sitemap-index.xml`,
-    `${origin}/sitemap_index.xml`,
     `${origin}/sitemap_products_1.xml`,
     `${origin}/sitemap_products.xml`,
+    // WordPress 5.5+ default
+    `${origin}/wp-sitemap.xml`,
+    `${origin}/wp-sitemap-index.xml`,
+    `${origin}/wp-sitemap-posts-post-1.xml`,
+    `${origin}/wp-sitemap-pages-1.xml`,
+    `${origin}/wp-sitemap-users-1.xml`,
   ];
+}
+
+/**
+ * Extract same-origin absolute URLs from HTML <a href="...">. Skips hash-only, mailto:, tel:, javascript:, and non-http(s).
+ */
+function extractInternalLinks(html: string, origin: string): string[] {
+  const out: string[] = [];
+  const hrefRe = /<a\s[^>]*\bhref=["']([^"'#]+)(?:#|["'])/gi;
+  let m: RegExpExecArray | null;
+  while ((m = hrefRe.exec(html)) !== null) {
+    const raw = m[1].trim();
+    if (!raw || /^(?:mailto|tel|javascript):/i.test(raw)) continue;
+    try {
+      const u = new URL(raw, origin);
+      if (u.origin !== origin || !/^https?:$/i.test(u.protocol)) continue;
+      const norm = normalizeUrl(u.href, origin);
+      out.push(norm);
+    } catch {
+      // skip invalid
+    }
+  }
+  return out;
+}
+
+/**
+ * BFS link-following crawl: start from seed URLs, fetch each page, extract same-origin links, add to queue; stop at maxUrls or when queue is empty.
+ */
+async function linkCrawlDiscover(
+  seedUrls: string[],
+  origin: string,
+  maxUrls: number,
+  crawlDelayMs: number,
+): Promise<Set<string>> {
+  const discovered = new Set<string>(seedUrls.map((u) => normalizeUrl(u, origin)));
+  const queue = [...discovered];
+  let head = 0;
+  while (head < queue.length && discovered.size < maxUrls) {
+    const url = queue[head++];
+    try {
+      const res = await axios.get(url, {
+        timeout: 10000,
+        maxRedirects: 3,
+        validateStatus: (s) => s === 200,
+        responseType: "text",
+      });
+      if (typeof res.data !== "string") continue;
+      const links = extractInternalLinks(res.data, origin);
+      for (const link of links) {
+        if (discovered.size >= maxUrls) break;
+        try {
+          if (new URL(link).origin === origin && !discovered.has(link)) {
+            discovered.add(link);
+            queue.push(link);
+          }
+        } catch {
+          // skip
+        }
+      }
+    } catch {
+      // skip failed page
+    }
+    if (crawlDelayMs > 0) await new Promise((r) => setTimeout(r, crawlDelayMs));
+  }
+  return discovered;
 }
 
 /**
@@ -115,11 +186,13 @@ export async function crawlSite(options: CrawlOptions): Promise<{
     crawlDelayMs = DEFAULT_DELAY_MS,
     maxUrls = DEFAULT_MAX_URLS,
     useSitemapsFirst = true,
+    useLinkCrawl = false,
     fetchPageDetails = false,
   } = options;
 
   const origin = new URL(baseUrl).origin;
   const allUrls: string[] = [];
+  const sitemapUrlSet = new Set<string>();
   let crawl_mode: "sitemap" | "crawl" | "hybrid" = "sitemap";
 
   if (useSitemapsFirst) {
@@ -130,7 +203,10 @@ export async function crawlSite(options: CrawlOptions): Promise<{
           for (const u of c.urls) {
             try {
               const norm = normalizeUrl(u, origin);
-              if (new URL(norm).origin === origin) allUrls.push(norm);
+              if (new URL(norm).origin === origin) {
+                allUrls.push(norm);
+                sitemapUrlSet.add(norm);
+              }
             } catch {
               // skip invalid
             }
@@ -141,6 +217,17 @@ export async function crawlSite(options: CrawlOptions): Promise<{
         continue;
       }
     }
+  }
+
+  let linkCrawlSet: Set<string> | null = null;
+  if (useLinkCrawl) {
+    const seeds = allUrls.length > 0 ? [baseUrl, ...allUrls.slice(0, 30)] : [baseUrl];
+    linkCrawlSet = await linkCrawlDiscover(seeds, origin, maxUrls, crawlDelayMs);
+    for (const u of linkCrawlSet) {
+      if (!sitemapUrlSet.has(u)) allUrls.push(u);
+    }
+    if (sitemapUrlSet.size > 0 && linkCrawlSet.size > 0) crawl_mode = "hybrid";
+    else if (linkCrawlSet.size > 0) crawl_mode = "crawl";
   }
 
   const uniqueUrls = [...new Set(allUrls)].slice(0, maxUrls);
@@ -225,13 +312,17 @@ export async function crawlSite(options: CrawlOptions): Promise<{
     }
 
     byType[type] = (byType[type] ?? 0) + 1;
+    const fromSitemap = sitemapUrlSet.has(url);
+    const fromLinkCrawl = linkCrawlSet?.has(url) ?? false;
+    const source: "sitemap" | "crawl" | "both" =
+      fromSitemap && fromLinkCrawl ? "both" : fromLinkCrawl ? "crawl" : "sitemap";
     records.push({
       url,
       normalized_url: normalizeUrl(url, origin),
       path,
       status,
       type,
-      source: "sitemap",
+      source,
       title: title ?? undefined,
       meta_description: meta ?? undefined,
       h1: h1 ?? undefined,

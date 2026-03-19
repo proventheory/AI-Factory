@@ -7,6 +7,7 @@ import { v4 as uuid } from "uuid";
 import { pool, withTransaction } from "../db.js";
 import { createRun } from "../scheduler.js";
 import { routeRun } from "../release-manager.js";
+import { scanAndRemediateDeployFailure } from "../deploy-failure-self-heal.js";
 import { isValidProjectionKey } from "./base/mapping-loader.js";
 import { strategyGraph } from "./strategy-graph.js";
 import { catalogGraph } from "./catalog-graph.js";
@@ -568,12 +569,58 @@ export function registerGraphRoutes(app: Express): void {
             })
           );
           payload.answer = { graph: graphResult.graph, summary: graphResult.summary, nodes: graphResult.nodes?.length ?? 0, edges: graphResult.edges?.length ?? 0 };
+          payload.answer_text = typeof graphResult.answer === "string" ? graphResult.answer : `${graphResult.nodes?.length ?? 0} nodes, ${graphResult.edges?.length ?? 0} edges`;
           payload.graph_result = graphResult;
         } catch (err) {
           payload.answer = { error: String((err as Error).message) };
         }
       }
       res.json(payload);
+    } catch (e) {
+      res.status(500).json({ error: String((e as Error).message) });
+    }
+  });
+
+  /** POST /v1/ask/execute — execute a previously resolved action (e.g. deploy_failure_scan, rerun). Body: intent_document_id, optional run_id for rerun. */
+  app.post("/v1/ask/execute", async (req, res) => {
+    try {
+      const b = req.body as { intent_document_id?: string; run_id?: string };
+      const intentId = b?.intent_document_id;
+      if (!intentId) return res.status(400).json({ error: "intent_document_id required" });
+      const doc = await pool.query("SELECT id, raw_text FROM intent_documents WHERE id = $1", [intentId]);
+      if (doc.rows.length === 0) return res.status(404).json({ error: "Intent not found" });
+      const rawText = (doc.rows[0] as { raw_text: string }).raw_text;
+      const resolved = resolveIntentFromRawText(rawText);
+      if (resolved.resolution_type !== "action" || !resolved.resolved_endpoint) {
+        return res.status(400).json({ error: "Intent is not an executable action", resolution_type: resolved.resolution_type });
+      }
+      const ep = resolved.resolved_endpoint;
+      if (ep.includes("deploy_failure_scan")) {
+        await scanAndRemediateDeployFailure();
+        return res.json({ ok: true, action: "deploy_failure_scan", message: "Deploy failure scan completed." });
+      }
+      if (ep.includes("rerun") && ep.includes("/v1/runs/")) {
+        const runId = b.run_id ?? (resolved.resolved_params?.run_id as string);
+        if (!runId) return res.status(400).json({ error: "run_id required for rerun" });
+        const r = await pool.query(
+          "SELECT plan_id, release_id, policy_version, environment, cohort FROM runs WHERE id = $1",
+          [runId]
+        );
+        if (r.rows.length === 0) return res.status(404).json({ error: "Run not found" });
+        const row = r.rows[0] as { plan_id: string; release_id: string; policy_version?: string; environment: string; cohort?: string };
+        const newRunId = await withTransaction(async (client) => {
+          return createRun(client as import("pg").PoolClient, {
+            planId: row.plan_id,
+            releaseId: row.release_id,
+            policyVersion: row.policy_version ?? "latest",
+            environment: row.environment as import("../types.js").Environment,
+            cohort: (row.cohort ?? "control") as import("../types.js").Cohort | null,
+            rootIdempotencyKey: `rerun:${runId}:${Date.now()}`,
+          });
+        });
+        return res.status(201).json({ ok: true, action: "rerun", run_id: newRunId });
+      }
+      res.status(400).json({ error: "Action not executable via this endpoint", resolved_endpoint: ep });
     } catch (e) {
       res.status(500).json({ error: String((e as Error).message) });
     }

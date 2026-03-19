@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "prestart:control-plane": "npm run build",
     "start:control-plane": "node dist/control-plane/src/index.js",
     "dev:control-plane": "npx tsx control-plane/src/index.ts",
     "start:runner": "node dist/runners/src/index.js",
@@ -58,9 +59,9 @@
     "woocommerce:sync:pharmacy": "node --env-file=.env scripts/woocommerce-sync-pharmacy.mjs"
   },
   "dependencies": {
-    "@sentry/node": "^8.49.0",
+    "@sentry/node": "^8.55.0",
     "@supabase/supabase-js": "^2.98.0",
-    "axios": "^1.7.9",
+    "axios": "^1.8.0",
     "cheerio": "^1.0.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
@@ -68,7 +69,7 @@
     "google-auth-library": "^9.15.1",
     "googleapis": "^144.0.0",
     "handlebars": "^4.7.8",
-    "mjml": "^4.15.3",
+    "mjml": "^4.18.0",
     "pg": "^8.13.1",
     "uuid": "^11.1.0",
     "xml2js": "^0.6.2"

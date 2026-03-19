@@ -15,8 +15,13 @@ import { getHandler, registerAllHandlers } from "./handlers/index.js";
 import { getExecutor, run as runExecutor, jobRequestFromContext, persistJobResult, } from "./executor-registry.js";
 import { advanceSuccessors, checkRunCompletion, markRunFailedIfNoPendingJobs } from "../../control-plane/src/scheduler.js";
 import { runDeployFailureScanTriggerOnly } from "../../control-plane/src/deploy-failure-scan-trigger-only.js";
+import { normalizeErrorSignature } from "./error-signature.js";
+import { recordSecretAccessByName } from "./secret-access.js";
+import { claimExperimentRun } from "./evolution-claim.js";
+import { runEvolutionReplay } from "./handlers/evolution-replay.js";
 registerAllHandlers();
 const POLL_INTERVAL_MS = 2_000;
+const EVOLUTION_POLL_INTERVAL_MS = 10_000;
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl?.trim()) {
     console.error("[runner] DATABASE_URL is not set. Set it in .env (same as Control Plane) so the runner can claim jobs.");
@@ -52,6 +57,7 @@ else {
     console.warn("[runner] Neither LLM_GATEWAY_URL nor OPENAI_API_KEY set. Set one in .env so LLM handlers (copy_generate, landing_page_generate, etc.) can run.");
 }
 let activeJobs = 0;
+let evolutionBusy = false;
 async function pollAndExecute() {
     if (activeJobs >= config.maxConcurrency)
         return;
@@ -98,6 +104,26 @@ async function pollAndExecute() {
         }
         finally {
             ctxClient.release();
+        }
+        // Digest check: if release pins a runner digest, this process must match (Plan 12B.4).
+        const expectedDigest = jobContext?.runner_image_digest;
+        if (expectedDigest?.trim()) {
+            const currentDigest = process.env.RUNNER_IMAGE_DIGEST?.trim() ?? "";
+            if (currentDigest && currentDigest !== expectedDigest) {
+                throw new Error(`Runner digest mismatch: release expects ${expectedDigest.slice(0, 16)}..., current RUNNER_IMAGE_DIGEST=${currentDigest.slice(0, 16)}...`);
+            }
+        }
+        // Record secret access for audit when we use env-based secrets that match secret_refs (Plan 12B.4).
+        const envScope = jobContext?.environment ?? config.environment;
+        const secretClient = await pool.connect();
+        try {
+            if (process.env.OPENAI_API_KEY)
+                await recordSecretAccessByName(secretClient, "openai_api_key", envScope, jobRun.id, config.workerId);
+            if (process.env.GITHUB_TOKEN)
+                await recordSecretAccessByName(secretClient, "github_token", envScope, jobRun.id, config.workerId);
+        }
+        finally {
+            secretClient.release();
         }
         try {
             const role = jobContext?.agent_role ?? "unknown";
@@ -182,7 +208,7 @@ async function pollAndExecute() {
             }
         }
         catch (err) {
-            const errorSig = err.message?.slice(0, 200) ?? "unknown";
+            const errorSig = normalizeErrorSignature(err);
             if (process.env.SENTRY_DSN?.trim()) {
                 Sentry.withScope((scope) => {
                     scope.setTag("job_type", jobContext?.job_type ?? "unknown");
@@ -252,9 +278,14 @@ function startHealthServer() {
         console.log(`[runner] Health server listening on port ${port} (GET /health)`);
     });
 }
+/** Interval for worker_registry heartbeat so control plane /system_state sees workers_alive (requires last_heartbeat_at within 5 min). */
+const WORKER_REGISTRY_HEARTBEAT_MS = 2 * 60 * 1000; // 2 minutes
 async function main() {
     console.log(`[runner] Starting worker ${config.workerId} (v${config.runnerVersion})`);
     await registerWorker(pool, config);
+    setInterval(() => {
+        registerWorker(pool, config).catch((err) => console.warn("[runner] Worker registry heartbeat error:", err.message));
+    }, WORKER_REGISTRY_HEARTBEAT_MS);
     const q = await pool.query("SELECT count(*)::int AS c FROM job_runs WHERE status = 'queued'");
     console.log(`[runner] DB check: ${q.rows[0]?.c ?? 0} queued job(s) visible`);
     setInterval(async () => {
@@ -265,6 +296,40 @@ async function main() {
             console.error("[runner] Poll error:", err);
         }
     }, POLL_INTERVAL_MS);
+    setInterval(async () => {
+        if (evolutionBusy)
+            return;
+        evolutionBusy = true;
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+            const claimed = await claimExperimentRun(client, config.workerId);
+            if (!claimed) {
+                await client.query("ROLLBACK");
+                return;
+            }
+            await client.query("COMMIT");
+            try {
+                await client.query("BEGIN");
+                await runEvolutionReplay(client, { experiment_run_id: claimed.id });
+                await client.query("COMMIT");
+                console.log("[runner] Evolution replay completed", { experiment_run_id: claimed.id });
+            }
+            catch (err) {
+                await client.query("ROLLBACK").catch(() => { });
+                await pool.query(`UPDATE experiment_runs SET status = 'failed', ended_at = now(), notes = $1 WHERE id = $2`, [String(err.message).slice(0, 1000), claimed.id]);
+                console.error("[runner] Evolution replay failed:", err);
+            }
+        }
+        catch (err) {
+            await client.query("ROLLBACK").catch(() => { });
+            console.error("[runner] Evolution claim error:", err);
+        }
+        finally {
+            client.release();
+            evolutionBusy = false;
+        }
+    }, EVOLUTION_POLL_INTERVAL_MS);
     startHealthServer();
     // Deploy-failure self-heal (staging): when api-staging is down, runner can still trigger redeploys for api/gateway/runner.
     if (process.env.ENABLE_SELF_HEAL === "true" && process.env.RENDER_API_KEY?.trim()) {

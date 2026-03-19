@@ -1,0 +1,9 @@
+# AI Factory / ProfessorX – operator console
+User-agent: *
+Allow: /login
+Allow: /
+Disallow: /admin
+Disallow: /api/
+
+# Replace YOUR_VERCEL_URL with your deployed Console URL (e.g. from Vercel)
+# Sitemap: https://YOUR_VERCEL_URL/sitemap.xml

@@ -87,6 +87,7 @@ export interface Run {
     adapter_contract_version: string | null;
     scheduler_lock_token: string | null;
     scheduler_lock_expires_at: Date | null;
+    repo_commit_base: string | null;
     workspace_path: string | null;
     human_feedback: string | null;
     metadata: Record<string, unknown> | null;
@@ -105,6 +106,7 @@ export interface JobRun {
     ended_at: Date | null;
     error_signature: string | null;
     idempotency_key: string;
+    next_retry_at: Date | null;
 }
 export interface NodeProgress {
     id: string;

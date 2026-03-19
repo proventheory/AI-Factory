@@ -23,12 +23,14 @@ export declare function registerCodegenHandler(): void;
 export declare function registerUnitTestHandler(): void;
 /** Code review: produce review verdict */
 export declare function registerCodeReviewHandler(): void;
-/** Analyze repo: produce repo summary */
+/** Analyze repo: produce repo summary; when goal_metadata.deploy_failure is set, include logs so the LLM can diagnose the failure. */
 export declare function registerAnalyzeRepoHandler(): void;
-/** Write patch: produce code patch */
+/** Write patch: produce code patch; when goal_metadata.deploy_failure is set, emphasize fixing the deploy error from the repo summary. */
 export declare function registerWritePatchHandler(): void;
 /** Submit PR: create pull request */
 export declare function registerSubmitPRHandler(): void;
+/** Push fix: apply patch and push to main. Used by deploy_fix template when ALLOW_SELF_HEAL_PUSH=true. */
+export declare function registerPushFixHandler(): void;
 /** Plan migration: produce migration plan */
 export declare function registerPlanMigrationHandler(): void;
 /** Apply batch: apply migration batch */

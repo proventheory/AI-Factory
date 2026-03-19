@@ -403,10 +403,9 @@ The [AI_Factory_Architecture_Blueprint.md](AI_Factory_Architecture_Blueprint.md)
 
 **Remaining for 100% (optional / validation)**
 
-- Run evolution smoke with API + DB up: `CONTROL_PLANE_API=http://localhost:3001 node scripts/evolution-smoke.mjs`.
 - If only core migration exists (no 20250403), repair-engine falls back to legacy columns; no code change needed.
 
-**Verdict:** For the scope of this plan (Phases 1–6 as written), implementation is **100%**. The only open items are optional (smoke run, fallback note).
+**Verdict:** For the scope of this plan (Phases 1–6 as written), implementation is **100%**. Completion relative to **operational proof**: not fully done until smoke runs successfully in a **live** env — "exists in repo" ≠ "runs successfully against real control-plane + DB". See §15 below.
 
 ---
 
@@ -448,3 +447,39 @@ So: **migrations, technical SEO, dev workflows** are (or can be) under **SEO** o
 3. **SEO vertical — backlinking** — No new kernel; add pipeline pattern(s) under SEO (e.g. backlink_audit, outreach workflows).
 
 So: **for 100% of *this* plan, you’re done.** For **no missing kernels** as a marketing agency, add **Ads** and **Email** as vertical kernels and **backlinking** as an SEO sub-domain (patterns only).
+
+---
+
+## 15. Operational proof (live env)
+
+**Distinction:** "Exists in repo" ≠ "runs successfully against real control-plane + DB". The loop is **fully complete** only when smoke passes in a **live** environment.
+
+### 15.1 Via API (primary)
+
+Run the evolution smoke against the **live** Control Plane (staging or prod):
+
+```bash
+CONTROL_PLANE_API=https://ai-factory-api-staging.onrender.com node scripts/evolution-smoke.mjs
+```
+
+**Passed (2026-03-16):** Health → GET /v1/evolution/targets (5 targets) → POST mutation → POST experiment → POST experiments/:id/decide (promote). All against **live staging API + Supabase DB**.
+
+Manual API checks (optional): `GET /v1/evolution/targets`, `GET /v1/evolution/mutations`, `GET /v1/evolution/experiments`, `GET /v1/evolution/scoreboard`.
+
+### 15.2 Via MCP
+
+- **Render MCP** (`user-render`): Use `get_service` with `serviceId: srv-d6ka7mhaae7s73csv3fg` (ai-factory-api-staging) to confirm service is live and get `url`. Same host serves evolution routes and health.
+- No dedicated Control Plane API MCP; API testing is via scripts or curl/fetch.
+
+### 15.3 Via webhooks
+
+- **Evolution has no dedicated webhook.** It is **API-driven**. The same Control Plane that receives Vercel (`POST /v1/webhooks/vercel`) and GitHub (`POST /v1/webhooks/github`) also serves `/v1/evolution/*`. The live env that passed evolution smoke is the same one that handles deploy/GitHub webhooks.
+
+### 15.4 Checklist (operational proof)
+
+| Check | Status |
+|-------|--------|
+| Smoke runs successfully against **live** Control Plane + DB | ✅ Staging 2026-03-16 |
+| Evolution API reachable at same host as /health | ✅ |
+| MCP: Render service verified live (get_service) | ✅ |
+| Webhooks: Evolution API-only; same host as Vercel/GitHub webhooks | ✅ N/A |
