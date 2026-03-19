@@ -548,3 +548,25 @@ export async function seoKeywordVolume(req: Request, res: Response): Promise<voi
     res.status(500).json({ error: String((e as Error).message) });
   }
 }
+
+export async function seoRankedKeywords(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as { urls?: string[]; limit_per_url?: number };
+    const urls = Array.isArray(body.urls) ? body.urls.filter((u) => typeof u === "string") : [];
+    if (urls.length === 0) {
+      res.status(400).json({ error: "urls array is required (non-empty)" });
+      return;
+    }
+    if (urls.length > 500) {
+      res.status(400).json({ error: "At most 500 URLs per request" });
+      return;
+    }
+    const { fetchRankedKeywordsForUrls } = await import("../../seo-ranked-keywords.js");
+    const result = await fetchRankedKeywordsForUrls(urls, {
+      limit_per_url: typeof body.limit_per_url === "number" ? Math.min(1000, Math.max(1, body.limit_per_url)) : undefined,
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}

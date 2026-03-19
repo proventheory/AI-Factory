@@ -182,6 +182,12 @@ export default function SeoMigrationWizardPage() {
   const [keywordVolumeMap, setKeywordVolumeMap] = useState<Record<string, number>>({});
   const [keywordVolumeLoading, setKeywordVolumeLoading] = useState(false);
   const [keywordVolumeError, setKeywordVolumeError] = useState<string | null>(null);
+  /** DataForSEO ranked keywords per path (path -> list of { keyword, monthly_search_volume?, position? }). */
+  const [pathToRankedKeywords, setPathToRankedKeywords] = useState<Record<string, Array<{ keyword: string; monthly_search_volume?: number; position?: number }>>>({});
+  const [rankedKeywordsLoading, setRankedKeywordsLoading] = useState(false);
+  const [rankedKeywordsError, setRankedKeywordsError] = useState<string | null>(null);
+  /** Which paths have "View more" expanded for DataForSEO keywords (show all instead of top 10). */
+  const [rankedKeywordsExpandedPaths, setRankedKeywordsExpandedPaths] = useState<Set<string>>(new Set());
   const [targetBaseUrl, setTargetBaseUrl] = useState(""); // New site base URL for steps 5–6
   // Step 5: Page plan
   const [pagePlan, setPagePlan] = useState<PagePlanRow[]>([]);
@@ -374,6 +380,39 @@ export default function SeoMigrationWizardPage() {
       setKeywordVolumeError(formatApiError(e));
     } finally {
       setKeywordVolumeLoading(false);
+    }
+  };
+
+  const baseOriginForUrls = (sourceUrl || "").trim().replace(/\/+$/, "") || "https://example.com";
+  const safeBaseOrigin = baseOriginForUrls.startsWith("http") ? baseOriginForUrls : `https://${baseOriginForUrls}`;
+
+  const fetchRankedKeywords = async () => {
+    if (!keywordRows.length) return;
+    setRankedKeywordsLoading(true);
+    setRankedKeywordsError(null);
+    try {
+      const urls = keywordRows.map((r) => {
+        const path = (r.path || "/").replace(/^\//, "") || "";
+        return `${safeBaseOrigin}/${path}`;
+      });
+      const result = await api.seoRankedKeywords({ urls, limit_per_url: 200 });
+      const nextByPath: Record<string, Array<{ keyword: string; monthly_search_volume?: number; position?: number }>> = {};
+      const volumeUpdates: Record<string, number> = {};
+      for (const [fullUrl, data] of Object.entries(result.by_url ?? {})) {
+        const path = toCanonicalPath(normalizeUrlToPath(fullUrl, safeBaseOrigin));
+        nextByPath[path] = data.keywords ?? [];
+        (data.keywords ?? []).forEach((k) => {
+          if (k.keyword && (k.monthly_search_volume ?? 0) > 0)
+            volumeUpdates[k.keyword] = k.monthly_search_volume!;
+        });
+      }
+      setPathToRankedKeywords((prev) => ({ ...prev, ...nextByPath }));
+      setKeywordVolumeMap((prev) => ({ ...prev, ...volumeUpdates }));
+      if (result.error) setRankedKeywordsError(result.error);
+    } catch (e) {
+      setRankedKeywordsError(formatApiError(e));
+    } finally {
+      setRankedKeywordsLoading(false);
     }
   };
 
@@ -1071,6 +1110,15 @@ export default function SeoMigrationWizardPage() {
                         Reset from crawl + GSC/GA4 (union, no duplicates)
                       </Button>
                       <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={fetchRankedKeywords}
+                        disabled={rankedKeywordsLoading || !keywordRows.length}
+                        title={!keywordRows.length ? "Add URLs from Reset or crawl first" : "Fetch keywords each URL ranks for (DataForSEO, shared cache 7 days). Shows top 10 by traffic; click View more for the rest."}
+                      >
+                        {rankedKeywordsLoading ? "Fetching…" : "Enrich with DataForSEO"}
+                      </Button>
+                      <Button
                         variant="secondary"
                         size="sm"
                         onClick={fetchKeywordVolumes}
@@ -1082,6 +1130,9 @@ export default function SeoMigrationWizardPage() {
                     </div>
                     {keywordVolumeError && (
                       <p className="text-body-small text-state-danger mb-2">{keywordVolumeError}</p>
+                    )}
+                    {rankedKeywordsError && (
+                      <p className="text-body-small text-state-danger mb-2">{rankedKeywordsError}</p>
                     )}
                     <div className="w-full max-w-full overflow-auto max-h-[60vh] rounded-lg border border-border">
                       <table className="w-full min-w-[900px] border-collapse text-body-small">
@@ -1101,6 +1152,19 @@ export default function SeoMigrationWizardPage() {
                         <tbody>
                           {keywordRows.map((r, i) => {
                             const keywords = pathToGscKeywords.get(r.path) ?? [];
+                            const rawRanked = pathToRankedKeywords[r.path] ?? [];
+                            const rankedKws = [...rawRanked].sort((a, b) => {
+                              const volA = a.monthly_search_volume ?? keywordVolumeMap[a.keyword] ?? 0;
+                              const volB = b.monthly_search_volume ?? keywordVolumeMap[b.keyword] ?? 0;
+                              if (volB !== volA) return volB - volA;
+                              const posA = a.position ?? 999;
+                              const posB = b.position ?? 999;
+                              return posA - posB;
+                            });
+                            const topN = 10;
+                            const showAllRanked = rankedKeywordsExpandedPaths.has(r.path);
+                            const displayedRanked = showAllRanked ? rankedKws : rankedKws.slice(0, topN);
+                            const hasMoreRanked = rankedKws.length > topN;
                             return (
                             <tr key={`${r.path}-${i}`} className="border-b border-border/50">
                               <td className="px-2 py-1 whitespace-nowrap"><code className="text-body-small">{r.path}</code></td>
@@ -1110,22 +1174,56 @@ export default function SeoMigrationWizardPage() {
                               <td className="px-2 py-1">
                                 <Input value={r.primaryKeyword} onChange={(e) => setKeywordRows((prev) => prev.map((row, j) => (j === i ? { ...row, primaryKeyword: e.target.value } : row)))} className="min-w-[120px]" placeholder="e.g. THC tonics" />
                               </td>
-                              <td className="px-2 py-1 max-w-[220px]">
-                                {keywords.length === 0 ? (
+                              <td className="px-2 py-1 max-w-[280px]">
+                                {keywords.length === 0 && rankedKws.length === 0 ? (
                                   <span className="text-fg-muted">—</span>
                                 ) : (
-                                  <ul className="list-disc list-inside text-body-small space-y-0.5">
-                                    {keywords.slice(0, 8).map((k, ki) => {
-                                      const vol = keywordVolumeMap[k.query];
-                                      const volStr = vol !== undefined && vol > 0 ? (vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : String(vol)) : null;
-                                      return (
-                                        <li key={ki} title={`${k.clicks} clicks, ${k.impressions} impressions${volStr ? `, ${vol} monthly searches` : ""}`}>
-                                          {k.query} <span className="text-fg-muted">({k.clicks}{volStr ? `, ${volStr} vol` : ""})</span>
-                                        </li>
-                                      );
-                                    })}
-                                    {keywords.length > 8 && <li className="text-fg-muted">+{keywords.length - 8} more</li>}
-                                  </ul>
+                                  <div className="space-y-1">
+                                    {keywords.length > 0 && (
+                                      <ul className="list-disc list-inside text-body-small space-y-0.5">
+                                        {keywords.slice(0, 8).map((k, ki) => {
+                                          const vol = keywordVolumeMap[k.query];
+                                          const volStr = vol !== undefined && vol > 0 ? (vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : String(vol)) : null;
+                                          return (
+                                            <li key={ki} title={`${k.clicks} clicks, ${k.impressions} impressions${volStr ? `, ${vol} monthly searches` : ""}`}>
+                                              {k.query} <span className="text-fg-muted">({k.clicks}{volStr ? `, ${volStr} vol` : ""})</span>
+                                            </li>
+                                          );
+                                        })}
+                                        {keywords.length > 8 && <li className="text-fg-muted">+{keywords.length - 8} more</li>}
+                                      </ul>
+                                    )}
+                                    {rankedKws.length > 0 && (
+                                      <div className="text-body-small">
+                                        <span className="text-fg-muted font-medium">Also ranks for (DataForSEO, top by traffic):</span>
+                                        <ul className="list-disc list-inside space-y-0.5 mt-0.5">
+                                          {displayedRanked.map((k, ki) => {
+                                            const vol = k.monthly_search_volume ?? keywordVolumeMap[k.keyword];
+                                            const volStr = vol !== undefined && vol > 0 ? (vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : String(vol)) : null;
+                                            return (
+                                              <li key={ki} title={volStr ? `${k.keyword}: ${vol} monthly searches` : undefined}>
+                                                {k.keyword}{volStr ? ` (${volStr})` : ""}{k.position != null ? ` pos ${k.position}` : ""}
+                                              </li>
+                                            );
+                                          })}
+                                        </ul>
+                                        {hasMoreRanked && (
+                                          <button
+                                            type="button"
+                                            className="mt-1 text-link text-body-small hover:underline"
+                                            onClick={() => setRankedKeywordsExpandedPaths((prev) => {
+                                              const next = new Set(prev);
+                                              if (next.has(r.path)) next.delete(r.path);
+                                              else next.add(r.path);
+                                              return next;
+                                            })}
+                                          >
+                                            {showAllRanked ? "Show less" : `View more (${rankedKws.length - topN} more)`}
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </td>
                               <td className="px-2 py-1 text-body-small">

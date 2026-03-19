@@ -1068,6 +1068,24 @@ export async function seoKeywordVolume(params: SeoKeywordVolumeParams): Promise<
   return res.json();
 }
 
+/** SEO migration wizard — DataForSEO ranked keywords per URL (cached). Returns keywords each URL ranks for. */
+export type SeoRankedKeywordsParams = { urls: string[]; limit_per_url?: number };
+export type SeoRankedKeywordItem = { keyword: string; monthly_search_volume?: number; position?: number };
+export type SeoRankedKeywordsResult = {
+  by_url: Record<string, { keywords: SeoRankedKeywordItem[]; cached: boolean }>;
+  error?: string;
+};
+
+export async function seoRankedKeywords(params: SeoRankedKeywordsParams): Promise<SeoRankedKeywordsResult> {
+  const res = await fetch(`${API}/v1/seo/ranked_keywords`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 /** SEO migration wizard — Step 3: WooCommerce → Shopify migration (Matrixify-style). Dry run: preview counts from WooCommerce API. */
 export type SeoMigrationDryRunParams = {
   woo_server: string;

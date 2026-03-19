@@ -5,6 +5,7 @@ import {
   seoGscReport,
   seoGa4Report,
   seoKeywordVolume,
+  seoRankedKeywords,
   seoGoogleAuth,
   seoGoogleCallback,
   brandProfilesGoogleConnected,
@@ -26,6 +27,7 @@ router.post("/v1/products/from_url", productsFromUrlHandler);
 router.post("/v1/seo/gsc_report", seoGscReport);
 router.post("/v1/seo/ga4_report", seoGa4Report);
 router.post("/v1/seo/keyword_volume", seoKeywordVolume);
+router.post("/v1/seo/ranked_keywords", seoRankedKeywords);
 router.get("/v1/seo/google/auth", seoGoogleAuth);
 router.get("/v1/seo/google/callback", seoGoogleCallback);
 router.get("/v1/seo/google_ga4_properties", brandProfilesGoogleGa4Properties);
