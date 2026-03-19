@@ -35,13 +35,13 @@ const STEPS = [
 ] as const;
 
 const MIGRATION_ENTITIES = [
-  { id: "products", label: "Products" },
-  { id: "categories", label: "Categories (→ Collections)" },
-  { id: "customers", label: "Customers" },
-  { id: "redirects", label: "Redirects (from product/category URLs)" },
-  { id: "discounts", label: "Discounts (coupons)" },
-  { id: "blogs", label: "Blog posts" },
-  { id: "pages", label: "Pages" },
+  { id: "products", label: "Products", source: "from WooCommerce" },
+  { id: "categories", label: "Categories (→ Collections)", source: "from WooCommerce" },
+  { id: "customers", label: "Customers", source: "from WooCommerce" },
+  { id: "redirects", label: "Redirects", source: "from product/category URLs" },
+  { id: "discounts", label: "Discounts", source: "from WooCommerce coupons" },
+  { id: "blogs", label: "Blog posts", source: "from WordPress" },
+  { id: "pages", label: "Pages", source: "from WordPress" },
 ] as const;
 
 // Steps 4–9: in-memory strategy state (driven by crawl + GSC/GA4 from 1–3)
@@ -78,7 +78,15 @@ function normalizeUrlToPath(urlOrPath: string, baseOrigin = "https://example.com
   const raw = (urlOrPath || "").trim();
   if (!raw) return "/";
   try {
-    const url = raw.startsWith("http") ? new URL(raw) : new URL(raw.startsWith("/") ? raw : `/${raw}`, baseOrigin);
+    let url: URL;
+    if (raw.startsWith("http")) {
+      url = new URL(raw);
+    } else if (raw.startsWith("/")) {
+      url = new URL(raw, baseOrigin);
+    } else {
+      // GA4 fullPageUrl often returns "host.com/path" (no scheme) — treat as URL so pathname is /path not /host.com/path
+      url = new URL("https://" + raw.replace(/^\/*/, ""));
+    }
     const path = url.pathname.replace(/\/+$/, "") || "/";
     return path;
   } catch {
@@ -233,10 +241,11 @@ export default function SeoMigrationWizardPage() {
     api.getBrandShopifyConnected(brandId).then(setBrandShopify).catch(() => setBrandShopify(null));
   }, [brandId]);
 
-  // When entering step 2, sync GSC site URL from crawl source and auto-fetch GA4 if brand has it
+  // When entering step 2, sync GSC site URL from crawl source so Fetch GSC uses same URL as crawl (required for keywords to match)
   useEffect(() => {
     if (step !== 2) return;
-    setGscSiteUrl((prev) => (prev || sourceUrl) || prev);
+    const url = (sourceUrl || "").trim();
+    if (url) setGscSiteUrl(url);
     if (!brandId || !brandGoogle?.connected || !brandGoogle?.ga4_property_id || ga4AutoFetchedRef.current) return;
     ga4AutoFetchedRef.current = true;
     setGa4Loading(true);
@@ -337,13 +346,17 @@ export default function SeoMigrationWizardPage() {
     return m;
   }, [gscResult?.page_queries, sourceUrl]);
 
-  // Step 4: All unique keywords from GSC and/or GA4 Search Console (for volume fetch and display)
+  // Step 4: All unique keywords from GSC, GA4 Search Console, or Primary Keyword column (for volume fetch and display)
   const allUniqueGscKeywords = useMemo(() => {
     const set = new Set<string>();
     pathToGscKeywords.forEach((list) => list.forEach((k) => set.add((k.query || "").trim())));
     (ga4Result?.search_console_queries ?? []).forEach((q) => set.add((q.query || "").trim()));
+    keywordRows.forEach((r) => {
+      const kw = (r.primaryKeyword || "").trim();
+      if (kw) set.add(kw);
+    });
     return Array.from(set).filter(Boolean);
-  }, [pathToGscKeywords, ga4Result?.search_console_queries]);
+  }, [pathToGscKeywords, ga4Result?.search_console_queries, keywordRows]);
 
   const fetchKeywordVolumes = async () => {
     if (allUniqueGscKeywords.length === 0) return;
@@ -406,9 +419,11 @@ export default function SeoMigrationWizardPage() {
     }
     if (hasGa4) {
       ga4Result!.pages.forEach((p) => {
-        const raw = p.full_page_url ?? p.page_path ?? "";
-        if (!raw || !isSameOrigin(raw, safeBase)) return;
-        add(raw);
+        const raw = (p.full_page_url ?? p.page_path ?? "").trim();
+        if (!raw) return;
+        const fullUrl = raw.startsWith("http") ? raw : raw.startsWith("/") ? safeBase + raw : "https://" + raw;
+        if (!isSameOrigin(fullUrl, safeBase)) return;
+        add(fullUrl);
       });
     }
     return Array.from(seen.entries())
@@ -717,12 +732,7 @@ export default function SeoMigrationWizardPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-body-small text-fg-muted mb-2">
-                  Select a brand with Google connected, then fetch. <strong>Traffic keywords</strong> in Step 4 come from GSC (per-URL; enable{" "}
-                  <a href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">
-                    Search Console API
-                  </a>
-                  ) or from GA4 when the property has Search Console linked (site-level).
-                  in your Google Cloud project (same project as your OAuth client).
+                  Use the same site URL as your crawl (auto-filled below). Click <strong>Fetch GSC report</strong> to load pages, queries, and <strong>keywords per URL</strong> for Step 4. With a brand connected we use its Google account; otherwise the API uses service-account credentials (that account must have the site in Search Console).
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Input
@@ -743,11 +753,18 @@ export default function SeoMigrationWizardPage() {
                 {gscResult && (
                   <div className="mt-4">
                     <p className="text-body-small text-fg-muted">
-                      {gscResult.pages?.length ?? 0} pages, {gscResult.queries?.length ?? 0} queries.
+                      {gscResult.pages?.length ?? 0} pages, {gscResult.queries?.length ?? 0} queries,{" "}
+                      <strong>{(gscResult.page_queries?.length ?? 0)} keywords per URL</strong> (used in Step 4).
                       {gscResult.date_range && ` Range: ${gscResult.date_range.start} – ${gscResult.date_range.end}`}
                     </p>
                     {gscResult.error && (
                       <p className="text-body-small text-state-warning mt-1">{gscResult.error}</p>
+                    )}
+                    {!gscResult.error && (gscResult.page_queries?.length ?? 0) === 0 && (gscResult.pages?.length ?? 0) + (gscResult.queries?.length ?? 0) > 0 && (
+                      <p className="text-body-small text-state-warning mt-1">No keywords per URL returned. Try the exact property URL from Search Console (e.g. <code className="bg-fg-muted/20 px-1">https://yoursite.com/</code> with or without trailing slash, or <code className="bg-fg-muted/20 px-1">sc-domain:yoursite.com</code> for domain property).</p>
+                    )}
+                    {!gscResult.error && (gscResult.pages?.length ?? 0) === 0 && (gscResult.queries?.length ?? 0) === 0 && (
+                      <p className="text-body-small text-state-warning mt-1">No data. Check that the site URL matches your Search Console property exactly, and that the connected Google account (or service account) has access to this property in Search Console.</p>
                     )}
                   </div>
                 )}
@@ -789,9 +806,12 @@ export default function SeoMigrationWizardPage() {
                     <p className="text-body-small text-fg-muted mb-2">
                       {ga4Result.pages?.length ?? 0} pages from GA4 property {ga4Result.property_id}.
                       {ga4Result.search_console_queries && ga4Result.search_console_queries.length > 0 && (
-                        <> Search Console (via GA4): {ga4Result.search_console_queries.length} queries.</>
+                        <> Search Console (via GA4): {ga4Result.search_console_queries.length} keywords.</>
                       )}
                     </p>
+                    {ga4Result.search_console_error && (
+                      <p className="text-body-small text-state-warning mt-1">GA4 keywords: {ga4Result.search_console_error} Link Search Console to this property (GA4 → Admin → Product links → Search Console) to pull keywords.</p>
+                    )}
                     {ga4Result.error && (
                       <p className="text-body-small text-state-warning mb-2">{ga4Result.error}</p>
                     )}
@@ -893,47 +913,96 @@ export default function SeoMigrationWizardPage() {
               <CardHeader>
                 <h3 className="font-semibold">What to migrate</h3>
                 <p className="text-body-small text-fg-muted mt-1">
-                  Select entities to migrate (like Matrixify: products, categories → collections, redirects, customers, discounts, blogs, pages). Dry run first to preview counts.
+                  Select entities to migrate. Dry run first to preview counts, then run migration to Shopify.
                 </p>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-4">
-                  {MIGRATION_ENTITIES.map((e) => (
-                    <label key={e.id} className="flex items-center gap-2">
-                      <Checkbox
-                        checked={migrationEntities.has(e.id)}
-                        onChange={() => toggleMigrationEntity(e.id)}
-                      />
-                      <span className="text-body-small">{e.label}</span>
-                    </label>
-                  ))}
+                {/* Job-style metadata */}
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-fg-muted/20 px-3 py-1 text-body-small">Format: WordPress / WooCommerce API</span>
+                  <span className="rounded-full bg-fg-muted/20 px-3 py-1 text-body-small">Destination: Shopify</span>
+                  {migrationDryRunResult?.counts && (
+                    <span className="rounded-full bg-brand-100 dark:bg-brand-900/30 px-3 py-1 text-body-small font-medium">Ready to import</span>
+                  )}
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2">
+
+                {/* Sheets: entity cards (Matrixify-style) */}
+                <p className="text-body-small font-medium text-fg-muted mb-2">Sheets</p>
+                <div className="space-y-2">
+                  {MIGRATION_ENTITIES.map((e) => {
+                    const count = migrationDryRunResult?.counts?.[e.id];
+                    const selected = migrationEntities.has(e.id);
+                    const estimateSec = count != null ? Math.max(5, Math.ceil(count / 50) * 10) : null;
+                    return (
+                      <label
+                        key={e.id}
+                        className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition ${
+                          selected ? "border-border bg-bg" : "border-border/50 bg-fg-muted/5 opacity-75"
+                        } cursor-pointer hover:border-brand-500/50`}
+                      >
+                        <Checkbox
+                          checked={selected}
+                          onChange={() => toggleMigrationEntity(e.id)}
+                          className="shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-fg">{e.label}</p>
+                          <p className="text-body-small text-fg-muted">{e.source}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3 text-body-small text-fg-muted">
+                          {count != null ? (
+                            <>
+                              <span className="rounded-full bg-fg-muted/20 px-2 py-0.5">Total: {count}</span>
+                              {estimateSec != null && (
+                                <span className="rounded-full bg-fg-muted/20 px-2 py-0.5">
+                                  Estimate: {estimateSec >= 60 ? `${Math.floor(estimateSec / 60)} min ${estimateSec % 60} sec` : `${estimateSec} sec`}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="rounded-full bg-fg-muted/20 px-2 py-0.5">Run dry run for counts</span>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                {/* Total estimate footer */}
+                {migrationDryRunResult?.counts && (() => {
+                  const totalItems = Object.entries(migrationDryRunResult.counts).reduce(
+                    (sum, [k, v]) => sum + (migrationEntities.has(k) ? v : 0),
+                    0
+                  );
+                  const totalSec = Math.max(10, Math.ceil(totalItems / 30) * 15);
+                  return (
+                    <p className="mt-3 text-right text-body-small text-fg-muted">
+                      Total estimate: {totalSec >= 60 ? `${Math.floor(totalSec / 60)} min ${totalSec % 60} sec` : `${totalSec} sec`}
+                    </p>
+                  );
+                })()}
+
+                {/* Actions */}
+                <div className="mt-6 flex flex-wrap items-center gap-3">
                   <Button
-                    variant="primary"
+                    variant="secondary"
                     onClick={runMigrationDryRun}
                     disabled={migrationDryRunLoading || migrationEntities.size === 0}
                   >
                     {migrationDryRunLoading ? "Running…" : "Dry run (preview)"}
                   </Button>
                   <Button
-                    variant="secondary"
+                    variant="primary"
                     onClick={runMigrationRun}
                     disabled={migrationRunLoading || migrationEntities.size === 0 || !shopifyCredentialsOk}
                   >
                     {migrationRunLoading ? "Migrating…" : "Run migration"}
                   </Button>
                 </div>
+
                 {migrationDryRunError && (
                   <div className="mt-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
                     {migrationDryRunError}
-                  </div>
-                )}
-                {migrationDryRunResult && (
-                  <div className="mt-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2 text-body-small">
-                    {migrationDryRunResult.counts
-                      ? `Preview: ${Object.entries(migrationDryRunResult.counts).map(([k, v]) => `${k}: ${v}`).join(", ")}`
-                      : migrationDryRunResult.message ?? "Dry run complete."}
                   </div>
                 )}
                 {migrationRunError && (
@@ -970,12 +1039,28 @@ export default function SeoMigrationWizardPage() {
                   <>
                     {(!gscResult?.page_queries?.length && !ga4Result?.search_console_queries?.length) && (
                       <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 px-3 py-2 text-body-small">
-                        <strong>Traffic keywords</strong> and <strong>Monthly search volume</strong> need GSC or GA4 Search Console data. In <strong>Step 2</strong>: fetch <strong>GSC report</strong> (needs Search Console API) and/or <strong>GA4 report</strong> (when the property has Search Console linked, we pull query data from GA4). Enable <a href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-brand-600 underline">Search Console API</a> for per-URL keywords.
+                        <strong>Traffic keywords</strong> and <strong>Monthly search volume</strong> come from Step 2. Use <strong>both</strong>: (1) <strong>Fetch GSC report</strong> for per-URL keywords (same site URL as crawl), or (2) <strong>Fetch GA4 report</strong> — if your GA4 property has Search Console linked (Admin → Product links), we pull site-level keywords from GA4 and show them below. Link Search Console to GA4 if you only have Analytics access.
                       </div>
                     )}
                     {!gscResult?.page_queries?.length && (ga4Result?.search_console_queries?.length ?? 0) > 0 && (
                       <div className="mb-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2 text-body-small">
-                        <strong>Traffic keywords</strong> are from GA4 Search Console (site-level; {ga4Result?.search_console_queries?.length ?? 0} queries). Connect Search Console API and fetch GSC report in Step 2 for per-URL keywords. You can still fetch monthly search volume for these keywords below.
+                        <strong>Traffic keywords</strong> are from GA4 Search Console (site-level; {ga4Result?.search_console_queries?.length ?? 0} keywords). Per-URL keywords need GSC in Step 2. You can fetch monthly search volume for these keywords below.
+                      </div>
+                    )}
+                    {(ga4Result?.search_console_queries?.length ?? 0) > 0 && (
+                      <div className="mb-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2">
+                        <p className="text-body-small font-medium mb-2">Keywords from GA4 Search Console (site-level) — use for monthly search volume</p>
+                        <ul className="text-body-small space-y-1 max-h-[200px] overflow-y-auto list-disc list-inside">
+                          {(ga4Result?.search_console_queries ?? []).slice(0, 50).map((q, idx) => (
+                            <li key={idx}>{q.query} <span className="text-fg-muted">({q.clicks} clicks, {q.impressions} impr.)</span></li>
+                          ))}
+                        </ul>
+                        {(ga4Result?.search_console_queries?.length ?? 0) > 50 && <p className="text-body-small text-fg-muted mt-1">+{(ga4Result?.search_console_queries?.length ?? 0) - 50} more</p>}
+                      </div>
+                    )}
+                    {ga4Result?.search_console_error && !gscResult?.page_queries?.length && (
+                      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 px-3 py-2 text-body-small">
+                        GA4 keyword data not available: {ga4Result.search_console_error}. Link Search Console to your GA4 property (GA4 → Admin → Product links → Search Console) or fetch GSC report in Step 2 for keywords.
                       </div>
                     )}
                     <div className="mb-2 flex flex-wrap gap-2 items-center">
@@ -990,7 +1075,7 @@ export default function SeoMigrationWizardPage() {
                         size="sm"
                         onClick={fetchKeywordVolumes}
                         disabled={keywordVolumeLoading || allUniqueGscKeywords.length === 0}
-                        title={allUniqueGscKeywords.length === 0 ? "Fetch GSC report in Step 2 first to get keywords" : undefined}
+                        title={allUniqueGscKeywords.length === 0 ? "Enter primary keywords in the table and/or fetch GSC or GA4 in Step 2 to get keywords" : undefined}
                       >
                         {keywordVolumeLoading ? "Fetching…" : "Fetch monthly search volume (Google Ads)"}
                       </Button>
@@ -1007,7 +1092,7 @@ export default function SeoMigrationWizardPage() {
                             <th className="px-2 py-2 text-right font-medium whitespace-nowrap">Clicks</th>
                             <th className="px-2 py-2 text-right font-medium whitespace-nowrap">Sessions</th>
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Primary Keyword</th>
-                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Traffic keywords (GSC)</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Traffic keywords (GSC/GA4)</th>
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Monthly search volume</th>
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Action</th>
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Consolidate into</th>
@@ -1044,10 +1129,11 @@ export default function SeoMigrationWizardPage() {
                                 )}
                               </td>
                               <td className="px-2 py-1 text-body-small">
-                                {keywords.length === 0 ? (
-                                  <span className="text-fg-muted">—</span>
-                                ) : (() => {
-                                  const total = keywords.reduce((s, k) => s + (keywordVolumeMap[k.query] ?? 0), 0);
+                                {(() => {
+                                  const totalFromGsc = keywords.reduce((s, k) => s + (keywordVolumeMap[k.query] ?? 0), 0);
+                                  const primaryKw = (r.primaryKeyword || "").trim();
+                                  const primaryVol = primaryKw ? (keywordVolumeMap[primaryKw] ?? 0) : 0;
+                                  const total = totalFromGsc || primaryVol;
                                   if (total === 0) return <span className="text-fg-muted">—</span>;
                                   return total >= 1000 ? `${(total / 1000).toFixed(1)}k` : String(total);
                                 })()}

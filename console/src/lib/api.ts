@@ -1036,6 +1036,8 @@ export type SeoGa4Report = {
   }>;
   /** When GA4 has Search Console linked: query-level keywords (no per-URL in GA4 API). */
   search_console_queries?: Array<{ query: string; clicks: number; impressions: number }>;
+  /** When GA4 pages succeeded but Search Console report failed (e.g. property not linked). */
+  search_console_error?: string;
   error?: string;
 };
 

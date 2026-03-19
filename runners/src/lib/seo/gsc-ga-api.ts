@@ -54,6 +54,8 @@ export interface Ga4Report {
   pages: Ga4PageRow[];
   /** When GA4 has Search Console linked: query-level keywords (no per-page in API). */
   search_console_queries?: Ga4SearchConsoleQueryRow[];
+  /** Set when GA4 pages succeeded but the Search Console report failed (e.g. property not linked). */
+  search_console_error?: string;
   error?: string;
 }
 
@@ -83,6 +85,20 @@ function getAuthFromAccessToken(accessToken: string): unknown {
   return oauth;
 }
 
+/** Normalize site URL for Search Console API: ensure URL-prefix has trailing slash so it matches common GSC property format. */
+function normalizeGscSiteUrl(siteUrl: string): string {
+  const u = (siteUrl || "").trim();
+  if (!u) return u;
+  if (u.startsWith("sc-domain:")) return u;
+  try {
+    const parsed = new URL(u.startsWith("http") ? u : `https://${u}`);
+    const base = `${parsed.origin}/`;
+    return base;
+  } catch {
+    return u;
+  }
+}
+
 /**
  * Fetch GSC Search Analytics: top pages and top queries for the given site and date range.
  * When accessToken is provided (OAuth from control-plane), uses it instead of GOOGLE_APPLICATION_CREDENTIALS.
@@ -91,6 +107,7 @@ export async function fetchGscReport(
   siteUrl: string,
   options: { dateRange?: string; rowLimit?: number; accessToken?: string } = {},
 ): Promise<GscReport> {
+  const normalizedUrl = normalizeGscSiteUrl(siteUrl);
   const rowLimit = options.rowLimit ?? 500;
   const end = new Date();
   const start = new Date();
@@ -110,7 +127,7 @@ export async function fetchGscReport(
     const pageQueryLimit = Math.min(10000, (rowLimit ?? 500) * 20); // allow more rows for page+query
     const [pageRes, queryRes, pageQueryRes] = await Promise.all([
       searchconsole.searchanalytics.query({
-        siteUrl,
+        siteUrl: normalizedUrl,
         requestBody: {
           startDate: startStr,
           endDate: endStr,
@@ -119,7 +136,7 @@ export async function fetchGscReport(
         },
       }),
       searchconsole.searchanalytics.query({
-        siteUrl,
+        siteUrl: normalizedUrl,
         requestBody: {
           startDate: startStr,
           endDate: endStr,
@@ -128,7 +145,7 @@ export async function fetchGscReport(
         },
       }),
       searchconsole.searchanalytics.query({
-        siteUrl,
+        siteUrl: normalizedUrl,
         requestBody: {
           startDate: startStr,
           endDate: endStr,
@@ -160,11 +177,11 @@ export async function fetchGscReport(
       impressions: (r.impressions as number) ?? 0,
     }));
 
-    return { site_url: siteUrl, date_range: { start: startStr, end: endStr }, pages, queries, page_queries };
+    return { site_url: normalizedUrl, date_range: { start: startStr, end: endStr }, pages, queries, page_queries };
   } catch (err) {
     const message = (err as Error).message ?? String(err);
     return {
-      site_url: siteUrl,
+      site_url: normalizedUrl,
       date_range: { start: startStr, end: endStr },
       pages: [],
       queries: [],
@@ -215,6 +232,7 @@ export async function fetchGa4Report(
 
     // When property has Search Console linked, pull query-level data (GA4 only allows query + Country/Device, not page+query).
     let search_console_queries: Ga4SearchConsoleQueryRow[] | undefined;
+    let search_console_error: string | undefined;
     try {
       const scRes = await analytics.properties.runReport({
         property: `properties/${propertyId}`,
@@ -232,11 +250,11 @@ export async function fetchGa4Report(
         impressions: Number(r.metricValues?.[1]?.value ?? 0),
       })).filter((q) => q.query.length > 0);
       if (search_console_queries.length === 0) search_console_queries = undefined;
-    } catch {
-      // No Search Console link or API restriction; leave search_console_queries undefined.
+    } catch (err) {
+      search_console_error = (err as Error).message ?? String(err);
     }
 
-    return { property_id: propertyId, pages, search_console_queries };
+    return { property_id: propertyId, pages, search_console_queries, search_console_error };
   } catch (err) {
     const message = (err as Error).message ?? String(err);
     return { property_id: propertyId, pages: [], error: message };

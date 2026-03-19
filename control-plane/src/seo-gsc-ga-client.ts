@@ -20,6 +20,8 @@ export interface Ga4Report {
   pages: { full_page_url?: string; page_path?: string; sessions: number; screen_page_views?: number; user_engagement_duration?: number }[];
   /** When GA4 has Search Console linked: query-level keywords (no per-page in GA4 API). */
   search_console_queries?: { query: string; clicks: number; impressions: number }[];
+  /** When GA4 pages succeeded but Search Console report failed (e.g. property not linked). */
+  search_console_error?: string;
   error?: string;
 }
 
