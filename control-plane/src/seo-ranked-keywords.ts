@@ -102,15 +102,12 @@ export async function fetchRankedKeywordsFromDataForSeo(
     `${process.env.DATAFORSEO_LOGIN}:${process.env.DATAFORSEO_PASSWORD}`,
     "utf8",
   ).toString("base64");
-  const body = {
-    data: [
-      {
-        target: fullUrl.startsWith("http") ? fullUrl : `https://${fullUrl}`,
-        limit: Math.min(1000, Math.max(1, limit)),
-        item_types: ["organic"],
-        include_clickstream_data: false,
-      },
-    ],
+  // DataForSEO expects the POST body to be the task array directly, not { data: [...] }
+  const task = {
+    target: fullUrl.startsWith("http") ? fullUrl : `https://${fullUrl}`,
+    limit: Math.min(1000, Math.max(1, limit)),
+    item_types: ["organic"],
+    include_clickstream_data: false,
   };
   const res = await fetch(API_URL, {
     method: "POST",
@@ -118,7 +115,7 @@ export async function fetchRankedKeywordsFromDataForSeo(
       "Content-Type": "application/json",
       Authorization: `Basic ${auth}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify([task]),
   });
   if (!res.ok) {
     const text = await res.text();

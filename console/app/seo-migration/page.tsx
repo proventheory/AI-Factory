@@ -1102,11 +1102,6 @@ export default function SeoMigrationWizardPage() {
                   <p className="text-body-small text-fg-muted">Run the crawl in step 1 and/or fetch GA4 in step 2 to populate this list (union of all URLs, no duplicates).</p>
                 ) : (
                   <>
-                    {(!gscResult?.page_queries?.length && !ga4Result?.search_console_queries?.length) && (
-                      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 px-3 py-2 text-body-small">
-                        <strong>Traffic keywords</strong> and <strong>Monthly search volume</strong> come from Step 2. Use <strong>both</strong>: (1) <strong>Fetch GSC report</strong> for per-URL keywords (same site URL as crawl), or (2) <strong>Fetch GA4 report</strong> — if your GA4 property has Search Console linked (Admin → Product links), we pull site-level keywords from GA4 and show them below. Link Search Console to GA4 if you only have Analytics access.
-                      </div>
-                    )}
                     {!gscResult?.page_queries?.length && (ga4Result?.search_console_queries?.length ?? 0) > 0 && (
                       <div className="mb-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2 text-body-small">
                         <strong>Traffic keywords</strong> are from GA4 Search Console (site-level; {ga4Result?.search_console_queries?.length ?? 0} keywords). Per-URL keywords need GSC in Step 2. You can fetch monthly search volume for these keywords below.
