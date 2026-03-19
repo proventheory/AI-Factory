@@ -188,6 +188,8 @@ export default function SeoMigrationWizardPage() {
   const [rankedKeywordsError, setRankedKeywordsError] = useState<string | null>(null);
   /** Which paths have "View more" expanded for DataForSEO keywords (show all instead of top 10). */
   const [rankedKeywordsExpandedPaths, setRankedKeywordsExpandedPaths] = useState<Set<string>>(new Set());
+  /** Path currently being enriched (per-URL Enrich), so we can show loading on that row only. */
+  const [enrichingPath, setEnrichingPath] = useState<string | null>(null);
   const [targetBaseUrl, setTargetBaseUrl] = useState(""); // New site base URL for steps 5–6
   // Step 5: Page plan
   const [pagePlan, setPagePlan] = useState<PagePlanRow[]>([]);
@@ -413,6 +415,30 @@ export default function SeoMigrationWizardPage() {
       setRankedKeywordsError(formatApiError(e));
     } finally {
       setRankedKeywordsLoading(false);
+    }
+  };
+
+  const fetchRankedKeywordsForPath = async (path: string) => {
+    const pathNorm = (path || "/").replace(/^\//, "") || "";
+    const url = `${safeBaseOrigin}/${pathNorm}`;
+    setEnrichingPath(path);
+    setRankedKeywordsError(null);
+    try {
+      const result = await api.seoRankedKeywords({ urls: [url], limit_per_url: 200 });
+      const canonical = toCanonicalPath(path);
+      const data = result.by_url?.[url];
+      const keywords = data?.keywords ?? [];
+      setPathToRankedKeywords((prev) => ({ ...prev, [canonical]: keywords }));
+      const volumeUpdates: Record<string, number> = {};
+      keywords.forEach((k) => {
+        if (k.keyword && (k.monthly_search_volume ?? 0) > 0) volumeUpdates[k.keyword] = k.monthly_search_volume!;
+      });
+      setKeywordVolumeMap((prev) => ({ ...prev, ...volumeUpdates }));
+      if (result.error) setRankedKeywordsError(result.error);
+    } catch (e) {
+      setRankedKeywordsError(formatApiError(e));
+    } finally {
+      setEnrichingPath(null);
     }
   };
 
@@ -1147,6 +1173,7 @@ export default function SeoMigrationWizardPage() {
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Monthly search volume</th>
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Action</th>
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Consolidate into</th>
+                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Enrich URL</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1254,6 +1281,17 @@ export default function SeoMigrationWizardPage() {
                                   disabled={r.action !== "consolidate"}
                                   className="min-w-[140px]"
                                 />
+                              </td>
+                              <td className="px-2 py-1 whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  className="text-link text-body-small hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                                  onClick={() => fetchRankedKeywordsForPath(r.path)}
+                                  disabled={enrichingPath !== null}
+                                  title="Fetch ranked keywords for this URL only (DataForSEO, ~$0.01)"
+                                >
+                                  {enrichingPath === r.path ? "Enriching…" : "Enrich URL"}
+                                </button>
                               </td>
                             </tr>
                             );
