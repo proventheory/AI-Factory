@@ -32,7 +32,7 @@ services:
     plan: standard
     dockerContext: .
     dockerfilePath: ./Dockerfile.gateway
-    branch: prod
+    branch: main
     envVars:
       - key: NODE_ENV
         value: production
