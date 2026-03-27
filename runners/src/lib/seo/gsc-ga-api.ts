@@ -99,6 +99,63 @@ function normalizeGscSiteUrl(siteUrl: string): string {
   }
 }
 
+type GscSearchConsole = {
+  searchanalytics: { query: (opts: unknown) => Promise<{ data: { rows?: unknown[] } }> };
+};
+
+/** When bulk [page,query] returns no rows, query each top page with a page filter (GSC API quirk on some properties). */
+async function fetchPageQueriesForTopPages(
+  searchconsole: GscSearchConsole,
+  siteUrl: string,
+  startStr: string,
+  endStr: string,
+  pages: GscPageRow[],
+  maxPages: number,
+): Promise<GscPageQueryRow[]> {
+  const sorted = [...pages].sort((a, b) => b.clicks - a.clicks);
+  const slice = sorted.slice(0, Math.min(maxPages, sorted.length));
+  const out: GscPageQueryRow[] = [];
+  const batchSize = 8;
+  for (let i = 0; i < slice.length; i += batchSize) {
+    const batch = slice.slice(i, i + batchSize);
+    const parts = await Promise.all(
+      batch.map(async (p) => {
+        if (!p.url) return [] as GscPageQueryRow[];
+        try {
+          const res = await searchconsole.searchanalytics.query({
+            siteUrl,
+            requestBody: {
+              startDate: startStr,
+              endDate: endStr,
+              dimensions: ["query"],
+              type: "web",
+              dataState: "all",
+              dimensionFilterGroups: [
+                {
+                  groupType: "and",
+                  filters: [{ dimension: "page", operator: "equals", expression: p.url }],
+                },
+              ],
+              rowLimit: 500,
+            },
+          });
+          type GscRow = { keys?: string[]; clicks?: number; impressions?: number };
+          return ((res.data.rows ?? []) as GscRow[]).map((r: GscRow) => ({
+            page: p.url,
+            query: (r.keys?.[0] as string) ?? "",
+            clicks: (r.clicks as number) ?? 0,
+            impressions: (r.impressions as number) ?? 0,
+          }));
+        } catch {
+          return [];
+        }
+      }),
+    );
+    for (const rows of parts) out.push(...rows);
+  }
+  return out;
+}
+
 /**
  * Fetch GSC Search Analytics: top pages and top queries for the given site and date range.
  * When accessToken is provided (OAuth from control-plane), uses it instead of GOOGLE_APPLICATION_CREDENTIALS.
@@ -124,7 +181,8 @@ export async function fetchGscReport(
     const { google } = loadGoogle();
     const searchconsole = google.searchconsole({ version: "v1", auth });
 
-    const pageQueryLimit = Math.min(10000, (rowLimit ?? 500) * 20); // allow more rows for page+query
+    const pageQueryLimit = Math.min(25000, Math.max(1000, (rowLimit ?? 500) * 40));
+    const commonDims = { type: "web" as const, dataState: "all" as const };
     const [pageRes, queryRes, pageQueryRes] = await Promise.all([
       searchconsole.searchanalytics.query({
         siteUrl: normalizedUrl,
@@ -133,6 +191,7 @@ export async function fetchGscReport(
           endDate: endStr,
           dimensions: ["page"],
           rowLimit,
+          ...commonDims,
         },
       }),
       searchconsole.searchanalytics.query({
@@ -142,6 +201,7 @@ export async function fetchGscReport(
           endDate: endStr,
           dimensions: ["query"],
           rowLimit,
+          ...commonDims,
         },
       }),
       searchconsole.searchanalytics.query({
@@ -151,6 +211,7 @@ export async function fetchGscReport(
           endDate: endStr,
           dimensions: ["page", "query"],
           rowLimit: pageQueryLimit,
+          ...commonDims,
         },
       }),
     ]);
@@ -170,12 +231,24 @@ export async function fetchGscReport(
       impressions: (r.impressions as number) ?? 0,
     }));
 
-    const page_queries: GscPageQueryRow[] = ((pageQueryRes.data.rows ?? []) as GscRow[]).map((r: GscRow) => ({
+    let page_queries: GscPageQueryRow[] = ((pageQueryRes.data.rows ?? []) as GscRow[]).map((r: GscRow) => ({
       page: (r.keys?.[0] as string) ?? "",
       query: (r.keys?.[1] as string) ?? "",
       clicks: (r.clicks as number) ?? 0,
       impressions: (r.impressions as number) ?? 0,
     }));
+
+    /** Some properties return empty page+query rows even when page/query dimensions work; fill from per-page query calls. */
+    if (page_queries.length === 0 && pages.length > 0 && queries.length > 0) {
+      page_queries = await fetchPageQueriesForTopPages(
+        searchconsole,
+        normalizedUrl,
+        startStr,
+        endStr,
+        pages,
+        100,
+      );
+    }
 
     return { site_url: normalizedUrl, date_range: { start: startStr, end: endStr }, pages, queries, page_queries };
   } catch (err) {

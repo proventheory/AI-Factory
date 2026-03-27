@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
   PageFrame,
@@ -53,6 +53,193 @@ type RedirectRow = { old_url: string; new_url: string; status: RedirectStatus; d
 type InternalLinkRow = { from_url: string; to_url: string; anchor: string; placement: "homepage" | "header" | "footer" | "contextual" };
 
 const CRAWL_CACHE_KEY = "seo-migration-crawl-cache";
+const WIZARD_SESSION_KEY = "seo-migration-wizard-session";
+/** Small snapshot so brand / step / URLs survive even if the full session JSON fails (quota) or predates session feature. */
+const WIZARD_LITE_KEY = "seo-migration-wizard-lite";
+/** WooCommerce REST credentials: kept separate so they survive clearing the main wizard session (e.g. changing brand). */
+const WOO_STORE_CACHE_KEY = "seo-migration-woo-store";
+/** Redirect map (step 6–7): separate from main session so mappings survive localStorage quota failures on large GSC/crawl payloads. */
+const REDIRECT_MAP_SIDE_KEY = "seo-migration-redirect-map-side";
+
+type WizardLite = {
+  brandId: string;
+  step: number;
+  sourceUrl: string;
+  gscSiteUrl: string;
+  useLinkCrawl: boolean;
+  maxUrls: number;
+};
+
+/** Persisted wizard state so leaving the page doesn't lose brand, crawl, keywords, etc. Cleared when user changes brand. */
+type WizardSession = {
+  brandId: string;
+  sourceUrl: string;
+  useLinkCrawl: boolean;
+  maxUrls: number;
+  step: number;
+  gscSiteUrl: string;
+  gscResult: SeoGscReport | null;
+  ga4PropertyId: string;
+  ga4Result: SeoGa4Report | null;
+  keywordRows: KeywordRow[];
+  keywordVolumeMap: Record<string, number>;
+  pathToRankedKeywords: Record<string, Array<{ keyword: string; monthly_search_volume?: number; position?: number }>>;
+  targetBaseUrl: string;
+  pagePlan: PagePlanRow[];
+  redirectMap: RedirectRow[];
+  internalLinkPlan: InternalLinkRow[];
+  launchChecklist: { redirectsImplemented: boolean; pagesCreated: boolean; metadataSet: boolean; internalLinksInPlace: boolean; fourOhFoursHandled: boolean };
+  launchAcked: boolean;
+  migrationEntities: string[];
+  wooServer?: string;
+  wooConsumerKey?: string;
+  wooConsumerSecret?: string;
+};
+
+type WooStoreCache = {
+  wooServer: string;
+  wooConsumerKey: string;
+  wooConsumerSecret: string;
+};
+
+function getWizardSession(): WizardSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(WIZARD_SESSION_KEY);
+    return raw ? (JSON.parse(raw) as WizardSession) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setWizardSession(session: WizardSession): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(WIZARD_SESSION_KEY, JSON.stringify(session));
+  } catch (e) {
+    console.warn("SEO migration: could not save full wizard session (localStorage quota?). Lite backup still has brand & URLs.", e);
+  }
+}
+
+function clearWizardSession(): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(WIZARD_SESSION_KEY);
+    localStorage.removeItem(WIZARD_LITE_KEY);
+    localStorage.removeItem(REDIRECT_MAP_SIDE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function getWizardLite(): WizardLite | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(WIZARD_LITE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Partial<WizardLite>;
+    if (typeof o.sourceUrl !== "string") return null;
+    return {
+      brandId: typeof o.brandId === "string" ? o.brandId : "",
+      step: typeof o.step === "number" && o.step >= 1 && o.step <= 9 ? o.step : 1,
+      sourceUrl: o.sourceUrl,
+      gscSiteUrl: typeof o.gscSiteUrl === "string" ? o.gscSiteUrl : o.sourceUrl,
+      useLinkCrawl: typeof o.useLinkCrawl === "boolean" ? o.useLinkCrawl : true,
+      maxUrls: typeof o.maxUrls === "number" && o.maxUrls > 0 ? Math.min(5000, o.maxUrls) : 2000,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function setWizardLite(lite: WizardLite): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(WIZARD_LITE_KEY, JSON.stringify(lite));
+  } catch {
+    // ignore
+  }
+}
+
+function getWooStoreCache(): WooStoreCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(WOO_STORE_CACHE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Partial<WooStoreCache>;
+    return {
+      wooServer: typeof o.wooServer === "string" ? o.wooServer : "",
+      wooConsumerKey: typeof o.wooConsumerKey === "string" ? o.wooConsumerKey : "",
+      wooConsumerSecret: typeof o.wooConsumerSecret === "string" ? o.wooConsumerSecret : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function setWooStoreCache(woo: WooStoreCache): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(WOO_STORE_CACHE_KEY, JSON.stringify(woo));
+  } catch {
+    // ignore
+  }
+}
+
+function coalesceWooField(saved: string | undefined, cached: string | undefined): string {
+  const s = (saved ?? "").trim();
+  if (s.length > 0) return s;
+  return (cached ?? "").trim();
+}
+
+type RedirectMapSidecarV1 = {
+  v: 1;
+  brandId: string;
+  sourceNorm: string;
+  rows: RedirectRow[];
+};
+
+function redirectSourceNorm(sourceUrl: string): string {
+  return normalizeCrawlCacheKey(sourceUrl.trim() || "https://");
+}
+
+/** null = no sidecar or wrong migration context; use wizard session. Array (possibly empty) = authoritative snapshot for this brand + source. */
+function getRedirectMapSidecar(brandId: string, sourceUrl: string): RedirectRow[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(REDIRECT_MAP_SIDE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw) as Partial<RedirectMapSidecarV1>;
+    if (o.v !== 1 || typeof o.sourceNorm !== "string") return null;
+    const b = (o.brandId ?? "").trim();
+    const wantB = (brandId ?? "").trim();
+    if (b !== wantB) return null;
+    if (o.sourceNorm !== redirectSourceNorm(sourceUrl)) return null;
+    if (!Array.isArray(o.rows)) return null;
+    return o.rows as RedirectRow[];
+  } catch {
+    return null;
+  }
+}
+
+function setRedirectMapSidecar(brandId: string, sourceUrl: string, rows: RedirectRow[]): void {
+  if (typeof window === "undefined") return;
+  if (!sourceUrl.trim()) return;
+  const b = (brandId ?? "").trim();
+  if (!b && rows.length === 0) return;
+  const payload: RedirectMapSidecarV1 = {
+    v: 1,
+    brandId: b,
+    sourceNorm: redirectSourceNorm(sourceUrl),
+    rows,
+  };
+  try {
+    localStorage.setItem(REDIRECT_MAP_SIDE_KEY, JSON.stringify(payload));
+  } catch (e) {
+    console.warn("SEO migration: could not save redirect map sidecar (quota?).", e);
+  }
+}
+
 function normalizeCrawlCacheKey(url: string): string {
   try {
     const u = url.trim().toLowerCase().replace(/\/+$/, "") || "https://";
@@ -216,10 +403,197 @@ export default function SeoMigrationWizardPage() {
     });
   };
 
+  const hasRestoredSessionRef = useRef(false);
+  const skipNextPersistRef = useRef(false);
+
   // Load brands for dropdown
   useEffect(() => {
     api.getBrandProfiles({ status: "active", limit: 200 }).then((r) => setBrands(r.items)).catch(() => setBrands([]));
   }, []);
+
+  // Restore wizard session once on mount so leaving the page doesn't lose brand, crawl, keywords, etc.
+  useLayoutEffect(() => {
+    if (typeof window === "undefined" || hasRestoredSessionRef.current) return;
+    const session = getWizardSession();
+    const lite = getWizardLite();
+    if (!session && !lite) {
+      hasRestoredSessionRef.current = true;
+      const wooOnly = getWooStoreCache();
+      if (wooOnly && (wooOnly.wooServer || wooOnly.wooConsumerKey)) {
+        setWooServer(wooOnly.wooServer);
+        setWooConsumerKey(wooOnly.wooConsumerKey);
+        setWooConsumerSecret(wooOnly.wooConsumerSecret);
+      }
+      return;
+    }
+    hasRestoredSessionRef.current = true;
+    skipNextPersistRef.current = true;
+
+    const wooCached = getWooStoreCache();
+    const brandFromLite = lite?.brandId ?? "";
+    const stepFromLite = lite?.step ?? 1;
+    const sourceFromLite = lite?.sourceUrl ?? "https://stigmahemp.com";
+    const gscFromLite = lite?.gscSiteUrl ?? sourceFromLite;
+
+    if (session) {
+      const nextBrand = (session.brandId ?? "").trim() || brandFromLite;
+      const nextStep = Math.min(Math.max(1, session.step ?? stepFromLite), 9);
+      const nextSource = session.sourceUrl ?? sourceFromLite;
+      const nextUseLink = session.useLinkCrawl ?? lite?.useLinkCrawl ?? true;
+      const nextMax = session.maxUrls ?? lite?.maxUrls ?? 2000;
+      const nextGsc = session.gscSiteUrl ?? session.sourceUrl ?? gscFromLite;
+      setBrandId(nextBrand);
+      setSourceUrl(nextSource);
+      setUseLinkCrawl(nextUseLink);
+      setMaxUrls(nextMax);
+      setStep(nextStep);
+      setGscSiteUrl(nextGsc);
+      setGscResult(session.gscResult ?? null);
+      setGa4PropertyId(session.ga4PropertyId ?? "");
+      setGa4Result(session.ga4Result ?? null);
+      setKeywordRows(Array.isArray(session.keywordRows) ? session.keywordRows : []);
+      setKeywordVolumeMap(session.keywordVolumeMap && typeof session.keywordVolumeMap === "object" ? session.keywordVolumeMap : {});
+      setPathToRankedKeywords(session.pathToRankedKeywords && typeof session.pathToRankedKeywords === "object" ? session.pathToRankedKeywords : {});
+      setTargetBaseUrl(session.targetBaseUrl ?? "");
+      setPagePlan(Array.isArray(session.pagePlan) ? session.pagePlan : []);
+      {
+        const sessionRm = Array.isArray(session.redirectMap) ? session.redirectMap : [];
+        const diskRm = getRedirectMapSidecar(nextBrand, nextSource);
+        setRedirectMap(diskRm !== null ? diskRm : sessionRm);
+      }
+      setInternalLinkPlan(Array.isArray(session.internalLinkPlan) ? session.internalLinkPlan : []);
+      setLaunchChecklist(
+        session.launchChecklist && typeof session.launchChecklist === "object"
+          ? {
+              redirectsImplemented: !!session.launchChecklist.redirectsImplemented,
+              pagesCreated: !!session.launchChecklist.pagesCreated,
+              metadataSet: !!session.launchChecklist.metadataSet,
+              internalLinksInPlace: !!session.launchChecklist.internalLinksInPlace,
+              fourOhFoursHandled: !!session.launchChecklist.fourOhFoursHandled,
+            }
+          : { redirectsImplemented: false, pagesCreated: false, metadataSet: false, internalLinksInPlace: false, fourOhFoursHandled: false }
+      );
+      setLaunchAcked(!!session.launchAcked);
+      if (Array.isArray(session.migrationEntities)) setMigrationEntities(new Set(session.migrationEntities));
+      ga4AutoFetchedRef.current = (session.ga4Result?.pages?.length ?? 0) > 0;
+      setWooServer(coalesceWooField(session.wooServer, wooCached?.wooServer));
+      setWooConsumerKey(coalesceWooField(session.wooConsumerKey, wooCached?.wooConsumerKey));
+      setWooConsumerSecret(coalesceWooField(session.wooConsumerSecret, wooCached?.wooConsumerSecret));
+      setWizardLite({
+        brandId: nextBrand,
+        step: nextStep,
+        sourceUrl: nextSource,
+        gscSiteUrl: nextGsc,
+        useLinkCrawl: nextUseLink,
+        maxUrls: nextMax,
+      });
+    } else if (lite) {
+      setBrandId(lite.brandId);
+      setSourceUrl(lite.sourceUrl);
+      setUseLinkCrawl(lite.useLinkCrawl);
+      setMaxUrls(lite.maxUrls);
+      setStep(Math.min(Math.max(1, lite.step), 9));
+      setGscSiteUrl(lite.gscSiteUrl);
+      ga4AutoFetchedRef.current = false;
+      setWooServer(coalesceWooField(undefined, wooCached?.wooServer));
+      setWooConsumerKey(coalesceWooField(undefined, wooCached?.wooConsumerKey));
+      setWooConsumerSecret(coalesceWooField(undefined, wooCached?.wooConsumerSecret));
+      setWizardLite(lite);
+      {
+        const diskRm = getRedirectMapSidecar(lite.brandId, lite.sourceUrl);
+        if (diskRm !== null) setRedirectMap(diskRm);
+      }
+    }
+  }, []);
+
+  // After hydration, keep the lite snapshot in sync (small write; avoids losing brand when full JSON hits localStorage quota).
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasRestoredSessionRef.current) return;
+    setWizardLite({
+      brandId,
+      step,
+      sourceUrl,
+      gscSiteUrl,
+      useLinkCrawl,
+      maxUrls,
+    });
+  }, [brandId, step, sourceUrl, gscSiteUrl, useLinkCrawl, maxUrls]);
+
+  // Persist WooCommerce fields whenever they change (small payload; survives main session clear on brand change).
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasRestoredSessionRef.current) return;
+    setWooStoreCache({ wooServer, wooConsumerKey, wooConsumerSecret });
+  }, [wooServer, wooConsumerKey, wooConsumerSecret]);
+
+  // Redirect map: dedicated sidecar so new_url / status edits survive reload even when the full wizard JSON is too large to store.
+  useEffect(() => {
+    if (typeof window === "undefined" || !hasRestoredSessionRef.current) return;
+    if (!sourceUrl.trim()) return;
+    if (!brandId.trim() && redirectMap.length === 0) return;
+    setRedirectMapSidecar(brandId, sourceUrl, redirectMap);
+  }, [brandId, sourceUrl, redirectMap]);
+
+  // When user changes brand in step 1: clear persisted session and reset derived state so they start fresh for the new brand
+  const handleBrandChange = useCallback((newBrandId: string) => {
+    if (newBrandId === brandId) return;
+    clearWizardSession();
+    setCrawlResult(null);
+    setCrawlCachedAt(null);
+    setGscResult(null);
+    setGa4Result(null);
+    setKeywordRows([]);
+    setPathToRankedKeywords({});
+    setKeywordVolumeMap({});
+    setRedirectMap([]);
+    setPagePlan([]);
+    setInternalLinkPlan([]);
+    setLaunchChecklist({ redirectsImplemented: false, pagesCreated: false, metadataSet: false, internalLinksInPlace: false, fourOhFoursHandled: false });
+    setLaunchAcked(false);
+    setBrandId(newBrandId);
+  }, [brandId]);
+
+  // Persist wizard session when state changes (debounced) so leaving the page preserves progress
+  useEffect(() => {
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      setWizardLite({
+        brandId,
+        step,
+        sourceUrl,
+        gscSiteUrl,
+        useLinkCrawl,
+        maxUrls,
+      });
+      setWizardSession({
+        brandId,
+        sourceUrl,
+        useLinkCrawl,
+        maxUrls,
+        step,
+        gscSiteUrl,
+        gscResult,
+        ga4PropertyId,
+        ga4Result,
+        keywordRows,
+        keywordVolumeMap,
+        pathToRankedKeywords,
+        targetBaseUrl,
+        pagePlan,
+        redirectMap,
+        internalLinkPlan,
+        launchChecklist,
+        launchAcked,
+        migrationEntities: Array.from(migrationEntities),
+        wooServer,
+        wooConsumerKey,
+        wooConsumerSecret,
+      });
+    }, 800);
+    return () => clearTimeout(t);
+  }, [brandId, sourceUrl, useLinkCrawl, maxUrls, step, gscSiteUrl, gscResult, ga4PropertyId, ga4Result, keywordRows, keywordVolumeMap, pathToRankedKeywords, targetBaseUrl, pagePlan, redirectMap, internalLinkPlan, launchChecklist, launchAcked, migrationEntities, wooServer, wooConsumerKey, wooConsumerSecret]);
 
   // Restore cached crawl for current source URL on load and when URL changes so the table shows without re-running crawl
   useLayoutEffect(() => {
@@ -426,7 +800,9 @@ export default function SeoMigrationWizardPage() {
     try {
       const result = await api.seoRankedKeywords({ urls: [url], limit_per_url: 200 });
       const canonical = toCanonicalPath(path);
-      const data = result.by_url?.[url];
+      // Backend returns key as requested; fallback to alternate slash form or first entry (single-URL)
+      const altKey = url.endsWith("/") ? url.replace(/\/$/, "") : `${url}/`;
+      const data = result.by_url?.[url] ?? result.by_url?.[altKey] ?? Object.values(result.by_url ?? {})[0];
       const keywords = data?.keywords ?? [];
       setPathToRankedKeywords((prev) => ({ ...prev, [canonical]: keywords }));
       const volumeUpdates: Record<string, number> = {};
@@ -680,7 +1056,7 @@ export default function SeoMigrationWizardPage() {
                 <label className="mb-1 block text-body-small font-medium">Brand</label>
                 <select
                   value={brandId}
-                  onChange={(e) => setBrandId(e.target.value)}
+                  onChange={(e) => handleBrandChange(e.target.value)}
                   className="w-full max-w-md rounded-lg border border-border bg-bg px-3 py-2 text-body-small focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 >
                   <option value="">— Select a brand (optional, for GSC/GA4 in step 2) —</option>
@@ -908,6 +1284,9 @@ export default function SeoMigrationWizardPage() {
                 <h3 className="font-semibold">WordPress / WooCommerce (source)</h3>
                 <p className="text-body-small text-fg-muted mt-1">
                   Use WooCommerce REST API v3. In WordPress: WooCommerce → Settings → Advanced → REST API → Add key (Read). Use the consumer key and secret below.
+                </p>
+                <p className="text-body-small text-fg-muted mt-2">
+                  Store URL and keys are saved in this browser only (localStorage) so you can return to this wizard without re-entering them.
                 </p>
               </CardHeader>
               <CardContent>
@@ -1198,7 +1577,11 @@ export default function SeoMigrationWizardPage() {
                               </td>
                               <td className="px-2 py-1 max-w-[280px]">
                                 {keywords.length === 0 && rankedKws.length === 0 ? (
-                                  <span className="text-fg-muted">—</span>
+                                  pathToRankedKeywords[toCanonicalPath(r.path)] !== undefined ? (
+                                    <span className="text-fg-muted italic">No ranked keywords from DataForSEO for this URL.</span>
+                                  ) : (
+                                    <span className="text-fg-muted">—</span>
+                                  )
                                 ) : (
                                   <div className="space-y-1">
                                     {keywords.length > 0 && (
@@ -1400,6 +1783,9 @@ export default function SeoMigrationWizardPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-body-small text-fg-muted mb-3">Map every old URL to a new destination (path or full URL). Status: 301/302 permanent/temporary redirect, or drop/consolidate.</p>
+                <p className="text-body-small text-fg-muted mb-3">
+                  Mappings are saved in this browser and reload after refresh or redeploy (same origin). They are tied to the brand and source URL from step 1; changing the brand clears saved redirects.
+                </p>
                 {(crawlResult?.urls?.length || ga4Result?.pages?.length) ? (
                   <Button type="button" variant="secondary" size="sm" className="mb-3" onClick={() => setRedirectMap(buildRedirectMapFromCrawlAndGa4())}>
                     Re-seed from crawl + GA4 (union, no duplicates)
