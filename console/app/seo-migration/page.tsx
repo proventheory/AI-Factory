@@ -1217,7 +1217,10 @@ export default function SeoMigrationWizardPage() {
                 <p className="text-body-small text-fg-muted mt-1">
                   {brandGoogle?.connected && brandGoogle?.ga4_property_id
                     ? "Using the GA4 property connected for the selected brand. Data will load automatically or click to refresh."
-                    : "Select a brand with Google + GA4 connected in step 1, or enter a GA4 property ID and use service-account OAuth."}
+                    : "Select a brand with Google + GA4 connected in step 1, or enter a GA4 property ID and use service-account OAuth."}{" "}
+                  <span className="block mt-1">
+                    Search <strong>queries</strong> (keywords) for this wizard come from <strong>Search Console</strong> (Fetch GSC report above). GA4 here supplies <strong>page traffic</strong> only; Google&apos;s Data API no longer exposes an organic search-query dimension.
+                  </span>
                 </p>
               </CardHeader>
               <CardContent>
@@ -1247,11 +1250,11 @@ export default function SeoMigrationWizardPage() {
                     <p className="text-body-small text-fg-muted mb-2">
                       {ga4Result.pages?.length ?? 0} pages from GA4 property {ga4Result.property_id}.
                       {ga4Result.search_console_queries && ga4Result.search_console_queries.length > 0 && (
-                        <> Search Console (via GA4): {ga4Result.search_console_queries.length} keywords.</>
+                        <> Legacy: {ga4Result.search_console_queries.length} keywords from GA4 (prefer GSC above).</>
                       )}
                     </p>
                     {ga4Result.search_console_error && (
-                      <p className="text-body-small text-state-warning mt-1">GA4 keywords: {ga4Result.search_console_error} Link Search Console to this property (GA4 → Admin → Product links → Search Console) to pull keywords.</p>
+                      <p className="text-body-small text-state-warning mt-1">{ga4Result.search_console_error}</p>
                     )}
                     {ga4Result.error && (
                       <p className="text-body-small text-state-warning mb-2">{ga4Result.error}</p>
@@ -1497,9 +1500,14 @@ export default function SeoMigrationWizardPage() {
                         {(ga4Result?.search_console_queries?.length ?? 0) > 50 && <p className="text-body-small text-fg-muted mt-1">+{(ga4Result?.search_console_queries?.length ?? 0) - 50} more</p>}
                       </div>
                     )}
-                    {ga4Result?.search_console_error && !gscResult?.page_queries?.length && (
+                    {ga4Result?.search_console_error && (
                       <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 px-3 py-2 text-body-small">
-                        GA4 keyword data not available: {ga4Result.search_console_error}. Link Search Console to your GA4 property (GA4 → Admin → Product links → Search Console) or fetch GSC report in Step 2 for keywords.
+                        {ga4Result.search_console_error}
+                      </div>
+                    )}
+                    {!gscResult?.page_queries?.length && (gscResult?.queries?.length ?? 0) > 0 && (
+                      <div className="mb-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2 text-body-small text-fg-muted">
+                        You have <strong>{gscResult?.queries?.length ?? 0}</strong> Search Console queries but no per-URL keyword rows yet. In Step 2, use the exact property URL from Search Console (including trailing slash or <code className="bg-fg-muted/20 px-1">sc-domain:…</code> if needed) and redeploy the API if keywords-per-URL still show 0.
                       </div>
                     )}
                     <div className="mb-2 flex flex-wrap gap-2 items-center">

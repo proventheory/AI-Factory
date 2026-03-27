@@ -42,7 +42,7 @@ export interface Ga4PageRow {
   user_engagement_duration?: number;
 }
 
-/** Search Console–style query data from GA4 (when property has Search Console linked). Query-level only; no per-URL in GA4 API. */
+/** Legacy shape; GA4 Data API no longer exposes an organic search query dimension — use GSC for query lists. */
 export interface Ga4SearchConsoleQueryRow {
   query: string;
   clicks: number;
@@ -52,9 +52,8 @@ export interface Ga4SearchConsoleQueryRow {
 export interface Ga4Report {
   property_id: string;
   pages: Ga4PageRow[];
-  /** When GA4 has Search Console linked: query-level keywords (no per-page in API). */
+  /** Not populated: organic query dimension removed from public GA4 schema; use Search Console (fetchGscReport). */
   search_console_queries?: Ga4SearchConsoleQueryRow[];
-  /** Set when GA4 pages succeeded but the Search Console report failed (e.g. property not linked). */
   search_console_error?: string;
   error?: string;
 }
@@ -303,31 +302,9 @@ export async function fetchGa4Report(
       user_engagement_duration: Number(r.metricValues?.[2]?.value ?? 0),
     }));
 
-    // When property has Search Console linked, pull query-level data (GA4 only allows query + Country/Device, not page+query).
-    let search_console_queries: Ga4SearchConsoleQueryRow[] | undefined;
-    let search_console_error: string | undefined;
-    try {
-      const scRes = await analytics.properties.runReport({
-        property: `properties/${propertyId}`,
-        requestBody: {
-          dateRanges: [{ startDate: "28daysAgo", endDate: "today" }],
-          dimensions: [{ name: "organicGoogleSearchQuery" }],
-          metrics: [{ name: "organicGoogleSearchClicks" }, { name: "organicGoogleSearchImpressions" }],
-          limit: 5000,
-        },
-      });
-      const scRows = (scRes.data.rows ?? []) as Ga4Row[];
-      search_console_queries = scRows.map((r: Ga4Row) => ({
-        query: (r.dimensionValues?.[0]?.value as string) ?? "",
-        clicks: Number(r.metricValues?.[0]?.value ?? 0),
-        impressions: Number(r.metricValues?.[1]?.value ?? 0),
-      })).filter((q) => q.query.length > 0);
-      if (search_console_queries.length === 0) search_console_queries = undefined;
-    } catch (err) {
-      search_console_error = (err as Error).message ?? String(err);
-    }
+    // Query-level organic search terms are not available via a supported GA4 Data API dimension (organicGoogleSearchQuery was removed from the public schema). Use Search Console API in fetchGscReport for queries / page+query.
 
-    return { property_id: propertyId, pages, search_console_queries, search_console_error };
+    return { property_id: propertyId, pages };
   } catch (err) {
     const message = (err as Error).message ?? String(err);
     return { property_id: propertyId, pages: [], error: message };

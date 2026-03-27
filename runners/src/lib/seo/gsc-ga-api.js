@@ -206,32 +206,7 @@ export async function fetchGa4Report(propertyId, options = {}) {
             screen_page_views: Number(r.metricValues?.[0]?.value ?? 0),
             user_engagement_duration: Number(r.metricValues?.[2]?.value ?? 0),
         }));
-        let search_console_queries;
-        let search_console_error;
-        try {
-            const scRes = await analytics.properties.runReport({
-                property: `properties/${propertyId}`,
-                requestBody: {
-                    dateRanges: [{ startDate: "28daysAgo", endDate: "today" }],
-                    dimensions: [{ name: "organicGoogleSearchQuery" }],
-                    metrics: [{ name: "organicGoogleSearchClicks" }, { name: "organicGoogleSearchImpressions" }],
-                    limit: 5000,
-                },
-            });
-            const scRows = scRes.data.rows ?? [];
-            search_console_queries = scRows
-                .map((r) => ({
-                query: r.dimensionValues?.[0]?.value ?? "",
-                clicks: Number(r.metricValues?.[0]?.value ?? 0),
-                impressions: Number(r.metricValues?.[1]?.value ?? 0),
-            })).filter((q) => q.query.length > 0);
-            if (search_console_queries.length === 0)
-                search_console_queries = undefined;
-        }
-        catch (err) {
-            search_console_error = err.message ?? String(err);
-        }
-        return { property_id: propertyId, pages, search_console_queries, search_console_error };
+        return { property_id: propertyId, pages };
     }
     catch (err) {
         const message = err.message ?? String(err);
