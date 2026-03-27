@@ -249,10 +249,12 @@ function setRedirectMapSidecar(brandId: string, sourceUrl: string, rows: Redirec
   }
 }
 
+/** Crawl cache key: site origin only so trailing slashes / extra path on the same host still hit the same cache. */
 function normalizeCrawlCacheKey(url: string): string {
   try {
     const u = url.trim().toLowerCase().replace(/\/+$/, "") || "https://";
-    return new URL(u.startsWith("http") ? u : `https://${u}`).origin + new URL(u.startsWith("http") ? u : `https://${u}`).pathname.replace(/\/+$/, "") || "/";
+    const parsed = new URL(u.startsWith("http") ? u : `https://${u}`);
+    return parsed.origin;
   } catch {
     return url.trim().toLowerCase();
   }
@@ -412,6 +414,13 @@ export default function SeoMigrationWizardPage() {
   const [migrationRunLoading, setMigrationRunLoading] = useState(false);
   const [migrationRunError, setMigrationRunError] = useState<string | null>(null);
   const [migrationRunResult, setMigrationRunResult] = useState<{ job_id?: string; message?: string } | null>(null);
+
+  /** Vercel preview hostnames change per deployment; localStorage is per-origin, so each preview starts empty. */
+  const [isVercelPreviewHost, setIsVercelPreviewHost] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsVercelPreviewHost(window.location.hostname.endsWith(".vercel.app"));
+  }, []);
 
   // Step 4: Keyword strategy (merged URL list + theme/action)
   const [keywordRows, setKeywordRows] = useState<KeywordRow[]>([]);
@@ -1079,6 +1088,16 @@ export default function SeoMigrationWizardPage() {
             </button>
           ))}
         </div>
+
+        {isVercelPreviewHost && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-body-small text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+            <strong className="font-medium">Preview URL:</strong> This wizard stores crawl results, GSC/GA4 state, redirects, and Woo keys in{" "}
+            <strong>this browser for this exact address only</strong>. Each <code className="rounded bg-black/5 px-1 dark:bg-white/10">*.vercel.app</code> preview is a
+            different address, so a new deployment link will look empty until you run steps again. Your{" "}
+            <strong>production</strong> console URL keeps the same origin across deploys. Step 5 includes demand-based sorting, a Demand column, and &quot;Re-sort &amp;
+            reprioritize by demand&quot; on the latest build—hard-refresh if you still see an old UI.
+          </div>
+        )}
 
         {step === 1 && (
           <Card>
