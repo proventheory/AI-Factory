@@ -25,7 +25,7 @@ import { formatApiError } from "@/lib/api";
 const STEPS = [
   { id: 1, title: "Crawl source site", description: "Map every live URL (sitemap + optional link-following for WordPress)." },
   { id: 2, title: "GSC & analytics", description: "Pull Search Console and GA4 to see which pages drive traffic and rankings." },
-  { id: 3, title: "Connect platforms & migrate data", description: "Connect WooCommerce (source) and Shopify (destination) APIs; migrate products, categories, customers, redirects, discounts, blogs & pages." },
+  { id: 3, title: "Connect platforms & migrate data", description: "Connect WooCommerce (source) and Shopify (destination) APIs; migrate products, categories, customers, redirects, discounts, blog posts, tags, and pages." },
   { id: 4, title: "Keyword strategy", description: "Map search demand; decide which pages to keep, consolidate, or elevate." },
   { id: 5, title: "Prioritize pages", description: "Define collections, products, and content for the new site and hierarchy." },
   { id: 6, title: "Redirect map", description: "Map every old URL to the best new destination (SEO priority)." },
@@ -41,16 +41,26 @@ const MIGRATION_ENTITIES = [
   { id: "redirects", label: "Redirects", source: "from product/category URLs" },
   { id: "discounts", label: "Discounts", source: "from WooCommerce coupons" },
   { id: "blogs", label: "Blog posts", source: "from WordPress" },
+  { id: "blog_tags", label: "Blog tags", source: "from WordPress (taxonomy)" },
   { id: "pages", label: "Pages", source: "from WordPress" },
 ] as const;
 
 // Steps 4–9: in-memory strategy state (driven by crawl + GSC/GA4 from 1–3)
 type KeywordAction = "keep" | "consolidate" | "drop";
 type KeywordRow = { path: string; type: string; clicks: number; sessions: number; primaryKeyword: string; action: KeywordAction; consolidateInto: string };
-type PagePlanRow = { path: string; type: "collection" | "product" | "landing" | "blog" | "page"; priority: "high" | "medium" | "low"; placement: "nav" | "footer" | "deep" };
+type PagePlanRow = {
+  path: string;
+  type: "collection" | "product" | "landing" | "blog" | "page";
+  priority: "high" | "medium" | "low";
+  placement: "nav" | "footer" | "deep";
+  /** GSC clicks + GA4 sessions + max monthly volume (primary + GSC queries); used for sorting. */
+  demandScore?: number;
+};
 type RedirectStatus = "301" | "302" | "drop" | "consolidate";
 type RedirectRow = { old_url: string; new_url: string; status: RedirectStatus; destinationOk?: boolean; issue?: string };
 type InternalLinkRow = { from_url: string; to_url: string; anchor: string; placement: "homepage" | "header" | "footer" | "contextual" };
+
+const KEYWORD_VOLUME_CHUNK = 400;
 
 const CRAWL_CACHE_KEY = "seo-migration-crawl-cache";
 const WIZARD_SESSION_KEY = "seo-migration-wizard-session";
@@ -83,7 +93,6 @@ type WizardSession = {
   ga4Result: SeoGa4Report | null;
   keywordRows: KeywordRow[];
   keywordVolumeMap: Record<string, number>;
-  pathToRankedKeywords: Record<string, Array<{ keyword: string; monthly_search_volume?: number; position?: number }>>;
   targetBaseUrl: string;
   pagePlan: PagePlanRow[];
   redirectMap: RedirectRow[];
@@ -303,6 +312,46 @@ function toCanonicalPath(path: string): string {
   p = p.replace(/\/page\/\d+$/i, "").replace(/\/+$/, "") || "/";
   return p;
 }
+
+/** Match step 5 table path input to the same key used in keyword rows / GSC maps. */
+function pagePlanPathToCanonicalKey(planPath: string): string {
+  const t = (planPath || "").trim();
+  if (!t || t === "home") return "/";
+  return toCanonicalPath(t.startsWith("/") ? t : `/${t}`);
+}
+
+/** Search demand: actual traffic (GSC + GA4) plus optional Keyword Planner volumes for primary + GSC queries on this URL. */
+function computeDemandScoreForKeywordRow(
+  r: KeywordRow,
+  volumeMap: Record<string, number>,
+  pathToGscKeywords: Map<string, Array<{ query: string }>>,
+): number {
+  let maxVol = 0;
+  const bump = (kw: string) => {
+    const v = volumeMap[(kw || "").trim()] ?? 0;
+    if (v > maxVol) maxVol = v;
+  };
+  bump(r.primaryKeyword);
+  const pathKey = toCanonicalPath(r.path.startsWith("/") ? r.path : `/${r.path}`);
+  const gscList = pathToGscKeywords.get(pathKey) ?? [];
+  for (const k of gscList) bump(k.query);
+  const traffic = r.clicks + r.sessions;
+  return traffic * 10 + maxVol;
+}
+
+function priorityPlacementFromDemandRank(index: number, total: number): {
+  priority: PagePlanRow["priority"];
+  placement: PagePlanRow["placement"];
+} {
+  if (total <= 0) return { priority: "medium", placement: "deep" };
+  const highCut = Math.max(1, Math.ceil(total * 0.25));
+  const medCut = Math.max(highCut + 1, Math.ceil(total * 0.65));
+  const priority: PagePlanRow["priority"] = index < highCut ? "high" : index < medCut ? "medium" : "low";
+  const navCut = Math.max(1, Math.ceil(total * 0.1));
+  const footCut = Math.max(navCut + 1, Math.ceil(total * 0.3));
+  const placement: PagePlanRow["placement"] = index < navCut ? "nav" : index < footCut ? "footer" : "deep";
+  return { priority, placement };
+}
 function getCrawlCache(): Record<string, { crawledAt: string; result: SeoMigrationCrawlResult }> {
   if (typeof window === "undefined") return {};
   try {
@@ -369,14 +418,6 @@ export default function SeoMigrationWizardPage() {
   const [keywordVolumeMap, setKeywordVolumeMap] = useState<Record<string, number>>({});
   const [keywordVolumeLoading, setKeywordVolumeLoading] = useState(false);
   const [keywordVolumeError, setKeywordVolumeError] = useState<string | null>(null);
-  /** DataForSEO ranked keywords per path (path -> list of { keyword, monthly_search_volume?, position? }). */
-  const [pathToRankedKeywords, setPathToRankedKeywords] = useState<Record<string, Array<{ keyword: string; monthly_search_volume?: number; position?: number }>>>({});
-  const [rankedKeywordsLoading, setRankedKeywordsLoading] = useState(false);
-  const [rankedKeywordsError, setRankedKeywordsError] = useState<string | null>(null);
-  /** Which paths have "View more" expanded for DataForSEO keywords (show all instead of top 10). */
-  const [rankedKeywordsExpandedPaths, setRankedKeywordsExpandedPaths] = useState<Set<string>>(new Set());
-  /** Path currently being enriched (per-URL Enrich), so we can show loading on that row only. */
-  const [enrichingPath, setEnrichingPath] = useState<string | null>(null);
   const [targetBaseUrl, setTargetBaseUrl] = useState(""); // New site base URL for steps 5–6
   // Step 5: Page plan
   const [pagePlan, setPagePlan] = useState<PagePlanRow[]>([]);
@@ -405,6 +446,8 @@ export default function SeoMigrationWizardPage() {
 
   const hasRestoredSessionRef = useRef(false);
   const skipNextPersistRef = useRef(false);
+  /** False until restore layout has finished; avoids persisting empty Woo fields before state hydrates from localStorage. */
+  const wooPersistEnabledRef = useRef(false);
 
   // Load brands for dropdown
   useEffect(() => {
@@ -416,93 +459,96 @@ export default function SeoMigrationWizardPage() {
     if (typeof window === "undefined" || hasRestoredSessionRef.current) return;
     const session = getWizardSession();
     const lite = getWizardLite();
-    if (!session && !lite) {
+    try {
+      if (!session && !lite) {
+        const wooOnly = getWooStoreCache();
+        if (wooOnly && (wooOnly.wooServer || wooOnly.wooConsumerKey)) {
+          setWooServer(wooOnly.wooServer);
+          setWooConsumerKey(wooOnly.wooConsumerKey);
+          setWooConsumerSecret(wooOnly.wooConsumerSecret);
+        }
+        hasRestoredSessionRef.current = true;
+        return;
+      }
       hasRestoredSessionRef.current = true;
-      const wooOnly = getWooStoreCache();
-      if (wooOnly && (wooOnly.wooServer || wooOnly.wooConsumerKey)) {
-        setWooServer(wooOnly.wooServer);
-        setWooConsumerKey(wooOnly.wooConsumerKey);
-        setWooConsumerSecret(wooOnly.wooConsumerSecret);
-      }
-      return;
-    }
-    hasRestoredSessionRef.current = true;
-    skipNextPersistRef.current = true;
+      skipNextPersistRef.current = true;
 
-    const wooCached = getWooStoreCache();
-    const brandFromLite = lite?.brandId ?? "";
-    const stepFromLite = lite?.step ?? 1;
-    const sourceFromLite = lite?.sourceUrl ?? "https://stigmahemp.com";
-    const gscFromLite = lite?.gscSiteUrl ?? sourceFromLite;
+      const wooCached = getWooStoreCache();
+      const brandFromLite = lite?.brandId ?? "";
+      const stepFromLite = lite?.step ?? 1;
+      const sourceFromLite = lite?.sourceUrl ?? "https://stigmahemp.com";
+      const gscFromLite = lite?.gscSiteUrl ?? sourceFromLite;
 
-    if (session) {
-      const nextBrand = (session.brandId ?? "").trim() || brandFromLite;
-      const nextStep = Math.min(Math.max(1, session.step ?? stepFromLite), 9);
-      const nextSource = session.sourceUrl ?? sourceFromLite;
-      const nextUseLink = session.useLinkCrawl ?? lite?.useLinkCrawl ?? true;
-      const nextMax = session.maxUrls ?? lite?.maxUrls ?? 2000;
-      const nextGsc = session.gscSiteUrl ?? session.sourceUrl ?? gscFromLite;
-      setBrandId(nextBrand);
-      setSourceUrl(nextSource);
-      setUseLinkCrawl(nextUseLink);
-      setMaxUrls(nextMax);
-      setStep(nextStep);
-      setGscSiteUrl(nextGsc);
-      setGscResult(session.gscResult ?? null);
-      setGa4PropertyId(session.ga4PropertyId ?? "");
-      setGa4Result(session.ga4Result ?? null);
-      setKeywordRows(Array.isArray(session.keywordRows) ? session.keywordRows : []);
-      setKeywordVolumeMap(session.keywordVolumeMap && typeof session.keywordVolumeMap === "object" ? session.keywordVolumeMap : {});
-      setPathToRankedKeywords(session.pathToRankedKeywords && typeof session.pathToRankedKeywords === "object" ? session.pathToRankedKeywords : {});
-      setTargetBaseUrl(session.targetBaseUrl ?? "");
-      setPagePlan(Array.isArray(session.pagePlan) ? session.pagePlan : []);
-      {
-        const sessionRm = Array.isArray(session.redirectMap) ? session.redirectMap : [];
-        const diskRm = getRedirectMapSidecar(nextBrand, nextSource);
-        setRedirectMap(diskRm !== null ? diskRm : sessionRm);
+      if (session) {
+        const nextBrand = (session.brandId ?? "").trim() || brandFromLite;
+        const nextStep = Math.min(Math.max(1, session.step ?? stepFromLite), 9);
+        const nextSource = session.sourceUrl ?? sourceFromLite;
+        const nextUseLink = session.useLinkCrawl ?? lite?.useLinkCrawl ?? true;
+        const nextMax = session.maxUrls ?? lite?.maxUrls ?? 2000;
+        const nextGsc = session.gscSiteUrl ?? session.sourceUrl ?? gscFromLite;
+        setBrandId(nextBrand);
+        setSourceUrl(nextSource);
+        setUseLinkCrawl(nextUseLink);
+        setMaxUrls(nextMax);
+        setStep(nextStep);
+        setGscSiteUrl(nextGsc);
+        setGscResult(session.gscResult ?? null);
+        setGa4PropertyId(session.ga4PropertyId ?? "");
+        setGa4Result(session.ga4Result ?? null);
+        setKeywordRows(Array.isArray(session.keywordRows) ? session.keywordRows : []);
+        setKeywordVolumeMap(session.keywordVolumeMap && typeof session.keywordVolumeMap === "object" ? session.keywordVolumeMap : {});
+        setTargetBaseUrl(session.targetBaseUrl ?? "");
+        setPagePlan(Array.isArray(session.pagePlan) ? session.pagePlan : []);
+        {
+          const sessionRm = Array.isArray(session.redirectMap) ? session.redirectMap : [];
+          const diskRm = getRedirectMapSidecar(nextBrand, nextSource);
+          setRedirectMap(diskRm !== null ? diskRm : sessionRm);
+        }
+        setInternalLinkPlan(Array.isArray(session.internalLinkPlan) ? session.internalLinkPlan : []);
+        setLaunchChecklist(
+          session.launchChecklist && typeof session.launchChecklist === "object"
+            ? {
+                redirectsImplemented: !!session.launchChecklist.redirectsImplemented,
+                pagesCreated: !!session.launchChecklist.pagesCreated,
+                metadataSet: !!session.launchChecklist.metadataSet,
+                internalLinksInPlace: !!session.launchChecklist.internalLinksInPlace,
+                fourOhFoursHandled: !!session.launchChecklist.fourOhFoursHandled,
+              }
+            : { redirectsImplemented: false, pagesCreated: false, metadataSet: false, internalLinksInPlace: false, fourOhFoursHandled: false }
+        );
+        setLaunchAcked(!!session.launchAcked);
+        if (Array.isArray(session.migrationEntities)) setMigrationEntities(new Set(session.migrationEntities));
+        ga4AutoFetchedRef.current = (session.ga4Result?.pages?.length ?? 0) > 0;
+        setWooServer(coalesceWooField(session.wooServer, wooCached?.wooServer));
+        setWooConsumerKey(coalesceWooField(session.wooConsumerKey, wooCached?.wooConsumerKey));
+        setWooConsumerSecret(coalesceWooField(session.wooConsumerSecret, wooCached?.wooConsumerSecret));
+        setWizardLite({
+          brandId: nextBrand,
+          step: nextStep,
+          sourceUrl: nextSource,
+          gscSiteUrl: nextGsc,
+          useLinkCrawl: nextUseLink,
+          maxUrls: nextMax,
+        });
+      } else if (lite) {
+        setBrandId(lite.brandId);
+        setSourceUrl(lite.sourceUrl);
+        setUseLinkCrawl(lite.useLinkCrawl);
+        setMaxUrls(lite.maxUrls);
+        setStep(Math.min(Math.max(1, lite.step), 9));
+        setGscSiteUrl(lite.gscSiteUrl);
+        ga4AutoFetchedRef.current = false;
+        setWooServer(coalesceWooField(undefined, wooCached?.wooServer));
+        setWooConsumerKey(coalesceWooField(undefined, wooCached?.wooConsumerKey));
+        setWooConsumerSecret(coalesceWooField(undefined, wooCached?.wooConsumerSecret));
+        setWizardLite(lite);
+        {
+          const diskRm = getRedirectMapSidecar(lite.brandId, lite.sourceUrl);
+          if (diskRm !== null) setRedirectMap(diskRm);
+        }
       }
-      setInternalLinkPlan(Array.isArray(session.internalLinkPlan) ? session.internalLinkPlan : []);
-      setLaunchChecklist(
-        session.launchChecklist && typeof session.launchChecklist === "object"
-          ? {
-              redirectsImplemented: !!session.launchChecklist.redirectsImplemented,
-              pagesCreated: !!session.launchChecklist.pagesCreated,
-              metadataSet: !!session.launchChecklist.metadataSet,
-              internalLinksInPlace: !!session.launchChecklist.internalLinksInPlace,
-              fourOhFoursHandled: !!session.launchChecklist.fourOhFoursHandled,
-            }
-          : { redirectsImplemented: false, pagesCreated: false, metadataSet: false, internalLinksInPlace: false, fourOhFoursHandled: false }
-      );
-      setLaunchAcked(!!session.launchAcked);
-      if (Array.isArray(session.migrationEntities)) setMigrationEntities(new Set(session.migrationEntities));
-      ga4AutoFetchedRef.current = (session.ga4Result?.pages?.length ?? 0) > 0;
-      setWooServer(coalesceWooField(session.wooServer, wooCached?.wooServer));
-      setWooConsumerKey(coalesceWooField(session.wooConsumerKey, wooCached?.wooConsumerKey));
-      setWooConsumerSecret(coalesceWooField(session.wooConsumerSecret, wooCached?.wooConsumerSecret));
-      setWizardLite({
-        brandId: nextBrand,
-        step: nextStep,
-        sourceUrl: nextSource,
-        gscSiteUrl: nextGsc,
-        useLinkCrawl: nextUseLink,
-        maxUrls: nextMax,
-      });
-    } else if (lite) {
-      setBrandId(lite.brandId);
-      setSourceUrl(lite.sourceUrl);
-      setUseLinkCrawl(lite.useLinkCrawl);
-      setMaxUrls(lite.maxUrls);
-      setStep(Math.min(Math.max(1, lite.step), 9));
-      setGscSiteUrl(lite.gscSiteUrl);
-      ga4AutoFetchedRef.current = false;
-      setWooServer(coalesceWooField(undefined, wooCached?.wooServer));
-      setWooConsumerKey(coalesceWooField(undefined, wooCached?.wooConsumerKey));
-      setWooConsumerSecret(coalesceWooField(undefined, wooCached?.wooConsumerSecret));
-      setWizardLite(lite);
-      {
-        const diskRm = getRedirectMapSidecar(lite.brandId, lite.sourceUrl);
-        if (diskRm !== null) setRedirectMap(diskRm);
-      }
+    } finally {
+      wooPersistEnabledRef.current = true;
     }
   }, []);
 
@@ -521,7 +567,7 @@ export default function SeoMigrationWizardPage() {
 
   // Persist WooCommerce fields whenever they change (small payload; survives main session clear on brand change).
   useEffect(() => {
-    if (typeof window === "undefined" || !hasRestoredSessionRef.current) return;
+    if (typeof window === "undefined" || !hasRestoredSessionRef.current || !wooPersistEnabledRef.current) return;
     setWooStoreCache({ wooServer, wooConsumerKey, wooConsumerSecret });
   }, [wooServer, wooConsumerKey, wooConsumerSecret]);
 
@@ -542,7 +588,6 @@ export default function SeoMigrationWizardPage() {
     setGscResult(null);
     setGa4Result(null);
     setKeywordRows([]);
-    setPathToRankedKeywords({});
     setKeywordVolumeMap({});
     setRedirectMap([]);
     setPagePlan([]);
@@ -579,7 +624,6 @@ export default function SeoMigrationWizardPage() {
         ga4Result,
         keywordRows,
         keywordVolumeMap,
-        pathToRankedKeywords,
         targetBaseUrl,
         pagePlan,
         redirectMap,
@@ -593,7 +637,7 @@ export default function SeoMigrationWizardPage() {
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [brandId, sourceUrl, useLinkCrawl, maxUrls, step, gscSiteUrl, gscResult, ga4PropertyId, ga4Result, keywordRows, keywordVolumeMap, pathToRankedKeywords, targetBaseUrl, pagePlan, redirectMap, internalLinkPlan, launchChecklist, launchAcked, migrationEntities, wooServer, wooConsumerKey, wooConsumerSecret]);
+  }, [brandId, sourceUrl, useLinkCrawl, maxUrls, step, gscSiteUrl, gscResult, ga4PropertyId, ga4Result, keywordRows, keywordVolumeMap, targetBaseUrl, pagePlan, redirectMap, internalLinkPlan, launchChecklist, launchAcked, migrationEntities, wooServer, wooConsumerKey, wooConsumerSecret]);
 
   // Restore cached crawl for current source URL on load and when URL changes so the table shows without re-running crawl
   useLayoutEffect(() => {
@@ -740,81 +784,72 @@ export default function SeoMigrationWizardPage() {
     return Array.from(set).filter(Boolean);
   }, [pathToGscKeywords, ga4Result?.search_console_queries, keywordRows]);
 
+  const suggestPagePlanFromKeep = useCallback(() => {
+    const kept = keywordRows.filter((r) => r.action === "keep");
+    if (kept.length === 0) return;
+    const scored = kept
+      .map((r) => ({ r, s: computeDemandScoreForKeywordRow(r, keywordVolumeMap, pathToGscKeywords) }))
+      .sort((a, b) => b.s - a.s);
+    const n = scored.length;
+    setPagePlan(
+      scored.map(({ r, s }, i) => {
+        const { priority, placement } = priorityPlacementFromDemandRank(i, n);
+        return {
+          path: r.path.replace(/^\//, "") || "home",
+          type: (r.type === "category" ? "collection" : r.type === "tag" ? "blog" : r.type === "product" ? "product" : "page") as PagePlanRow["type"],
+          priority,
+          placement,
+          demandScore: Math.round(s),
+        };
+      }),
+    );
+  }, [keywordRows, keywordVolumeMap, pathToGscKeywords]);
+
+  const rerankPagePlanByDemand = useCallback(() => {
+    if (pagePlan.length === 0) return;
+    const keepByPath = new Map(
+      keywordRows
+        .filter((r) => r.action === "keep")
+        .map((r) => [toCanonicalPath(r.path.startsWith("/") ? r.path : `/${r.path}`), r]),
+    );
+    const enriched = pagePlan.map((row) => {
+      const kr = keepByPath.get(pagePlanPathToCanonicalKey(row.path));
+      const s = kr
+        ? computeDemandScoreForKeywordRow(kr, keywordVolumeMap, pathToGscKeywords)
+        : row.demandScore ?? 0;
+      return { row, s };
+    });
+    enriched.sort((a, b) => b.s - a.s);
+    const n = enriched.length;
+    setPagePlan(
+      enriched.map(({ row, s }, i) => {
+        const { priority, placement } = priorityPlacementFromDemandRank(i, n);
+        return { ...row, demandScore: Math.round(s), priority, placement };
+      }),
+    );
+  }, [pagePlan, keywordRows, keywordVolumeMap, pathToGscKeywords]);
+
   const fetchKeywordVolumes = async () => {
     if (allUniqueGscKeywords.length === 0) return;
     setKeywordVolumeLoading(true);
     setKeywordVolumeError(null);
     try {
-      const result = await api.seoKeywordVolume({ keywords: allUniqueGscKeywords });
       const map: Record<string, number> = {};
-      (result.volumes ?? []).forEach((v) => {
-        map[v.keyword] = v.monthly_search_volume;
-      });
+      const errors: string[] = [];
+      for (let i = 0; i < allUniqueGscKeywords.length; i += KEYWORD_VOLUME_CHUNK) {
+        const chunk = allUniqueGscKeywords.slice(i, i + KEYWORD_VOLUME_CHUNK);
+        const result = await api.seoKeywordVolume({ keywords: chunk });
+        (result.volumes ?? []).forEach((v) => {
+          map[v.keyword] = v.monthly_search_volume;
+        });
+        if (result.error) errors.push(result.error);
+      }
       setKeywordVolumeMap((prev) => ({ ...prev, ...map }));
-      if (result.error) setKeywordVolumeError(result.error);
+      if (errors.length > 0) setKeywordVolumeError(errors.filter(Boolean).join(" "));
     } catch (e) {
       setKeywordVolumeError(formatApiError(e));
     } finally {
       setKeywordVolumeLoading(false);
-    }
-  };
-
-  const baseOriginForUrls = (sourceUrl || "").trim().replace(/\/+$/, "") || "https://example.com";
-  const safeBaseOrigin = baseOriginForUrls.startsWith("http") ? baseOriginForUrls : `https://${baseOriginForUrls}`;
-
-  const fetchRankedKeywords = async () => {
-    if (!keywordRows.length) return;
-    setRankedKeywordsLoading(true);
-    setRankedKeywordsError(null);
-    try {
-      const urls = keywordRows.map((r) => {
-        const path = (r.path || "/").replace(/^\//, "") || "";
-        return `${safeBaseOrigin}/${path}`;
-      });
-      const result = await api.seoRankedKeywords({ urls, limit_per_url: 200 });
-      const nextByPath: Record<string, Array<{ keyword: string; monthly_search_volume?: number; position?: number }>> = {};
-      const volumeUpdates: Record<string, number> = {};
-      for (const [fullUrl, data] of Object.entries(result.by_url ?? {})) {
-        const path = toCanonicalPath(normalizeUrlToPath(fullUrl, safeBaseOrigin));
-        nextByPath[path] = data.keywords ?? [];
-        (data.keywords ?? []).forEach((k) => {
-          if (k.keyword && (k.monthly_search_volume ?? 0) > 0)
-            volumeUpdates[k.keyword] = k.monthly_search_volume!;
-        });
-      }
-      setPathToRankedKeywords((prev) => ({ ...prev, ...nextByPath }));
-      setKeywordVolumeMap((prev) => ({ ...prev, ...volumeUpdates }));
-      if (result.error) setRankedKeywordsError(result.error);
-    } catch (e) {
-      setRankedKeywordsError(formatApiError(e));
-    } finally {
-      setRankedKeywordsLoading(false);
-    }
-  };
-
-  const fetchRankedKeywordsForPath = async (path: string) => {
-    const pathNorm = (path || "/").replace(/^\//, "") || "";
-    const url = `${safeBaseOrigin}/${pathNorm}`;
-    setEnrichingPath(path);
-    setRankedKeywordsError(null);
-    try {
-      const result = await api.seoRankedKeywords({ urls: [url], limit_per_url: 200 });
-      const canonical = toCanonicalPath(path);
-      // Backend returns key as requested; fallback to alternate slash form or first entry (single-URL)
-      const altKey = url.endsWith("/") ? url.replace(/\/$/, "") : `${url}/`;
-      const data = result.by_url?.[url] ?? result.by_url?.[altKey] ?? Object.values(result.by_url ?? {})[0];
-      const keywords = data?.keywords ?? [];
-      setPathToRankedKeywords((prev) => ({ ...prev, [canonical]: keywords }));
-      const volumeUpdates: Record<string, number> = {};
-      keywords.forEach((k) => {
-        if (k.keyword && (k.monthly_search_volume ?? 0) > 0) volumeUpdates[k.keyword] = k.monthly_search_volume!;
-      });
-      setKeywordVolumeMap((prev) => ({ ...prev, ...volumeUpdates }));
-      if (result.error) setRankedKeywordsError(result.error);
-    } catch (e) {
-      setRankedKeywordsError(formatApiError(e));
-    } finally {
-      setEnrichingPath(null);
     }
   };
 
@@ -1414,6 +1449,12 @@ export default function SeoMigrationWizardPage() {
                     );
                   })}
                 </div>
+                <p className="mt-3 text-body-small text-fg-muted">
+                  <strong>How counts work:</strong> Blog posts, pages, and blog tags use the public WordPress REST API (
+                  <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/…</code>
+                  ). They reflect what that endpoint reports (typically published content). If you still see 0 while the sitemap lists URLs, the REST API may be blocked, require auth, or use a non-default namespace—fix that in WordPress or use a crawl-based inventory in step 1.{" "}
+                  <strong>Redirects</strong> here is a preview count of product plus category URLs we would map to new destinations (Woo inventory), not “existing redirects” from a plugin like Redirection.
+                </p>
 
                 {/* Total estimate footer */}
                 {migrationDryRunResult?.counts && (() => {
@@ -1518,15 +1559,6 @@ export default function SeoMigrationWizardPage() {
                         Reset from crawl + GSC/GA4 (union, no duplicates)
                       </Button>
                       <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={fetchRankedKeywords}
-                        disabled={rankedKeywordsLoading || !keywordRows.length}
-                        title={!keywordRows.length ? "Add URLs from Reset or crawl first" : "Fetch keywords each URL ranks for (DataForSEO, shared cache 7 days). Shows top 10 by traffic; click View more for the rest."}
-                      >
-                        {rankedKeywordsLoading ? "Fetching…" : "Enrich with DataForSEO"}
-                      </Button>
-                      <Button
                         variant="secondary"
                         size="sm"
                         onClick={fetchKeywordVolumes}
@@ -1539,11 +1571,8 @@ export default function SeoMigrationWizardPage() {
                     {keywordVolumeError && (
                       <p className="text-body-small text-state-danger mb-2">{keywordVolumeError}</p>
                     )}
-                    {rankedKeywordsError && (
-                      <p className="text-body-small text-state-danger mb-2">{rankedKeywordsError}</p>
-                    )}
                     <div className="w-full max-w-full overflow-auto max-h-[60vh] rounded-lg border border-border">
-                      <table className="w-full min-w-[900px] border-collapse text-body-small">
+                      <table className="w-full min-w-[760px] border-collapse text-body-small">
                         <thead className="sticky top-0 z-10 bg-bg border-b border-border shadow-sm">
                           <tr>
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Path</th>
@@ -1555,25 +1584,11 @@ export default function SeoMigrationWizardPage() {
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Monthly search volume</th>
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Action</th>
                             <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Consolidate into</th>
-                            <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Enrich URL</th>
                           </tr>
                         </thead>
                         <tbody>
                           {keywordRows.map((r, i) => {
                             const keywords = pathToGscKeywords.get(r.path) ?? [];
-                            const rawRanked = pathToRankedKeywords[r.path] ?? [];
-                            const rankedKws = [...rawRanked].sort((a, b) => {
-                              const volA = a.monthly_search_volume ?? keywordVolumeMap[a.keyword] ?? 0;
-                              const volB = b.monthly_search_volume ?? keywordVolumeMap[b.keyword] ?? 0;
-                              if (volB !== volA) return volB - volA;
-                              const posA = a.position ?? 999;
-                              const posB = b.position ?? 999;
-                              return posA - posB;
-                            });
-                            const topN = 10;
-                            const showAllRanked = rankedKeywordsExpandedPaths.has(r.path);
-                            const displayedRanked = showAllRanked ? rankedKws : rankedKws.slice(0, topN);
-                            const hasMoreRanked = rankedKws.length > topN;
                             return (
                             <tr key={`${r.path}-${i}`} className="border-b border-border/50">
                               <td className="px-2 py-1 whitespace-nowrap"><code className="text-body-small">{r.path}</code></td>
@@ -1584,59 +1599,21 @@ export default function SeoMigrationWizardPage() {
                                 <Input value={r.primaryKeyword} onChange={(e) => setKeywordRows((prev) => prev.map((row, j) => (j === i ? { ...row, primaryKeyword: e.target.value } : row)))} className="min-w-[120px]" placeholder="e.g. THC tonics" />
                               </td>
                               <td className="px-2 py-1 max-w-[280px]">
-                                {keywords.length === 0 && rankedKws.length === 0 ? (
-                                  pathToRankedKeywords[toCanonicalPath(r.path)] !== undefined ? (
-                                    <span className="text-fg-muted italic">No ranked keywords from DataForSEO for this URL.</span>
-                                  ) : (
-                                    <span className="text-fg-muted">—</span>
-                                  )
+                                {keywords.length === 0 ? (
+                                  <span className="text-fg-muted">—</span>
                                 ) : (
-                                  <div className="space-y-1">
-                                    {keywords.length > 0 && (
-                                      <ul className="list-disc list-inside text-body-small space-y-0.5">
-                                        {keywords.slice(0, 8).map((k, ki) => {
-                                          const vol = keywordVolumeMap[k.query];
-                                          const volStr = vol !== undefined && vol > 0 ? (vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : String(vol)) : null;
-                                          return (
-                                            <li key={ki} title={`${k.clicks} clicks, ${k.impressions} impressions${volStr ? `, ${vol} monthly searches` : ""}`}>
-                                              {k.query} <span className="text-fg-muted">({k.clicks}{volStr ? `, ${volStr} vol` : ""})</span>
-                                            </li>
-                                          );
-                                        })}
-                                        {keywords.length > 8 && <li className="text-fg-muted">+{keywords.length - 8} more</li>}
-                                      </ul>
-                                    )}
-                                    {rankedKws.length > 0 && (
-                                      <div className="text-body-small">
-                                        <span className="text-fg-muted font-medium">Also ranks for (DataForSEO, top by traffic):</span>
-                                        <ul className="list-disc list-inside space-y-0.5 mt-0.5">
-                                          {displayedRanked.map((k, ki) => {
-                                            const vol = k.monthly_search_volume ?? keywordVolumeMap[k.keyword];
-                                            const volStr = vol !== undefined && vol > 0 ? (vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : String(vol)) : null;
-                                            return (
-                                              <li key={ki} title={volStr ? `${k.keyword}: ${vol} monthly searches` : undefined}>
-                                                {k.keyword}{volStr ? ` (${volStr})` : ""}{k.position != null ? ` pos ${k.position}` : ""}
-                                              </li>
-                                            );
-                                          })}
-                                        </ul>
-                                        {hasMoreRanked && (
-                                          <button
-                                            type="button"
-                                            className="mt-1 text-link text-body-small hover:underline"
-                                            onClick={() => setRankedKeywordsExpandedPaths((prev) => {
-                                              const next = new Set(prev);
-                                              if (next.has(r.path)) next.delete(r.path);
-                                              else next.add(r.path);
-                                              return next;
-                                            })}
-                                          >
-                                            {showAllRanked ? "Show less" : `View more (${rankedKws.length - topN} more)`}
-                                          </button>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
+                                  <ul className="list-disc list-inside text-body-small space-y-0.5">
+                                    {keywords.slice(0, 8).map((k, ki) => {
+                                      const vol = keywordVolumeMap[k.query];
+                                      const volStr = vol !== undefined && vol > 0 ? (vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : String(vol)) : null;
+                                      return (
+                                        <li key={ki} title={`${k.clicks} clicks, ${k.impressions} impressions${volStr ? `, ${vol} monthly searches` : ""}`}>
+                                          {k.query} <span className="text-fg-muted">({k.clicks}{volStr ? `, ${volStr} vol` : ""})</span>
+                                        </li>
+                                      );
+                                    })}
+                                    {keywords.length > 8 && <li className="text-fg-muted">+{keywords.length - 8} more</li>}
+                                  </ul>
                                 )}
                               </td>
                               <td className="px-2 py-1 text-body-small">
@@ -1668,17 +1645,6 @@ export default function SeoMigrationWizardPage() {
                                   className="min-w-[140px]"
                                 />
                               </td>
-                              <td className="px-2 py-1 whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  className="text-link text-body-small hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-                                  onClick={() => fetchRankedKeywordsForPath(r.path)}
-                                  disabled={enrichingPath !== null}
-                                  title="Fetch ranked keywords for this URL only (DataForSEO, ~$0.01)"
-                                >
-                                  {enrichingPath === r.path ? "Enriching…" : "Enrich URL"}
-                                </button>
-                              </td>
                             </tr>
                             );
                           })}
@@ -1703,28 +1669,25 @@ export default function SeoMigrationWizardPage() {
               <CardContent>
                 <p className="text-body-small text-fg-muted mb-2">New site base URL (for redirects in step 6)</p>
                 <Input value={targetBaseUrl} onChange={(e) => setTargetBaseUrl(e.target.value)} placeholder="https://newsite.com" className="max-w-md mb-4" />
-                <p className="text-body-small text-fg-muted mb-3">Define pages to create on the new site: path, type, priority, and placement (nav / footer / deep).</p>
+                <p className="text-body-small text-fg-muted mb-3">
+                  Define pages to create on the new site: path, type, priority, and placement (nav / footer / deep).{" "}
+                  <span className="block mt-1">
+                    <strong>Demand score</strong> ranks URLs by GSC clicks + GA4 sessions (last fetch) and, when you ran{" "}
+                    <em>Fetch monthly search volume</em> in step 4, the largest monthly volume among the primary keyword and GSC queries for that URL. Higher demand → higher priority (top ~25% high, next ~40% medium, rest low); top ~10% nav, next ~20% footer.
+                  </span>
+                </p>
                 <div className="flex flex-wrap gap-2 mb-2">
                   <Button variant="primary" size="sm" onClick={() => setPagePlan((prev) => [...prev, { path: "", type: "page", priority: "medium", placement: "deep" }])}>
                     Add page
                   </Button>
                   {keywordRows.filter((r) => r.action === "keep").length > 0 && pagePlan.length === 0 && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        const kept = keywordRows.filter((r) => r.action === "keep");
-                        setPagePlan(
-                          kept.slice(0, 50).map((r) => ({
-                            path: r.path.replace(/^\//, "") || "home",
-                            type: (r.type === "category" ? "collection" : r.type === "tag" ? "blog" : r.type === "product" ? "product" : "page") as PagePlanRow["type"],
-                            priority: (r.clicks + r.sessions > 100 ? "high" : r.clicks + r.sessions > 10 ? "medium" : "low") as PagePlanRow["priority"],
-                            placement: "deep" as const,
-                          }))
-                        );
-                      }}
-                    >
-                      Suggest from &quot;keep&quot; pages (first 50)
+                    <Button variant="secondary" size="sm" onClick={suggestPagePlanFromKeep}>
+                      Suggest from &quot;keep&quot; pages (sorted by demand)
+                    </Button>
+                  )}
+                  {keywordRows.filter((r) => r.action === "keep").length > 0 && pagePlan.length > 0 && (
+                    <Button variant="secondary" size="sm" onClick={rerankPagePlanByDemand} title="Reorder rows and reset priority/placement from current demand scores">
+                      Re-sort &amp; reprioritize by demand
                     </Button>
                   )}
                 </div>
@@ -1733,6 +1696,7 @@ export default function SeoMigrationWizardPage() {
                     <thead className="sticky top-0 z-10 bg-bg border-b border-border shadow-sm">
                       <tr>
                         <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Path</th>
+                        <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Demand</th>
                         <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Type</th>
                         <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Priority</th>
                         <th className="px-2 py-2 text-left font-medium whitespace-nowrap">Placement</th>
@@ -1744,6 +1708,9 @@ export default function SeoMigrationWizardPage() {
                         <tr key={i} className="border-b border-border/50">
                           <td className="px-2 py-1">
                             <Input value={row.path} onChange={(e) => setPagePlan((prev) => prev.map((r, j) => (j === i ? { ...r, path: e.target.value } : r)))} placeholder="/collections/tonics" className="min-w-[180px]" />
+                          </td>
+                          <td className="px-2 py-1 text-fg-muted tabular-nums whitespace-nowrap" title="Traffic ×10 + max keyword volume (step 4)">
+                            {row.demandScore != null ? row.demandScore.toLocaleString() : "—"}
                           </td>
                           <td className="px-2 py-1">
                             <Select value={row.type} onChange={(e) => setPagePlan((prev) => prev.map((r, j) => (j === i ? { ...r, type: e.target.value as PagePlanRow["type"] } : r)))}>

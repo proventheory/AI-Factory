@@ -1058,14 +1058,41 @@ export type SeoKeywordVolumeResult = {
   error?: string;
 };
 
+/** Stay under common API / proxy limits (many stacks reject >500 keywords per request). */
+const SEO_KEYWORD_VOLUME_CHUNK = 400;
+
 export async function seoKeywordVolume(params: SeoKeywordVolumeParams): Promise<SeoKeywordVolumeResult> {
-  const res = await fetch(`${API}/v1/seo/keyword_volume`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const keywords = Array.isArray(params.keywords) ? params.keywords : [];
+  if (keywords.length === 0) return { volumes: [] };
+  const merged: SeoKeywordVolumeResult["volumes"] = [];
+  const errors: string[] = [];
+  for (let i = 0; i < keywords.length; i += SEO_KEYWORD_VOLUME_CHUNK) {
+    const chunk = keywords.slice(i, i + SEO_KEYWORD_VOLUME_CHUNK);
+    const res = await fetch(`${API}/v1/seo/keyword_volume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keywords: chunk }),
+    });
+    const text = await res.text();
+    let data: SeoKeywordVolumeResult | { error?: string } | null = null;
+    try {
+      data = text ? (JSON.parse(text) as SeoKeywordVolumeResult) : null;
+    } catch {
+      if (!res.ok) errors.push(text.slice(0, 500) || `HTTP ${res.status}`);
+      else errors.push(text.slice(0, 500));
+      continue;
+    }
+    if (!res.ok) {
+      const errMsg =
+        data && typeof data === "object" && data.error != null ? String(data.error) : text.slice(0, 500) || `HTTP ${res.status}`;
+      errors.push(errMsg);
+      continue;
+    }
+    const okBody = data as SeoKeywordVolumeResult | null;
+    if (okBody?.volumes) merged.push(...okBody.volumes);
+    if (okBody?.error) errors.push(String(okBody.error));
+  }
+  return { volumes: merged, ...(errors.length > 0 ? { error: errors.filter(Boolean).join("; ") } : {}) };
 }
 
 /** SEO migration wizard — DataForSEO ranked keywords per URL (cached). Returns keywords each URL ranks for. */

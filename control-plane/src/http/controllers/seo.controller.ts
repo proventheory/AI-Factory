@@ -443,6 +443,24 @@ async function wooCount(
   return total ? Math.max(0, parseInt(total, 10)) : 0;
 }
 
+/**
+ * WordPress REST API published counts (wp/v2). WooCommerce consumer keys do not authenticate wp/v2;
+ * this uses unauthenticated requests, which match public sitemap/crawl counts when the REST API is open.
+ */
+async function wpPublicPublishedCount(siteOrigin: string, resource: "posts" | "pages" | "tags"): Promise<number> {
+  const base = siteOrigin.replace(/\/$/, "");
+  const qs = resource === "tags" ? "per_page=1" : "per_page=1&status=publish";
+  const url = `${base}/wp-json/wp/v2/${resource}?${qs}`;
+  try {
+    const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+    if (!res.ok) return 0;
+    const total = res.headers.get("x-wp-total");
+    return total ? Math.max(0, parseInt(total, 10)) : 0;
+  } catch {
+    return 0;
+  }
+}
+
 /** SEO migration wizard — Step 3: Dry run (preview counts from WooCommerce/WP API). */
 export async function seoMigrationDryRun(req: Request, res: Response): Promise<void> {
   try {
@@ -463,7 +481,6 @@ export async function seoMigrationDryRun(req: Request, res: Response): Promise<v
     const auth = Buffer.from(`${key}:${secret}`).toString("base64");
     const authHeader = `Basic ${auth}`;
     const wcBase = `${server}/wp-json/wc/v3`;
-    const wpBase = `${server}/wp-json/wp/v2`;
     const counts: Record<string, number> = {};
     const wcPaths: Record<string, string> = {
       products: "products",
@@ -474,7 +491,6 @@ export async function seoMigrationDryRun(req: Request, res: Response): Promise<v
     };
     for (const e of entities) {
       if (e === "redirects") {
-        counts.redirects = 0;
         continue;
       }
       if (wcPaths[e]) {
@@ -482,13 +498,24 @@ export async function seoMigrationDryRun(req: Request, res: Response): Promise<v
         continue;
       }
       if (e === "blogs") {
-        counts.blogs = await wooCount(wpBase, authHeader, "posts");
+        counts.blogs = await wpPublicPublishedCount(server, "posts");
         continue;
       }
       if (e === "pages") {
-        counts.pages = await wooCount(wpBase, authHeader, "pages");
+        counts.pages = await wpPublicPublishedCount(server, "pages");
         continue;
       }
+      if (e === "blog_tags") {
+        counts.blog_tags = await wpPublicPublishedCount(server, "tags");
+        continue;
+      }
+    }
+    if (entities.includes("redirects")) {
+      let pc = counts.products;
+      let cc = counts.categories;
+      if (pc == null) pc = await wooCount(wcBase, authHeader, "products");
+      if (cc == null) cc = await wooCount(wcBase, authHeader, "products/categories");
+      counts.redirects = pc + cc;
     }
     res.json({ counts });
   } catch (e) {
@@ -529,6 +556,8 @@ export async function seoMigrationRun(req: Request, res: Response): Promise<void
   }
 }
 
+const KEYWORD_VOLUME_MAX_CHUNK = 400;
+
 export async function seoKeywordVolume(req: Request, res: Response): Promise<void> {
   try {
     const body = req.body as { keywords?: string[] };
@@ -537,13 +566,16 @@ export async function seoKeywordVolume(req: Request, res: Response): Promise<voi
       res.status(400).json({ error: "keywords array is required (non-empty)" });
       return;
     }
-    if (keywords.length > 500) {
-      res.status(400).json({ error: "At most 500 keywords per request" });
-      return;
-    }
     const { fetchKeywordVolumes } = await import("../../seo-keyword-volume.js");
-    const result = await fetchKeywordVolumes(keywords);
-    res.json(result);
+    const merged: { keyword: string; monthly_search_volume: number }[] = [];
+    let lastError: string | undefined;
+    for (let i = 0; i < keywords.length; i += KEYWORD_VOLUME_MAX_CHUNK) {
+      const chunk = keywords.slice(i, i + KEYWORD_VOLUME_MAX_CHUNK);
+      const result = await fetchKeywordVolumes(chunk);
+      merged.push(...(result.volumes ?? []));
+      if (result.error) lastError = result.error;
+    }
+    res.json({ volumes: merged, ...(lastError ? { error: lastError } : {}) });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
