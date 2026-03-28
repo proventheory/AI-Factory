@@ -1183,7 +1183,7 @@ export default function SeoMigrationWizardPage() {
                 )}
                 {crawlLoading && (
                   <p className="text-body-small text-fg-muted">
-                    Fetching sitemaps and discovering URLs from <strong>{sourceUrl}</strong>. With link-following and {maxUrls} max URLs this can take <strong>1–5 minutes</strong>. The request is running on the server; you will see results when it finishes.
+                    Fetching sitemaps and discovering URLs from <strong>{sourceUrl}</strong>. Sitemap-only is usually quick; <strong>link-following</strong> walks many pages server-side and scales with URL count (often a few minutes, sometimes longer on large sites). The request runs on the server—keep this tab open until it finishes.
                   </p>
                 )}
               </div>

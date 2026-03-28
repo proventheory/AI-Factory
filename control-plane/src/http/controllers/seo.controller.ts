@@ -414,11 +414,13 @@ export async function seoMigrationCrawl(req: Request, res: Response): Promise<vo
       res.status(400).json({ error: "source_url is required and must be http(s)" });
       return;
     }
+    const delayRaw = Number(body.crawl_delay_ms);
+    const crawl_delay_ms = Number.isFinite(delayRaw) ? Math.max(0, delayRaw) : 500;
     const result = await runMigrationCrawl({
       source_url,
       use_link_crawl: Boolean(body.use_link_crawl),
       max_urls: Math.min(5000, Math.max(1, Number(body.max_urls) || 2000)),
-      crawl_delay_ms: Math.max(0, Number(body.crawl_delay_ms) ?? 500),
+      crawl_delay_ms,
       fetch_page_details: Boolean(body.fetch_page_details),
     });
     res.json(result);

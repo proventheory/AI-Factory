@@ -9,6 +9,8 @@ import { classifyUrlType } from "./classify-url.js";
 
 const DEFAULT_DELAY_MS = 500;
 const DEFAULT_MAX_URLS = 2000;
+/** Link-following BFS hits many URLs; uncapped delay × max_urls can exceed an hour. Cap politeness pause during discovery only. */
+const LINK_CRAWL_DELAY_CAP_MS = 120;
 
 export interface SeoUrlRecord {
   url: string;
@@ -140,6 +142,8 @@ async function linkCrawlDiscover(
   maxUrls: number,
   crawlDelayMs: number,
 ): Promise<Set<string>> {
+  const pauseMs =
+    crawlDelayMs <= 0 ? 0 : Math.min(crawlDelayMs, LINK_CRAWL_DELAY_CAP_MS);
   const discovered = new Set<string>(seedUrls.map((u) => normalizeUrl(u, origin)));
   const queue = [...discovered];
   let head = 0;
@@ -168,7 +172,7 @@ async function linkCrawlDiscover(
     } catch {
       // skip failed page
     }
-    if (crawlDelayMs > 0) await new Promise((r) => setTimeout(r, crawlDelayMs));
+    if (pauseMs > 0) await new Promise((r) => setTimeout(r, pauseMs));
   }
   return discovered;
 }
