@@ -19,7 +19,7 @@ import {
 } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import * as api from "@/lib/api";
-import type { SeoMigrationCrawlResult, SeoGscReport, SeoGa4Report, BrandProfileRow } from "@/lib/api";
+import type { SeoMigrationCrawlResult, SeoGscReport, SeoGa4Report, BrandProfileRow, MigrationPreviewItem } from "@/lib/api";
 import { formatApiError } from "@/lib/api";
 
 const STEPS = [
@@ -444,6 +444,18 @@ export default function SeoMigrationWizardPage() {
   });
   const [launchAcked, setLaunchAcked] = useState(false);
 
+  /** Step 3: expanded sheet + paginated preview + per-item exclusions (excluded IDs are omitted from effective migrate count). */
+  const [migrationExpandedEntity, setMigrationExpandedEntity] = useState<string | null>(null);
+  const [migrationPreviewPageByEntity, setMigrationPreviewPageByEntity] = useState<Record<string, number>>({});
+  const [migrationPreviewLoadingEntity, setMigrationPreviewLoadingEntity] = useState<string | null>(null);
+  const [migrationPreviewErrorByEntity, setMigrationPreviewErrorByEntity] = useState<Record<string, string | null>>({});
+  const [migrationPreviewRows, setMigrationPreviewRows] = useState<Record<string, MigrationPreviewItem[]>>({});
+  const [migrationPreviewMeta, setMigrationPreviewMeta] = useState<Record<string, { total: number; scope_note?: string; per_page: number }>>({});
+  const [migrationExcludedIds, setMigrationExcludedIds] = useState<Record<string, string[]>>({});
+  const [wpPreviewUser, setWpPreviewUser] = useState("");
+  const [wpPreviewAppPassword, setWpPreviewAppPassword] = useState("");
+  const migrationPreviewRequestSeq = useRef(0);
+
   const toggleMigrationEntity = (id: string) => {
     setMigrationEntities((prev) => {
       const next = new Set(prev);
@@ -452,6 +464,23 @@ export default function SeoMigrationWizardPage() {
       return next;
     });
   };
+
+  useEffect(() => {
+    setMigrationExcludedIds((ex) => {
+      let changed = false;
+      const next = { ...ex };
+      for (const k of Object.keys(next)) {
+        if (!migrationEntities.has(k)) {
+          delete next[k];
+          changed = true;
+        }
+      }
+      return changed ? next : ex;
+    });
+    if (migrationExpandedEntity && !migrationEntities.has(migrationExpandedEntity)) {
+      setMigrationExpandedEntity(null);
+    }
+  }, [migrationEntities, migrationExpandedEntity]);
 
   const hasRestoredSessionRef = useRef(false);
   const skipNextPersistRef = useRef(false);
@@ -1006,11 +1035,69 @@ export default function SeoMigrationWizardPage() {
         entities: Array.from(migrationEntities),
       });
       setMigrationDryRunResult(result);
+      setMigrationExcludedIds({});
+      setMigrationPreviewRows({});
+      setMigrationPreviewMeta({});
+      setMigrationPreviewPageByEntity({});
+      setMigrationPreviewErrorByEntity({});
+      setMigrationExpandedEntity(null);
     } catch (e) {
       setMigrationDryRunError(formatApiError(e));
     } finally {
       setMigrationDryRunLoading(false);
     }
+  };
+
+  const fetchMigrationPreview = useCallback(
+    async (entity: string, page: number) => {
+      if (!wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()) return;
+      const seq = ++migrationPreviewRequestSeq.current;
+      setMigrationPreviewLoadingEntity(entity);
+      setMigrationPreviewErrorByEntity((prev) => ({ ...prev, [entity]: null }));
+      try {
+        const needsWpAuth = entity === "blogs" || entity === "pages" || entity === "blog_tags";
+        const result = await api.seoMigrationPreviewItems({
+          woo_server: wooServer.trim(),
+          woo_consumer_key: wooConsumerKey.trim(),
+          woo_consumer_secret: wooConsumerSecret.trim(),
+          entity,
+          page,
+          per_page: 50,
+          ...(needsWpAuth && wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+            ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+            : {}),
+        });
+        if (seq !== migrationPreviewRequestSeq.current) return;
+        setMigrationPreviewRows((r) => ({ ...r, [entity]: result.items }));
+        setMigrationPreviewMeta((m) => ({
+          ...m,
+          [entity]: { total: result.total, scope_note: result.scope_note, per_page: result.per_page },
+        }));
+        setMigrationPreviewPageByEntity((p) => ({ ...p, [entity]: page }));
+      } catch (e) {
+        if (seq !== migrationPreviewRequestSeq.current) return;
+        setMigrationPreviewErrorByEntity((prev) => ({ ...prev, [entity]: formatApiError(e) }));
+        setMigrationPreviewRows((r) => ({ ...r, [entity]: [] }));
+      } finally {
+        if (seq === migrationPreviewRequestSeq.current) setMigrationPreviewLoadingEntity(null);
+      }
+    },
+    [wooServer, wooConsumerKey, wooConsumerSecret, wpPreviewUser, wpPreviewAppPassword],
+  );
+
+  const toggleMigrationItemExcluded = (entity: string, itemId: string) => {
+    setMigrationExcludedIds((prev) => {
+      const set = new Set(prev[entity] ?? []);
+      if (set.has(itemId)) set.delete(itemId);
+      else set.add(itemId);
+      return { ...prev, [entity]: Array.from(set) };
+    });
+  };
+
+  const migrationEffectiveCount = (entityId: string, dryTotal: number | undefined): number | null => {
+    if (dryTotal == null) return null;
+    const ex = migrationExcludedIds[entityId]?.length ?? 0;
+    return Math.max(0, dryTotal - ex);
   };
 
   const runMigrationRun = async () => {
@@ -1427,64 +1514,209 @@ export default function SeoMigrationWizardPage() {
                   )}
                 </div>
 
+                <p className="text-body-small font-medium text-fg-muted mb-1">Optional: WordPress previews (drafts / private)</p>
+                <p className="text-body-small text-fg-muted mb-2">
+                  For <strong>blog posts</strong>, <strong>pages</strong>, and <strong>blog tags</strong> details, add an{" "}
+                  <a
+                    href="https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/"
+                    className="text-brand-600 hover:underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    application password
+                  </a>{" "}
+                  (WP Admin → Users → Profile) and your username. Leave blank to preview <strong>published</strong> content only via public REST.
+                </p>
+                <div className="mb-4 grid gap-2 sm:grid-cols-2">
+                  <Input value={wpPreviewUser} onChange={(ev) => setWpPreviewUser(ev.target.value)} placeholder="WordPress username" className="w-full" />
+                  <Input
+                    type="password"
+                    value={wpPreviewAppPassword}
+                    onChange={(ev) => setWpPreviewAppPassword(ev.target.value)}
+                    placeholder="Application password (not your login password)"
+                    className="w-full"
+                  />
+                </div>
+
                 {/* Sheets: entity cards (Matrixify-style) */}
                 <p className="text-body-small font-medium text-fg-muted mb-2">Sheets</p>
                 <div className="space-y-2">
                   {MIGRATION_ENTITIES.map((e) => {
                     const count = migrationDryRunResult?.counts?.[e.id];
                     const selected = migrationEntities.has(e.id);
-                    const estimateSec = count != null ? Math.max(5, Math.ceil(count / 50) * 10) : null;
+                    const eff = migrationEffectiveCount(e.id, count);
+                    const excludedN = migrationExcludedIds[e.id]?.length ?? 0;
+                    const estimateSec = eff != null ? Math.max(5, Math.ceil(eff / 50) * 10) : null;
+                    const expanded = migrationExpandedEntity === e.id;
+                    const meta = migrationPreviewMeta[e.id];
+                    const rows = migrationPreviewRows[e.id] ?? [];
+                    const ppage = migrationPreviewPageByEntity[e.id] ?? 1;
+                    const maxPage = meta ? Math.max(1, Math.ceil(meta.total / meta.per_page)) : 1;
                     return (
-                      <label
+                      <div
                         key={e.id}
-                        className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition ${
+                        className={`rounded-lg border transition ${
                           selected ? "border-border bg-bg" : "border-border/50 bg-fg-muted/5 opacity-75"
-                        } cursor-pointer hover:border-brand-500/50`}
+                        }`}
                       >
-                        <Checkbox
-                          checked={selected}
-                          onChange={() => toggleMigrationEntity(e.id)}
-                          className="shrink-0"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-fg">{e.label}</p>
-                          <p className="text-body-small text-fg-muted">{e.source}</p>
+                        <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                          <Checkbox checked={selected} onChange={() => toggleMigrationEntity(e.id)} className="shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-fg">{e.label}</p>
+                            <p className="text-body-small text-fg-muted">{e.source}</p>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap items-center gap-2 text-body-small text-fg-muted">
+                            {count != null ? (
+                              <>
+                                <span className="rounded-full bg-fg-muted/20 px-2 py-0.5">Dry run total: {count}</span>
+                                {excludedN > 0 && eff != null && (
+                                  <span className="rounded-full bg-brand-100 px-2 py-0.5 font-medium text-brand-900 dark:bg-brand-900/40 dark:text-brand-100">
+                                    Selected: {eff} (excluding {excludedN})
+                                  </span>
+                                )}
+                                {estimateSec != null && (
+                                  <span className="rounded-full bg-fg-muted/20 px-2 py-0.5">
+                                    Est.: {estimateSec >= 60 ? `${Math.floor(estimateSec / 60)} min ${estimateSec % 60} sec` : `${estimateSec} sec`}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="rounded-full bg-fg-muted/20 px-2 py-0.5">Run dry run for counts</span>
+                            )}
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={!selected || !wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()}
+                              onClick={() => {
+                                if (expanded) {
+                                  setMigrationExpandedEntity(null);
+                                } else {
+                                  setMigrationExpandedEntity(e.id);
+                                  void fetchMigrationPreview(e.id, 1);
+                                }
+                              }}
+                            >
+                              {expanded ? "Hide details" : "Details"}
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 items-center gap-3 text-body-small text-fg-muted">
-                          {count != null ? (
-                            <>
-                              <span className="rounded-full bg-fg-muted/20 px-2 py-0.5">Total: {count}</span>
-                              {estimateSec != null && (
-                                <span className="rounded-full bg-fg-muted/20 px-2 py-0.5">
-                                  Estimate: {estimateSec >= 60 ? `${Math.floor(estimateSec / 60)} min ${estimateSec % 60} sec` : `${estimateSec} sec`}
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span className="rounded-full bg-fg-muted/20 px-2 py-0.5">Run dry run for counts</span>
-                          )}
-                        </div>
-                      </label>
+                        {expanded && (
+                          <div className="border-t border-border px-3 py-3 text-body-small">
+                            {migrationPreviewLoadingEntity === e.id && <p className="text-fg-muted mb-2">Loading preview…</p>}
+                            {migrationPreviewErrorByEntity[e.id] && (
+                              <p className="mb-2 text-state-danger">{migrationPreviewErrorByEntity[e.id]}</p>
+                            )}
+                            {meta?.scope_note && <p className="mb-2 text-fg-muted">{meta.scope_note}</p>}
+                            <p className="mb-2 text-fg-muted">
+                              Uncheck <strong>Include</strong> to exclude a row from the effective migrate count. IDs you have not opened in this list still count as included. After changing WP credentials, click Details again to refresh.
+                            </p>
+                            {rows.length > 0 && (
+                              <>
+                                <div className="max-h-[min(50vh,420px)] overflow-auto rounded-md border border-border">
+                                  <table className="w-full min-w-[520px] border-collapse">
+                                    <thead className="sticky top-0 bg-bg">
+                                      <tr className="border-b border-border text-left">
+                                        <th className="px-2 py-1.5 font-medium">Include</th>
+                                        <th className="px-2 py-1.5 font-medium">Status</th>
+                                        <th className="px-2 py-1.5 font-medium">Title / code</th>
+                                        <th className="px-2 py-1.5 font-medium">Slug / URL</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {rows.map((row) => {
+                                        const excluded = (migrationExcludedIds[e.id] ?? []).includes(row.id);
+                                        const include = !excluded;
+                                        return (
+                                          <tr key={row.id} className="border-b border-border/60">
+                                            <td className="px-2 py-1 align-top">
+                                              <Checkbox
+                                                checked={include}
+                                                onChange={() => toggleMigrationItemExcluded(e.id, row.id)}
+                                              />
+                                            </td>
+                                            <td className="px-2 py-1 align-top whitespace-nowrap">
+                                              <Badge variant="neutral">{row.status}</Badge>
+                                            </td>
+                                            <td className="px-2 py-1 align-top max-w-[200px] break-words">{row.title}</td>
+                                            <td className="px-2 py-1 align-top max-w-[240px] break-all">
+                                              {row.url ? (
+                                                <a href={row.url} className="text-link hover:underline" target="_blank" rel="noreferrer">
+                                                  {row.slug || row.url}
+                                                </a>
+                                              ) : (
+                                                row.slug ?? "—"
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    disabled={migrationPreviewLoadingEntity === e.id || ppage <= 1}
+                                    onClick={() => void fetchMigrationPreview(e.id, ppage - 1)}
+                                  >
+                                    Previous page
+                                  </Button>
+                                  <span className="text-fg-muted">
+                                    Page {ppage} of {maxPage} ({meta?.total ?? 0} total)
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    disabled={migrationPreviewLoadingEntity === e.id || ppage >= maxPage}
+                                    onClick={() => void fetchMigrationPreview(e.id, ppage + 1)}
+                                  >
+                                    Next page
+                                  </Button>
+                                  {excludedN > 0 && (
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => setMigrationExcludedIds((prev) => ({ ...prev, [e.id]: [] }))}
+                                    >
+                                      Clear exclusions for {e.label}
+                                    </Button>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                            {migrationPreviewLoadingEntity !== e.id && rows.length === 0 && !migrationPreviewErrorByEntity[e.id] && (
+                              <p className="text-fg-muted">No rows on this page.</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
                 <p className="mt-3 text-body-small text-fg-muted">
                   <strong>How counts work:</strong> Blog posts, pages, and blog tags use the public WordPress REST API (
                   <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/…</code>
-                  ). They reflect what that endpoint reports (typically published content). If you still see 0 while the sitemap lists URLs, the REST API may be blocked, require auth, or use a non-default namespace—fix that in WordPress or use a crawl-based inventory in step 1.{" "}
+                  ) unless you add an application password above—then Details can list drafts/private. WooCommerce products/coupons use{" "}
+                  <code className="rounded bg-fg-muted/15 px-1">status=any</code> so you can confirm draft vs publish in Details.{" "}
                   <strong>Redirects</strong> here is a preview count of product plus category URLs we would map to new destinations (Woo inventory), not “existing redirects” from a plugin like Redirection.
                 </p>
 
                 {/* Total estimate footer */}
                 {migrationDryRunResult?.counts && (() => {
-                  const totalItems = Object.entries(migrationDryRunResult.counts).reduce(
-                    (sum, [k, v]) => sum + (migrationEntities.has(k) ? v : 0),
-                    0
-                  );
+                  const totalItems = Object.entries(migrationDryRunResult.counts).reduce((sum, [k, v]) => {
+                    if (!migrationEntities.has(k)) return sum;
+                    const eff = migrationEffectiveCount(k, v);
+                    return sum + (eff ?? v);
+                  }, 0);
                   const totalSec = Math.max(10, Math.ceil(totalItems / 30) * 15);
                   return (
                     <p className="mt-3 text-right text-body-small text-fg-muted">
-                      Total estimate: {totalSec >= 60 ? `${Math.floor(totalSec / 60)} min ${totalSec % 60} sec` : `${totalSec} sec`}
+                      Total estimate (after exclusions): {totalSec >= 60 ? `${Math.floor(totalSec / 60)} min ${totalSec % 60} sec` : `${totalSec} sec`}
                     </p>
                   );
                 })()}

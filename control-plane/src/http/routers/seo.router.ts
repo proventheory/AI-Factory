@@ -14,6 +14,7 @@ import {
   brandProfilesGoogleGa4PropertyPatch,
   seoMigrationCrawl,
   seoMigrationDryRun,
+  seoMigrationPreviewItems,
   seoMigrationRun,
 } from "../controllers/seo.controller.js";
 
@@ -22,6 +23,7 @@ const router = Router();
 router.post("/v1/sitemap/products", sitemapProducts);
 router.post("/v1/seo/migration/crawl", seoMigrationCrawl);
 router.post("/v1/seo/migration/dry_run", seoMigrationDryRun);
+router.post("/v1/seo/migration/preview_items", seoMigrationPreviewItems);
 router.post("/v1/seo/migration/run", seoMigrationRun);
 router.post("/v1/products/from_url", productsFromUrlHandler);
 router.post("/v1/seo/gsc_report", seoGscReport);

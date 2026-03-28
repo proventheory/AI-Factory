@@ -1133,6 +1133,44 @@ export async function seoMigrationDryRun(params: SeoMigrationDryRunParams): Prom
   return res.json();
 }
 
+/** Paginated preview rows for step 3 granular migration selection. */
+export type MigrationPreviewItem = { id: string; title: string; status: string; slug?: string; url?: string };
+export type SeoMigrationPreviewItemsParams = {
+  woo_server: string;
+  woo_consumer_key: string;
+  woo_consumer_secret: string;
+  entity: string;
+  page?: number;
+  per_page?: number;
+  wp_username?: string;
+  wp_application_password?: string;
+};
+export type SeoMigrationPreviewItemsResult = {
+  items: MigrationPreviewItem[];
+  total: number;
+  page: number;
+  per_page: number;
+  scope_note?: string;
+  error?: string;
+};
+
+export async function seoMigrationPreviewItems(params: SeoMigrationPreviewItemsParams): Promise<SeoMigrationPreviewItemsResult> {
+  const res = await fetch(`${API}/v1/seo/migration/preview_items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const text = await res.text();
+  let data: SeoMigrationPreviewItemsResult & { error?: string };
+  try {
+    data = JSON.parse(text) as SeoMigrationPreviewItemsResult;
+  } catch {
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  if (!res.ok) throw new Error(data.error ?? text);
+  return data;
+}
+
 /** SEO migration wizard — Step 3: Run migration (WooCommerce → Shopify). Shopify is always from the brand connector (Brands → Edit → Shopify). */
 export type SeoMigrationRunParams = {
   woo_server: string;
