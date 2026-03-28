@@ -24,6 +24,23 @@ function isConfigured(): boolean {
   );
 }
 
+function explainGoogleAdsAuthFailure(raw: string): string {
+  const t = raw.toLowerCase();
+  if (t.includes("invalid_client")) {
+    return (
+      "Google Ads OAuth invalid_client: the Client ID and Client Secret on the control plane do not match a valid Google Cloud OAuth client, " +
+      "or the client secret was rotated. Set GOOGLE_ADS_CLIENT_ID and GOOGLE_ADS_CLIENT_SECRET where the API runs (e.g. Render), " +
+      "using the same OAuth client that was used to create GOOGLE_ADS_REFRESH_TOKEN. If you reset the secret in Google Cloud, generate a new refresh token."
+    );
+  }
+  if (t.includes("invalid_grant")) {
+    return (
+      "Google Ads OAuth invalid_grant: refresh token expired or revoked. Generate a new refresh token for the Ads API scope and update GOOGLE_ADS_REFRESH_TOKEN."
+    );
+  }
+  return raw.slice(0, 500);
+}
+
 async function getAccessToken(): Promise<string> {
   const { OAuth2Client } = await import("google-auth-library");
   const client = new OAuth2Client(
@@ -32,9 +49,17 @@ async function getAccessToken(): Promise<string> {
     "urn:ietf:wg:oauth:2.0:oob"
   );
   client.setCredentials({ refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN });
-  const { credentials } = await client.refreshAccessToken();
-  if (!credentials.access_token) throw new Error("Failed to get Google Ads access token");
-  return credentials.access_token;
+  try {
+    const { credentials } = await client.refreshAccessToken();
+    if (!credentials.access_token) throw new Error("Failed to get Google Ads access token");
+    return credentials.access_token;
+  } catch (e) {
+    const raw =
+      (e as { response?: { data?: unknown } })?.response?.data != null
+        ? JSON.stringify((e as { response: { data: unknown } }).response.data)
+        : ((e as Error).message ?? String(e));
+    throw new Error(explainGoogleAdsAuthFailure(raw));
+  }
 }
 
 /** Customer ID must be digits only (no dashes). */

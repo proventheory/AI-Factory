@@ -1092,7 +1092,8 @@ export async function seoKeywordVolume(params: SeoKeywordVolumeParams): Promise<
     if (okBody?.volumes) merged.push(...okBody.volumes);
     if (okBody?.error) errors.push(String(okBody.error));
   }
-  return { volumes: merged, ...(errors.length > 0 ? { error: errors.filter(Boolean).join("; ") } : {}) };
+  const uniqueErrors = Array.from(new Set(errors.map((s) => s.trim()).filter(Boolean)));
+  return { volumes: merged, ...(uniqueErrors.length > 0 ? { error: uniqueErrors.join("; ") } : {}) };
 }
 
 /** SEO migration wizard — DataForSEO ranked keywords per URL (cached). Returns keywords each URL ranks for. */
