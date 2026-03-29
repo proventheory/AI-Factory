@@ -25,8 +25,14 @@ async function triggerDeploy(apiKey, serviceId, clearCache = true) {
     },
     body: JSON.stringify({ clearCache: clearCache ? "clear" : "do_not_clear" }),
   });
-  if (!res.ok) throw new Error(`Render API trigger deploy failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Render API trigger deploy failed: ${res.status} ${text}`);
+  if (!text?.trim()) return { accepted: true, status: res.status };
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { accepted: true, raw: text.slice(0, 200) };
+  }
 }
 
 async function main() {
