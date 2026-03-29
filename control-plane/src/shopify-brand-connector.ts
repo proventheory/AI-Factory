@@ -123,14 +123,19 @@ export async function getShopifyShopForBrand(
 
 function explainShopifyTokenError(status: number, text: string): string {
   const lower = text.toLowerCase();
-  if (lower.includes("shop_not_permitted") || lower.includes("client credentials cannot be performed")) {
+  const isShopNotPermitted =
+    lower.includes("shop_not_permitted") ||
+    lower.includes("client credentials cannot be performed on this shop") ||
+    /oauth\s+error[^a-z0-9]*shop[_\s-]*not[_\s-]*permitted/i.test(text);
+  if (isShopNotPermitted) {
     return (
       `Shopify OAuth client_credentials is not allowed on this shop (shop_not_permitted). ` +
       `Store-created custom apps must use the Admin API access token instead: ` +
       `disconnect Shopify on the brand, choose “Custom app (Admin API token)”, and paste the shpat_ token from Shopify Admin → Settings → Apps and sales channels → Develop apps → your app → API credentials.`
     );
   }
-  return `Shopify token exchange failed (${status}): ${text.slice(0, 400)}`;
+  const snippet = text.replace(/\s+/g, " ").trim().slice(0, 320);
+  return `Shopify token exchange failed (${status}): ${snippet || "(empty response body)"}`;
 }
 
 /**

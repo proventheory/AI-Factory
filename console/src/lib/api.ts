@@ -254,7 +254,22 @@ export async function putBrandShopifyCredentials(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = text;
+    try {
+      const j = JSON.parse(text) as { error?: string };
+      if (typeof j.error === "string") msg = j.error;
+    } catch {
+      /* keep raw body */
+    }
+    if (msg.includes("shop_domain, client_id, and client_secret are required")) {
+      throw new Error(
+        "The Control Plane at your API URL is an older build: it does not accept Admin API tokens (shpat_) yet. Redeploy control-plane from the latest code, set NEXT_PUBLIC_CONTROL_PLANE_API to that deployment, then connect again.",
+      );
+    }
+    throw new Error(msg);
+  }
 }
 
 /** DELETE /v1/brand_profiles/:id/shopify_credentials — disconnect Shopify for this brand. */
