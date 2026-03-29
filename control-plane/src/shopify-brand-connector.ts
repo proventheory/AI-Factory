@@ -1,13 +1,11 @@
 /**
- * Shopify connector at brand level: store shop_domain + client_id + encrypted client_secret.
- * Exchange for short-lived Admin API tokens via client credentials grant.
- * Used by SEO migration, MCP, and other tools that need Admin API under the brand.
+ * Shopify connector at brand level: store shop_domain plus either
+ * (1) client_id + encrypted client_secret → OAuth client_credentials exchange, or
+ * (2) encrypted Admin API access token (shpat_...) for custom apps where client_credentials is not permitted.
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
 import type { PoolClient } from "pg";
-
-const SHOPIFY_TOKEN_PATH = "/admin/oauth/access_token";
 
 /** 32-byte key from env (hex or raw). */
 function getEncryptionKey(): Buffer {
@@ -40,12 +38,15 @@ function decrypt(encrypted: string): string {
 
 export type ShopifyCredentialsInput = {
   shop_domain: string;
-  client_id: string;
-  client_secret: string;
   scopes?: string[];
+  /** Partner / Dev Dashboard app: OAuth client credentials. */
+  client_id?: string;
+  client_secret?: string;
+  /** Custom app (Settings → Develop apps): static Admin API token (shpat_...). */
+  admin_access_token?: string;
 };
 
-/** Save or update Shopify credentials for a brand. Client secret is encrypted at rest. */
+/** Save or update Shopify credentials for a brand. Secrets/tokens encrypted at rest. */
 export async function saveShopifyCredentialsForBrand(
   client: PoolClient,
   brandId: string,
@@ -53,20 +54,46 @@ export async function saveShopifyCredentialsForBrand(
 ): Promise<void> {
   const shop_domain = input.shop_domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
   if (!shop_domain) throw new Error("shop_domain is required");
-  if (!input.client_id?.trim()) throw new Error("client_id is required");
-  if (!input.client_secret?.trim()) throw new Error("client_secret is required");
-  const encrypted = encrypt(input.client_secret.trim());
   const scopes = input.scopes ?? [];
+
+  const adminTok = input.admin_access_token?.trim();
+  const cid = input.client_id?.trim();
+  const csec = input.client_secret?.trim();
+
+  if (adminTok) {
+    const encAdmin = encrypt(adminTok);
+    await client.query(
+      `INSERT INTO brand_shopify_credentials (brand_profile_id, shop_domain, client_id, encrypted_client_secret, encrypted_admin_access_token, scopes, updated_at)
+       VALUES ($1, $2, NULL, NULL, $3, $4::text[], now())
+       ON CONFLICT (brand_profile_id) DO UPDATE SET
+         shop_domain = EXCLUDED.shop_domain,
+         client_id = NULL,
+         encrypted_client_secret = NULL,
+         encrypted_admin_access_token = EXCLUDED.encrypted_admin_access_token,
+         scopes = EXCLUDED.scopes,
+         updated_at = now()`,
+      [brandId, shop_domain, encAdmin, scopes]
+    );
+    return;
+  }
+
+  if (!cid || !csec) {
+    throw new Error(
+      "Provide either admin_access_token (custom app / shpat_) or both client_id and client_secret (Partner OAuth app).",
+    );
+  }
+  const encrypted = encrypt(csec);
   await client.query(
-    `INSERT INTO brand_shopify_credentials (brand_profile_id, shop_domain, client_id, encrypted_client_secret, scopes, updated_at)
-     VALUES ($1, $2, $3, $4, $5::text[], now())
+    `INSERT INTO brand_shopify_credentials (brand_profile_id, shop_domain, client_id, encrypted_client_secret, encrypted_admin_access_token, scopes, updated_at)
+     VALUES ($1, $2, $3, $4, NULL, $5::text[], now())
      ON CONFLICT (brand_profile_id) DO UPDATE SET
        shop_domain = EXCLUDED.shop_domain,
        client_id = EXCLUDED.client_id,
        encrypted_client_secret = EXCLUDED.encrypted_client_secret,
+       encrypted_admin_access_token = NULL,
        scopes = EXCLUDED.scopes,
        updated_at = now()`,
-    [brandId, shop_domain, input.client_id.trim(), encrypted, scopes]
+    [brandId, shop_domain, cid, encrypted, scopes]
   );
 }
 
@@ -81,12 +108,12 @@ export async function hasShopifyCredentialsForBrand(client: PoolClient, brandId:
   return (r.rowCount ?? 0) > 0;
 }
 
-/** Get shop_domain for brand (no secret). */
+/** Get shop_domain for brand (no secret). client_id is null when using Admin API token only. */
 export async function getShopifyShopForBrand(
   client: PoolClient,
   brandId: string
-): Promise<{ shop_domain: string; client_id: string } | null> {
-  const r = await client.query<{ shop_domain: string; client_id: string }>(
+): Promise<{ shop_domain: string; client_id: string | null } | null> {
+  const r = await client.query<{ shop_domain: string; client_id: string | null }>(
     "SELECT shop_domain, client_id FROM brand_shopify_credentials WHERE brand_profile_id = $1",
     [brandId]
   );
@@ -94,17 +121,48 @@ export async function getShopifyShopForBrand(
   return row ? { shop_domain: row.shop_domain, client_id: row.client_id } : null;
 }
 
-/** Fetch short-lived access token via Shopify client credentials grant. Token expires in 24h. */
+function explainShopifyTokenError(status: number, text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.includes("shop_not_permitted") || lower.includes("client credentials cannot be performed")) {
+    return (
+      `Shopify OAuth client_credentials is not allowed on this shop (shop_not_permitted). ` +
+      `Store-created custom apps must use the Admin API access token instead: ` +
+      `disconnect Shopify on the brand, choose “Custom app (Admin API token)”, and paste the shpat_ token from Shopify Admin → Settings → Apps and sales channels → Develop apps → your app → API credentials.`
+    );
+  }
+  return `Shopify token exchange failed (${status}): ${text.slice(0, 400)}`;
+}
+
+/**
+ * Returns a Bearer token for Shopify Admin API (GraphQL/REST).
+ * Uses stored shpat_ token when present; otherwise client_credentials exchange.
+ */
 export async function getShopifyAccessTokenForBrand(
   client: PoolClient,
   brandId: string
 ): Promise<{ access_token: string; expires_in: number } | null> {
-  const row = await client.query<{ shop_domain: string; client_id: string; encrypted_client_secret: string }>(
-    "SELECT shop_domain, client_id, encrypted_client_secret FROM brand_shopify_credentials WHERE brand_profile_id = $1",
+  const row = await client.query<{
+    shop_domain: string;
+    client_id: string | null;
+    encrypted_client_secret: string | null;
+    encrypted_admin_access_token: string | null;
+  }>(
+    "SELECT shop_domain, client_id, encrypted_client_secret, encrypted_admin_access_token FROM brand_shopify_credentials WHERE brand_profile_id = $1",
     [brandId]
   );
   const r = row.rows[0];
   if (!r) return null;
+
+  if (r.encrypted_admin_access_token?.trim()) {
+    const access_token = decrypt(r.encrypted_admin_access_token);
+    if (!access_token) throw new Error("Shopify Admin API token could not be decrypted");
+    return { access_token, expires_in: 86400 };
+  }
+
+  if (!r.client_id?.trim() || !r.encrypted_client_secret?.trim()) {
+    throw new Error("Shopify credentials incomplete: add OAuth client id/secret or Admin API token.");
+  }
+
   const shop = r.shop_domain.replace(/^https?:\/\//, "").replace(/\/+$/, "");
   const client_secret = decrypt(r.encrypted_client_secret);
   const url = `https://${shop}/admin/oauth/access_token`;
@@ -120,7 +178,7 @@ export async function getShopifyAccessTokenForBrand(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Shopify token exchange failed (${res.status}): ${text}`);
+    throw new Error(explainShopifyTokenError(res.status, text));
   }
   const data = (await res.json()) as { access_token?: string; expires_in?: number };
   const access_token = data.access_token;

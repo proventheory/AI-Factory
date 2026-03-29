@@ -119,6 +119,13 @@ const migrations = [
   { path: "supabase/migrations/20250404000001_evolution_targets_seed.sql", name: "evolution_targets_seed", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
   { path: "supabase/migrations/20260318000000_brand_shopify_credentials.sql", name: "brand_shopify_credentials", skipIfErrorCodes: ["42P07", "42710"], skipMessage: "table or policy already exists" },
   { path: "supabase/migrations/20250416000000_seo_ranked_keywords_cache.sql", name: "seo_ranked_keywords_cache", skipIfErrorCode: "42P07", skipMessage: "table already exists" },
+  { path: "supabase/migrations/20260325000000_enable_rls_all_public_tables.sql", name: "enable_rls_all_public_tables" },
+  {
+    path: "supabase/migrations/20260329100000_brand_shopify_admin_access_token.sql",
+    name: "brand_shopify_admin_access_token",
+    skipIfErrorCodes: ["42701", "23514"],
+    skipMessage: "column or constraint already applied",
+  },
 ];
 
 async function run() {

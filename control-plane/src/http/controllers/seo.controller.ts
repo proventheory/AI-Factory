@@ -353,33 +353,53 @@ export async function brandProfilesShopifyConnected(req: Request, res: Response)
     const id = String(req.params.id ?? "");
     const row = await withTransaction(async (client) => {
       const connected = await hasShopifyCredentialsForBrand(client, id);
-      if (!connected) return { connected: false, shop_domain: null as string | null };
+      if (!connected) return { connected: false, shop_domain: null as string | null, uses_custom_app_token: false };
       const shop = await getShopifyShopForBrand(client, id);
-      return { connected: true, shop_domain: shop?.shop_domain ?? null };
+      const uses_custom_app_token = shop != null && (shop.client_id == null || shop.client_id === "");
+      return { connected: true, shop_domain: shop?.shop_domain ?? null, uses_custom_app_token };
     });
-    res.json({ connected: row.connected, shop_domain: row.shop_domain ?? undefined });
+    res.json({
+      connected: row.connected,
+      shop_domain: row.shop_domain ?? undefined,
+      ...(row.connected ? { uses_custom_app_token: row.uses_custom_app_token } : {}),
+    });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
 }
 
-/** PUT /v1/brand_profiles/:id/shopify_credentials — set Shopify connector (shop_domain, client_id, client_secret). */
+/** PUT /v1/brand_profiles/:id/shopify_credentials — OAuth (client_id + secret) or custom app (admin_access_token / shpat_). */
 export async function brandProfilesShopifyCredentialsPut(req: Request, res: Response): Promise<void> {
   try {
     const id = String(req.params.id ?? "");
-    const body = req.body as { shop_domain?: string; client_id?: string; client_secret?: string; scopes?: string[] };
+    const body = req.body as {
+      shop_domain?: string;
+      client_id?: string;
+      client_secret?: string;
+      admin_access_token?: string;
+      scopes?: string[];
+    };
     const shop_domain = body.shop_domain?.trim();
+    const admin_access_token = body.admin_access_token?.trim();
     const client_id = body.client_id?.trim();
     const client_secret = body.client_secret?.trim();
-    if (!shop_domain || !client_id || !client_secret) {
-      res.status(400).json({ error: "shop_domain, client_id, and client_secret are required" });
+    if (!shop_domain) {
+      res.status(400).json({ error: "shop_domain is required" });
+      return;
+    }
+    if (!admin_access_token && (!client_id || !client_secret)) {
+      res.status(400).json({
+        error:
+          "Either admin_access_token (custom app: shpat_ from Develop apps) or both client_id and client_secret (Partner OAuth) is required.",
+      });
       return;
     }
     await withTransaction((client) =>
       saveShopifyCredentialsForBrand(client, id, {
         shop_domain,
-        client_id,
-        client_secret,
+        ...(admin_access_token
+          ? { admin_access_token }
+          : { client_id: client_id!, client_secret: client_secret! }),
         scopes: body.scopes,
       })
     );

@@ -227,16 +227,27 @@ export async function deleteBrandKlaviyoCredentials(id: string): Promise<void> {
 }
 
 /** GET /v1/brand_profiles/:id/shopify_connected — whether brand has Shopify connector (shop_domain). */
-export async function getBrandShopifyConnected(id: string): Promise<{ connected: boolean; shop_domain?: string }> {
+export async function getBrandShopifyConnected(id: string): Promise<{
+  connected: boolean;
+  shop_domain?: string;
+  /** True when credentials use shpat_ custom app token (not OAuth client credentials). */
+  uses_custom_app_token?: boolean;
+}> {
   const res = await fetch(`${API}/v1/brand_profiles/${id}/shopify_connected`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-/** PUT /v1/brand_profiles/:id/shopify_credentials — set Shopify connector (Dev Dashboard: shop_domain, client_id, client_secret). */
+/** PUT /v1/brand_profiles/:id/shopify_credentials — Partner OAuth (client_id + secret) or custom app (admin_access_token). */
 export async function putBrandShopifyCredentials(
   id: string,
-  body: { shop_domain: string; client_id: string; client_secret: string; scopes?: string[] }
+  body: {
+    shop_domain: string;
+    client_id?: string;
+    client_secret?: string;
+    admin_access_token?: string;
+    scopes?: string[];
+  }
 ): Promise<void> {
   const res = await fetch(`${API}/v1/brand_profiles/${id}/shopify_credentials`, {
     method: "PUT",
