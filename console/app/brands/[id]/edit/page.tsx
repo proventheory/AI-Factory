@@ -79,6 +79,8 @@ export default function EditBrandPage() {
   const [shopifyAdminAccessToken, setShopifyAdminAccessToken] = useState("");
   const [shopifyClientId, setShopifyClientId] = useState("");
   const [shopifyClientSecret, setShopifyClientSecret] = useState("");
+  /** `null` = /health not loaded; `false` = API responded without shpat_ capability (redeploy CP). */
+  const [shopifyCpSupportsShpat, setShopifyCpSupportsShpat] = useState<boolean | null>(null);
 
   const fetchGoogleConnected = useCallback(() => {
     if (!id) return;
@@ -110,6 +112,16 @@ export default function EditBrandPage() {
   useEffect(() => {
     fetchShopifyConnected();
   }, [fetchShopifyConnected]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getControlPlaneHealth().then((h) => {
+      if (!cancelled) setShopifyCpSupportsShpat(api.controlPlaneSupportsShopifyAdminToken(h));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const connected = searchParams.get("google_connected");
@@ -643,6 +655,14 @@ export default function EditBrandPage() {
             <p className="text-body-small text-text-secondary mb-3">
               Used by SEO Migration (e.g. PDF import), MCP, and other tools. <strong>Custom apps</strong> (Settings → Apps → Develop apps) cannot use OAuth client credentials on the shop—use <strong>Admin API access token</strong> (<code className="text-xs bg-fg-muted/15 px-1 rounded">shpat_…</code>). <strong>Partner / Dev Dashboard</strong> apps can use Client ID + Secret instead.
             </p>
+            {shopifyCpSupportsShpat === false && (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-body-small text-amber-950">
+                This console is calling a Control Plane that does not report <code className="text-xs">capabilities.shopify_brand_admin_token</code> on{" "}
+                <code className="text-xs">GET /health</code> (usually an old deploy).{" "}
+                <strong>Redeploy the control-plane service</strong> from current <code className="text-xs">main</code>, confirm{" "}
+                <code className="text-xs">NEXT_PUBLIC_CONTROL_PLANE_API</code> on Vercel matches that URL, then redeploy the console.
+              </div>
+            )}
             {shopifyConnectError && (
               <div className="mb-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
                 {shopifyConnectError}

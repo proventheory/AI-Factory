@@ -3,6 +3,31 @@
  */
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
+/** Response shape from Control Plane `GET /health` (capabilities added for Shopify shpat_ support). */
+export type ControlPlaneHealth = {
+  status?: string;
+  service?: string;
+  capabilities?: { shopify_brand_admin_token?: boolean };
+};
+
+/** Lightweight probe; use to warn if the console points at an old API build. */
+export async function getControlPlaneHealth(): Promise<ControlPlaneHealth | null> {
+  try {
+    const res = await fetch(`${API}/health`, { method: "GET", cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as ControlPlaneHealth;
+    return data && typeof data === "object" ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `null` = could not load /health (network/CORS); do not treat as “too old”. */
+export function controlPlaneSupportsShopifyAdminToken(health: ControlPlaneHealth | null): boolean | null {
+  if (health == null) return null;
+  return health.capabilities?.shopify_brand_admin_token === true;
+}
+
 /** User-friendly message when Control Plane is unreachable (e.g. wrong API URL on Vercel). */
 export function formatApiError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);

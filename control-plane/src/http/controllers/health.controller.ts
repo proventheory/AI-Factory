@@ -2,7 +2,14 @@ import type { Request, Response } from "express";
 import { pool } from "../../db.js";
 
 export function health(_req: Request, res: Response): void {
-  res.json({ status: "ok", service: "control-plane" });
+  res.json({
+    status: "ok",
+    service: "control-plane",
+    /** Console uses this to detect pre–Shopify-shpat_ API builds (missing = redeploy control-plane). */
+    capabilities: {
+      shopify_brand_admin_token: true,
+    },
+  });
 }
 
 export async function healthDb(_req: Request, res: Response): Promise<void> {
