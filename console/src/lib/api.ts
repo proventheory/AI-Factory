@@ -1120,6 +1120,9 @@ export type SeoMigrationDryRunParams = {
   woo_consumer_key: string;
   woo_consumer_secret: string;
   entities: string[];
+  /** Improves PDF media counts / preview when media is not public. */
+  wp_username?: string;
+  wp_application_password?: string;
 };
 export type SeoMigrationDryRunResult = { counts?: Record<string, number>; message?: string };
 
@@ -1190,6 +1193,52 @@ export async function seoMigrationRun(params: SeoMigrationRunParams): Promise<Se
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+/** WordPress PDF → Shopify Files (+ optional redirects). */
+export type SeoMigrationPdfRow = {
+  wordpress_id: string;
+  title: string;
+  source_url: string;
+  shopify_file_url?: string;
+  redirect_path?: string;
+  redirect_created?: boolean;
+  error?: string;
+};
+export type SeoMigrationMigratePdfsParams = {
+  woo_server: string;
+  woo_consumer_key: string;
+  woo_consumer_secret: string;
+  brand_id: string;
+  wp_username?: string;
+  wp_application_password?: string;
+  excluded_ids?: string[];
+  create_redirects?: boolean;
+  max_files?: number;
+};
+export type SeoMigrationMigratePdfsResult = {
+  rows: SeoMigrationPdfRow[];
+  redirect_csv: string;
+  truncated: boolean;
+  summary?: { uploaded: number; failed: number; truncated: boolean };
+  hint?: string;
+};
+
+export async function seoMigrationMigratePdfs(params: SeoMigrationMigratePdfsParams): Promise<SeoMigrationMigratePdfsResult> {
+  const res = await fetch(`${API}/v1/seo/migration/migrate_pdfs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const text = await res.text();
+  let data: SeoMigrationMigratePdfsResult & { error?: string };
+  try {
+    data = JSON.parse(text) as SeoMigrationMigratePdfsResult & { error?: string };
+  } catch {
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? text);
+  return data;
 }
 
 export type EmailTemplateRow = {

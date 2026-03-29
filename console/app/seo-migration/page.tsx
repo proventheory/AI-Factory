@@ -19,13 +19,20 @@ import {
 } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import * as api from "@/lib/api";
-import type { SeoMigrationCrawlResult, SeoGscReport, SeoGa4Report, BrandProfileRow, MigrationPreviewItem } from "@/lib/api";
+import type {
+  SeoMigrationCrawlResult,
+  SeoGscReport,
+  SeoGa4Report,
+  BrandProfileRow,
+  MigrationPreviewItem,
+  SeoMigrationMigratePdfsResult,
+} from "@/lib/api";
 import { formatApiError } from "@/lib/api";
 
 const STEPS = [
   { id: 1, title: "Crawl source site", description: "Map every live URL (sitemap + optional link-following for WordPress)." },
   { id: 2, title: "GSC & analytics", description: "Pull Search Console and GA4 to see which pages drive traffic and rankings." },
-  { id: 3, title: "Connect platforms & migrate data", description: "Connect WooCommerce (source) and Shopify (destination) APIs; migrate products, categories, customers, redirects, discounts, blog posts, tags, and pages." },
+  { id: 3, title: "Connect platforms & migrate data", description: "Connect WooCommerce (source) and Shopify (destination) APIs; migrate products, categories, customers, redirects, discounts, blog posts, tags, pages, and PDFs (WordPress media → Shopify Files + optional redirects)." },
   { id: 4, title: "Keyword strategy", description: "Map search demand; decide which pages to keep, consolidate, or elevate." },
   { id: 5, title: "Prioritize pages", description: "Define collections, products, and content for the new site and hierarchy." },
   { id: 6, title: "Redirect map", description: "Map every old URL to the best new destination (SEO priority)." },
@@ -43,6 +50,7 @@ const MIGRATION_ENTITIES = [
   { id: "blogs", label: "Blog posts", source: "from WordPress" },
   { id: "blog_tags", label: "Blog tags", source: "from WordPress (taxonomy)" },
   { id: "pages", label: "Pages", source: "from WordPress" },
+  { id: "pdfs", label: "PDFs (media files)", source: "from WordPress media library" },
 ] as const;
 
 // Steps 4–9: in-memory strategy state (driven by crawl + GSC/GA4 from 1–3)
@@ -414,6 +422,10 @@ export default function SeoMigrationWizardPage() {
   const [migrationRunLoading, setMigrationRunLoading] = useState(false);
   const [migrationRunError, setMigrationRunError] = useState<string | null>(null);
   const [migrationRunResult, setMigrationRunResult] = useState<{ job_id?: string; message?: string } | null>(null);
+  const [pdfImportLoading, setPdfImportLoading] = useState(false);
+  const [pdfImportError, setPdfImportError] = useState<string | null>(null);
+  const [pdfImportResult, setPdfImportResult] = useState<SeoMigrationMigratePdfsResult | null>(null);
+  const [pdfImportCreateRedirects, setPdfImportCreateRedirects] = useState(true);
 
   /** Vercel preview hostnames change per deployment; localStorage is per-origin, so each preview starts empty. */
   const [isVercelPreviewHost, setIsVercelPreviewHost] = useState(false);
@@ -883,7 +895,7 @@ export default function SeoMigrationWizardPage() {
         if (result.error) errors.push(result.error);
       }
       setKeywordVolumeMap((prev) => ({ ...prev, ...map }));
-      if (errors.length > 0) setKeywordVolumeError(errors.filter(Boolean).join(" "));
+      if (errors.length > 0) setKeywordVolumeError([...new Set(errors.filter(Boolean))].join(" "));
     } catch (e) {
       setKeywordVolumeError(formatApiError(e));
     } finally {
@@ -1033,6 +1045,9 @@ export default function SeoMigrationWizardPage() {
         woo_consumer_key: wooConsumerKey.trim(),
         woo_consumer_secret: wooConsumerSecret.trim(),
         entities: Array.from(migrationEntities),
+        ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+          ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+          : {}),
       });
       setMigrationDryRunResult(result);
       setMigrationExcludedIds({});
@@ -1055,7 +1070,7 @@ export default function SeoMigrationWizardPage() {
       setMigrationPreviewLoadingEntity(entity);
       setMigrationPreviewErrorByEntity((prev) => ({ ...prev, [entity]: null }));
       try {
-        const needsWpAuth = entity === "blogs" || entity === "pages" || entity === "blog_tags";
+        const needsWpAuth = entity === "blogs" || entity === "pages" || entity === "blog_tags" || entity === "pdfs";
         const result = await api.seoMigrationPreviewItems({
           woo_server: wooServer.trim(),
           woo_consumer_key: wooConsumerKey.trim(),
@@ -1126,6 +1141,53 @@ export default function SeoMigrationWizardPage() {
     } finally {
       setMigrationRunLoading(false);
     }
+  };
+
+  const runPdfImport = async () => {
+    if (!wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()) {
+      setPdfImportError("WooCommerce server URL, consumer key, and consumer secret are required.");
+      return;
+    }
+    if (!brandId || !brandShopify?.connected) {
+      setPdfImportError("Select a brand in step 1 and connect Shopify for that brand.");
+      return;
+    }
+    if (!migrationEntities.has("pdfs")) {
+      setPdfImportError('Enable the "PDFs (media files)" sheet first.');
+      return;
+    }
+    setPdfImportLoading(true);
+    setPdfImportError(null);
+    setPdfImportResult(null);
+    try {
+      const result = await api.seoMigrationMigratePdfs({
+        woo_server: wooServer.trim(),
+        woo_consumer_key: wooConsumerKey.trim(),
+        woo_consumer_secret: wooConsumerSecret.trim(),
+        brand_id: brandId,
+        excluded_ids: migrationExcludedIds.pdfs ?? [],
+        create_redirects: pdfImportCreateRedirects,
+        ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+          ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+          : {}),
+      });
+      setPdfImportResult(result);
+    } catch (e) {
+      setPdfImportError(formatApiError(e));
+    } finally {
+      setPdfImportLoading(false);
+    }
+  };
+
+  const downloadPdfRedirectCsv = () => {
+    if (!pdfImportResult?.redirect_csv) return;
+    const blob = new Blob([pdfImportResult.redirect_csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "shopify-pdf-redirects.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const shopifyCredentialsOk = Boolean(brandId && brandShopify?.connected);
@@ -1539,7 +1601,10 @@ export default function SeoMigrationWizardPage() {
                 </div>
 
                 {/* Sheets: entity cards (Matrixify-style) */}
-                <p className="text-body-small font-medium text-fg-muted mb-2">Sheets</p>
+                <p className="text-body-small font-medium text-fg-muted mb-1">Sheets</p>
+                <p className="text-body-small text-fg-muted mb-2">
+                  Click <strong>Details</strong> on any sheet to expand a paginated list. Uncheck <strong>Include</strong> on rows you do not want counted or migrated (exclusions apply to PDF import; other entity runs still use full sheets until ETL is wired).
+                </p>
                 <div className="space-y-2">
                   {MIGRATION_ENTITIES.map((e) => {
                     const count = migrationDryRunResult?.counts?.[e.id];
@@ -1703,8 +1768,87 @@ export default function SeoMigrationWizardPage() {
                   <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/…</code>
                   ) unless you add an application password above—then Details can list drafts/private. WooCommerce products/coupons use{" "}
                   <code className="rounded bg-fg-muted/15 px-1">status=any</code> so you can confirm draft vs publish in Details.{" "}
-                  <strong>Redirects</strong> here is a preview count of product plus category URLs we would map to new destinations (Woo inventory), not “existing redirects” from a plugin like Redirection.
+                  <strong>Redirects</strong> here is a preview count of product plus category URLs we would map to new destinations (Woo inventory), not “existing redirects” from a plugin like Redirection.{" "}
+                  <strong>PDFs</strong> lists <code className="rounded bg-fg-muted/15 px-1">application/pdf</code> attachments from WordPress media; import uploads each file to Shopify Files (requires a Shopify custom app with <code className="rounded bg-fg-muted/15 px-1">write_files</code>).
                 </p>
+
+                {migrationEntities.has("pdfs") && (
+                  <div className="mt-4 rounded-lg border border-border bg-brand-50/40 dark:bg-brand-950/20 px-3 py-3">
+                    <p className="text-body-small font-medium text-fg mb-2">Import PDFs to Shopify</p>
+                    <p className="text-body-small text-fg-muted mb-3">
+                      Uses your WordPress site URL (same as WooCommerce server), optional application password for private media, and this brand&apos;s Shopify connector. Up to 500 files per run by default; expand <strong>PDFs</strong> above to exclude specific attachments.
+                    </p>
+                    <label className="mb-3 flex cursor-pointer items-center gap-2 text-body-small text-fg">
+                      <Checkbox
+                        checked={pdfImportCreateRedirects}
+                        onChange={(ev) => setPdfImportCreateRedirects(ev.target.checked)}
+                        className="shrink-0"
+                      />
+                      <span>
+                        Create URL redirects on Shopify from old paths (e.g.{" "}
+                        <code className="rounded bg-fg-muted/15 px-1">/wp-content/uploads/…</code>) to the new file URLs (needs redirect scope on the Shopify app; if the API skips a row, use the CSV below).
+                      </span>
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="primary"
+                        onClick={() => void runPdfImport()}
+                        disabled={pdfImportLoading || !shopifyCredentialsOk || !wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()}
+                      >
+                        {pdfImportLoading ? "Importing PDFs…" : "Import PDFs to Shopify"}
+                      </Button>
+                      {pdfImportResult?.redirect_csv && pdfImportResult.redirect_csv.split("\n").length > 1 && (
+                        <Button type="button" variant="secondary" size="sm" onClick={downloadPdfRedirectCsv}>
+                          Download redirect CSV
+                        </Button>
+                      )}
+                    </div>
+                    {pdfImportError && (
+                      <p className="mt-2 text-body-small text-state-danger">{pdfImportError}</p>
+                    )}
+                    {pdfImportResult?.summary && (
+                      <p className="mt-2 text-body-small text-fg-muted">
+                        Uploaded: <strong className="text-fg">{pdfImportResult.summary.uploaded}</strong>, failed:{" "}
+                        <strong className="text-fg">{pdfImportResult.summary.failed}</strong>
+                        {pdfImportResult.truncated ? ", more PDFs remain (run again to continue)." : "."}
+                      </p>
+                    )}
+                    {pdfImportResult?.hint && <p className="mt-1 text-body-small text-fg-muted">{pdfImportResult.hint}</p>}
+                    {pdfImportResult?.rows && pdfImportResult.rows.length > 0 && (
+                      <div className="mt-3 max-h-[min(40vh,320px)] overflow-auto rounded-md border border-border">
+                        <table className="w-full min-w-[480px] border-collapse text-body-small">
+                          <thead className="sticky top-0 bg-bg border-b border-border">
+                            <tr className="text-left">
+                              <th className="px-2 py-1.5 font-medium">ID</th>
+                              <th className="px-2 py-1.5 font-medium">Title</th>
+                              <th className="px-2 py-1.5 font-medium">Result</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pdfImportResult.rows.map((r) => (
+                              <tr key={r.wordpress_id} className="border-b border-border/60">
+                                <td className="px-2 py-1 align-top whitespace-nowrap">{r.wordpress_id}</td>
+                                <td className="px-2 py-1 align-top max-w-[180px] break-words">{r.title}</td>
+                                <td className="px-2 py-1 align-top max-w-[280px] break-all">
+                                  {r.error ? (
+                                    <span className="text-state-danger">{r.error}</span>
+                                  ) : r.shopify_file_url ? (
+                                    <a href={r.shopify_file_url} className="text-link hover:underline" target="_blank" rel="noreferrer">
+                                      File URL
+                                    </a>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Total estimate footer */}
                 {migrationDryRunResult?.counts && (() => {
