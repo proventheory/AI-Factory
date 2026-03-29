@@ -16,23 +16,33 @@ const EN_LANGUAGE = "languageConstants/1000";
 
 export type KeywordVolumeResult = { keyword: string; monthly_search_volume: number };
 
-/** Prefer dedicated Ads vars; otherwise reuse the same OAuth app as GSC/GA4 (must match the refresh token). */
-function adsOAuthClientId(): string | undefined {
-  const a = process.env.GOOGLE_ADS_CLIENT_ID?.trim();
-  if (a) return a;
-  return process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() || undefined;
-}
-
-function adsOAuthClientSecret(): string | undefined {
-  const a = process.env.GOOGLE_ADS_CLIENT_SECRET?.trim();
-  if (a) return a;
-  return process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim() || undefined;
+/**
+ * Ordered OAuth client id+secret pairs to try for refreshing GOOGLE_ADS_REFRESH_TOKEN.
+ * 1) GOOGLE_ADS_CLIENT_* first (when set).
+ * 2) GOOGLE_OAUTH_CLIENT_* second (deduped if identical to pair #1).
+ * If Render has a stale/wrong Ads-specific client but correct GSC/GA4 OAuth vars, invalid_client on #1 still allows #2.
+ */
+function buildGoogleAdsCredentialAttempts(): { clientId: string; clientSecret: string }[] {
+  const seen = new Set<string>();
+  const out: { clientId: string; clientSecret: string }[] = [];
+  const pushPair = (clientId: string, clientSecret: string) => {
+    const k = `${clientId}\0${clientSecret}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ clientId, clientSecret });
+  };
+  const adsId = process.env.GOOGLE_ADS_CLIENT_ID?.trim();
+  const adsSec = process.env.GOOGLE_ADS_CLIENT_SECRET?.trim();
+  const oauthId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim();
+  const oauthSec = process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
+  if (adsId && adsSec) pushPair(adsId, adsSec);
+  if (oauthId && oauthSec) pushPair(oauthId, oauthSec);
+  return out;
 }
 
 function isConfigured(): boolean {
   return !!(
-    adsOAuthClientId() &&
-    adsOAuthClientSecret() &&
+    buildGoogleAdsCredentialAttempts().length > 0 &&
     process.env.GOOGLE_ADS_REFRESH_TOKEN &&
     process.env.GOOGLE_ADS_CUSTOMER_ID &&
     process.env.GOOGLE_ADS_DEVELOPER_TOKEN
@@ -43,11 +53,10 @@ function explainGoogleAdsAuthFailure(raw: string): string {
   const t = raw.toLowerCase();
   if (t.includes("invalid_client")) {
     return (
-      "Google Ads OAuth invalid_client: client ID and secret on the server do not match the OAuth client that issued GOOGLE_ADS_REFRESH_TOKEN " +
-      "(wrong values, rotated secret in Google Cloud, or copy/paste whitespace). " +
-      "Fix: in Render (or wherever the API runs), set GOOGLE_ADS_CLIENT_ID and GOOGLE_ADS_CLIENT_SECRET to the exact Web application client used when you generated the refresh token, " +
-      "or remove those two vars to fall back to GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET if that is the same client. " +
-      "Regenerate GOOGLE_ADS_REFRESH_TOKEN after any client secret reset. Trim env values (no trailing newlines)."
+      "Google Ads OAuth invalid_client: none of the configured OAuth client id+secret pairs matched the client that issued GOOGLE_ADS_REFRESH_TOKEN. " +
+      "Fix: in Render, delete or correct GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET (wrong pair often blocks the good one), " +
+      "ensure GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET match the same Web client used to mint the refresh token, " +
+      "trim values (no trailing newlines), and regenerate GOOGLE_ADS_REFRESH_TOKEN after any client secret rotation."
     );
   }
   if (t.includes("invalid_grant")) {
@@ -58,28 +67,39 @@ function explainGoogleAdsAuthFailure(raw: string): string {
   return raw.slice(0, 500);
 }
 
+function isInvalidClientError(raw: string): boolean {
+  return raw.toLowerCase().includes("invalid_client");
+}
+
 async function getAccessToken(): Promise<string> {
   const { OAuth2Client } = await import("google-auth-library");
-  const cid = adsOAuthClientId();
-  const csec = adsOAuthClientSecret();
-  if (!cid || !csec) {
+  const attempts = buildGoogleAdsCredentialAttempts();
+  if (attempts.length === 0) {
     throw new Error(
-      "Google Ads OAuth: set GOOGLE_ADS_CLIENT_ID and GOOGLE_ADS_CLIENT_SECRET, or GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET.",
+      "Google Ads OAuth: set GOOGLE_ADS_CLIENT_ID + GOOGLE_ADS_CLIENT_SECRET and/or GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET.",
     );
   }
-  const client = new OAuth2Client(cid, csec, "urn:ietf:wg:oauth:2.0:oob");
-  client.setCredentials({ refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN });
-  try {
-    const { credentials } = await client.refreshAccessToken();
-    if (!credentials.access_token) throw new Error("Failed to get Google Ads access token");
-    return credentials.access_token;
-  } catch (e) {
-    const raw =
-      (e as { response?: { data?: unknown } })?.response?.data != null
-        ? JSON.stringify((e as { response: { data: unknown } }).response.data)
-        : ((e as Error).message ?? String(e));
-    throw new Error(explainGoogleAdsAuthFailure(raw));
+  const refreshToken = process.env.GOOGLE_ADS_REFRESH_TOKEN;
+  if (!refreshToken?.trim()) throw new Error("GOOGLE_ADS_REFRESH_TOKEN is missing");
+
+  for (let i = 0; i < attempts.length; i++) {
+    const { clientId, clientSecret } = attempts[i];
+    const client = new OAuth2Client(clientId, clientSecret, "urn:ietf:wg:oauth:2.0:oob");
+    client.setCredentials({ refresh_token: refreshToken.trim() });
+    try {
+      const { credentials } = await client.refreshAccessToken();
+      if (!credentials.access_token) throw new Error("Failed to get Google Ads access token");
+      return credentials.access_token;
+    } catch (e) {
+      const raw =
+        (e as { response?: { data?: unknown } })?.response?.data != null
+          ? JSON.stringify((e as { response: { data: unknown } }).response.data)
+          : ((e as Error).message ?? String(e));
+      if (isInvalidClientError(raw) && i < attempts.length - 1) continue;
+      throw new Error(explainGoogleAdsAuthFailure(raw));
+    }
   }
+  throw new Error("Google Ads OAuth: no credential attempts succeeded.");
 }
 
 /** Customer ID must be digits only (no dashes). */
