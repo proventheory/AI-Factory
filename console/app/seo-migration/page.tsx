@@ -68,6 +68,110 @@ type RedirectStatus = "301" | "302" | "drop" | "consolidate";
 type RedirectRow = { old_url: string; new_url: string; status: RedirectStatus; destinationOk?: boolean; issue?: string };
 type InternalLinkRow = { from_url: string; to_url: string; anchor: string; placement: "homepage" | "header" | "footer" | "contextual" };
 
+/** Minimal CSV row parser (handles quoted fields). */
+function parseCsvRow(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur);
+  return out.map((s) => s.trim());
+}
+
+function normalizeRedirectStatus(s: string): RedirectStatus {
+  const t = (s || "301").trim().toLowerCase();
+  if (t === "302") return "302";
+  if (t === "drop") return "drop";
+  if (t === "consolidate") return "consolidate";
+  return "301";
+}
+
+function parseRedirectCsvToRows(text: string): RedirectRow[] {
+  const lines = text.split(/\r?\n/).filter((ln) => ln.trim().length > 0);
+  if (lines.length === 0) return [];
+  const firstCells = parseCsvRow(lines[0]);
+  const h = firstCells.map((c) => c.trim().toLowerCase());
+  const looksHeader =
+    firstCells.length >= 2 &&
+    !/^https?:\/\//i.test(firstCells[0] || "") &&
+    h.some((c) => /old|new|redirect|status|from|to|url|target/.test(c));
+  let start = 0;
+  let colOld = 0;
+  let colNew = 1;
+  let colStatus = 2;
+  if (looksHeader) {
+    start = 1;
+    const idx = (pred: (s: string) => boolean) => h.findIndex(pred);
+    const oi = idx((s) => /redirect from|^from$|old url|old_url|^source$/.test(s) || (s.includes("old") && !s.includes("new")));
+    const ni = idx((s) => /redirect to|^to$|new url|new_url|target/.test(s) || (s.includes("new") && s.includes("url")));
+    const si = idx((s) => s.includes("status") || s === "type");
+    if (oi >= 0) colOld = oi;
+    if (ni >= 0) colNew = ni;
+    if (si >= 0) colStatus = si;
+  }
+  const rows: RedirectRow[] = [];
+  for (let i = start; i < lines.length; i++) {
+    const cells = parseCsvRow(lines[i]);
+    const oldU = cells[colOld]?.trim() ?? "";
+    if (!oldU) continue;
+    rows.push({
+      old_url: oldU,
+      new_url: cells[colNew]?.trim() ?? "",
+      status: normalizeRedirectStatus(cells[colStatus] ?? "301"),
+    });
+  }
+  return rows;
+}
+
+function mergeRedirectImports(existing: RedirectRow[], incoming: RedirectRow[]): RedirectRow[] {
+  const byOld = new Map(existing.map((r) => [r.old_url, { ...r }]));
+  for (const row of incoming) {
+    const prev = byOld.get(row.old_url);
+    byOld.set(row.old_url, {
+      old_url: row.old_url,
+      new_url: row.new_url,
+      status: row.status,
+      destinationOk: prev?.destinationOk,
+      issue: prev?.issue,
+    });
+  }
+  return Array.from(byOld.values());
+}
+
+function escapeCsvField(val: string): string {
+  if (/[",\r\n]/.test(val)) return `"${val.replace(/"/g, '""')}"`;
+  return val;
+}
+
+function buildRedirectMapCsv(rows: RedirectRow[]): string {
+  const header = "old_url,new_url,status";
+  const body = rows.map((r) =>
+    [escapeCsvField(r.old_url), escapeCsvField(r.new_url), escapeCsvField(r.status)].join(","),
+  );
+  return [header, ...body].join("\n");
+}
+
 const KEYWORD_VOLUME_CHUNK = 400;
 
 const CRAWL_CACHE_KEY = "seo-migration-crawl-cache";
@@ -439,6 +543,12 @@ export default function SeoMigrationWizardPage() {
   const [keywordVolumeMap, setKeywordVolumeMap] = useState<Record<string, number>>({});
   const [keywordVolumeLoading, setKeywordVolumeLoading] = useState(false);
   const [keywordVolumeError, setKeywordVolumeError] = useState<string | null>(null);
+  /** Step 4: per-row expand for full GSC keyword list (Airtable-style). */
+  const [expandedKeywordRowKeys, setExpandedKeywordRowKeys] = useState<Set<string>>(() => new Set());
+  const [ga4ScQueriesExpanded, setGa4ScQueriesExpanded] = useState(false);
+  const [redirectCsvImportError, setRedirectCsvImportError] = useState<string | null>(null);
+  const redirectCsvInputRef = useRef<HTMLInputElement>(null);
+  const redirectCsvImportModeRef = useRef<"merge" | "replace">("merge");
   const [targetBaseUrl, setTargetBaseUrl] = useState(""); // New site base URL for steps 5–6
   // Step 5: Page plan
   const [pagePlan, setPagePlan] = useState<PagePlanRow[]>([]);
@@ -901,6 +1011,61 @@ export default function SeoMigrationWizardPage() {
     } finally {
       setKeywordVolumeLoading(false);
     }
+  };
+
+  const toggleKeywordTrafficExpanded = (rowKey: string) => {
+    setExpandedKeywordRowKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowKey)) next.delete(rowKey);
+      else next.add(rowKey);
+      return next;
+    });
+  };
+
+  const downloadRedirectCsv = () => {
+    if (redirectMap.length === 0) return;
+    const blob = new Blob([buildRedirectMapCsv(redirectMap)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `seo-redirect-map-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const triggerRedirectCsvImport = (mode: "merge" | "replace") => {
+    redirectCsvImportModeRef.current = mode;
+    redirectCsvInputRef.current?.click();
+  };
+
+  const onRedirectCsvFileChange = (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const f = ev.target.files?.[0];
+    ev.target.value = "";
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = String(reader.result || "");
+        const incoming = parseRedirectCsvToRows(text);
+        if (incoming.length === 0) {
+          setRedirectCsvImportError(
+            "No valid rows found. Use a header row with old_url, new_url, status (or Redirect from / Redirect to), or three columns in that order.",
+          );
+          return;
+        }
+        const mode = redirectCsvImportModeRef.current;
+        if (mode === "replace") {
+          if (!window.confirm(`Replace all redirects with ${incoming.length} rows from this file?`)) return;
+          setRedirectMap(incoming);
+        } else {
+          setRedirectMap((prev) => mergeRedirectImports(prev, incoming));
+        }
+        setRedirectCsvImportError(null);
+      } catch (e) {
+        setRedirectCsvImportError(formatApiError(e));
+      }
+    };
+    reader.readAsText(f);
   };
 
   // Step 4: Seed keyword rows from crawl + GA4 union when entering step 4 (only if keywordRows empty)
@@ -1928,12 +2093,29 @@ export default function SeoMigrationWizardPage() {
                     {(ga4Result?.search_console_queries?.length ?? 0) > 0 && (
                       <div className="mb-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2">
                         <p className="text-body-small font-medium mb-2">Keywords from GA4 Search Console (site-level) — use for monthly search volume</p>
-                        <ul className="text-body-small space-y-1 max-h-[200px] overflow-y-auto list-disc list-inside">
-                          {(ga4Result?.search_console_queries ?? []).slice(0, 50).map((q, idx) => (
-                            <li key={idx}>{q.query} <span className="text-fg-muted">({q.clicks} clicks, {q.impressions} impr.)</span></li>
-                          ))}
+                        <ul className="text-body-small space-y-1 list-disc list-inside max-h-[min(50vh,320px)] overflow-y-auto">
+                          {(ga4Result?.search_console_queries ?? [])
+                            .slice(0, ga4ScQueriesExpanded ? undefined : 50)
+                            .map((q, idx) => (
+                              <li key={idx}>
+                                {q.query}{" "}
+                                <span className="text-fg-muted">
+                                  ({q.clicks} clicks, {q.impressions} impr.)
+                                </span>
+                              </li>
+                            ))}
                         </ul>
-                        {(ga4Result?.search_console_queries?.length ?? 0) > 50 && <p className="text-body-small text-fg-muted mt-1">+{(ga4Result?.search_console_queries?.length ?? 0) - 50} more</p>}
+                        {(ga4Result?.search_console_queries?.length ?? 0) > 50 && (
+                          <button
+                            type="button"
+                            className="mt-2 text-body-small font-medium text-brand-600 hover:underline"
+                            onClick={() => setGa4ScQueriesExpanded((x) => !x)}
+                          >
+                            {ga4ScQueriesExpanded
+                              ? "Show fewer"
+                              : `Show all ${ga4Result?.search_console_queries?.length ?? 0} keywords`}
+                          </button>
+                        )}
                       </div>
                     )}
                     {ga4Result?.search_console_error && (
@@ -1984,6 +2166,9 @@ export default function SeoMigrationWizardPage() {
                         <tbody>
                           {keywordRows.map((r, i) => {
                             const keywords = pathToGscKeywords.get(r.path) ?? [];
+                            const trafficRowKey = `${i}::${r.path}`;
+                            const trafficExpanded = expandedKeywordRowKeys.has(trafficRowKey);
+                            const visibleKeywords = trafficExpanded || keywords.length <= 8 ? keywords : keywords.slice(0, 8);
                             return (
                             <tr key={`${r.path}-${i}`} className="border-b border-border/50">
                               <td className="px-2 py-1 whitespace-nowrap"><code className="text-body-small">{r.path}</code></td>
@@ -1993,22 +2178,38 @@ export default function SeoMigrationWizardPage() {
                               <td className="px-2 py-1">
                                 <Input value={r.primaryKeyword} onChange={(e) => setKeywordRows((prev) => prev.map((row, j) => (j === i ? { ...row, primaryKeyword: e.target.value } : row)))} className="min-w-[120px]" placeholder="e.g. THC tonics" />
                               </td>
-                              <td className="px-2 py-1 max-w-[280px]">
+                              <td className="px-2 py-1 max-w-[min(100vw,320px)] align-top">
                                 {keywords.length === 0 ? (
                                   <span className="text-fg-muted">—</span>
                                 ) : (
-                                  <ul className="list-disc list-inside text-body-small space-y-0.5">
-                                    {keywords.slice(0, 8).map((k, ki) => {
-                                      const vol = keywordVolumeMap[k.query];
-                                      const volStr = vol !== undefined && vol > 0 ? (vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : String(vol)) : null;
-                                      return (
-                                        <li key={ki} title={`${k.clicks} clicks, ${k.impressions} impressions${volStr ? `, ${vol} monthly searches` : ""}`}>
-                                          {k.query} <span className="text-fg-muted">({k.clicks}{volStr ? `, ${volStr} vol` : ""})</span>
-                                        </li>
-                                      );
-                                    })}
-                                    {keywords.length > 8 && <li className="text-fg-muted">+{keywords.length - 8} more</li>}
-                                  </ul>
+                                  <div>
+                                    <ul
+                                      className={`list-disc list-inside text-body-small space-y-0.5 ${trafficExpanded ? "max-h-[min(50vh,360px)] overflow-y-auto pr-1" : ""}`}
+                                    >
+                                      {visibleKeywords.map((k, ki) => {
+                                        const vol = keywordVolumeMap[k.query];
+                                        const volStr = vol !== undefined && vol > 0 ? (vol >= 1000 ? `${(vol / 1000).toFixed(1)}k` : String(vol)) : null;
+                                        return (
+                                          <li key={ki} title={`${k.clicks} clicks, ${k.impressions} impressions${volStr ? `, ${vol} monthly searches` : ""}`}>
+                                            {k.query}{" "}
+                                            <span className="text-fg-muted">
+                                              ({k.clicks}
+                                              {volStr ? `, ${volStr} vol` : ""})
+                                            </span>
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                    {keywords.length > 8 && (
+                                      <button
+                                        type="button"
+                                        className="mt-1.5 block w-full text-left text-body-small font-medium text-brand-600 hover:underline"
+                                        onClick={() => toggleKeywordTrafficExpanded(trafficRowKey)}
+                                      >
+                                        {trafficExpanded ? "Show less" : `Show all ${keywords.length} keywords`}
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </td>
                               <td className="px-2 py-1 text-body-small">
@@ -2156,11 +2357,39 @@ export default function SeoMigrationWizardPage() {
                 <p className="text-body-small text-fg-muted mb-3">
                   Mappings are saved in this browser and reload after refresh or redeploy (same origin). They are tied to the brand and source URL from step 1; changing the brand clears saved redirects.
                 </p>
-                {(crawlResult?.urls?.length || ga4Result?.pages?.length) ? (
-                  <Button type="button" variant="secondary" size="sm" className="mb-3" onClick={() => setRedirectMap(buildRedirectMapFromCrawlAndGa4())}>
-                    Re-seed from crawl + GA4 (union, no duplicates)
+                <input
+                  ref={redirectCsvInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  aria-hidden
+                  onChange={onRedirectCsvFileChange}
+                />
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  {(crawlResult?.urls?.length || ga4Result?.pages?.length) ? (
+                    <Button type="button" variant="secondary" size="sm" onClick={() => setRedirectMap(buildRedirectMapFromCrawlAndGa4())}>
+                      Re-seed from crawl + GA4 (union, no duplicates)
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={redirectMap.length === 0}
+                    onClick={downloadRedirectCsv}
+                  >
+                    Export CSV
                   </Button>
-                ) : null}
+                  <Button type="button" variant="secondary" size="sm" onClick={() => triggerRedirectCsvImport("merge")}>
+                    Import CSV (merge)
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => triggerRedirectCsvImport("replace")}>
+                    Import CSV (replace all)
+                  </Button>
+                </div>
+                {redirectCsvImportError && (
+                  <p className="mb-3 text-body-small text-state-danger">{redirectCsvImportError}</p>
+                )}
                 {redirectMap.length === 0 && !(crawlResult?.urls?.length || ga4Result?.pages?.length) && (
                   <p className="text-body-small text-fg-muted">Run the crawl in step 1 and/or fetch GA4 in step 2 to seed the redirect map (union of all URLs, no duplicates).</p>
                 )}
