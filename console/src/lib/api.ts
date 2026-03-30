@@ -1586,6 +1586,10 @@ export type WpShopifyMigrationRunParams = WpShopifyMigrationWooRestParams & {
   max_files?: number;
   create_redirects?: boolean;
   skip_if_exists_in_shopify?: boolean;
+  /** Public storefront origin (e.g. https://stigmathc.com) so tag redirect CSV can pre-fill /blogs/.../tagged/{slug}. */
+  target_store_url?: string;
+  /** When the store has multiple blogs, pin the blog handle used for tag URLs. */
+  shopify_blog_handle?: string;
   wp_username?: string;
   wp_application_password?: string;
   environment?: string;
@@ -1595,7 +1599,7 @@ export type WpShopifyMigrationRunResult = {
   message?: string;
   entities?: string[];
   unsupported?: string[];
-  /** WordPress tag archive URLs → empty “to” column; merge into redirect map in step 6. */
+  /** WordPress tag archive URLs → suggested Shopify /blogs/{handle}/tagged/{slug} when Shopify + target URL are set. */
   blog_tag_redirect_csv?: string;
   blog_tag_redirect_csv_rows?: number;
 };
@@ -1613,6 +1617,8 @@ export async function wpShopifyMigrationRun(
     ...(params.max_files != null ? { max_files: params.max_files } : {}),
     ...(params.create_redirects === false ? { create_redirects: false } : {}),
     ...(params.skip_if_exists_in_shopify === true ? { skip_if_exists_in_shopify: true } : {}),
+    ...(params.target_store_url?.trim() ? { target_store_url: params.target_store_url.trim() } : {}),
+    ...(params.shopify_blog_handle?.trim() ? { shopify_blog_handle: params.shopify_blog_handle.trim() } : {}),
     ...(params.wp_username ? { wp_username: params.wp_username } : {}),
     ...(params.wp_application_password ? { wp_application_password: params.wp_application_password } : {}),
     ...(params.woo_server ? { woo_server: params.woo_server } : {}),

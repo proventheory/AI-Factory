@@ -242,25 +242,33 @@ export async function handleWpShopifyWizardJob(
         excludedByEntity[k] = new Set(Array.isArray(v) ? v.map((x) => String(x)) : []);
       }
 
+      const needsShopifyPdfs = entities.includes("pdfs");
+      const wantsTagRedirects = entities.includes("blog_tags");
       let shopDomain: string | null = null;
       let shopAccessToken: string | null = null;
-      if (entities.includes("pdfs")) {
+      if (needsShopifyPdfs || wantsTagRedirects) {
         const sm = await getShopifyShopForBrand(client, brandId);
         const tp = await getShopifyAccessTokenForBrand(client, brandId);
-        if (!sm || !tp?.access_token) {
-          throw new Error("Shopify must be connected to migrate PDFs (Brands → Edit brand → Shopify).");
+        if (needsShopifyPdfs) {
+          if (!sm || !tp?.access_token) {
+            throw new Error("Shopify must be connected to migrate PDFs (Brands → Edit brand → Shopify).");
+          }
         }
-        shopDomain = sm.shop_domain;
-        shopAccessToken = tp.access_token;
+        shopDomain = sm?.shop_domain ?? null;
+        shopAccessToken = tp?.access_token ?? null;
       }
 
       const maxRaw = Number(payload.max_files);
       const maxPdfFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
+      const targetStoreUrl = typeof payload.target_store_url === "string" ? payload.target_store_url.trim() : "";
+      const shopifyBlogHandle = typeof payload.shopify_blog_handle === "string" ? payload.shopify_blog_handle.trim() : "";
       const artifact = await executeWizardMigrationRun({
         server,
         wpAuthHeader: wpAuth,
         shopDomain,
         shopAccessToken,
+        targetStoreUrl: targetStoreUrl || null,
+        shopifyBlogHandle: shopifyBlogHandle || null,
         entities,
         excludedByEntity,
         maxPdfFiles,

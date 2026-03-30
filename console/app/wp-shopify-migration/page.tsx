@@ -268,6 +268,8 @@ type WizardSession = {
   launchAcked: boolean;
   migrationEntities: string[];
   wooServer?: string;
+  /** Shopify blog handle for /blogs/{handle}/tagged/... suggestions in tag redirect CSV. */
+  migrationTagBlogHandle?: string;
 };
 
 function getWizardSession(): WizardSession | null {
@@ -560,6 +562,8 @@ export default function WpShopifyMigrationWizardPage() {
   } | null>(null);
   const [pdfImportCreateRedirects, setPdfImportCreateRedirects] = useState(true);
   const [pdfImportSkipIfExists, setPdfImportSkipIfExists] = useState(true);
+  /** When blog tags are migrated, optional pin for Shopify blog handle (multi-blog stores). */
+  const [migrationTagBlogHandle, setMigrationTagBlogHandle] = useState("");
   const [pdfResolveLoading, setPdfResolveLoading] = useState(false);
   /** Latest PDF import/resolve pipeline run (for link while job runs). */
   const [pdfActivePipelineRunId, setPdfActivePipelineRunId] = useState<string | null>(null);
@@ -756,6 +760,7 @@ export default function WpShopifyMigrationWizardPage() {
         if (Array.isArray(session.migrationEntities)) setMigrationEntities(new Set(session.migrationEntities));
         ga4AutoFetchedRef.current = (session.ga4Result?.pages?.length ?? 0) > 0;
         setWooServer(typeof session.wooServer === "string" ? session.wooServer : "");
+        setMigrationTagBlogHandle(typeof session.migrationTagBlogHandle === "string" ? session.migrationTagBlogHandle : "");
         setWizardLite({
           brandId: nextBrand,
           step: nextStep,
@@ -826,6 +831,7 @@ export default function WpShopifyMigrationWizardPage() {
     setInternalLinkPlan([]);
     setLaunchChecklist({ redirectsImplemented: false, pagesCreated: false, metadataSet: false, internalLinksInPlace: false, fourOhFoursHandled: false });
     setLaunchAcked(false);
+    setMigrationTagBlogHandle("");
     setBrandId(newBrandId);
   }, [brandId]);
 
@@ -864,10 +870,11 @@ export default function WpShopifyMigrationWizardPage() {
         launchAcked,
         migrationEntities: Array.from(migrationEntities),
         wooServer,
+        migrationTagBlogHandle,
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [brandId, sourceUrl, useLinkCrawl, maxUrls, step, gscSiteUrl, gscResult, ga4PropertyId, ga4Result, keywordRows, keywordVolumeMap, targetBaseUrl, pagePlan, redirectMap, internalLinkPlan, launchChecklist, launchAcked, migrationEntities, wooServer]);
+  }, [brandId, sourceUrl, useLinkCrawl, maxUrls, step, gscSiteUrl, gscResult, ga4PropertyId, ga4Result, keywordRows, keywordVolumeMap, targetBaseUrl, pagePlan, redirectMap, internalLinkPlan, launchChecklist, launchAcked, migrationEntities, wooServer, migrationTagBlogHandle]);
 
   // Restore cached crawl for current source URL on load and when URL changes so the table shows without re-running crawl
   useLayoutEffect(() => {
@@ -1467,6 +1474,8 @@ export default function WpShopifyMigrationWizardPage() {
         create_redirects: pdfImportCreateRedirects,
         skip_if_exists_in_shopify: pdfImportSkipIfExists,
         environment: pipelineEnvironment,
+        ...(targetBaseUrl.trim() ? { target_store_url: targetBaseUrl.trim() } : {}),
+        ...(migrationTagBlogHandle.trim() ? { shopify_blog_handle: migrationTagBlogHandle.trim() } : {}),
         ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
           ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
           : {}),
@@ -2570,8 +2579,26 @@ export default function WpShopifyMigrationWizardPage() {
                     {migrationRunLoading ? "Migrating…" : "Run migration"}
                   </Button>
                 </div>
+                {migrationEntities.has("blog_tags") && (
+                  <div className="mt-4 max-w-xl space-y-2 rounded-lg border border-border bg-fg-muted/5 px-3 py-2">
+                    <label htmlFor="migration-tag-blog-handle" className="text-body-small font-medium">
+                      Shopify blog handle (optional)
+                    </label>
+                    <Input
+                      id="migration-tag-blog-handle"
+                      value={migrationTagBlogHandle}
+                      onChange={(e) => setMigrationTagBlogHandle(e.target.value)}
+                      placeholder="e.g. stigma-cannabis-blog"
+                      className="max-w-md"
+                    />
+                    <p className="text-body-small text-fg-muted">
+                      Used only for <strong>Blog tags</strong>. Leave blank if the store has a single blog. With Shopify connected, we pre-fill the tag CSV “Redirect to” column as{" "}
+                      <code className="rounded bg-fg-muted/15 px-1">{"{your public URL}/blogs/{handle}/tagged/{wp-tag-slug}"}</code> (set public URL in step 5). Those pages only work once at least one post has that tag in Shopify; fix mismatched handles in step 6 if needed.
+                    </p>
+                  </div>
+                )}
                 <p className="mt-2 max-w-3xl text-body-small text-fg-muted">
-                  <strong>Run migration</strong> does real work only for what we support today: <strong>PDFs</strong> go to Shopify Files (needs Shopify connected). <strong>Blog tags</strong> are exported from WordPress with each tag’s <strong>archive URL</strong> (<code className="bg-fg-muted/20 px-1">link</code>) plus a <strong>redirect CSV</strong> (empty “to” column) so you can map them in step 6 like PDFs—no need to wait for blog post ETL. Shopify doesn’t have WP-style tag index pages; you choose where each old tag URL should land.
+                  <strong>Run migration</strong> does real work only for what we support today: <strong>PDFs</strong> go to Shopify Files (needs Shopify connected). <strong>Blog tags</strong> are read from WordPress and written to a <strong>redirect CSV</strong> (old tag archive URL → suggested Shopify tagged URL when Shopify is connected and your public store URL is set). Merge into step 6 or edit before import. This does <strong>not</strong> create tags in Shopify—tags appear when you add them to posts (or importers).
                 </p>
 
                 {migrationDryRunError && (

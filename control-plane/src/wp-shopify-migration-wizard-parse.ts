@@ -119,6 +119,10 @@ export function parseWizardJobPayload(body: Record<string, unknown>): WpShopifyW
         create_redirects: body.create_redirects !== false,
         skip_if_exists_in_shopify: body.skip_if_exists_in_shopify === true,
       };
+      const targetStore = String(body.target_store_url ?? "").trim();
+      if (targetStore) out.target_store_url = targetStore;
+      const blogH = String(body.shopify_blog_handle ?? "").trim();
+      if (blogH) out.shopify_blog_handle = blogH;
       if (body.wp_username != null && String(body.wp_username).trim() && body.wp_application_password != null && String(body.wp_application_password).trim()) {
         out.wp_username = String(body.wp_username).trim();
         out.wp_application_password = String(body.wp_application_password).trim();
