@@ -26,6 +26,7 @@ import type {
   BrandProfileRow,
   MigrationPreviewItem,
   SeoMigrationMigratePdfsResult,
+  SeoMigrationPdfRow,
 } from "@/lib/api";
 import { formatApiError } from "@/lib/api";
 
@@ -182,6 +183,41 @@ const WIZARD_LITE_KEY = "seo-migration-wizard-lite";
 const WOO_STORE_CACHE_KEY = "seo-migration-woo-store";
 /** Redirect map (step 6–7): separate from main session so mappings survive localStorage quota failures on large GSC/crawl payloads. */
 const REDIRECT_MAP_SIDE_KEY = "seo-migration-redirect-map-side";
+
+function normalizeWooServerForPdfCache(s: string): string {
+  return s.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+function pdfImportCacheStorageKey(brandId: string, wooNorm: string): string {
+  return `ai-factory.seoPdfImport.v1:${brandId}:${wooNorm}`;
+}
+
+type PdfImportBrowserCache = {
+  savedAt: string;
+  dryPdfCount?: number;
+  rows: SeoMigrationPdfRow[];
+  summary?: SeoMigrationMigratePdfsResult["summary"];
+  truncated?: boolean;
+  redirect_csv: string;
+};
+
+/** Merge "Redirect from,Redirect to" CSV bodies (dedupe lines). */
+function mergeShopifyPdfRedirectCsv(a: string, b: string): string {
+  const lines = (s: string) => s.split(/\r?\n/).filter((ln) => ln.trim().length > 0);
+  const la = lines(a);
+  const lb = lines(b);
+  if (la.length === 0) return b.trim();
+  if (lb.length === 0) return a.trim();
+  const header = la[0];
+  const seen = new Set<string>();
+  const body: string[] = [];
+  for (const ln of [...la.slice(1), ...lb.slice(1)]) {
+    if (seen.has(ln)) continue;
+    seen.add(ln);
+    body.push(ln);
+  }
+  return [header, ...body].join("\n");
+}
 
 type WizardLite = {
   brandId: string;
@@ -529,7 +565,15 @@ export default function SeoMigrationWizardPage() {
   const [pdfImportLoading, setPdfImportLoading] = useState(false);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
   const [pdfImportResult, setPdfImportResult] = useState<SeoMigrationMigratePdfsResult | null>(null);
+  const [pdfImportProgress, setPdfImportProgress] = useState<{
+    current: number;
+    total: number;
+    title?: string;
+    phase?: string;
+  } | null>(null);
   const [pdfImportCreateRedirects, setPdfImportCreateRedirects] = useState(true);
+  const [pdfImportSkipIfExists, setPdfImportSkipIfExists] = useState(true);
+  const [pdfResolveLoading, setPdfResolveLoading] = useState(false);
 
   /** Vercel preview hostnames change per deployment; localStorage is per-origin, so each preview starts empty. */
   const [isVercelPreviewHost, setIsVercelPreviewHost] = useState(false);
@@ -603,6 +647,53 @@ export default function SeoMigrationWizardPage() {
       setMigrationExpandedEntity(null);
     }
   }, [migrationEntities, migrationExpandedEntity]);
+
+  /** Restore last PDF import rows from localStorage (per brand + Woo base URL). */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const b = brandId.trim();
+    const w = normalizeWooServerForPdfCache(wooServer);
+    if (!b || !w) return;
+    try {
+      const raw = localStorage.getItem(pdfImportCacheStorageKey(b, w));
+      if (!raw) {
+        setPdfImportResult(null);
+        return;
+      }
+      const o = JSON.parse(raw) as PdfImportBrowserCache;
+      if (!Array.isArray(o.rows) || o.rows.length === 0) return;
+      setPdfImportResult({
+        rows: o.rows,
+        redirect_csv: o.redirect_csv ?? "",
+        truncated: Boolean(o.truncated),
+        summary: o.summary,
+        hint: o.savedAt ? `Restored from this browser (${new Date(o.savedAt).toLocaleString()}).` : undefined,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, [brandId, wooServer]);
+
+  /** Persist PDF import results for cross-session comparison and “fetch URLs” without re-uploading. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const b = brandId.trim();
+    const w = normalizeWooServerForPdfCache(wooServer);
+    if (!b || !w || !pdfImportResult?.rows?.length) return;
+    const payload: PdfImportBrowserCache = {
+      savedAt: new Date().toISOString(),
+      dryPdfCount: migrationDryRunResult?.counts?.pdfs,
+      rows: pdfImportResult.rows,
+      summary: pdfImportResult.summary,
+      truncated: pdfImportResult.truncated,
+      redirect_csv: pdfImportResult.redirect_csv ?? "",
+    };
+    try {
+      localStorage.setItem(pdfImportCacheStorageKey(b, w), JSON.stringify(payload));
+    } catch {
+      /* quota */
+    }
+  }, [brandId, wooServer, pdfImportResult, migrationDryRunResult?.counts?.pdfs]);
 
   const hasRestoredSessionRef = useRef(false);
   const skipNextPersistRef = useRef(false);
@@ -1324,23 +1415,170 @@ export default function SeoMigrationWizardPage() {
     setPdfImportLoading(true);
     setPdfImportError(null);
     setPdfImportResult(null);
+    setPdfImportProgress(null);
     try {
-      const result = await api.seoMigrationMigratePdfs({
-        woo_server: wooServer.trim(),
-        woo_consumer_key: wooConsumerKey.trim(),
-        woo_consumer_secret: wooConsumerSecret.trim(),
-        brand_id: brandId,
-        excluded_ids: migrationExcludedIds.pdfs ?? [],
-        create_redirects: pdfImportCreateRedirects,
-        ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
-          ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
-          : {}),
-      });
+      const result = await api.seoMigrationMigratePdfsStreaming(
+        {
+          woo_server: wooServer.trim(),
+          woo_consumer_key: wooConsumerKey.trim(),
+          woo_consumer_secret: wooConsumerSecret.trim(),
+          brand_id: brandId,
+          excluded_ids: migrationExcludedIds.pdfs ?? [],
+          create_redirects: pdfImportCreateRedirects,
+          skip_if_exists_in_shopify: pdfImportSkipIfExists,
+          ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+            ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+            : {}),
+        },
+        (line) => {
+          if (line.event === "init") {
+            setPdfImportProgress({
+              current: 0,
+              total: line.total,
+              phase: `Queued (up to ${line.max_files} of ${line.pdf_total_in_wordpress} PDFs in WordPress)`,
+            });
+          } else if (line.event === "item") {
+            if (line.step === "start") {
+              setPdfImportProgress({
+                current: line.current,
+                total: line.total,
+                title: line.title,
+                phase: "Matching Shopify Files / downloading / uploading…",
+              });
+            } else {
+              setPdfImportProgress({
+                current: line.current,
+                total: line.total,
+                title: line.title,
+                phase: line.error
+                  ? line.shopify_file_url
+                    ? "Finished (redirect or other warning)"
+                    : "Failed"
+                  : "Done",
+              });
+            }
+          }
+        },
+      );
       setPdfImportResult(result);
     } catch (e) {
       setPdfImportError(formatApiError(e));
     } finally {
       setPdfImportLoading(false);
+      setPdfImportProgress(null);
+    }
+  };
+
+  const runFetchPdfUrlsFromShopify = async () => {
+    if (!wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()) {
+      setPdfImportError("WooCommerce server URL, consumer key, and consumer secret are required.");
+      return;
+    }
+    if (!brandId || !brandShopify?.connected) {
+      setPdfImportError("Select a brand in step 1 and connect Shopify for that brand.");
+      return;
+    }
+    if (!migrationEntities.has("pdfs")) {
+      setPdfImportError('Enable the "PDFs (media files)" sheet first.');
+      return;
+    }
+    const prev = pdfImportResult;
+    if (!prev?.rows?.length) {
+      setPdfImportError("Import PDFs once (or open a saved session) so there are result rows. Then use this to fill in missing Shopify URLs without re-uploading.");
+      return;
+    }
+    const wordpress_ids = prev.rows.filter((r) => !r.shopify_file_url?.trim()).map((r) => r.wordpress_id);
+    if (wordpress_ids.length === 0) {
+      setPdfImportError("Every row already has a Shopify file URL.");
+      return;
+    }
+    setPdfResolveLoading(true);
+    setPdfImportError(null);
+    setPdfImportProgress(null);
+    try {
+      const resolved = await api.seoMigrationResolvePdfUrlsStreaming(
+        {
+          woo_server: wooServer.trim(),
+          woo_consumer_key: wooConsumerKey.trim(),
+          woo_consumer_secret: wooConsumerSecret.trim(),
+          brand_id: brandId,
+          create_redirects: pdfImportCreateRedirects,
+          wordpress_ids,
+          ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+            ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+            : {}),
+        },
+        (line) => {
+          if (line.event === "init") {
+            setPdfImportProgress({
+              current: 0,
+              total: line.total,
+              phase: `Resolving ${wordpress_ids.length} PDFs from Shopify Files (no upload)`,
+            });
+          } else if (line.event === "item") {
+            if (line.step === "start") {
+              setPdfImportProgress({
+                current: line.current,
+                total: line.total,
+                title: line.title,
+                phase: "Looking up file in Shopify / waiting for CDN URL…",
+              });
+            } else {
+              setPdfImportProgress({
+                current: line.current,
+                total: line.total,
+                title: line.title,
+                phase: line.error
+                  ? line.shopify_file_url
+                    ? "URL resolved (redirect or other warning)"
+                    : "Could not resolve"
+                  : "Resolved",
+              });
+            }
+          }
+        },
+      );
+      setPdfImportResult((before) => {
+        const base = before ?? prev;
+        const byId = new Map(base.rows.map((r) => [r.wordpress_id, { ...r }]));
+        for (const r of resolved.rows) {
+          const cur = byId.get(r.wordpress_id);
+          if (!cur) {
+            byId.set(r.wordpress_id, r);
+            continue;
+          }
+          byId.set(r.wordpress_id, {
+            ...cur,
+            shopify_file_url: r.shopify_file_url ?? cur.shopify_file_url,
+            redirect_path: r.redirect_path ?? cur.redirect_path,
+            redirect_created: r.redirect_created ?? cur.redirect_created,
+            note: r.note ?? cur.note,
+            error: r.shopify_file_url ? r.error || undefined : r.error ?? cur.error,
+          });
+        }
+        const rows = Array.from(byId.values());
+        const uploaded = rows.filter((x) => x.shopify_file_url).length;
+        const failed = rows.filter((x) => x.error && !x.shopify_file_url).length;
+        const warnings = rows.filter((x) => x.shopify_file_url && x.error).length;
+        return {
+          ...base,
+          rows,
+          redirect_csv: mergeShopifyPdfRedirectCsv(base.redirect_csv ?? "", resolved.redirect_csv ?? ""),
+          truncated: base.truncated || resolved.truncated,
+          summary: {
+            uploaded,
+            failed,
+            warnings,
+            truncated: base.truncated || resolved.truncated,
+          },
+          hint: resolved.hint ?? base.hint,
+        };
+      });
+    } catch (e) {
+      setPdfImportError(formatApiError(e));
+    } finally {
+      setPdfResolveLoading(false);
+      setPdfImportProgress(null);
     }
   };
 
@@ -1356,6 +1594,11 @@ export default function SeoMigrationWizardPage() {
   };
 
   const shopifyCredentialsOk = Boolean(brandId && brandShopify?.connected);
+
+  const pdfImportMissingUrlCount = useMemo(
+    () => (pdfImportResult?.rows ?? []).filter((r) => !r.shopify_file_url?.trim()).length,
+    [pdfImportResult?.rows],
+  );
 
   const crawlColumns: Column<SeoMigrationCrawlResult["urls"][0]>[] = [
     { key: "path", header: "Path", render: (r) => <code className="text-body-small">{r.path || "/"}</code> },
@@ -1941,8 +2184,19 @@ export default function SeoMigrationWizardPage() {
                   <div className="mt-4 rounded-lg border border-border bg-brand-50/40 dark:bg-brand-950/20 px-3 py-3">
                     <p className="text-body-small font-medium text-fg mb-2">Import PDFs to Shopify</p>
                     <p className="text-body-small text-fg-muted mb-3">
-                      Uses your WordPress site URL (same as WooCommerce server), optional application password for private media, and this brand&apos;s Shopify connector. Up to 500 files per run by default; expand <strong>PDFs</strong> above to exclude specific attachments.
+                      Uses your WordPress site URL (same as WooCommerce server), optional application password for private media, and this brand&apos;s Shopify connector. Up to 500 files per run by default; expand <strong>PDFs</strong> above to exclude specific attachments. Results are saved in this browser for this brand and store URL so you can resolve CDN URLs later without re-uploading.
                     </p>
+                    {migrationDryRunResult?.counts?.pdfs != null && pdfImportResult?.summary ? (
+                      <div className="mb-3 rounded-md border border-border bg-bg/80 px-3 py-2 text-body-small text-fg-muted">
+                        <strong className="text-fg">Dry run vs last table:</strong> WordPress PDF count (before exclusions) is{" "}
+                        <strong className="text-fg">{migrationDryRunResult.counts.pdfs}</strong>. This table has{" "}
+                        <strong className="text-fg">{pdfImportResult.rows.length}</strong> rows from the last import/resolve,{" "}
+                        <strong className="text-fg">{pdfImportResult.summary.uploaded}</strong> with a Shopify file URL,{" "}
+                        <strong className="text-fg">{pdfImportMissingUrlCount}</strong> still missing a URL,{" "}
+                        <strong className="text-fg">{pdfImportResult.summary.failed}</strong> failed. Exclusions, truncated runs, and
+                        non-import flows explain differences from the dry-run total.
+                      </div>
+                    ) : null}
                     <label className="mb-3 flex cursor-pointer items-center gap-2 text-body-small text-fg">
                       <Checkbox
                         checked={pdfImportCreateRedirects}
@@ -1954,14 +2208,49 @@ export default function SeoMigrationWizardPage() {
                         <code className="rounded bg-fg-muted/15 px-1">/wp-content/uploads/…</code>) to the new file URLs (needs redirect scope on the Shopify app; if the API skips a row, use the CSV below).
                       </span>
                     </label>
+                    <label className="mb-3 flex cursor-pointer items-center gap-2 text-body-small text-fg">
+                      <Checkbox
+                        checked={pdfImportSkipIfExists}
+                        onChange={(ev) => setPdfImportSkipIfExists(ev.target.checked)}
+                        className="shrink-0"
+                      />
+                      <span>
+                        Skip upload when a matching PDF already exists in Shopify Files (links the existing file and avoids duplicates).
+                      </span>
+                    </label>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         type="button"
                         variant="primary"
                         onClick={() => void runPdfImport()}
-                        disabled={pdfImportLoading || !shopifyCredentialsOk || !wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()}
+                        disabled={
+                          pdfImportLoading ||
+                          pdfResolveLoading ||
+                          !shopifyCredentialsOk ||
+                          !wooServer.trim() ||
+                          !wooConsumerKey.trim() ||
+                          !wooConsumerSecret.trim()
+                        }
                       >
                         {pdfImportLoading ? "Importing PDFs…" : "Import PDFs to Shopify"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void runFetchPdfUrlsFromShopify()}
+                        disabled={
+                          pdfImportLoading ||
+                          pdfResolveLoading ||
+                          !shopifyCredentialsOk ||
+                          !wooServer.trim() ||
+                          !wooConsumerKey.trim() ||
+                          !wooConsumerSecret.trim() ||
+                          pdfImportMissingUrlCount === 0
+                        }
+                      >
+                        {pdfResolveLoading
+                          ? "Resolving URLs…"
+                          : `Fetch URLs from Shopify (${pdfImportMissingUrlCount} without URL)`}
                       </Button>
                       {pdfImportResult?.redirect_csv && pdfImportResult.redirect_csv.split("\n").length > 1 && (
                         <Button type="button" variant="secondary" size="sm" onClick={downloadPdfRedirectCsv}>
@@ -1972,21 +2261,59 @@ export default function SeoMigrationWizardPage() {
                     {pdfImportError && (
                       <p className="mt-2 text-body-small text-state-danger">{pdfImportError}</p>
                     )}
+                    {(pdfImportLoading || pdfResolveLoading) && pdfImportProgress && (
+                      <div className="mt-3 rounded-md border border-border bg-bg px-3 py-2">
+                        <p className="text-body-small text-fg">
+                          <strong>
+                            PDF {pdfImportProgress.current} of {pdfImportProgress.total}
+                          </strong>
+                          {pdfImportProgress.title ? (
+                            <span className="text-fg-muted">
+                              {" "}
+                              — {pdfImportProgress.title.length > 72 ? `${pdfImportProgress.title.slice(0, 72)}…` : pdfImportProgress.title}
+                            </span>
+                          ) : null}
+                        </p>
+                        {pdfImportProgress.phase && (
+                          <p className="mt-0.5 text-body-small text-fg-muted">{pdfImportProgress.phase}</p>
+                        )}
+                        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-fg-muted/15">
+                          <div
+                            className="h-full bg-brand-500 transition-[width] duration-300 ease-out"
+                            style={{
+                              width: `${Math.min(100, Math.round((pdfImportProgress.current / Math.max(1, pdfImportProgress.total)) * 100))}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
                     {pdfImportResult?.summary && (
                       <p className="mt-2 text-body-small text-fg-muted">
-                        Uploaded: <strong className="text-fg">{pdfImportResult.summary.uploaded}</strong>, failed:{" "}
+                        With Shopify URL: <strong className="text-fg">{pdfImportResult.summary.uploaded}</strong>, failed:{" "}
                         <strong className="text-fg">{pdfImportResult.summary.failed}</strong>
-                        {pdfImportResult.truncated ? ", more PDFs remain (run again to continue)." : "."}
+                        {pdfImportResult.summary.warnings != null && pdfImportResult.summary.warnings > 0 ? (
+                          <>
+                            , redirect/other warnings:{" "}
+                            <strong className="text-fg">{pdfImportResult.summary.warnings}</strong>
+                          </>
+                        ) : null}
+                        {pdfImportMissingUrlCount > 0 ? (
+                          <>
+                            , <strong className="text-fg">{pdfImportMissingUrlCount}</strong> rows still need a URL (use Fetch URLs or re-import).
+                          </>
+                        ) : null}
+                        {pdfImportResult.truncated ? " More PDFs remain (run again to continue)." : ""}
                       </p>
                     )}
                     {pdfImportResult?.hint && <p className="mt-1 text-body-small text-fg-muted">{pdfImportResult.hint}</p>}
                     {pdfImportResult?.rows && pdfImportResult.rows.length > 0 && (
                       <div className="mt-3 max-h-[min(40vh,320px)] overflow-auto rounded-md border border-border">
-                        <table className="w-full min-w-[480px] border-collapse text-body-small">
+                        <table className="w-full min-w-[560px] border-collapse text-body-small">
                           <thead className="sticky top-0 bg-bg border-b border-border">
                             <tr className="text-left">
                               <th className="px-2 py-1.5 font-medium">ID</th>
                               <th className="px-2 py-1.5 font-medium">Title</th>
+                              <th className="px-2 py-1.5 font-medium">Note</th>
                               <th className="px-2 py-1.5 font-medium">Result</th>
                             </tr>
                           </thead>
@@ -1994,17 +2321,27 @@ export default function SeoMigrationWizardPage() {
                             {pdfImportResult.rows.map((r) => (
                               <tr key={r.wordpress_id} className="border-b border-border/60">
                                 <td className="px-2 py-1 align-top whitespace-nowrap">{r.wordpress_id}</td>
-                                <td className="px-2 py-1 align-top max-w-[180px] break-words">{r.title}</td>
-                                <td className="px-2 py-1 align-top max-w-[280px] break-all">
-                                  {r.error ? (
-                                    <span className="text-state-danger">{r.error}</span>
-                                  ) : r.shopify_file_url ? (
+                                <td className="px-2 py-1 align-top max-w-[160px] break-words">{r.title}</td>
+                                <td className="px-2 py-1 align-top max-w-[140px] break-words text-fg-muted">
+                                  {r.note ?? "—"}
+                                </td>
+                                <td className="px-2 py-1 align-top max-w-[240px] break-all">
+                                  {r.shopify_file_url ? (
                                     <a href={r.shopify_file_url} className="text-link hover:underline" target="_blank" rel="noreferrer">
                                       File URL
                                     </a>
-                                  ) : (
+                                  ) : null}
+                                  {r.error ? (
+                                    <span
+                                      className={
+                                        r.shopify_file_url ? "mt-0.5 block text-body-small text-state-warning" : "text-state-danger"
+                                      }
+                                    >
+                                      {r.error}
+                                    </span>
+                                  ) : !r.shopify_file_url ? (
                                     "—"
-                                  )}
+                                  ) : null}
                                 </td>
                               </tr>
                             ))}

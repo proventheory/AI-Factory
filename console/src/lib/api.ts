@@ -1254,6 +1254,8 @@ export type SeoMigrationPdfRow = {
   shopify_file_url?: string;
   redirect_path?: string;
   redirect_created?: boolean;
+  /** e.g. matched existing Shopify file without upload */
+  note?: string;
   error?: string;
 };
 export type SeoMigrationMigratePdfsParams = {
@@ -1266,12 +1268,14 @@ export type SeoMigrationMigratePdfsParams = {
   excluded_ids?: string[];
   create_redirects?: boolean;
   max_files?: number;
+  /** Match recent Shopify Files by filename and skip fileCreate when found. */
+  skip_if_exists_in_shopify?: boolean;
 };
 export type SeoMigrationMigratePdfsResult = {
   rows: SeoMigrationPdfRow[];
   redirect_csv: string;
   truncated: boolean;
-  summary?: { uploaded: number; failed: number; truncated: boolean };
+  summary?: { uploaded: number; failed: number; warnings?: number; truncated: boolean };
   hint?: string;
 };
 
@@ -1290,6 +1294,141 @@ export async function seoMigrationMigratePdfs(params: SeoMigrationMigratePdfsPar
   }
   if (!res.ok) throw new Error((data as { error?: string }).error ?? text);
   return data;
+}
+
+/** NDJSON stream: progress lines then one `pdf_migration_complete` (same shape as {@link seoMigrationMigratePdfs}). */
+export type SeoMigrationPdfProgressInit = {
+  type: "pdf_migration_progress";
+  event: "init";
+  total: number;
+  pdf_total_in_wordpress: number;
+  max_files: number;
+};
+export type SeoMigrationPdfProgressItem = {
+  type: "pdf_migration_progress";
+  event: "item";
+  current: number;
+  total: number;
+  wordpress_id: string;
+  title: string;
+  step: "start" | "complete";
+  shopify_file_url?: string;
+  error?: string;
+};
+export type SeoMigrationPdfProgressLine = SeoMigrationPdfProgressInit | SeoMigrationPdfProgressItem;
+
+export async function seoMigrationMigratePdfsStreaming(
+  params: SeoMigrationMigratePdfsParams,
+  onProgress: (line: SeoMigrationPdfProgressLine) => void,
+): Promise<SeoMigrationMigratePdfsResult> {
+  const res = await fetch(`${API}/v1/seo/migration/migrate_pdfs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    body: JSON.stringify({ ...params, stream_progress: true }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    let err = t;
+    try {
+      const j = JSON.parse(t) as { error?: string };
+      if (j.error) err = j.error;
+    } catch {
+      /* use text */
+    }
+    throw new Error(err || `HTTP ${res.status}`);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body from migrate_pdfs stream");
+  const dec = new TextDecoder();
+  let buf = "";
+  let final: SeoMigrationMigratePdfsResult | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const obj = JSON.parse(line) as
+        | SeoMigrationPdfProgressLine
+        | { type: "pdf_migration_complete"; rows: SeoMigrationPdfRow[]; redirect_csv: string; truncated: boolean; summary: SeoMigrationMigratePdfsResult["summary"]; hint?: string }
+        | { type: "pdf_migration_error"; error: string };
+      if (obj.type === "pdf_migration_progress") onProgress(obj);
+      else if (obj.type === "pdf_migration_complete") {
+        final = {
+          rows: obj.rows,
+          redirect_csv: obj.redirect_csv,
+          truncated: obj.truncated,
+          summary: obj.summary,
+          hint: obj.hint,
+        };
+      } else if (obj.type === "pdf_migration_error") throw new Error(obj.error);
+    }
+  }
+  if (!final) throw new Error("Import stream ended without a final result");
+  return final;
+}
+
+/** Resolve CDN URLs for WordPress PDF media IDs from existing Shopify Files (no upload). Same NDJSON line types as import. */
+export type SeoMigrationResolvePdfUrlsParams = Omit<
+  SeoMigrationMigratePdfsParams,
+  "excluded_ids" | "max_files" | "skip_if_exists_in_shopify"
+> & {
+  wordpress_ids: string[];
+};
+
+export async function seoMigrationResolvePdfUrlsStreaming(
+  params: SeoMigrationResolvePdfUrlsParams,
+  onProgress: (line: SeoMigrationPdfProgressLine) => void,
+): Promise<SeoMigrationMigratePdfsResult> {
+  const res = await fetch(`${API}/v1/seo/migration/resolve_pdf_urls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    body: JSON.stringify({ ...params, stream_progress: true }),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    let err = txt;
+    try {
+      const j = JSON.parse(txt) as { error?: string };
+      if (j.error) err = j.error;
+    } catch {
+      /* use text */
+    }
+    throw new Error(err || `HTTP ${res.status}`);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body from resolve_pdf_urls stream");
+  const dec = new TextDecoder();
+  let buf = "";
+  let final: SeoMigrationMigratePdfsResult | null = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const obj = JSON.parse(line) as
+        | SeoMigrationPdfProgressLine
+        | { type: "pdf_migration_complete"; rows: SeoMigrationPdfRow[]; redirect_csv: string; truncated: boolean; summary: SeoMigrationMigratePdfsResult["summary"]; hint?: string }
+        | { type: "pdf_migration_error"; error: string };
+      if (obj.type === "pdf_migration_progress") onProgress(obj);
+      else if (obj.type === "pdf_migration_complete") {
+        final = {
+          rows: obj.rows,
+          redirect_csv: obj.redirect_csv,
+          truncated: obj.truncated,
+          summary: obj.summary,
+          hint: obj.hint,
+        };
+      } else if (obj.type === "pdf_migration_error") throw new Error(obj.error);
+    }
+  }
+  if (!final) throw new Error("Resolve stream ended without a final result");
+  return final;
 }
 
 export type EmailTemplateRow = {

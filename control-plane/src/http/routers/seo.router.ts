@@ -17,6 +17,7 @@ import {
   seoMigrationPreviewItems,
   seoMigrationRun,
   seoMigrationMigratePdfs,
+  seoMigrationResolvePdfUrls,
 } from "../controllers/seo.controller.js";
 
 const router = Router();
@@ -27,6 +28,7 @@ router.post("/v1/seo/migration/dry_run", seoMigrationDryRun);
 router.post("/v1/seo/migration/preview_items", seoMigrationPreviewItems);
 router.post("/v1/seo/migration/run", seoMigrationRun);
 router.post("/v1/seo/migration/migrate_pdfs", seoMigrationMigratePdfs);
+router.post("/v1/seo/migration/resolve_pdf_urls", seoMigrationResolvePdfUrls);
 router.post("/v1/products/from_url", productsFromUrlHandler);
 router.post("/v1/seo/gsc_report", seoGscReport);
 router.post("/v1/seo/ga4_report", seoGa4Report);

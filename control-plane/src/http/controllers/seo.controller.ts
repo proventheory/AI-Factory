@@ -18,7 +18,12 @@ import {
   deleteShopifyCredentialsForBrand,
   getShopifyAccessTokenForBrand,
 } from "../../shopify-brand-connector.js";
-import { migrateWordPressPdfsToShopify, wpFetchPdfMediaPage } from "../../seo-migration-pdf-shopify.js";
+import {
+  migrateWordPressPdfsToShopify,
+  resolveWordPressPdfUrlsFromShopify,
+  wpFetchPdfMediaPage,
+  type PdfMigrationResult,
+} from "../../seo-migration-pdf-shopify.js";
 import { listGa4Properties } from "../../seo-ga4-properties.js";
 import { CONTROL_PLANE_BASE, CONSOLE_URL, SEO_GOOGLE_CALLBACK_PATH } from "../constants.js";
 import { MAX_LIMIT } from "../lib/pagination.js";
@@ -886,6 +891,20 @@ export async function seoMigrationRun(req: Request, res: Response): Promise<void
   }
 }
 
+function pdfMigrationSummaryPayload(result: PdfMigrationResult): {
+  summary: { uploaded: number; failed: number; warnings: number; truncated: boolean };
+  hint: string;
+} {
+  const uploaded = result.rows.filter((r) => r.shopify_file_url).length;
+  const failed = result.rows.filter((r) => r.error && !r.shopify_file_url).length;
+  const warnings = result.rows.filter((r) => r.shopify_file_url && r.error).length;
+  return {
+    summary: { uploaded, failed, warnings, truncated: result.truncated },
+    hint:
+      "Ensure the Shopify custom app includes the write_files scope. Shopify may return file status UPLOADED before the CDN URL exists; the server waits (polls) until the URL is ready. Use “Fetch URLs from Shopify” (no upload) for rows that uploaded but had no URL yet, or enable skip-if-exists before import to link existing Shopify files without fileCreate. For automatic URL redirects from old paths, add online store navigation redirect permissions (e.g. write_online_store_navigation). You can import redirect_csv in Shopify Admin if redirects were not created via API. If this run was truncated, open PDFs → Details and exclude WordPress media IDs that already uploaded, then run again.",
+  };
+}
+
 /** SEO migration — upload WordPress media library PDFs to Shopify Files; optional URL redirects on the Shopify store. */
 export async function seoMigrationMigratePdfs(req: Request, res: Response): Promise<void> {
   try {
@@ -899,6 +918,8 @@ export async function seoMigrationMigratePdfs(req: Request, res: Response): Prom
       excluded_ids?: string[];
       create_redirects?: boolean;
       max_files?: number;
+      stream_progress?: boolean;
+      skip_if_exists_in_shopify?: boolean;
     };
     const server = (body.woo_server ?? "").trim().replace(/\/$/, "");
     const key = (body.woo_consumer_key ?? "").trim();
@@ -937,6 +958,42 @@ export async function seoMigrationMigratePdfs(req: Request, res: Response): Prom
     const maxFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
     const createRedirects = body.create_redirects !== false;
 
+    if (body.stream_progress === true) {
+      res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("X-Accel-Buffering", "no");
+      const writeLine = (obj: unknown) => {
+        res.write(`${JSON.stringify(obj)}\n`);
+      };
+      try {
+        const result = await migrateWordPressPdfsToShopify({
+          wpOrigin: server,
+          wpAuthHeader: wpAuth,
+          shopDomain: shopMeta.shop_domain,
+          accessToken: tokenPack.access_token,
+          excludedIds,
+          maxFiles,
+          createRedirects,
+          skipIfExistsInShopify: body.skip_if_exists_in_shopify === true,
+          onProgress: (e) => writeLine({ type: "pdf_migration_progress", ...e }),
+        });
+        const { summary, hint } = pdfMigrationSummaryPayload(result);
+        writeLine({
+          type: "pdf_migration_complete",
+          rows: result.rows,
+          redirect_csv: result.redirect_csv,
+          truncated: result.truncated,
+          summary,
+          hint,
+        });
+        res.end();
+      } catch (err) {
+        writeLine({ type: "pdf_migration_error", error: String((err as Error).message) });
+        res.end();
+      }
+      return;
+    }
+
     const result = await migrateWordPressPdfsToShopify({
       wpOrigin: server,
       wpAuthHeader: wpAuth,
@@ -945,15 +1002,127 @@ export async function seoMigrationMigratePdfs(req: Request, res: Response): Prom
       excludedIds,
       maxFiles,
       createRedirects,
+      skipIfExistsInShopify: body.skip_if_exists_in_shopify === true,
     });
-
-    const ok = result.rows.filter((r) => r.shopify_file_url && !r.error).length;
-    const failed = result.rows.filter((r) => r.error).length;
+    const { summary, hint } = pdfMigrationSummaryPayload(result);
     res.json({
       ...result,
-      summary: { uploaded: ok, failed, truncated: result.truncated },
+      summary,
+      hint,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+const PDF_RESOLVE_MAX_IDS = 2000;
+
+/** SEO migration — resolve CDN URLs for WordPress PDF media IDs against existing Shopify Files (no upload). */
+export async function seoMigrationResolvePdfUrls(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as {
+      woo_server?: string;
+      woo_consumer_key?: string;
+      woo_consumer_secret?: string;
+      brand_id?: string;
+      wp_username?: string;
+      wp_application_password?: string;
+      wordpress_ids?: string[];
+      create_redirects?: boolean;
+      stream_progress?: boolean;
+    };
+    const server = (body.woo_server ?? "").trim().replace(/\/$/, "");
+    const key = (body.woo_consumer_key ?? "").trim();
+    const secret = (body.woo_consumer_secret ?? "").trim();
+    const brand_id = body.brand_id?.trim();
+    if (!server || !key || !secret) {
+      res.status(400).json({ error: "woo_server, woo_consumer_key, and woo_consumer_secret are required" });
+      return;
+    }
+    if (!brand_id) {
+      res.status(400).json({
+        error: "brand_id is required. Connect Shopify for the brand in Brands → Edit brand → Shopify.",
+      });
+      return;
+    }
+    const idsRaw = Array.isArray(body.wordpress_ids) ? body.wordpress_ids.map((x) => String(x)) : [];
+    if (idsRaw.length === 0) {
+      res.status(400).json({ error: "wordpress_ids is required (non-empty array of media IDs)" });
+      return;
+    }
+    if (idsRaw.length > PDF_RESOLVE_MAX_IDS) {
+      res.status(400).json({ error: `At most ${PDF_RESOLVE_MAX_IDS} wordpress_ids per request` });
+      return;
+    }
+    const hasShopify = await withTransaction((client) => hasShopifyCredentialsForBrand(client, brand_id));
+    if (!hasShopify) {
+      res.status(400).json({
+        error: "This brand has no Shopify connector. Connect Shopify in Brands → Edit this brand → Shopify.",
+      });
+      return;
+    }
+    const shopMeta = await withTransaction((client) => getShopifyShopForBrand(client, brand_id));
+    const tokenPack = await withTransaction((client) => getShopifyAccessTokenForBrand(client, brand_id));
+    if (!shopMeta || !tokenPack?.access_token) {
+      res.status(400).json({ error: "Could not obtain Shopify access token for this brand." });
+      return;
+    }
+    const wpUser = (body.wp_username ?? "").trim();
+    const wpPass = (body.wp_application_password ?? "").trim();
+    const wpAuth = wpUser && wpPass ? wpBasicAuthHeader(wpUser, wpPass) : null;
+    const createRedirects = body.create_redirects !== false;
+
+    if (body.stream_progress === true) {
+      res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("X-Accel-Buffering", "no");
+      const writeLine = (obj: unknown) => {
+        res.write(`${JSON.stringify(obj)}\n`);
+      };
+      try {
+        const result = await resolveWordPressPdfUrlsFromShopify({
+          wpOrigin: server,
+          wpAuthHeader: wpAuth,
+          shopDomain: shopMeta.shop_domain,
+          accessToken: tokenPack.access_token,
+          wordpressIds: idsRaw,
+          createRedirects,
+          onProgress: (e) => writeLine({ type: "pdf_migration_progress", ...e }),
+        });
+        const { summary, hint } = pdfMigrationSummaryPayload(result);
+        writeLine({
+          type: "pdf_migration_complete",
+          rows: result.rows,
+          redirect_csv: result.redirect_csv,
+          truncated: result.truncated,
+          summary,
+          hint:
+            hint +
+            " Resolve scans recent Shopify Files; if a PDF is older than the scan window, run a full import with skip-if-exists or increase coverage in a future release.",
+        });
+        res.end();
+      } catch (err) {
+        writeLine({ type: "pdf_migration_error", error: String((err as Error).message) });
+        res.end();
+      }
+      return;
+    }
+
+    const result = await resolveWordPressPdfUrlsFromShopify({
+      wpOrigin: server,
+      wpAuthHeader: wpAuth,
+      shopDomain: shopMeta.shop_domain,
+      accessToken: tokenPack.access_token,
+      wordpressIds: idsRaw,
+      createRedirects,
+    });
+    const { summary, hint } = pdfMigrationSummaryPayload(result);
+    res.json({
+      ...result,
+      summary,
       hint:
-        "Ensure the Shopify custom app includes the write_files scope. For automatic URL redirects from old paths, add online store navigation redirect permissions (e.g. write_online_store_navigation). You can import redirect_csv in Shopify Admin if redirects were not created via API. If this run was truncated, open PDFs → Details and exclude WordPress media IDs that already uploaded, then run again to avoid duplicate Shopify files.",
+        hint +
+        " Resolve scans recent Shopify Files; if a PDF is older than the scan window, run a full import with skip-if-exists or increase coverage in a future release.",
     });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
