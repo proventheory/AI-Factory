@@ -13,9 +13,10 @@ COPY . .
 # Fail fast if http routers are missing (e.g. stale build cache); forces cache clear on Render.
 RUN test -f control-plane/src/http/routers/usage.router.ts || (echo "Missing control-plane/src/http/routers - clear build cache and redeploy" && exit 1)
 # Bundle control-plane (includes runners SEO crawl + gsc-ga-api via static import; no dist/runners needed).
+# Use .cjs so Node always loads the bundle as CommonJS (repo root package.json is "type": "module").
 RUN echo "Control-plane: esbuild..." && mkdir -p dist && NODE_OPTIONS="--max-old-space-size=2048" npx esbuild control-plane/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \
-  --outfile=dist/control-plane-bundle.js --sourcemap \
+  --outfile=dist/control-plane-bundle.cjs --sourcemap \
   --external:pg --external:express --external:cors --external:uuid --external:mjml --external:@supabase/supabase-js --external:googleapis --external:google-auth-library
 
 FROM node:20-alpine
@@ -23,7 +24,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-RUN npm pkg set type=commonjs
 COPY --from=builder /app/dist ./dist
 # Migrations: run on every Control Plane startup so DB is up to date without manual steps
 COPY --from=builder /app/scripts/run-migrate.mjs ./scripts/
@@ -32,4 +32,4 @@ COPY --from=builder /app/supabase ./supabase
 EXPOSE 10000
 ENV PORT=10000
 # Run migrations then start the API (DATABASE_URL must be set in Render env)
-CMD ["sh", "-c", "node scripts/run-migrate.mjs && exec node dist/control-plane-bundle.js"]
+CMD ["sh", "-c", "node scripts/run-migrate.mjs && exec node dist/control-plane-bundle.cjs"]

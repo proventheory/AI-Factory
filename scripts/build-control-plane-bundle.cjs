@@ -4,7 +4,7 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const entry = path.join(root, "control-plane/src/index.ts");
-const outfile = path.join(root, "dist/control-plane-bundle.js");
+const outfile = path.join(root, "dist/control-plane-bundle.cjs");
 
 esbuild
   .build({
