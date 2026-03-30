@@ -1483,11 +1483,59 @@ export default function SeoMigrationWizardPage() {
       return;
     }
     const prev = pdfImportResult;
-    if (!prev?.rows?.length) {
-      setPdfImportError("Import PDFs once (or open a saved session) so there are result rows. Then use this to fill in missing Shopify URLs without re-uploading.");
-      return;
+    const excluded = new Set(migrationExcludedIds.pdfs ?? []);
+    let wordpress_ids = (prev?.rows ?? [])
+      .filter((r) => !r.shopify_file_url?.trim())
+      .map((r) => r.wordpress_id)
+      .filter((id) => !excluded.has(id));
+
+    /** No saved import table (other browser, cleared storage, preview URL) — use same PDF list as step 3 Details. */
+    if (wordpress_ids.length === 0) {
+      const dryEff = migrationEffectiveCount("pdfs", migrationDryRunResult?.counts?.pdfs);
+      if (dryEff === 0) {
+        setPdfImportError(
+          "No PDF rows without a URL in the table, and the dry-run count for PDFs after exclusions is 0. Run a dry run, or expand PDFs and un-exclude attachments you want to resolve.",
+        );
+        return;
+      }
+      setPdfImportProgress({
+        current: 0,
+        total: 1,
+        phase: "Loading PDF media IDs from WordPress (same API as Details)…",
+      });
+      const collected: string[] = [];
+      const perPage = 100;
+      const maxPages = 25;
+      let page = 1;
+      for (;;) {
+        const r = await api.seoMigrationPreviewItems({
+          woo_server: wooServer.trim(),
+          woo_consumer_key: wooConsumerKey.trim(),
+          woo_consumer_secret: wooConsumerSecret.trim(),
+          entity: "pdfs",
+          page,
+          per_page: perPage,
+          ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+            ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+            : {}),
+        });
+        for (const it of r.items) {
+          if (!excluded.has(it.id)) collected.push(it.id);
+        }
+        const totalPages = Math.max(1, Math.ceil(r.total / r.per_page));
+        if (page >= totalPages || page >= maxPages) break;
+        page += 1;
+      }
+      wordpress_ids = collected.slice(0, 2000);
+      if (wordpress_ids.length === 0) {
+        setPdfImportProgress(null);
+        setPdfImportError(
+          "Could not list any PDF attachments from WordPress. Check the Woo URL and keys, add a WordPress app password if media is private, then try again.",
+        );
+        return;
+      }
     }
-    const wordpress_ids = prev.rows.filter((r) => !r.shopify_file_url?.trim()).map((r) => r.wordpress_id);
+
     if (wordpress_ids.length === 0) {
       setPdfImportError("Every row already has a Shopify file URL.");
       return;
@@ -1539,8 +1587,14 @@ export default function SeoMigrationWizardPage() {
         },
       );
       setPdfImportResult((before) => {
-        const base = before ?? prev;
-        const byId = new Map(base.rows.map((r) => [r.wordpress_id, { ...r }]));
+        const base =
+          before ??
+          prev ?? {
+            rows: [] as SeoMigrationPdfRow[],
+            redirect_csv: "",
+            truncated: false,
+          };
+        const byId = new Map((base.rows ?? []).map((r) => [r.wordpress_id, { ...r }]));
         for (const r of resolved.rows) {
           const cur = byId.get(r.wordpress_id);
           if (!cur) {
@@ -1599,6 +1653,15 @@ export default function SeoMigrationWizardPage() {
     () => (pdfImportResult?.rows ?? []).filter((r) => !r.shopify_file_url?.trim()).length,
     [pdfImportResult?.rows],
   );
+
+  /** Enable Fetch when the import table has gaps, or when dry run says there are PDFs (IDs loaded from WordPress preview). */
+  const pdfDryRunEffectiveForFetch = migrationEffectiveCount("pdfs", migrationDryRunResult?.counts?.pdfs);
+  const pdfImportFetchUrlsTargetCount =
+    pdfImportMissingUrlCount > 0
+      ? pdfImportMissingUrlCount
+      : pdfDryRunEffectiveForFetch != null && pdfDryRunEffectiveForFetch > 0
+        ? pdfDryRunEffectiveForFetch
+        : 0;
 
   const crawlColumns: Column<SeoMigrationCrawlResult["urls"][0]>[] = [
     { key: "path", header: "Path", render: (r) => <code className="text-body-small">{r.path || "/"}</code> },
@@ -2184,7 +2247,8 @@ export default function SeoMigrationWizardPage() {
                   <div className="mt-4 rounded-lg border border-border bg-brand-50/40 dark:bg-brand-950/20 px-3 py-3">
                     <p className="text-body-small font-medium text-fg mb-2">Import PDFs to Shopify</p>
                     <p className="text-body-small text-fg-muted mb-3">
-                      Uses your WordPress site URL (same as WooCommerce server), optional application password for private media, and this brand&apos;s Shopify connector. Up to 500 files per run by default; expand <strong>PDFs</strong> above to exclude specific attachments. Results are saved in this browser for this brand and store URL so you can resolve CDN URLs later without re-uploading.
+                      Uses your WordPress site URL (same as WooCommerce server), optional application password for private media, and this brand&apos;s Shopify connector. Up to 500 files per run by default; expand <strong>PDFs</strong> above to exclude specific attachments. Results are saved in this browser for this brand and store URL so you can resolve CDN URLs later without re-uploading.{" "}
+                      <strong>Fetch URLs</strong> can also run without that saved table: it reloads PDF media IDs from WordPress (same source as PDF Details), so you can match Shopify after an import from another device or deployment.
                     </p>
                     {migrationDryRunResult?.counts?.pdfs != null && pdfImportResult?.summary ? (
                       <div className="mb-3 rounded-md border border-border bg-bg/80 px-3 py-2 text-body-small text-fg-muted">
@@ -2245,12 +2309,14 @@ export default function SeoMigrationWizardPage() {
                           !wooServer.trim() ||
                           !wooConsumerKey.trim() ||
                           !wooConsumerSecret.trim() ||
-                          pdfImportMissingUrlCount === 0
+                          pdfImportFetchUrlsTargetCount === 0
                         }
                       >
                         {pdfResolveLoading
                           ? "Resolving URLs…"
-                          : `Fetch URLs from Shopify (${pdfImportMissingUrlCount} without URL)`}
+                          : pdfImportMissingUrlCount > 0
+                            ? `Fetch URLs from Shopify (${pdfImportMissingUrlCount} without URL in table)`
+                            : `Fetch URLs from Shopify (≈${pdfImportFetchUrlsTargetCount} PDFs from WordPress)`}
                       </Button>
                       {pdfImportResult?.redirect_csv && pdfImportResult.redirect_csv.split("\n").length > 1 && (
                         <Button type="button" variant="secondary" size="sm" onClick={downloadPdfRedirectCsv}>
