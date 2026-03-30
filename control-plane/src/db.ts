@@ -1,6 +1,7 @@
 import pg from "pg";
 
-const poolSize = Math.max(1, Math.min(50, Number(process.env.DATABASE_POOL_MAX) || 5));
+/** Default 3: Supabase Session pooler shares a small max; runner + gateway also use DATABASE_URL. */
+const poolSize = Math.max(1, Math.min(50, Number(process.env.DATABASE_POOL_MAX) || 3));
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,

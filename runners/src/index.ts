@@ -44,7 +44,7 @@ try {
 } catch {
   console.log("[runner] DATABASE_URL hint: (could not parse URL)");
 }
-const poolSize = Math.max(1, Math.min(20, Number(process.env.DATABASE_POOL_MAX) || 5));
+const poolSize = Math.max(1, Math.min(20, Number(process.env.DATABASE_POOL_MAX) || 3));
 const pool = new pg.Pool({
   connectionString: databaseUrl,
   max: poolSize,

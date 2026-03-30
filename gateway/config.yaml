@@ -40,15 +40,11 @@ router_settings:
   timeout: 60
   default_fallbacks: ["auto/chat"]
 
-# Response caching for FAST tier (Phase 3)
-# Only fast/chat is cached; AUTO/MAX skip cache via x-no-cache header from runners.
-# Set REDIS_URL in env to enable. Falls back to in-memory cache if Redis unavailable.
-cache: true
-cache_params:
-  type: redis
-  host: os.environ/REDIS_URL
-  ttl: 3600
-  namespace: ai-factory
+# Response caching: Redis requires a reachable REDIS_URL and correct LiteLLM host wiring.
+# Misconfigured REDIS caused gateway startup httpx.ConnectError on Render. Enable when REDIS_URL is set:
+#   cache: true
+#   cache_params: { type: redis, host: ..., ttl: 3600, namespace: ai-factory }
+cache: false
 
 litellm_settings:
   success_callback: ["langfuse"]

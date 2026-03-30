@@ -5,6 +5,7 @@
 import { readFileSync, existsSync } from "fs";
 import path from "path";
 import pg from "pg";
+import { resolveMigrationConnectionString } from "./supabase-migrate-url.js";
 
 type MigrationRow = {
   path: string;
@@ -21,13 +22,9 @@ export async function runSqlMigrations(repoRoot: string): Promise<void> {
   }
   const migrations = JSON.parse(readFileSync(manifestPath, "utf8")) as MigrationRow[];
 
-  // Optional direct URL for DDL (e.g. Supabase db.*.supabase.co) when pooler rejects migration statements.
-  const url = process.env.DATABASE_URL_MIGRATE?.trim() || process.env.DATABASE_URL?.trim();
-  if (!url) {
-    throw new Error("DATABASE_URL is not set");
-  }
+  const url = resolveMigrationConnectionString(process.env.DATABASE_URL, process.env.DATABASE_URL_MIGRATE);
   if (process.env.DATABASE_URL_MIGRATE?.trim()) {
-    console.log("[migrations] Using DATABASE_URL_MIGRATE for startup SQL (not DATABASE_URL).");
+    console.log("[migrations] Using DATABASE_URL_MIGRATE for startup SQL (explicit).");
   }
   console.log("[migrations] App root:", repoRoot, "manifest:", manifestPath, "entries:", migrations.length);
 

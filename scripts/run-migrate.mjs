@@ -19,13 +19,51 @@ const defaultRoot = join(__dirname, "..");
 /** Single source of truth; also bundled into control-plane for Render (no runtime import() of ESM). */
 const migrations = JSON.parse(readFileSync(join(__dirname, "sql-migrations.manifest.json"), "utf8"));
 
+/** Keep in sync with control-plane/src/migrations/supabase-migrate-url.ts */
+function resolveMigrationConnectionString(databaseUrl, explicitMigrateUrl) {
+  const explicit = explicitMigrateUrl?.trim();
+  if (explicit) return explicit;
+  const primary = databaseUrl?.trim();
+  if (!primary) throw new Error("DATABASE_URL is not set");
+  if (!primary.includes("pooler.supabase.com")) return primary;
+  try {
+    const normalized = primary.replace(/^postgres:\/\//i, "postgresql://");
+    const u = new URL(normalized);
+    const user = decodeURIComponent(u.username || "");
+    const refMatch = user.match(/^postgres\.([a-zA-Z0-9]+)$/i);
+    if (refMatch) {
+      const ref = refMatch[1];
+      const pass =
+        u.password !== undefined && u.password !== ""
+          ? `:${decodeURIComponent(u.password)}`
+          : "";
+      const search = u.search || "";
+      console.log(
+        "[migrations] Using direct Supabase host db.*.supabase.co for DDL (avoids Session pooler MaxClientsInSessionMode).",
+      );
+      return `postgresql://postgres${pass}@db.${ref}.supabase.co:5432/postgres${search}`;
+    }
+    const port = u.port || "5432";
+    if (port === "5432") {
+      u.port = "6543";
+      console.log(
+        "[migrations] Using Supabase transaction pooler :6543 for DDL (higher client limit than Session :5432).",
+      );
+      return u.toString();
+    }
+  } catch {
+    /* fall through */
+  }
+  return primary;
+}
+
 /**
  * @param {string} [overrideRoot] - App root (parent of schemas/, supabase/). Defaults to repo root when run as CLI.
  */
 export async function runMigrations(overrideRoot) {
-  const url = process.env.DATABASE_URL;
-  if (!url?.trim()) {
-    throw new Error("DATABASE_URL is not set");
+  const url = resolveMigrationConnectionString(process.env.DATABASE_URL, process.env.DATABASE_URL_MIGRATE);
+  if (process.env.DATABASE_URL_MIGRATE?.trim()) {
+    console.log("[migrations] Using DATABASE_URL_MIGRATE for startup SQL (explicit).");
   }
   const root = overrideRoot ?? defaultRoot;
   const client = new pg.Client({ connectionString: url });
