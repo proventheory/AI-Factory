@@ -11,8 +11,7 @@ const RunFlowViewer = dynamic(
   { ssr: false, loading: () => <LoadingSkeleton className="h-[500px] w-full rounded-lg" /> },
 );
 import type { Column } from "@/components/ui/DataTable";
-
-const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
+import { controlPlaneApiBase } from "@/lib/api";
 
 type PinnedContext = {
   runner_image_digest: string | null;
@@ -48,11 +47,10 @@ function RepairPreviewPanel({
 }) {
   const failed = [...new Map(jobRuns.filter((j) => j.status === "failed").map((j) => [j.plan_node_id, j])).values()];
   const [replayBusy, setReplayBusy] = useState<string | null>(null);
-  const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
   async function replaySubgraph(nodeId: string) {
     setReplayBusy(nodeId);
     try {
-      const r = await fetch(`${API}/v1/graph/subgraph_replay`, {
+      const r = await fetch(`${controlPlaneApiBase()}/v1/graph/subgraph_replay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run_id: runId, root_node_id: nodeId }),
@@ -119,7 +117,7 @@ export default function RunDetailPage() {
   const refetch = useCallback(() => {
     if (!id) return;
     setError(null);
-    fetch(`${API}/v1/runs/${id}`)
+    fetch(`${controlPlaneApiBase()}/v1/runs/${id}`)
       .then((r) => {
         if (!r.ok) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Failed to load run"); });
         return r.json();
@@ -134,7 +132,7 @@ export default function RunDetailPage() {
   useEffect(() => {
     if (!id) return;
     setError(null);
-    fetch(`${API}/v1/runs/${id}`)
+    fetch(`${controlPlaneApiBase()}/v1/runs/${id}`)
       .then((r) => {
         if (!r.ok) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Failed to load run"); });
         return r.json();
@@ -157,7 +155,7 @@ export default function RunDetailPage() {
 
   useEffect(() => {
     if (!id || activeTab !== "tool_calls") return;
-    fetch(`${API}/v1/tool_calls?run_id=${id}&limit=100`)
+    fetch(`${controlPlaneApiBase()}/v1/tool_calls?run_id=${id}&limit=100`)
       .then((r) => r.json())
       .then((d: { items?: ToolCallRow[] }) => setToolCalls(d.items ?? []))
       .catch(() => setToolCalls([]));
@@ -165,7 +163,7 @@ export default function RunDetailPage() {
 
   useEffect(() => {
     if (!id || activeTab !== "validations") return;
-    fetch(`${API}/v1/validations?run_id=${id}&limit=100`)
+    fetch(`${controlPlaneApiBase()}/v1/validations?run_id=${id}&limit=100`)
       .then((r) => r.json())
       .then((d: { items?: ValidationRow[] }) => setValidations(d.items ?? []))
       .catch(() => setValidations([]));
@@ -174,7 +172,7 @@ export default function RunDetailPage() {
   const fetchLogEntries = useCallback(() => {
     if (!id) return;
     setLogsLoading(true);
-    fetch(`${API}/v1/runs/${id}/log_entries?limit=200&order=desc`)
+    fetch(`${controlPlaneApiBase()}/v1/runs/${id}/log_entries?limit=200&order=desc`)
       .then((r) => {
         if (r.status === 503) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Log mirror not enabled"); });
         if (!r.ok) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Failed to load logs"); });
@@ -197,7 +195,7 @@ export default function RunDetailPage() {
     if (!id) return;
     setIngestBusy(true);
     try {
-      const r = await fetch(`${API}/v1/runs/${id}/ingest_logs`, { method: "POST" });
+      const r = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}/ingest_logs`, { method: "POST" });
       const j = await r.json().catch(() => ({}));
       if (r.status === 503) throw new Error((j as { error?: string }).error ?? "Log mirror not enabled");
       if (!r.ok) throw new Error((j as { error?: string }).error ?? "Ingest failed");
@@ -209,7 +207,7 @@ export default function RunDetailPage() {
 
   useEffect(() => {
     if (!id || activeTab !== "ai_calls") return;
-    fetch(`${API}/v1/llm_calls?run_id=${id}&limit=100`)
+    fetch(`${controlPlaneApiBase()}/v1/llm_calls?run_id=${id}&limit=100`)
       .then((r) => r.json())
       .then((d: { items?: LlmCallRow[] }) => setLlmCalls(d.items ?? []))
       .catch(() => setLlmCalls([]));
@@ -217,7 +215,7 @@ export default function RunDetailPage() {
 
   useEffect(() => {
     if (!id || activeTab !== "secrets") return;
-    fetch(`${API}/v1/audit?run_id=${id}&limit=100`)
+    fetch(`${controlPlaneApiBase()}/v1/audit?run_id=${id}&limit=100`)
       .then((r) => r.json())
       .then((d: { items?: AuditRow[] }) => setAuditItems(d.items ?? []))
       .catch(() => setAuditItems([]));
@@ -226,7 +224,7 @@ export default function RunDetailPage() {
   async function handleRerun() {
     setActionBusy("rerun");
     try {
-      const r = await fetch(`${API}/v1/runs/${id}/rerun`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      const r = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}/rerun`, { method: "POST", headers: { "Content-Type": "application/json" } });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Rerun failed");
       router.push(`/runs/${j.id}`);
@@ -249,7 +247,7 @@ export default function RunDetailPage() {
     setConfirmAction(null);
     setActionBusy("cancel");
     try {
-      const r = await fetch(`${API}/v1/runs/${id}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const r = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Cancel failed");
       refetch();
@@ -264,7 +262,7 @@ export default function RunDetailPage() {
     setConfirmAction(null);
     setActionBusy("rollback");
     try {
-      const r = await fetch(`${API}/v1/runs/${id}/rollback`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      const r = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}/rollback`, { method: "POST", headers: { "Content-Type": "application/json" } });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Rollback failed");
       refetch();
@@ -283,7 +281,7 @@ export default function RunDetailPage() {
   async function handleApprove(action: "approve" | "reject") {
     setActionBusy(action);
     try {
-      const r = await fetch(`${API}/v1/approvals`, {
+      const r = await fetch(`${controlPlaneApiBase()}/v1/approvals`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ run_id: id, action }),
@@ -358,7 +356,7 @@ export default function RunDetailPage() {
       render: (r) => {
         if (r.artifact_type === "landing_page") {
           return (
-            <a href={`${API}/v1/artifacts/${r.id}/content`} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline text-sm font-medium">
+            <a href={`${controlPlaneApiBase()}/v1/artifacts/${r.id}/content`} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline text-sm font-medium">
               Open preview
             </a>
           );
@@ -517,7 +515,7 @@ export default function RunDetailPage() {
               {landingPageArtifacts.length > 0 && (
                 <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
                   <strong>Preview URL:</strong> For landing pages, use the <strong>Open preview</strong> link in the table (or open{" "}
-                  <code className="bg-surface-sunken px-1 rounded text-xs">{API}/v1/artifacts/&lt;artifact_id&gt;/content</code> in a new tab).
+                  <code className="bg-surface-sunken px-1 rounded text-xs">{controlPlaneApiBase()}/v1/artifacts/&lt;artifact_id&gt;/content</code> in a new tab).
                 </p>
               )}
               {artifacts.length === 0 ? (
