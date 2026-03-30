@@ -22,9 +22,9 @@ export async function getGoogleAccessTokenFromControlPlaneOrThrow(initiativeId: 
     /* non-JSON body */
   }
   if (!res.ok) {
-    throw new Error(
-      data.error ?? text.slice(0, 400) || `Google token request failed (HTTP ${res.status}).`,
-    );
+    const detail =
+      data.error ?? (text.trim().slice(0, 400) || `Google token request failed (HTTP ${res.status}).`);
+    throw new Error(detail);
   }
   const t = data.access_token;
   if (typeof t !== "string" || !t.trim()) {
