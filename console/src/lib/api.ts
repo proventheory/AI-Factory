@@ -56,7 +56,31 @@ export function formatApiError(err: unknown): string {
   if (/deadlock/i.test(msg)) {
     return "Database briefly deadlocked (usually concurrent wizard actions). Retry once; if it persists, wait a few seconds and try again.";
   }
+  if (msg.includes("did not finish within") || msg.includes("Timed out polling")) {
+    return `${msg} If status stays “running”, check Render ai-factory-runner-staging is deployed and healthy; crawl jobs only finish when a worker claims the job.`;
+  }
   return msg;
+}
+
+function isAbortError(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false;
+  return (e as { name?: string }).name === "AbortError";
+}
+
+/** Bounded fetch so pipeline polling cannot hang forever if the proxy or API stalls. */
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  const timeoutMs = init.timeoutMs ?? 45_000;
+  const { timeoutMs: _t, ...rest } = init;
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...rest, signal: ctrl.signal });
+  } finally {
+    clearTimeout(id);
+  }
 }
 
 export type RunRow = {
@@ -152,13 +176,13 @@ export async function getRun(id: string): Promise<RunRow & { job_runs?: unknown[
 }
 
 export async function getRunStatus(id: string): Promise<{ status: string }> {
-  const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}/status`);
+  const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/runs/${id}/status`, { timeoutMs: 30_000 });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getRunArtifacts(runId: string): Promise<{ items: ArtifactRow[] }> {
-  const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${runId}/artifacts`);
+  const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/runs/${runId}/artifacts`, { timeoutMs: 60_000 });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -190,13 +214,21 @@ export async function pollRunUntilTerminal(
   const maxWaitMs = opts?.maxWaitMs ?? 45 * 60_000;
   const start = Date.now();
   for (;;) {
-    const { status } = await getRunStatus(runId);
-    opts?.onStatus?.(status);
-    if (TERMINAL_RUN_STATUSES.has(status)) return { status };
     if (Date.now() - start > maxWaitMs) {
       throw new Error(
         `Run ${runId} did not finish within ${Math.round(maxWaitMs / 1000)}s. Open Pipeline Runs to inspect it.`,
       );
+    }
+    try {
+      const { status } = await getRunStatus(runId);
+      opts?.onStatus?.(status);
+      if (TERMINAL_RUN_STATUSES.has(status)) return { status };
+    } catch (e) {
+      if (isAbortError(e)) {
+        opts?.onStatus?.("API poll timed out (retrying…)");
+      } else {
+        throw e;
+      }
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
@@ -211,7 +243,7 @@ function wpShopifyArtifactMeta(items: ArtifactRow[], artifactType: string): Reco
 async function throwWpShopifyRunFailed(runId: string, status: string): Promise<never> {
   let detail = status;
   try {
-    const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${runId}`);
+    const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/runs/${runId}`, { timeoutMs: 30_000 });
     if (res.ok) {
       const data = (await res.json()) as {
         job_runs?: Array<{ error_signature?: string | null; status?: string; ended_at?: string | null }>;
@@ -268,10 +300,11 @@ function parseWizardEnqueueResponse(text: string, res: Response): WpShopifyWizar
 }
 
 async function postWpShopifyMigrationPost(path: string, body: Record<string, unknown>): Promise<WpShopifyWizardEnqueueResponse> {
-  const res = await fetch(`${controlPlaneApiBase()}${path}`, {
+  const res = await fetchWithTimeout(`${controlPlaneApiBase()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    timeoutMs: 90_000,
   });
   const text = await res.text();
   return parseWizardEnqueueResponse(text, res);
@@ -1266,7 +1299,13 @@ export async function wpShopifyMigrationCrawl(
     ...(environment ? { environment } : {}),
   });
   pollOpts?.onRunEnqueued?.(enq.run_id);
-  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_source_crawl", pollOpts);
+  const linkCrawl = Boolean(rest.use_link_crawl);
+  const poll: WpShopifyPipelinePollOptions = {
+    intervalMs: pollOpts?.intervalMs ?? 2000,
+    maxWaitMs: pollOpts?.maxWaitMs ?? (linkCrawl ? 55 * 60_000 : 20 * 60_000),
+    onStatus: pollOpts?.onStatus,
+  };
+  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_source_crawl", poll);
   return meta as unknown as WpShopifyMigrationCrawlResult;
 }
 

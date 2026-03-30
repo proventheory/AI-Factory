@@ -520,6 +520,7 @@ export default function WpShopifyMigrationWizardPage() {
   const [useLinkCrawl, setUseLinkCrawl] = useState(true);
   const [maxUrls, setMaxUrls] = useState(2000);
   const [crawlLoading, setCrawlLoading] = useState(false);
+  const [crawlPollHint, setCrawlPollHint] = useState<string | null>(null);
   const [crawlError, setCrawlError] = useState<string | null>(null);
   const [crawlResult, setCrawlResult] = useState<WpShopifyMigrationCrawlResult | null>(null);
   const [crawlCachedAt, setCrawlCachedAt] = useState<string | null>(null);
@@ -1266,17 +1267,29 @@ export default function WpShopifyMigrationWizardPage() {
       return;
     }
     setCrawlLoading(true);
+    setCrawlPollHint(null);
     setCrawlError(null);
     setCrawlResult(null);
     setCrawlCachedAt(null);
     try {
-      const result = await api.wpShopifyMigrationCrawl({
-        brand_id: brandId,
-        source_url: sourceUrl.trim(),
-        use_link_crawl: useLinkCrawl,
-        max_urls: maxUrls,
-        environment: pipelineEnvironment,
-      });
+      const result = await api.wpShopifyMigrationCrawl(
+        {
+          brand_id: brandId,
+          source_url: sourceUrl.trim(),
+          use_link_crawl: useLinkCrawl,
+          max_urls: maxUrls,
+          environment: pipelineEnvironment,
+        },
+        {
+          onRunEnqueued: (rid) => {
+            setCrawlPollHint(`Queued pipeline run ${rid.slice(0, 8)}… — waiting for worker`);
+          },
+          onStatus: (s) => {
+            const short = s.length > 48 ? `${s.slice(0, 45)}…` : s;
+            setCrawlPollHint(`Run status: ${short}`);
+          },
+        },
+      );
       setCrawlResult(result);
       const cachedAt = new Date().toISOString();
       setCrawlCachedAt(cachedAt);
@@ -1285,6 +1298,7 @@ export default function WpShopifyMigrationWizardPage() {
       setCrawlError(formatApiError(e));
     } finally {
       setCrawlLoading(false);
+      setCrawlPollHint(null);
     }
   };
 
@@ -1825,7 +1839,7 @@ export default function WpShopifyMigrationWizardPage() {
                   )}
                   {crawlLoading && (
                     <span className="text-body-small text-fg-muted">
-                      Crawl in progress — do not close this page
+                      Crawl in progress — you can switch tabs; polling uses the API (may take many minutes for link crawl)
                     </span>
                   )}
                 </div>
@@ -1834,9 +1848,12 @@ export default function WpShopifyMigrationWizardPage() {
                     <div className="h-2 w-[30%] min-w-[30%] rounded-full bg-brand-500 animate-crawl-progress" />
                   </div>
                 )}
+                {crawlLoading && crawlPollHint && (
+                  <p className="text-body-small text-fg-muted font-mono">{crawlPollHint}</p>
+                )}
                 {crawlLoading && (
                   <p className="text-body-small text-fg-muted">
-                    Fetching sitemaps and discovering URLs from <strong>{sourceUrl}</strong>. Sitemap-only is usually quick; <strong>link-following</strong> walks many pages server-side and scales with URL count (often a few minutes, sometimes longer on large sites). The request runs on the server—keep this tab open until it finishes.
+                    Fetching sitemaps and discovering URLs from <strong>{sourceUrl}</strong>. Sitemap-only is usually quick; <strong>link-following</strong> walks many pages server-side and scales with URL count (often a few minutes, sometimes longer on large sites). If status stays <strong>running</strong> forever, open <strong>Pipeline Runs</strong> for this run and confirm <strong>ai-factory-runner-staging</strong> is deployed and claiming jobs.
                   </p>
                 )}
               </div>
