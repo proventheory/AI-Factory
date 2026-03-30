@@ -1407,6 +1407,7 @@ export type WpShopifyMigrationDryRunParams = WpShopifyMigrationWooRestParams & {
   /** Improves PDF media counts / preview when media is not public. */
   wp_username?: string;
   wp_application_password?: string;
+  environment?: string;
 };
 export type WpShopifyMigrationDryRunResult = { counts: Record<string, number>; run_id: string };
 
@@ -1561,6 +1562,7 @@ export type WpShopifyMigrationMigratePdfsParams = WpShopifyMigrationWooRestParam
   max_files?: number;
   /** Match recent Shopify Files by filename and skip fileCreate when found. */
   skip_if_exists_in_shopify?: boolean;
+  environment?: string;
 };
 export type WpShopifyMigrationMigratePdfsResult = {
   rows: WpShopifyMigrationPdfRow[];

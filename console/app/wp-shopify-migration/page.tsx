@@ -31,6 +31,7 @@ import type {
 } from "@/lib/api";
 import { formatApiError } from "@/lib/api";
 import { WP_SHOPIFY_MIGRATION_INTENT } from "@/config/intent-types";
+import { useEnvironment } from "@/contexts/EnvironmentContext";
 
 const STEPS = [
   { id: 1, title: "Crawl source site", description: "Map every live URL (sitemap + optional link-following for WordPress)." },
@@ -501,6 +502,7 @@ function setCrawlCacheEntry(key: string, result: WpShopifyMigrationCrawlResult):
 }
 
 export default function WpShopifyMigrationWizardPage() {
+  const { environment: pipelineEnvironment } = useEnvironment();
   const [step, setStep] = useState(1);
 
   // Brand (step 1): select brand so step 2 can use its Google/GA4
@@ -918,6 +920,7 @@ export default function WpShopifyMigrationWizardPage() {
       void api
         .wpShopifyWizardStateSnapshotEnqueue({
           brand_id: brandId,
+          environment: pipelineEnvironment,
           wizard_step: step,
           summary: {
             keyword_rows: keywordRows.length,
@@ -948,6 +951,7 @@ export default function WpShopifyMigrationWizardPage() {
     gscResult,
     ga4Result,
     sourceUrl,
+    pipelineEnvironment,
   ]);
 
   // When entering step 2, sync GSC site URL from crawl source so Fetch GSC uses same URL as crawl (required for keywords to match)
@@ -960,11 +964,11 @@ export default function WpShopifyMigrationWizardPage() {
     setGa4Loading(true);
     setGa4Error(null);
     api
-      .seoGa4Report({ brand_id: brandId, row_limit: 500 })
+      .seoGa4Report({ brand_id: brandId, row_limit: 500, environment: pipelineEnvironment })
       .then(setGa4Result)
       .catch((e) => setGa4Error(formatApiError(e)))
       .finally(() => setGa4Loading(false));
-  }, [step, brandId, brandGoogle?.connected, brandGoogle?.ga4_property_id, sourceUrl]);
+  }, [step, brandId, brandGoogle?.connected, brandGoogle?.ga4_property_id, sourceUrl, pipelineEnvironment]);
 
   // Build keyword rows from crawl + GA4 union (no duplicates) with GSC/GA4 stats. Used by step 4 seed and Reset button.
   const buildKeywordRowsFromCrawlAndGa4 = (): KeywordRow[] => {
@@ -1124,6 +1128,7 @@ export default function WpShopifyMigrationWizardPage() {
       const result = await api.seoKeywordVolume({
         brand_id: brandId,
         keywords: allUniqueGscKeywords,
+        environment: pipelineEnvironment,
       });
       const map: Record<string, number> = {};
       (result.volumes ?? []).forEach((v) => {
@@ -1270,6 +1275,7 @@ export default function WpShopifyMigrationWizardPage() {
         source_url: sourceUrl.trim(),
         use_link_crawl: useLinkCrawl,
         max_urls: maxUrls,
+        environment: pipelineEnvironment,
       });
       setCrawlResult(result);
       const cachedAt = new Date().toISOString();
@@ -1300,6 +1306,7 @@ export default function WpShopifyMigrationWizardPage() {
         site_url: gscSiteUrl.trim(),
         date_range: "last28days",
         row_limit: 500,
+        environment: pipelineEnvironment,
       });
       setGscResult(result);
     } catch (e) {
@@ -1320,7 +1327,9 @@ export default function WpShopifyMigrationWizardPage() {
     setGa4Result(null);
     try {
       const result = await api.seoGa4Report(
-        brandId ? { brand_id: brandId, row_limit: 500 } : { property_id: ga4PropertyId.trim(), row_limit: 500 },
+        brandId
+          ? { brand_id: brandId, row_limit: 500, environment: pipelineEnvironment }
+          : { property_id: ga4PropertyId.trim(), row_limit: 500 },
       );
       setGa4Result(result);
     } catch (e) {
@@ -1342,6 +1351,7 @@ export default function WpShopifyMigrationWizardPage() {
       const result = await api.wpShopifyMigrationDryRun({
         ...wooApiBase(),
         entities: Array.from(migrationEntities),
+        environment: pipelineEnvironment,
         ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
           ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
           : {}),
@@ -1374,6 +1384,7 @@ export default function WpShopifyMigrationWizardPage() {
           entity,
           page,
           per_page: 50,
+          environment: pipelineEnvironment,
           ...(needsWpAuth && wpPreviewUser.trim() && wpPreviewAppPassword.trim()
             ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
             : {}),
@@ -1393,7 +1404,7 @@ export default function WpShopifyMigrationWizardPage() {
         if (seq === migrationPreviewRequestSeq.current) setMigrationPreviewLoadingEntity(null);
       }
     },
-    [wooApiBase, wooCredentialsOk, brandId, wpPreviewUser, wpPreviewAppPassword],
+    [wooApiBase, wooCredentialsOk, brandId, wpPreviewUser, wpPreviewAppPassword, pipelineEnvironment],
   );
 
   const toggleMigrationItemExcluded = (entity: string, itemId: string) => {
@@ -1440,6 +1451,7 @@ export default function WpShopifyMigrationWizardPage() {
         max_files: 500,
         create_redirects: pdfImportCreateRedirects,
         skip_if_exists_in_shopify: pdfImportSkipIfExists,
+        environment: pipelineEnvironment,
         ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
           ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
           : {}),
@@ -1481,6 +1493,7 @@ export default function WpShopifyMigrationWizardPage() {
           excluded_ids: migrationExcludedIds.pdfs ?? [],
           create_redirects: pdfImportCreateRedirects,
           skip_if_exists_in_shopify: pdfImportSkipIfExists,
+          environment: pipelineEnvironment,
           ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
             ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
             : {}),
@@ -1551,6 +1564,7 @@ export default function WpShopifyMigrationWizardPage() {
           entity: "pdfs",
           page,
           per_page: perPage,
+          environment: pipelineEnvironment,
           ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
             ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
             : {}),
@@ -1588,6 +1602,7 @@ export default function WpShopifyMigrationWizardPage() {
           brand_id: brandId,
           create_redirects: pdfImportCreateRedirects,
           wordpress_ids,
+          environment: pipelineEnvironment,
           ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
             ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
             : {}),
@@ -3089,6 +3104,7 @@ export default function WpShopifyMigrationWizardPage() {
                         void api
                           .wpShopifyWizardStateSnapshotEnqueue({
                             brand_id: brandId,
+                            environment: pipelineEnvironment,
                             wizard_step: 9,
                             summary: {
                               launch_ack: true,

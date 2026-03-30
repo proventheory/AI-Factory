@@ -219,7 +219,7 @@ function RunsPageContent() {
                 intentFilter === "email_design_generator"
                   ? "Email design generator runs appear after you finish the wizard (Generate) or click Start run on an email design plan. If you just ran the wizard, set Pipeline to All and check the top of the list (newest first). If you see an error on the Generate page (e.g. Start run failed), the run was not created—fix that error and try again."
                   : intentFilter === WP_SHOPIFY_MIGRATION_INTENT
-                    ? "WP → Shopify migration runs appear after you create an initiative with this pipeline, compile a plan, and start a run. Set Pipeline to All if you expect older runs under a different filter."
+                    ? "WP → Shopify migration runs appear when you use the migration wizard or start a plan. This list is filtered by the header environment (sandbox / staging / prod). If the wizard shows a run ID but nothing appears here, try the sandbox environment—older console builds queued wizard jobs as sandbox by default."
                     : "Create an initiative and run a plan to see runs here."
               }
             />
