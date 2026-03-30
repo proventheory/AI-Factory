@@ -28,6 +28,7 @@ import type {
   WpShopifyMigrationMigratePdfsResult,
   WpShopifyMigrationPdfRow,
   WpShopifyMigrationWooRestParams,
+  WpShopifyMigrationRunResult,
 } from "@/lib/api";
 import { formatApiError } from "@/lib/api";
 import { WP_SHOPIFY_MIGRATION_INTENT } from "@/config/intent-types";
@@ -547,7 +548,7 @@ export default function WpShopifyMigrationWizardPage() {
   } | null>(null);
   const [migrationRunLoading, setMigrationRunLoading] = useState(false);
   const [migrationRunError, setMigrationRunError] = useState<string | null>(null);
-  const [migrationRunResult, setMigrationRunResult] = useState<{ run_id?: string; message?: string } | null>(null);
+  const [migrationRunResult, setMigrationRunResult] = useState<WpShopifyMigrationRunResult | null>(null);
   const [pdfImportLoading, setPdfImportLoading] = useState(false);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
   const [pdfImportResult, setPdfImportResult] = useState<WpShopifyMigrationMigratePdfsResult | null>(null);
@@ -1692,6 +1693,32 @@ export default function WpShopifyMigrationWizardPage() {
     URL.revokeObjectURL(url);
   };
 
+  const mergeBlogTagRedirectsIntoMap = useCallback(() => {
+    const csv = migrationRunResult?.blog_tag_redirect_csv?.trim();
+    if (!csv) return;
+    const incoming = parseRedirectCsvToRows(csv);
+    if (incoming.length === 0) return;
+    const base = sourceUrl.trim() || targetBaseUrl.trim();
+    if (!base) {
+      window.alert("Set your WordPress source URL in step 1 (or target base later) so redirect rows merge with the right path keys.");
+      return;
+    }
+    const safe = base.startsWith("http") ? base : `https://${base.replace(/^\/+/, "")}`;
+    setRedirectMap((prev) => mergeRedirectImports(prev, incoming, safe));
+  }, [migrationRunResult?.blog_tag_redirect_csv, sourceUrl, targetBaseUrl]);
+
+  const downloadBlogTagRedirectCsv = () => {
+    const csv = migrationRunResult?.blog_tag_redirect_csv;
+    if (!csv) return;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `wp-tag-archive-urls-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const pdfImportMissingUrlCount = useMemo(
     () => (pdfImportResult?.rows ?? []).filter((r) => !r.shopify_file_url?.trim()).length,
     [pdfImportResult?.rows],
@@ -2544,7 +2571,7 @@ export default function WpShopifyMigrationWizardPage() {
                   </Button>
                 </div>
                 <p className="mt-2 max-w-3xl text-body-small text-fg-muted">
-                  <strong>Run migration</strong> does real work only for what we support today: <strong>PDFs</strong> go to Shopify Files (needs Shopify connected). <strong>Blog tags</strong> are read from WordPress and stored on this run—Shopify attaches tags to articles, not as a standalone list, so full tag application ships with blog post migration. Products, collections, customers, posts, and other sheets still need export/Matrixify-style flows until ETL is built.
+                  <strong>Run migration</strong> does real work only for what we support today: <strong>PDFs</strong> go to Shopify Files (needs Shopify connected). <strong>Blog tags</strong> are exported from WordPress with each tag’s <strong>archive URL</strong> (<code className="bg-fg-muted/20 px-1">link</code>) plus a <strong>redirect CSV</strong> (empty “to” column) so you can map them in step 6 like PDFs—no need to wait for blog post ETL. Shopify doesn’t have WP-style tag index pages; you choose where each old tag URL should land.
                 </p>
 
                 {migrationDryRunError && (
@@ -2562,6 +2589,16 @@ export default function WpShopifyMigrationWizardPage() {
                     {migrationRunResult.run_id
                       ? `Recorded on initiative. Run: /runs/${migrationRunResult.run_id}. ${migrationRunResult.message ?? ""}`.trim()
                       : migrationRunResult.message ?? "Migration run completed."}
+                    {(migrationRunResult.blog_tag_redirect_csv_rows ?? 0) > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button variant="secondary" size="sm" type="button" onClick={mergeBlogTagRedirectsIntoMap}>
+                          Merge {migrationRunResult.blog_tag_redirect_csv_rows} tag archive URL(s) into redirect map
+                        </Button>
+                        <Button variant="secondary" size="sm" type="button" onClick={downloadBlogTagRedirectCsv}>
+                          Download tag redirect CSV
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>

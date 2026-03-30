@@ -1595,6 +1595,9 @@ export type WpShopifyMigrationRunResult = {
   message?: string;
   entities?: string[];
   unsupported?: string[];
+  /** WordPress tag archive URLs → empty “to” column; merge into redirect map in step 6. */
+  blog_tag_redirect_csv?: string;
+  blog_tag_redirect_csv_rows?: number;
 };
 
 export async function wpShopifyMigrationRun(
@@ -1619,11 +1622,20 @@ export async function wpShopifyMigrationRun(
   });
   pollOpts?.onRunEnqueued?.(enq.run_id);
   const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_migration_run", pollOpts);
+  const byEntity = meta.by_entity && typeof meta.by_entity === "object" && !Array.isArray(meta.by_entity) ? (meta.by_entity as Record<string, unknown>) : undefined;
+  const blogBlock = byEntity?.blog_tags && typeof byEntity.blog_tags === "object" && !Array.isArray(byEntity.blog_tags) ? (byEntity.blog_tags as Record<string, unknown>) : undefined;
+  const blogCsv = typeof blogBlock?.redirect_csv === "string" ? blogBlock.redirect_csv : undefined;
+  const blogCsvRows =
+    typeof blogBlock?.tag_archive_urls_in_redirect_csv === "number"
+      ? blogBlock.tag_archive_urls_in_redirect_csv
+      : undefined;
   return {
     run_id: enq.run_id,
     message: typeof meta.message === "string" ? meta.message : undefined,
     entities: Array.isArray(meta.entities) ? (meta.entities as string[]) : undefined,
     unsupported: Array.isArray(meta.unsupported) ? (meta.unsupported as string[]) : undefined,
+    ...(blogCsv ? { blog_tag_redirect_csv: blogCsv } : {}),
+    ...(blogCsvRows != null ? { blog_tag_redirect_csv_rows: blogCsvRows } : {}),
   };
 }
 

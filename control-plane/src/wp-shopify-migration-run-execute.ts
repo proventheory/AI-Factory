@@ -73,8 +73,10 @@ export function buildMigrationRunUserMessage(byEntity: Record<string, unknown>, 
     list_truncated?: boolean;
   } | undefined;
   if (tags && typeof tags.count === "number") {
+    const nCsv = typeof tags.tag_archive_urls_in_redirect_csv === "number" ? tags.tag_archive_urls_in_redirect_csv : 0;
+    const csvHint = nCsv > 0 ? ` ${nCsv} tag archive URL(s) included in redirect_csv for the redirect map.` : "";
     parts.push(
-      `Blog tags: saved ${tags.count} WordPress tag(s) on this run for your records.${tags.list_truncated ? " (artifact truncates the tag list at 2500 rows.)" : ""} ${tags.note ?? ""}`.trim(),
+      `Blog tags: saved ${tags.count} WordPress tag(s) on this run for your records.${tags.list_truncated ? " (artifact truncates the tag list at 2500 rows.)" : ""}${csvHint} ${tags.note ?? ""}`.trim(),
     );
   }
   if (unsupported.length > 0) {
@@ -129,18 +131,31 @@ export async function executeWizardMigrationRun(opts: {
       const excluded = opts.excludedByEntity.blog_tags ?? new Set<string>();
       const filtered = tags.filter((t) => !excluded.has(t.id));
       const listTruncated = filtered.length > MAX_TAGS_IN_ARTIFACT;
-      const wordpress_tags = filtered.slice(0, MAX_TAGS_IN_ARTIFACT).map((t) => ({
+      const forArtifact = filtered.slice(0, MAX_TAGS_IN_ARTIFACT);
+      const wordpress_tags = forArtifact.map((t) => ({
         id: t.id,
         name: t.name,
         ...(t.slug ? { slug: t.slug } : {}),
+        ...(t.link ? { link: t.link } : {}),
       }));
+      const csvLines = ["Redirect from,Redirect to,Status"];
+      let tagUrlRows = 0;
+      for (const t of forArtifact) {
+        const u = t.link?.trim();
+        if (!u) continue;
+        csvLines.push(`"${u.replace(/"/g, '""')}","",301`);
+        tagUrlRows++;
+      }
       by_entity.blog_tags = {
         status: "recorded",
         count: filtered.length,
         excluded_count: excluded.size,
         wordpress_tags,
         list_truncated: listTruncated,
-        note: "In Shopify, blog tags exist on articles—not as a separate list. When blog post migration is available, these names can become article tags; for now use this export as reference.",
+        redirect_csv: csvLines.join("\n"),
+        tag_archive_urls_in_redirect_csv: tagUrlRows,
+        note:
+          "WordPress exposes a canonical tag archive URL per tag (see link on each row). Shopify has no standalone tag index like many WP themes—tags apply to articles— but you can 301 those old URLs to any destination now (blog hub, collection, /blogs/news/tagged/{handle}, etc.). Use redirect_csv or merge into the wizard redirect map; blog post ETL is not required to plan tag URL redirects.",
       };
     } else if (ETL_PENDING.has(e)) {
       unsupported.push(e);
