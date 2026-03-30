@@ -12,6 +12,13 @@ const DEFAULT_MAX_URLS = 2000;
 /** Link-following BFS hits many URLs; uncapped delay × max_urls can exceed an hour. Cap politeness pause during discovery only. */
 const LINK_CRAWL_DELAY_CAP_MS = 120;
 
+/** Some hosts return 403 to axios’ default User-Agent; use an explicit crawler UA. */
+const CRAWL_HTTP_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (compatible; AIFactoryWpShopifyMigration/1.0; +https://github.com/proventheory/AI-Factory) AppleWebKit/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+};
+
 export interface SeoUrlRecord {
   url: string;
   normalized_url: string;
@@ -55,6 +62,7 @@ async function fetchSitemapUrls(
     maxRedirects: 3,
     validateStatus: (s) => s === 200,
     responseType: "text",
+    headers: CRAWL_HTTP_HEADERS,
   });
   const xml = res.data as string;
   const parsed = await parseStringPromise(xml);
@@ -157,6 +165,7 @@ async function linkCrawlDiscover(
         maxRedirects: 3,
         validateStatus: () => true,
         responseType: "text",
+        headers: CRAWL_HTTP_HEADERS,
       });
       statusByUrl.set(url, res.status);
       if (res.status === 200 && typeof res.data === "string") {
@@ -274,6 +283,7 @@ export async function crawlSite(options: CrawlOptions): Promise<{
           maxRedirects: 3,
           validateStatus: () => true,
           responseType: "text",
+          headers: CRAWL_HTTP_HEADERS,
         });
         status = res.status;
         statusCounts[String(status)] = (statusCounts[String(status)] ?? 0) + 1;
@@ -313,11 +323,21 @@ export async function crawlSite(options: CrawlOptions): Promise<{
       statusCounts[String(status)] = (statusCounts[String(status)] ?? 0) + 1;
     } else {
       try {
-        const res = await axios.head(url, { timeout: 8000, maxRedirects: 3, validateStatus: () => true });
+        const res = await axios.head(url, {
+          timeout: 8000,
+          maxRedirects: 3,
+          validateStatus: () => true,
+          headers: CRAWL_HTTP_HEADERS,
+        });
         status = res.status;
       } catch {
         try {
-          const res = await axios.get(url, { timeout: 8000, maxRedirects: 3, validateStatus: () => true });
+          const res = await axios.get(url, {
+            timeout: 8000,
+            maxRedirects: 3,
+            validateStatus: () => true,
+            headers: CRAWL_HTTP_HEADERS,
+          });
           status = res.status;
         } catch {
           status = 0;

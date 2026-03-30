@@ -2,7 +2,8 @@ import { v4 as uuid } from "uuid";
 import type pg from "pg";
 import type { JobRun, JobClaim } from "../../control-plane/src/types.js";
 
-const LEASE_DURATION_MS = 10 * 60_000; // 10 minutes
+/** Initial lease and extension window on each heartbeat. Reaper treats lease as stale when lease_expires_at < now() OR heartbeat is old — must extend expiry on heartbeat or long jobs (e.g. WP crawl) die at 10m. */
+const LEASE_DURATION_MS = 15 * 60_000; // 15 minutes (refreshed every heartbeat while running)
 const HEARTBEAT_INTERVAL_MS = 30_000;   // 30 seconds
 
 export interface RunnerConfig {
@@ -91,11 +92,12 @@ export async function claimJob(client: pg.PoolClient, workerId: string): Promise
  * Heartbeat: update heartbeat_at for the active lease.
  */
 export async function heartbeat(pool: pg.Pool, jobRunId: string, workerId: string): Promise<boolean> {
+  const nextLease = new Date(Date.now() + LEASE_DURATION_MS);
   const result = await pool.query(
-    `UPDATE job_claims SET heartbeat_at = now()
+    `UPDATE job_claims SET heartbeat_at = now(), lease_expires_at = $3
      WHERE job_run_id = $1 AND worker_id = $2 AND released_at IS NULL
      RETURNING id`,
-    [jobRunId, workerId],
+    [jobRunId, workerId, nextLease],
   );
   return result.rows.length > 0;
 }

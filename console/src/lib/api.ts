@@ -214,19 +214,35 @@ async function throwWpShopifyRunFailed(runId: string, status: string): Promise<n
     const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${runId}`);
     if (res.ok) {
       const data = (await res.json()) as {
-        job_runs?: Array<{ error_signature?: string; status?: string }>;
+        job_runs?: Array<{ error_signature?: string | null; status?: string; ended_at?: string | null }>;
         job_events?: Array<{ event_type?: string; payload_json?: unknown }>;
       };
       const failed = (data.job_runs ?? []).filter((j) => j.status === "failed");
-      const sig = failed[0]?.error_signature;
-      if (sig) detail = sig;
-      const ev = (data.job_events ?? []).find((e) => e.event_type === "attempt_failed");
-      const pl = ev?.payload_json;
-      if (pl && typeof pl === "object" && !Array.isArray(pl)) {
-        const msg = (pl as { message?: string }).message;
-        if (typeof msg === "string" && msg.trim()) {
-          detail = sig ? `${sig}: ${msg.trim()}` : msg.trim();
+      failed.sort((a, b) => {
+        const ta = a.ended_at ? Date.parse(a.ended_at) : 0;
+        const tb = b.ended_at ? Date.parse(b.ended_at) : 0;
+        return tb - ta;
+      });
+      const sig = failed.map((j) => j.error_signature).find((s) => s && String(s).trim());
+      if (sig) detail = String(sig);
+      const failEvents = (data.job_events ?? []).filter((e) => e.event_type === "attempt_failed");
+      for (const ev of failEvents) {
+        const pl = ev?.payload_json;
+        if (pl && typeof pl === "object" && !Array.isArray(pl)) {
+          const msg = (pl as { message?: string }).message;
+          if (typeof msg === "string" && msg.trim()) {
+            detail = sig ? `${sig}: ${msg.trim()}` : msg.trim();
+            break;
+          }
+          const reason = (pl as { reason?: string }).reason;
+          if (typeof reason === "string" && reason.trim() && !sig) {
+            detail = reason.trim();
+            break;
+          }
         }
+      }
+      if (detail === status && failed.length > 0) {
+        detail = failed[0]?.error_signature?.trim() || "job failed (see run Logs / job_events)";
       }
     }
   } catch {

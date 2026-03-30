@@ -339,6 +339,14 @@ export async function handleWpShopifyWizardJob(
 
     throw new Error(`Unknown wizard job kind: ${kind}`);
   } finally {
-    await stripWizardJobPayloadFromInitiative(client, initiativeId, params.runId);
+    try {
+      await stripWizardJobPayloadFromInitiative(client, initiativeId, params.runId);
+    } catch (stripErr) {
+      // Do not fail the job after a successful crawl/write: same-tx rollback would drop the artifact.
+      console.error(
+        "[wp_shopify_wizard_job] stripWizardJobPayloadFromInitiative failed (goal_metadata may retain this run key):",
+        stripErr instanceof Error ? stripErr.message : stripErr,
+      );
+    }
   }
 }
