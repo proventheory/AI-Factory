@@ -24,6 +24,10 @@ import { advanceSuccessors, checkRunCompletion, markRunFailedIfNoPendingJobs } f
 import { runDeployFailureScanTriggerOnly } from "../../control-plane/src/deploy-failure-scan-trigger-only.js";
 import { normalizeErrorSignature } from "./error-signature.js";
 import { recordSecretAccessByName } from "./secret-access.js";
+import {
+  peekWpShopifyWizardKind,
+  executeWpShopifySourceCrawlJob,
+} from "./handlers/wp-shopify-wizard-job.js";
 import { claimExperimentRun } from "./evolution-claim.js";
 import { runEvolutionReplay } from "./handlers/evolution-replay.js";
 
@@ -165,24 +169,96 @@ async function pollAndExecute(): Promise<void> {
           throw new Error(result.error ?? "Executor returned success: false");
         }
       } else if (handler && jobContext) {
-        const txClient = await pool.connect();
-        try {
-          await txClient.query("BEGIN");
-          await handler(txClient, jobContext, { runId: jobRun.run_id, jobRunId: jobRun.id, planNodeId: jobRun.plan_node_id });
-          await txClient.query("COMMIT");
-          const countResult = await txClient.query<{ c: number }>("SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1", [jobRun.run_id]);
-          const artifactCount = countResult.rows[0]?.c ?? 0;
-          console.log("[runner] handler transaction committed (artifacts persisted)", { run_id: jobRun.run_id, job_type: jobContext.job_type, artifact_count: artifactCount });
-          // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
-          if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
-            fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:handler_done", message: "handler completed", data: { job_type: jobContext.job_type, runId: jobRun.run_id }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
+        const jobParams = { runId: jobRun.run_id, jobRunId: jobRun.id, planNodeId: jobRun.plan_node_id };
+        if (jobContext.job_type === "wp_shopify_wizard_job") {
+          const initiativeId = jobContext.initiative_id;
+          if (!initiativeId) throw new Error("initiative_id required for wp_shopify_wizard_job");
+          const wizKind = await peekWpShopifyWizardKind(pool, initiativeId, jobRun.run_id);
+          if (wizKind === "source_crawl") {
+            await executeWpShopifySourceCrawlJob(pool, jobContext, jobParams);
+            const lc = await pool.connect();
+            try {
+              const countResult = await lc.query<{ c: number }>(
+                "SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1",
+                [jobRun.run_id],
+              );
+              const artifactCount = countResult.rows[0]?.c ?? 0;
+              console.log("[runner] wp_shopify source_crawl finished (short DB transactions)", {
+                run_id: jobRun.run_id,
+                artifact_count: artifactCount,
+              });
+            } finally {
+              lc.release();
+            }
+            if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+              fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" },
+                body: JSON.stringify({
+                  sessionId: "24bf14",
+                  location: "runners/src/index.ts:source_crawl_done",
+                  message: "source_crawl completed",
+                  data: { runId: jobRun.run_id },
+                  timestamp: Date.now(),
+                  hypothesisId: "H3",
+                }),
+              }).catch(() => {});
+            }
+          } else {
+            const txClient = await pool.connect();
+            try {
+              await txClient.query("BEGIN");
+              await handler(txClient, jobContext, jobParams);
+              await txClient.query("COMMIT");
+              const countResult = await txClient.query<{ c: number }>(
+                "SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1",
+                [jobRun.run_id],
+              );
+              const artifactCount = countResult.rows[0]?.c ?? 0;
+              console.log("[runner] handler transaction committed (artifacts persisted)", {
+                run_id: jobRun.run_id,
+                job_type: jobContext.job_type,
+                artifact_count: artifactCount,
+              });
+              if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+                fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" },
+                  body: JSON.stringify({
+                    sessionId: "24bf14",
+                    location: "runners/src/index.ts:handler_done",
+                    message: "handler completed",
+                    data: { job_type: jobContext.job_type, runId: jobRun.run_id },
+                    timestamp: Date.now(),
+                    hypothesisId: "H3",
+                  }),
+                }).catch(() => {});
+              }
+            } catch (err) {
+              await txClient.query("ROLLBACK").catch(() => {});
+              throw err;
+            } finally {
+              txClient.release();
+            }
           }
-          // #endregion
-        } catch (err) {
-          await txClient.query("ROLLBACK").catch(() => {});
-          throw err;
-        } finally {
-          txClient.release();
+        } else {
+          const txClient = await pool.connect();
+          try {
+            await txClient.query("BEGIN");
+            await handler(txClient, jobContext, jobParams);
+            await txClient.query("COMMIT");
+            const countResult = await txClient.query<{ c: number }>("SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1", [jobRun.run_id]);
+            const artifactCount = countResult.rows[0]?.c ?? 0;
+            console.log("[runner] handler transaction committed (artifacts persisted)", { run_id: jobRun.run_id, job_type: jobContext.job_type, artifact_count: artifactCount });
+            if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
+              fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "24bf14" }, body: JSON.stringify({ sessionId: "24bf14", location: "runners/src/index.ts:handler_done", message: "handler completed", data: { job_type: jobContext.job_type, runId: jobRun.run_id }, timestamp: Date.now(), hypothesisId: "H3" }) }).catch(() => {});
+            }
+          } catch (err) {
+            await txClient.query("ROLLBACK").catch(() => {});
+            throw err;
+          } finally {
+            txClient.release();
+          }
         }
       } else {
         // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)

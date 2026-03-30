@@ -12,7 +12,7 @@ function getEncryptionKey(): Buffer {
     process.env.SHOPIFY_CONNECTOR_ENCRYPTION_KEY?.trim();
   if (!raw) {
     throw new Error(
-      "WOO_COMMERCE_CONNECTOR_ENCRYPTION_KEY or SHOPIFY_CONNECTOR_ENCRYPTION_KEY is required to store WooCommerce API keys",
+      "WOO_COMMERCE_CONNECTOR_ENCRYPTION_KEY or SHOPIFY_CONNECTOR_ENCRYPTION_KEY is required to encrypt or decrypt WooCommerce API credentials (set on the Control Plane API service).",
     );
   }
   if (raw.length === 64 && /^[0-9a-fA-F]+$/.test(raw)) return Buffer.from(raw, "hex");

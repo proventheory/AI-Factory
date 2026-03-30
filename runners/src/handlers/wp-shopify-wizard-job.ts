@@ -3,6 +3,7 @@
  */
 
 import type pg from "pg";
+import type { Pool } from "pg";
 import type { JobContext } from "../job-context.js";
 import {
   migrateWordPressPdfsToShopify,
@@ -113,17 +114,9 @@ export async function handleWpShopifyWizardJob(
   try {
     const kind = String(payload.kind ?? "");
 
+    // source_crawl is executed via executeWpShopifySourceCrawlJob (no DB transaction across crawl — avoids idle-in-transaction timeouts).
     if (kind === "source_crawl") {
-      const source_url = String(payload.source_url ?? "").trim();
-      const result = await runMigrationCrawl({
-        source_url,
-        use_link_crawl: Boolean(payload.use_link_crawl),
-        max_urls: Math.min(5000, Math.max(1, Number(payload.max_urls) || 2000)),
-        crawl_delay_ms: Number.isFinite(Number(payload.crawl_delay_ms)) ? Math.max(0, Number(payload.crawl_delay_ms)) : 500,
-        fetch_page_details: Boolean(payload.fetch_page_details),
-      });
-      await insertDataArtifact(client, params, "wp_shopify_source_crawl", result as unknown as Record<string, unknown>);
-      return;
+      throw new Error("source_crawl must run via executeWpShopifySourceCrawlJob");
     }
 
     if (kind === "seo_gsc_report") {
@@ -346,6 +339,86 @@ export async function handleWpShopifyWizardJob(
       console.error(
         "[wp_shopify_wizard_job] stripWizardJobPayloadFromInitiative failed (goal_metadata may retain this run key):",
         stripErr instanceof Error ? stripErr.message : stripErr,
+      );
+    }
+  }
+}
+
+/** Peek job kind without requiring an open transaction (used by runner index before choosing crawl path). */
+export async function peekWpShopifyWizardKind(pool: Pool, initiativeId: string, runId: string): Promise<string> {
+  const c = await pool.connect();
+  try {
+    const p = await loadPayload(c, initiativeId, runId);
+    return String(p.kind ?? "");
+  } finally {
+    c.release();
+  }
+}
+
+/**
+ * Step 1 source crawl: run HTTP crawl off the DB transaction, then commit artifact in a short transaction.
+ * Holding a transaction open during link-following crawls hits Postgres idle-in-transaction timeouts and exhausts the pool.
+ */
+export async function executeWpShopifySourceCrawlJob(
+  pool: Pool,
+  context: JobContext,
+  params: { runId: string; jobRunId: string; planNodeId: string },
+): Promise<void> {
+  const initiativeId = context.initiative_id;
+  if (!initiativeId) throw new Error("wp_shopify_wizard_job requires initiative_id");
+
+  const read = await pool.connect();
+  let payload: WpShopifyWizardJobPayload;
+  try {
+    payload = await loadPayload(read, initiativeId, params.runId);
+  } finally {
+    read.release();
+  }
+
+  const brandId = String(payload.brand_id ?? "").trim();
+  if (!brandId) throw new Error("wizard job payload missing brand_id");
+
+  try {
+    const source_url = String(payload.source_url ?? "").trim();
+    const result = await runMigrationCrawl({
+      source_url,
+      use_link_crawl: Boolean(payload.use_link_crawl),
+      max_urls: Math.min(5000, Math.max(1, Number(payload.max_urls) || 2000)),
+      crawl_delay_ms: Number.isFinite(Number(payload.crawl_delay_ms)) ? Math.max(0, Number(payload.crawl_delay_ms)) : 500,
+      fetch_page_details: Boolean(payload.fetch_page_details),
+    });
+
+    const w = await pool.connect();
+    try {
+      await w.query("BEGIN");
+      await insertDataArtifact(w, params, "wp_shopify_source_crawl", result as unknown as Record<string, unknown>);
+      await w.query("COMMIT");
+    } catch (e) {
+      await w.query("ROLLBACK").catch(() => {});
+      throw e;
+    } finally {
+      w.release();
+    }
+  } finally {
+    try {
+      const s = await pool.connect();
+      try {
+        await s.query("BEGIN");
+        await stripWizardJobPayloadFromInitiative(s, initiativeId, params.runId);
+        await s.query("COMMIT");
+      } catch (stripErr) {
+        await s.query("ROLLBACK").catch(() => {});
+        console.error(
+          "[wp_shopify_wizard_job] stripWizardJobPayloadFromInitiative failed (goal_metadata may retain this run key):",
+          stripErr instanceof Error ? stripErr.message : stripErr,
+        );
+      } finally {
+        s.release();
+      }
+    } catch (outerStrip) {
+      console.error(
+        "[wp_shopify_wizard_job] strip payload outer catch:",
+        outerStrip instanceof Error ? outerStrip.message : outerStrip,
       );
     }
   }

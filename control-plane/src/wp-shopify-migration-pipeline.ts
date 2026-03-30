@@ -11,8 +11,42 @@ import { createRun } from "./scheduler.js";
 import { routeRun } from "./release-manager.js";
 import { WP_SHOPIFY_MIGRATION_INTENT } from "./lib/intent-type.js";
 import { getAccessTokenForInitiative } from "./seo-google-oauth.js";
+import { getWooCommerceCredentialsForBrand } from "./woocommerce-brand-connector.js";
 
 export const WP_SHOPIFY_WIZARD_JOB_TYPE = "wp_shopify_wizard_job" as const;
+
+/** Runner often has no Woo encryption key; hydrate from DB here (same pattern as _prefetched_google_access_token). */
+const WOO_HYDRATE_KINDS = new Set([
+  "dry_run",
+  "migration_preview",
+  "migration_run_placeholder",
+  "pdf_import",
+  "pdf_resolve",
+]);
+
+async function hydrateWooCredentialsInWizardPayload(
+  client: pg.PoolClient,
+  brandId: string,
+  payload: WpShopifyWizardJobPayload,
+): Promise<WpShopifyWizardJobPayload> {
+  if (!WOO_HYDRATE_KINDS.has(payload.kind)) return payload;
+  const ws = String(payload.woo_server ?? "").trim();
+  const wk = String(payload.woo_consumer_key ?? "").trim();
+  const wsec = String(payload.woo_consumer_secret ?? "").trim();
+  if (ws && wk && wsec) return payload;
+  const row = await getWooCommerceCredentialsForBrand(client, brandId);
+  if (!row) {
+    throw new Error(
+      "WooCommerce credentials not found for this brand. In the console: Brands → Edit brand → WooCommerce.",
+    );
+  }
+  return {
+    ...payload,
+    woo_server: row.store_url,
+    woo_consumer_key: row.consumer_key,
+    woo_consumer_secret: row.consumer_secret,
+  };
+}
 
 /** All wizard actions that create a pipeline run under the brand's WP → Shopify initiative. */
 export const WIZARD_JOB_KINDS = new Set([
@@ -115,6 +149,8 @@ export async function enqueueWpShopifyWizardJob(opts: {
             _prefetched_google_expires_in: tok.expires_in,
           };
         }
+
+        jobPayload = await hydrateWooCredentialsInWizardPayload(client, opts.brandId, jobPayload);
 
         const nodeKey = `wiz_${uuid()}`;
         const { planId, nodeIds } = await compilePlanFromDraft(
