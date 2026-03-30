@@ -5,20 +5,7 @@
 import type pg from "pg";
 import type { JobContext } from "../job-context.js";
 import { fetchGscReport } from "../lib/seo/gsc-ga-api.js";
-
-const CONTROL_PLANE_URL = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
-
-async function getGoogleAccessToken(initiativeId: string | null): Promise<string | undefined> {
-  if (!initiativeId) return undefined;
-  try {
-    const res = await fetch(`${CONTROL_PLANE_URL}/v1/initiatives/${initiativeId}/google_access_token`);
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { access_token?: string };
-    return data.access_token;
-  } catch {
-    return undefined;
-  }
-}
+import { getGoogleAccessTokenFromControlPlane } from "../lib/control-plane-google-token.js";
 
 export async function handleSeoGscSnapshot(
   client: pg.PoolClient,
@@ -29,7 +16,9 @@ export async function handleSeoGscSnapshot(
   const gscSiteUrl = (meta.gsc_site_url as string) ?? (meta.source_url as string) ?? "";
   const dateRange = (meta.gsc_date_range as string) ?? "last28days";
 
-  const accessToken = await getGoogleAccessToken(context.initiative_id);
+  const accessToken = context.initiative_id
+    ? await getGoogleAccessTokenFromControlPlane(context.initiative_id)
+    : undefined;
 
   const report = gscSiteUrl
     ? await fetchGscReport(gscSiteUrl, { dateRange, rowLimit: 500, accessToken })
