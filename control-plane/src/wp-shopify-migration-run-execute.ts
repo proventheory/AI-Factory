@@ -265,7 +265,7 @@ export async function executeWizardMigrationRun(opts: {
       }
 
       const baseNote =
-        "WordPress tag archive URLs are listed as “from”. When Shopify is connected, we suggest “to” as your storefront’s /blogs/{blog-handle}/tagged/{wordpress-tag-slug} (Shopify only serves that page if at least one post uses that tag—handles may differ if you renamed tags in Shopify). Set the public store URL in the wizard (step 5) and optionally shopify_blog_handle if you have multiple blogs. Merge the CSV into step 6 or edit rows before importing.";
+        "Recommended order: migrate blog posts into Shopify first (posts carry tags—Shopify has no separate “tag import”). Then run this tag export / redirect CSV so “to” URLs match tags that actually exist on articles. WordPress tag archive URLs are listed as “from”. When Shopify is connected, we suggest “to” as /blogs/{blog-handle}/tagged/{wordpress-tag-slug} (that URL only works once at least one post uses that tag; handles may differ if tags were renamed in Shopify). Set the public store URL in the wizard (step 5) and optionally shopify_blog_handle if you have multiple blogs. Merge the CSV into step 6 or edit rows before importing.";
       const note = [suggestionMetaNote, baseNote].filter(Boolean).join(" ");
 
       by_entity.blog_tags = {

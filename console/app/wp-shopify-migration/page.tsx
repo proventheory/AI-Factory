@@ -2592,13 +2592,12 @@ export default function WpShopifyMigrationWizardPage() {
                       className="max-w-md"
                     />
                     <p className="text-body-small text-fg-muted">
-                      Used only for <strong>Blog tags</strong>. Leave blank if the store has a single blog. With Shopify connected, we pre-fill the tag CSV “Redirect to” column as{" "}
-                      <code className="rounded bg-fg-muted/15 px-1">{"{your public URL}/blogs/{handle}/tagged/{wp-tag-slug}"}</code> (set public URL in step 5). Those pages only work once at least one post has that tag in Shopify; fix mismatched handles in step 6 if needed.
+                      <strong>Order:</strong> import or migrate <strong>blog posts</strong> to Shopify first (tags live on posts—there is no standalone tag import). Then use this export so redirects point at <code className="rounded bg-fg-muted/15 px-1">/blogs/…/tagged/…</code> URLs that will actually resolve. Leave blank if the store has a single blog. With Shopify connected, we pre-fill the CSV “Redirect to” using your public URL (step 5). Fix mismatched handles in step 6 if WP and Shopify slugs differ.
                     </p>
                   </div>
                 )}
                 <p className="mt-2 max-w-3xl text-body-small text-fg-muted">
-                  <strong>Run migration</strong> does real work only for what we support today: <strong>PDFs</strong> go to Shopify Files (needs Shopify connected). <strong>Blog tags</strong> are read from WordPress and written to a <strong>redirect CSV</strong> (old tag archive URL → suggested Shopify tagged URL when Shopify is connected and your public store URL is set). Merge into step 6 or edit before import. This does <strong>not</strong> create tags in Shopify—tags appear when you add them to posts (or importers).
+                  <strong>Run migration</strong> does real work only for what we support today: <strong>PDFs</strong> go to Shopify Files (needs Shopify connected). <strong>Blog tags</strong> builds a <strong>redirect CSV</strong> from WordPress (suggested Shopify <code className="rounded bg-fg-muted/15 px-1">/blogs/…/tagged/…</code> targets when Shopify + step 5 URL are set). For a real migration, bring <strong>posts and their tags</strong> into Shopify first (Matrixify, manual, or future blog ETL); then run tags and merge into step 6. Automated “blogs” entity ETL in this wizard is still pending.
                 </p>
 
                 {migrationDryRunError && (
