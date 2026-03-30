@@ -1663,6 +1663,20 @@ export default function SeoMigrationWizardPage() {
         ? pdfDryRunEffectiveForFetch
         : 0;
 
+  /** Reconcile WordPress dry-run PDFs vs this table (explains e.g. 471 vs 418). */
+  const pdfDryRunTotalCount = migrationDryRunResult?.counts?.pdfs;
+  const pdfExcludedFromImportCount = migrationExcludedIds.pdfs?.length ?? 0;
+  const pdfEffectiveWordPressCount =
+    pdfDryRunTotalCount != null ? Math.max(0, pdfDryRunTotalCount - pdfExcludedFromImportCount) : null;
+  const pdfTableRowCount = pdfImportResult?.rows.length ?? 0;
+  const pdfRowsWithShopifyUrlCount =
+    pdfImportResult?.summary?.uploaded ??
+    (pdfImportResult?.rows?.filter((r) => r.shopify_file_url?.trim()).length ?? 0);
+  const pdfShortOfShopifyUrlVsInScope =
+    pdfEffectiveWordPressCount != null ? Math.max(0, pdfEffectiveWordPressCount - pdfRowsWithShopifyUrlCount) : null;
+  const pdfAttachmentsNotInThisTable =
+    pdfEffectiveWordPressCount != null ? Math.max(0, pdfEffectiveWordPressCount - pdfTableRowCount) : null;
+
   const crawlColumns: Column<SeoMigrationCrawlResult["urls"][0]>[] = [
     { key: "path", header: "Path", render: (r) => <code className="text-body-small">{r.path || "/"}</code> },
     { key: "type", header: "Type", render: (r) => <Badge variant="neutral">{r.type}</Badge> },
@@ -2244,24 +2258,108 @@ export default function SeoMigrationWizardPage() {
                 </p>
 
                 {migrationEntities.has("pdfs") && (
-                  <div className="mt-4 rounded-lg border border-border bg-brand-50/40 dark:bg-brand-950/20 px-3 py-3">
-                    <p className="text-body-small font-medium text-fg mb-2">Import PDFs to Shopify</p>
-                    <p className="text-body-small text-fg-muted mb-3">
-                      Uses your WordPress site URL (same as WooCommerce server), optional application password for private media, and this brand&apos;s Shopify connector. Up to 500 files per run by default; expand <strong>PDFs</strong> above to exclude specific attachments. Results are saved in this browser for this brand and store URL so you can resolve CDN URLs later without re-uploading.{" "}
-                      <strong>Fetch URLs</strong> can also run without that saved table: it reloads PDF media IDs from WordPress (same source as PDF Details), so you can match Shopify after an import from another device or deployment.
-                    </p>
-                    {migrationDryRunResult?.counts?.pdfs != null && pdfImportResult?.summary ? (
-                      <div className="mb-3 rounded-md border border-border bg-bg/80 px-3 py-2 text-body-small text-fg-muted">
-                        <strong className="text-fg">Dry run vs last table:</strong> WordPress PDF count (before exclusions) is{" "}
-                        <strong className="text-fg">{migrationDryRunResult.counts.pdfs}</strong>. This table has{" "}
-                        <strong className="text-fg">{pdfImportResult.rows.length}</strong> rows from the last import/resolve,{" "}
-                        <strong className="text-fg">{pdfImportResult.summary.uploaded}</strong> with a Shopify file URL,{" "}
-                        <strong className="text-fg">{pdfImportMissingUrlCount}</strong> still missing a URL,{" "}
-                        <strong className="text-fg">{pdfImportResult.summary.failed}</strong> failed. Exclusions, truncated runs, and
-                        non-import flows explain differences from the dry-run total.
+                  <div className="mt-5 overflow-hidden rounded-xl border border-border bg-bg shadow-sm dark:shadow-none">
+                    <div className="border-b border-border bg-gradient-to-r from-brand-50/90 via-brand-50/40 to-transparent px-4 py-3 dark:from-brand-950/50 dark:via-brand-950/25 dark:to-transparent">
+                      <h3 className="text-sm font-semibold tracking-tight text-fg">PDF media → Shopify Files</h3>
+                      <p className="mt-1 max-w-3xl text-body-small leading-relaxed text-fg-muted">
+                        Uploads or links PDFs from WordPress media to Shopify Files (same site URL as WooCommerce). Up to{" "}
+                        <strong className="font-medium text-fg">500</strong> per import pass; expand <strong>PDFs</strong> above to exclude IDs.
+                        Results cache in this browser (brand + store URL). <strong>Fetch URLs</strong> matches Shopify by filename—no second upload.
+                      </p>
+                    </div>
+                    <div className="space-y-4 p-4">
+                      <div className="rounded-lg border border-amber-200/90 bg-amber-50/70 px-3 py-2.5 text-body-small dark:border-amber-900/60 dark:bg-amber-950/35">
+                        <p className="font-medium text-amber-950 dark:text-amber-100">Pipeline Runs &amp; artifacts</p>
+                        <p className="mt-1 leading-relaxed text-amber-950/85 dark:text-amber-100/90">
+                          This wizard calls the Control Plane <strong className="font-medium">directly</strong> (HTTP). It does{" "}
+                          <strong className="font-medium">not</strong> create a <code className="rounded bg-black/5 px-1 dark:bg-white/10">runs</code> row, runner{" "}
+                          <code className="rounded bg-black/5 px-1 dark:bg-white/10">job_runs</code>, or migration-report{" "}
+                          <strong className="font-medium">artifacts</strong> yet—so <strong className="font-medium">Pipeline Runs</strong> stays empty here.
+                          The orchestrated <strong className="font-medium">SEO migration audit</strong> DAG (inventory, GSC/GA4 snapshots, audit report, etc.) runs from an{" "}
+                          <Link href="/initiatives" className="font-medium text-brand-700 underline decoration-brand-700/30 hover:decoration-brand-700 dark:text-brand-400">
+                            Initiative
+                          </Link>{" "}
+                          with intent <code className="rounded bg-black/5 px-1 dark:bg-white/10">seo_migration_audit</code>; open{" "}
+                          <Link
+                            href="/runs?intent_type=seo_migration_audit"
+                            className="font-medium text-brand-700 underline decoration-brand-700/30 hover:decoration-brand-700 dark:text-brand-400"
+                          >
+                            SEO audit runs
+                          </Link>{" "}
+                          for those. End-to-end wiring of this wizard into plans/jobs/artifacts is planned.
+                        </p>
                       </div>
-                    ) : null}
-                    <label className="mb-3 flex cursor-pointer items-center gap-2 text-body-small text-fg">
+
+                      {pdfDryRunTotalCount != null ? (
+                        <div>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">PDF reconciliation</p>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                            <div className="rounded-lg border border-border bg-fg-muted/5 px-3 py-2.5">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">WordPress (dry)</div>
+                              <div className="mt-0.5 text-xl font-semibold tabular-nums text-fg">{pdfDryRunTotalCount}</div>
+                              <div className="text-xs text-fg-muted">attachments</div>
+                            </div>
+                            <div className="rounded-lg border border-border bg-fg-muted/5 px-3 py-2.5">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Excluded</div>
+                              <div className="mt-0.5 text-xl font-semibold tabular-nums text-fg">{pdfExcludedFromImportCount}</div>
+                              <div className="text-xs text-fg-muted">in Details</div>
+                            </div>
+                            <div className="rounded-lg border border-border bg-fg-muted/5 px-3 py-2.5">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">In scope</div>
+                              <div className="mt-0.5 text-xl font-semibold tabular-nums text-fg">{pdfEffectiveWordPressCount ?? "—"}</div>
+                              <div className="text-xs text-fg-muted">dry − excluded</div>
+                            </div>
+                            <div className="rounded-lg border border-border bg-fg-muted/5 px-3 py-2.5">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Rows in table</div>
+                              <div className="mt-0.5 text-xl font-semibold tabular-nums text-fg">{pdfTableRowCount}</div>
+                              <div className="text-xs text-fg-muted">last import/merge</div>
+                            </div>
+                            <div className="rounded-lg border border-border bg-fg-muted/5 px-3 py-2.5">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Shopify URL</div>
+                              <div className="mt-0.5 text-xl font-semibold tabular-nums text-fg">{pdfRowsWithShopifyUrlCount}</div>
+                              <div className="text-xs text-fg-muted">linked rows</div>
+                            </div>
+                            <div
+                              className={`rounded-lg border px-3 py-2.5 ${
+                                (pdfShortOfShopifyUrlVsInScope ?? 0) > 0
+                                  ? "border-amber-300/80 bg-amber-50/80 dark:border-amber-800 dark:bg-amber-950/40"
+                                  : "border-border bg-fg-muted/5"
+                              }`}
+                            >
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Short vs in-scope</div>
+                              <div className="mt-0.5 text-xl font-semibold tabular-nums text-fg">{pdfShortOfShopifyUrlVsInScope ?? "—"}</div>
+                              <div className="text-xs text-fg-muted">in-scope − URLs</div>
+                            </div>
+                            <div
+                              className={`rounded-lg border px-3 py-2.5 ${
+                                (pdfAttachmentsNotInThisTable ?? 0) > 0
+                                  ? "border-sky-200 bg-sky-50/70 dark:border-sky-900 dark:bg-sky-950/35"
+                                  : "border-border bg-fg-muted/5"
+                              }`}
+                            >
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Not in table</div>
+                              <div className="mt-0.5 text-xl font-semibold tabular-nums text-fg">{pdfAttachmentsNotInThisTable ?? "—"}</div>
+                              <div className="text-xs text-fg-muted">in-scope − rows</div>
+                            </div>
+                            <div className="rounded-lg border border-border bg-fg-muted/5 px-3 py-2.5">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-fg-muted">In table, no URL</div>
+                              <div className="mt-0.5 text-xl font-semibold tabular-nums text-fg">{pdfImportMissingUrlCount}</div>
+                              <div className="text-xs text-fg-muted">use Fetch</div>
+                            </div>
+                          </div>
+                          {(pdfShortOfShopifyUrlVsInScope ?? 0) > 0 || (pdfAttachmentsNotInThisTable ?? 0) > 0 ? (
+                            <p className="mt-2 text-body-small leading-relaxed text-fg-muted">
+                              <strong className="text-fg">Short vs in-scope</strong> is how many PDFs still need a Shopify file URL to cover every in-scope WordPress attachment (
+                              {pdfEffectiveWordPressCount} − {pdfRowsWithShopifyUrlCount}).{" "}
+                              <strong className="text-fg">Not in table</strong> are in-scope IDs that never appear in this result grid yet—run another import pass (with{" "}
+                              <em>skip if exists</em>
+                              ), reduce exclusions, or merge another session. Rows with errors can still count as &quot;with URL&quot; if Shopify returned a link.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                    <label className="mb-3 flex cursor-pointer items-start gap-2 text-body-small text-fg">
                       <Checkbox
                         checked={pdfImportCreateRedirects}
                         onChange={(ev) => setPdfImportCreateRedirects(ev.target.checked)}
@@ -2272,7 +2370,7 @@ export default function SeoMigrationWizardPage() {
                         <code className="rounded bg-fg-muted/15 px-1">/wp-content/uploads/…</code>) to the new file URLs (needs redirect scope on the Shopify app; if the API skips a row, use the CSV below).
                       </span>
                     </label>
-                    <label className="mb-3 flex cursor-pointer items-center gap-2 text-body-small text-fg">
+                    <label className="mb-3 flex cursor-pointer items-start gap-2 text-body-small text-fg">
                       <Checkbox
                         checked={pdfImportSkipIfExists}
                         onChange={(ev) => setPdfImportSkipIfExists(ev.target.checked)}
@@ -2328,7 +2426,7 @@ export default function SeoMigrationWizardPage() {
                       <p className="mt-2 text-body-small text-state-danger">{pdfImportError}</p>
                     )}
                     {(pdfImportLoading || pdfResolveLoading) && pdfImportProgress && (
-                      <div className="mt-3 rounded-md border border-border bg-bg px-3 py-2">
+                      <div className="mt-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2.5">
                         <p className="text-body-small text-fg">
                           <strong>
                             PDF {pdfImportProgress.current} of {pdfImportProgress.total}
@@ -2354,44 +2452,45 @@ export default function SeoMigrationWizardPage() {
                       </div>
                     )}
                     {pdfImportResult?.summary && (
-                      <p className="mt-2 text-body-small text-fg-muted">
-                        With Shopify URL: <strong className="text-fg">{pdfImportResult.summary.uploaded}</strong>, failed:{" "}
-                        <strong className="text-fg">{pdfImportResult.summary.failed}</strong>
+                      <p className="mt-1 text-body-small text-fg-muted">
+                        Last run summary: <strong className="text-fg">{pdfImportResult.summary.failed}</strong> failed
                         {pdfImportResult.summary.warnings != null && pdfImportResult.summary.warnings > 0 ? (
                           <>
-                            , redirect/other warnings:{" "}
-                            <strong className="text-fg">{pdfImportResult.summary.warnings}</strong>
+                            , <strong className="text-fg">{pdfImportResult.summary.warnings}</strong> with warnings
                           </>
                         ) : null}
-                        {pdfImportMissingUrlCount > 0 ? (
+                        {pdfImportResult.truncated ? (
                           <>
-                            , <strong className="text-fg">{pdfImportMissingUrlCount}</strong> rows still need a URL (use Fetch URLs or re-import).
+                            . <strong className="text-fg">Truncated</strong>—run again to continue the queue.
                           </>
-                        ) : null}
-                        {pdfImportResult.truncated ? " More PDFs remain (run again to continue)." : ""}
+                        ) : (
+                          "."
+                        )}
                       </p>
                     )}
                     {pdfImportResult?.hint && <p className="mt-1 text-body-small text-fg-muted">{pdfImportResult.hint}</p>}
                     {pdfImportResult?.rows && pdfImportResult.rows.length > 0 && (
-                      <div className="mt-3 max-h-[min(40vh,320px)] overflow-auto rounded-md border border-border">
+                      <div>
+                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-fg-muted">Row detail</p>
+                        <div className="max-h-[min(48vh,420px)] overflow-auto rounded-lg border border-border shadow-inner">
                         <table className="w-full min-w-[560px] border-collapse text-body-small">
-                          <thead className="sticky top-0 bg-bg border-b border-border">
+                          <thead className="sticky top-0 z-10 border-b border-border bg-fg-muted/10 backdrop-blur-sm">
                             <tr className="text-left">
-                              <th className="px-2 py-1.5 font-medium">ID</th>
-                              <th className="px-2 py-1.5 font-medium">Title</th>
-                              <th className="px-2 py-1.5 font-medium">Note</th>
-                              <th className="px-2 py-1.5 font-medium">Result</th>
+                              <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">ID</th>
+                              <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Title</th>
+                              <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Note</th>
+                              <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Result</th>
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody className="divide-y divide-border/70">
                             {pdfImportResult.rows.map((r) => (
-                              <tr key={r.wordpress_id} className="border-b border-border/60">
-                                <td className="px-2 py-1 align-top whitespace-nowrap">{r.wordpress_id}</td>
-                                <td className="px-2 py-1 align-top max-w-[160px] break-words">{r.title}</td>
-                                <td className="px-2 py-1 align-top max-w-[140px] break-words text-fg-muted">
+                              <tr key={r.wordpress_id} className="transition-colors hover:bg-fg-muted/5">
+                                <td className="px-3 py-2 align-top whitespace-nowrap font-mono text-xs text-fg-muted">{r.wordpress_id}</td>
+                                <td className="px-3 py-2 align-top max-w-[180px] break-words">{r.title}</td>
+                                <td className="px-3 py-2 align-top max-w-[140px] break-words text-fg-muted">
                                   {r.note ?? "—"}
                                 </td>
-                                <td className="px-2 py-1 align-top max-w-[240px] break-all">
+                                <td className="px-3 py-2 align-top max-w-[260px] break-all">
                                   {r.shopify_file_url ? (
                                     <a href={r.shopify_file_url} className="text-link hover:underline" target="_blank" rel="noreferrer">
                                       File URL
@@ -2413,8 +2512,10 @@ export default function SeoMigrationWizardPage() {
                             ))}
                           </tbody>
                         </table>
+                        </div>
                       </div>
                     )}
+                    </div>
                   </div>
                 )}
 
