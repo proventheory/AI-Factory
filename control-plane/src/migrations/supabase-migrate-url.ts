@@ -1,9 +1,11 @@
 /**
- * Supabase Session pooler (IPv4 host *.pooler.supabase.com:5432) enforces a low
- * MaxClientsInSessionMode. Control Plane startup migrations open a dedicated pg
- * Client; combined with API pool, runner, LiteLLM, and deploy overlap, connect()
- * often fails with XX000. Prefer direct Postgres (db.<project-ref>.supabase.co)
- * for DDL — same password, separate connection budget.
+ * Session pooler (:5432) hits MaxClientsInSessionMode when many services connect.
+ * Use transaction pooler (:6543) on the same Supabase pooler host for migrations —
+ * higher limits and works on Render (direct db.*.supabase.co often resolves to IPv6
+ * only → connect ENETUNREACH from Docker).
+ *
+ * Set DATABASE_URL_MIGRATE for a custom URL, or SUPABASE_MIGRATE_USE_DIRECT=true to
+ * opt back into db.*.supabase.co derivation from the pooler URL.
  */
 
 export function resolveMigrationConnectionString(
@@ -16,20 +18,20 @@ export function resolveMigrationConnectionString(
   const primary = databaseUrl?.trim();
   if (!primary) throw new Error("DATABASE_URL is not set");
 
-  const direct = trySupabaseDirectFromPooler(primary);
-  if (direct) {
-    console.log(
-      "[migrations] Using direct Supabase host db.*.supabase.co for DDL (avoids Session pooler MaxClientsInSessionMode).",
-    );
-    return direct;
-  }
-
   const txn = trySupabaseTransactionPoolerUrl(primary);
   if (txn) {
     console.log(
-      "[migrations] Using Supabase transaction pooler :6543 for DDL (higher client limit than Session :5432).",
+      "[migrations] Using Supabase transaction pooler :6543 for DDL (Session :5432 limits; avoids IPv6-only db.* on some hosts).",
     );
     return txn;
+  }
+
+  if (process.env.SUPABASE_MIGRATE_USE_DIRECT === "true") {
+    const direct = trySupabaseDirectFromPooler(primary);
+    if (direct) {
+      console.log("[migrations] Using direct db.*.supabase.co (SUPABASE_MIGRATE_USE_DIRECT=true).");
+      return direct;
+    }
   }
 
   return primary;

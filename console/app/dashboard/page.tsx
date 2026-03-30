@@ -66,15 +66,45 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API}/v1/dashboard`).then((r) => r.json()).then(setDashboardData).catch((e) => setError(formatApiError(e)));
+    fetch(`${API}/v1/dashboard`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(await r.text());
+        return r.json() as Promise<{ stale_leases?: number; queue_depth?: number; workers_alive?: number }>;
+      })
+      .then(setDashboardData)
+      .catch((e) => setError(formatApiError(e)));
   }, []);
   useEffect(() => {
-    fetch(`${API}/v1/graphs/summary`).then((r) => r.json()).then(setGraphSummary).catch(() => setGraphSummary(null));
+    fetch(`${API}/v1/graphs/summary`)
+      .then(async (r) => {
+        if (!r.ok) return null;
+        return r.json() as Promise<{ total_nodes: number; total_edges: number; graphs: { graph: string }[] }>;
+      })
+      .then(setGraphSummary)
+      .catch(() => setGraphSummary(null));
   }, []);
   useEffect(() => {
     fetch(`${API}/v1/dashboard/drift?environment=${encodeURIComponent(environment)}&window_minutes=60`)
-      .then((r) => r.json())
-      .then(setDriftData)
+      .then(async (r) => {
+        if (!r.ok) return null;
+        return r.json() as Promise<DriftData>;
+      })
+      .then((d) => {
+        if (!d || typeof d !== "object" || Array.isArray(d)) {
+          setDriftData(null);
+          return;
+        }
+        setDriftData({
+          environment: typeof d.environment === "string" ? d.environment : environment,
+          window_minutes: typeof d.window_minutes === "number" ? d.window_minutes : 60,
+          canary_success_rate: typeof d.canary_success_rate === "number" ? d.canary_success_rate : 0,
+          control_success_rate: typeof d.control_success_rate === "number" ? d.control_success_rate : 0,
+          success_rate_delta: typeof d.success_rate_delta === "number" ? d.success_rate_delta : 0,
+          canary_new_signatures: Array.isArray(d.canary_new_signatures) ? d.canary_new_signatures : [],
+          should_rollback: Boolean(d.should_rollback),
+          drift_pass: Boolean(d.drift_pass),
+        });
+      })
       .catch(() => setDriftData(null));
   }, [environment]);
   useEffect(() => {
@@ -189,10 +219,10 @@ export default function DashboardPage() {
                     {(driftData.success_rate_delta >= 0 ? "+" : "") + (driftData.success_rate_delta * 100).toFixed(1)}%
                   </p>
                 </div>
-                {driftData.canary_new_signatures.length > 0 && (
+                {(driftData.canary_new_signatures?.length ?? 0) > 0 && (
                   <div className="col-span-2">
                     <p className="text-text-muted">Error signature divergence (new in canary)</p>
-                    <p className="text-caption-small font-mono text-state-danger">{driftData.canary_new_signatures.slice(0, 5).join(", ")}{driftData.canary_new_signatures.length > 5 ? "…" : ""}</p>
+                    <p className="text-caption-small font-mono text-state-danger">{(driftData.canary_new_signatures ?? []).slice(0, 5).join(", ")}{(driftData.canary_new_signatures ?? []).length > 5 ? "…" : ""}</p>
                   </div>
                 )}
               </div>

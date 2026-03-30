@@ -29,27 +29,27 @@ function resolveMigrationConnectionString(databaseUrl, explicitMigrateUrl) {
   try {
     const normalized = primary.replace(/^postgres:\/\//i, "postgresql://");
     const u = new URL(normalized);
-    const user = decodeURIComponent(u.username || "");
-    const refMatch = user.match(/^postgres\.([a-zA-Z0-9]+)$/i);
-    if (refMatch) {
-      const ref = refMatch[1];
-      const pass =
-        u.password !== undefined && u.password !== ""
-          ? `:${decodeURIComponent(u.password)}`
-          : "";
-      const search = u.search || "";
-      console.log(
-        "[migrations] Using direct Supabase host db.*.supabase.co for DDL (avoids Session pooler MaxClientsInSessionMode).",
-      );
-      return `postgresql://postgres${pass}@db.${ref}.supabase.co:5432/postgres${search}`;
-    }
     const port = u.port || "5432";
     if (port === "5432") {
       u.port = "6543";
       console.log(
-        "[migrations] Using Supabase transaction pooler :6543 for DDL (higher client limit than Session :5432).",
+        "[migrations] Using Supabase transaction pooler :6543 for DDL (Session :5432 limits; avoids IPv6-only db.* on some hosts).",
       );
       return u.toString();
+    }
+    if (process.env.SUPABASE_MIGRATE_USE_DIRECT === "true") {
+      const user = decodeURIComponent(u.username || "");
+      const refMatch = user.match(/^postgres\.([a-zA-Z0-9]+)$/i);
+      if (refMatch) {
+        const ref = refMatch[1];
+        const pass =
+          u.password !== undefined && u.password !== ""
+            ? `:${decodeURIComponent(u.password)}`
+            : "";
+        const search = u.search || "";
+        console.log("[migrations] Using direct db.*.supabase.co (SUPABASE_MIGRATE_USE_DIRECT=true).");
+        return `postgresql://postgres${pass}@db.${ref}.supabase.co:5432/postgres${search}`;
+      }
     }
   } catch {
     /* fall through */

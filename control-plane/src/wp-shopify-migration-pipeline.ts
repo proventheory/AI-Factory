@@ -87,45 +87,58 @@ export async function enqueueWpShopifyWizardJob(opts: {
     releaseId = (ins.rows[0] as { id: string }).id;
   }
 
-  return withTransaction(async (client) => {
-    const initiativeId = await ensureWizardInitiative(client, opts.brandId);
-    // Lock initiative before plans/runs so we match lock ordering with the runner's finally block
-    // (stripWizardJobPayloadFromInitiative updates this row). Otherwise concurrent GSC+GA4 enqueues
-    // while a job finishes can deadlock (40P01).
-    await client.query("SELECT id FROM initiatives WHERE id = $1 FOR UPDATE", [initiativeId]);
+  const maxAttempts = 4;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await withTransaction(async (client) => {
+        const initiativeId = await ensureWizardInitiative(client, opts.brandId);
+        // Lock initiative before plans/runs so we match lock ordering with the runner's finally block
+        // (stripWizardJobPayloadFromInitiative updates this row). Otherwise concurrent GSC+GA4 enqueues
+        // while a job finishes can deadlock (40P01).
+        await client.query("SELECT id FROM initiatives WHERE id = $1 FOR UPDATE", [initiativeId]);
 
-    const nodeKey = `wiz_${uuid()}`;
-    const { planId, nodeIds } = await compilePlanFromDraft(
-      client,
-      initiativeId,
-      {
-        nodes: [{ node_key: nodeKey, job_type: WP_SHOPIFY_WIZARD_JOB_TYPE, agent_role: "engineer" }],
-        edges: [],
-      },
-      { force: true },
-    );
-    const planNodeId = nodeIds.get(nodeKey);
-    if (!planNodeId) throw new Error("Plan compile did not return node id");
+        const nodeKey = `wiz_${uuid()}`;
+        const { planId, nodeIds } = await compilePlanFromDraft(
+          client,
+          initiativeId,
+          {
+            nodes: [{ node_key: nodeKey, job_type: WP_SHOPIFY_WIZARD_JOB_TYPE, agent_role: "engineer" }],
+            edges: [],
+          },
+          { force: true },
+        );
+        const planNodeId = nodeIds.get(nodeKey);
+        if (!planNodeId) throw new Error("Plan compile did not return node id");
 
-    const runId = await createRun(client, {
-      planId,
-      releaseId,
-      policyVersion: "latest",
-      environment,
-      cohort: "control",
-      rootIdempotencyKey: `wp-shopify-wizard:${planNodeId}:${uuid()}`,
-      llmSource,
-    });
+        const runId = await createRun(client, {
+          planId,
+          releaseId,
+          policyVersion: "latest",
+          environment,
+          cohort: "control",
+          rootIdempotencyKey: `wp-shopify-wizard:${planNodeId}:${uuid()}`,
+          llmSource,
+        });
 
-    const metaR = await client.query("SELECT goal_metadata FROM initiatives WHERE id = $1", [initiativeId]);
-    const nextMeta = attachPayloadToInitiative(metaR.rows[0]?.goal_metadata, runId, opts.payload);
-    await client.query("UPDATE initiatives SET goal_metadata = $2::jsonb WHERE id = $1", [
-      initiativeId,
-      JSON.stringify(nextMeta),
-    ]);
+        const metaR = await client.query("SELECT goal_metadata FROM initiatives WHERE id = $1", [initiativeId]);
+        const nextMeta = attachPayloadToInitiative(metaR.rows[0]?.goal_metadata, runId, opts.payload);
+        await client.query("UPDATE initiatives SET goal_metadata = $2::jsonb WHERE id = $1", [
+          initiativeId,
+          JSON.stringify(nextMeta),
+        ]);
 
-    return { run_id: runId, plan_id: planId, initiative_id: initiativeId };
-  });
+        return { run_id: runId, plan_id: planId, initiative_id: initiativeId };
+      });
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === "40P01" && attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, 80 * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error("enqueueWpShopifyWizardJob: exhausted deadlock retries");
 }
 
 export async function stripWizardJobPayloadFromInitiative(
