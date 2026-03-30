@@ -194,8 +194,6 @@ function buildRedirectMapCsv(rows: RedirectRow[]): string {
   return [header, ...body].join("\n");
 }
 
-const KEYWORD_VOLUME_CHUNK = 400;
-
 const CRAWL_CACHE_KEY = "wp-shopify-migration-crawl-cache";
 const WIZARD_SESSION_KEY = "wp-shopify-migration-wizard-session";
 /** Small snapshot so brand / step / URLs survive even if the full session JSON fails (quota) or predates session feature. */
@@ -540,10 +538,13 @@ export default function WpShopifyMigrationWizardPage() {
   const [migrationEntities, setMigrationEntities] = useState<Set<string>>(new Set(["products", "categories", "redirects"]));
   const [migrationDryRunLoading, setMigrationDryRunLoading] = useState(false);
   const [migrationDryRunError, setMigrationDryRunError] = useState<string | null>(null);
-  const [migrationDryRunResult, setMigrationDryRunResult] = useState<{ counts?: Record<string, number>; message?: string } | null>(null);
+  const [migrationDryRunResult, setMigrationDryRunResult] = useState<{
+    counts: Record<string, number>;
+    run_id: string;
+  } | null>(null);
   const [migrationRunLoading, setMigrationRunLoading] = useState(false);
   const [migrationRunError, setMigrationRunError] = useState<string | null>(null);
-  const [migrationRunResult, setMigrationRunResult] = useState<{ job_id?: string; message?: string } | null>(null);
+  const [migrationRunResult, setMigrationRunResult] = useState<{ run_id?: string; message?: string } | null>(null);
   const [pdfImportLoading, setPdfImportLoading] = useState(false);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
   const [pdfImportResult, setPdfImportResult] = useState<WpShopifyMigrationMigratePdfsResult | null>(null);
@@ -556,6 +557,8 @@ export default function WpShopifyMigrationWizardPage() {
   const [pdfImportCreateRedirects, setPdfImportCreateRedirects] = useState(true);
   const [pdfImportSkipIfExists, setPdfImportSkipIfExists] = useState(true);
   const [pdfResolveLoading, setPdfResolveLoading] = useState(false);
+  /** Latest PDF import/resolve pipeline run (for link while job runs). */
+  const [pdfActivePipelineRunId, setPdfActivePipelineRunId] = useState<string | null>(null);
 
   // Step 4: Keyword strategy (merged URL list + theme/action)
   const [keywordRows, setKeywordRows] = useState<KeywordRow[]>([]);
@@ -905,6 +908,48 @@ export default function WpShopifyMigrationWizardPage() {
     };
   }, [brandId]);
 
+  // Record wizard progress on the WP → Shopify initiative (debounced; compact summary only).
+  const snapshotDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!brandId) return;
+    if (snapshotDebounceRef.current) clearTimeout(snapshotDebounceRef.current);
+    snapshotDebounceRef.current = setTimeout(() => {
+      snapshotDebounceRef.current = null;
+      void api
+        .wpShopifyWizardStateSnapshotEnqueue({
+          brand_id: brandId,
+          wizard_step: step,
+          summary: {
+            keyword_rows: keywordRows.length,
+            page_plan: pagePlan.length,
+            redirects: redirectMap.length,
+            internal_links: internalLinkPlan.length,
+            crawl_urls: crawlResult?.urls?.length ?? 0,
+            has_gsc: Boolean(gscResult),
+            has_ga4: Boolean(ga4Result),
+            source_url_preview: (sourceUrl || "").trim().slice(0, 240),
+          },
+        })
+        .catch(() => {
+          /* non-blocking */
+        });
+    }, 1600);
+    return () => {
+      if (snapshotDebounceRef.current) clearTimeout(snapshotDebounceRef.current);
+    };
+  }, [
+    brandId,
+    step,
+    keywordRows.length,
+    pagePlan.length,
+    redirectMap.length,
+    internalLinkPlan.length,
+    crawlResult?.urls?.length,
+    gscResult,
+    ga4Result,
+    sourceUrl,
+  ]);
+
   // When entering step 2, sync GSC site URL from crawl source so Fetch GSC uses same URL as crawl (required for keywords to match)
   useEffect(() => {
     if (step !== 2) return;
@@ -1069,21 +1114,23 @@ export default function WpShopifyMigrationWizardPage() {
 
   const fetchKeywordVolumes = async () => {
     if (allUniqueGscKeywords.length === 0) return;
+    if (!brandId.trim()) {
+      setKeywordVolumeError("Select a brand in step 1 so keyword volume runs on your initiative.");
+      return;
+    }
     setKeywordVolumeLoading(true);
     setKeywordVolumeError(null);
     try {
+      const result = await api.seoKeywordVolume({
+        brand_id: brandId,
+        keywords: allUniqueGscKeywords,
+      });
       const map: Record<string, number> = {};
-      const errors: string[] = [];
-      for (let i = 0; i < allUniqueGscKeywords.length; i += KEYWORD_VOLUME_CHUNK) {
-        const chunk = allUniqueGscKeywords.slice(i, i + KEYWORD_VOLUME_CHUNK);
-        const result = await api.seoKeywordVolume({ keywords: chunk });
-        (result.volumes ?? []).forEach((v) => {
-          map[v.keyword] = v.monthly_search_volume;
-        });
-        if (result.error) errors.push(result.error);
-      }
+      (result.volumes ?? []).forEach((v) => {
+        map[v.keyword] = v.monthly_search_volume;
+      });
       setKeywordVolumeMap((prev) => ({ ...prev, ...map }));
-      if (errors.length > 0) setKeywordVolumeError([...new Set(errors.filter(Boolean))].join(" "));
+      if (result.error) setKeywordVolumeError(result.error);
     } catch (e) {
       setKeywordVolumeError(formatApiError(e));
     } finally {
@@ -1209,12 +1256,17 @@ export default function WpShopifyMigrationWizardPage() {
   }, [step, crawlResult?.urls, ga4Result?.pages, sourceUrl]);
 
   const runCrawl = async () => {
+    if (!brandId.trim()) {
+      setCrawlError("Select a brand in step 1 so the crawl is recorded on your WP → Shopify initiative.");
+      return;
+    }
     setCrawlLoading(true);
     setCrawlError(null);
     setCrawlResult(null);
     setCrawlCachedAt(null);
     try {
       const result = await api.wpShopifyMigrationCrawl({
+        brand_id: brandId,
         source_url: sourceUrl.trim(),
         use_link_crawl: useLinkCrawl,
         max_urls: maxUrls,
@@ -1235,15 +1287,19 @@ export default function WpShopifyMigrationWizardPage() {
       setGscError("Site URL is required.");
       return;
     }
+    if (!brandId.trim()) {
+      setGscError("Select a brand in step 1 so GSC data is recorded on your initiative.");
+      return;
+    }
     setGscLoading(true);
     setGscError(null);
     setGscResult(null);
     try {
       const result = await api.seoGscReport({
+        brand_id: brandId,
         site_url: gscSiteUrl.trim(),
         date_range: "last28days",
         row_limit: 500,
-        ...(brandId ? { brand_id: brandId } : {}),
       });
       setGscResult(result);
     } catch (e) {
@@ -1314,6 +1370,7 @@ export default function WpShopifyMigrationWizardPage() {
         const needsWpAuth = entity === "blogs" || entity === "pages" || entity === "blog_tags" || entity === "pdfs";
         const result = await api.wpShopifyMigrationPreviewItems({
           ...wooApiBase(),
+          brand_id: brandId!,
           entity,
           page,
           per_page: 50,
@@ -1336,7 +1393,7 @@ export default function WpShopifyMigrationWizardPage() {
         if (seq === migrationPreviewRequestSeq.current) setMigrationPreviewLoadingEntity(null);
       }
     },
-    [wooApiBase, wooCredentialsOk, wpPreviewUser, wpPreviewAppPassword],
+    [wooApiBase, wooCredentialsOk, brandId, wpPreviewUser, wpPreviewAppPassword],
   );
 
   const toggleMigrationItemExcluded = (entity: string, itemId: string) => {
@@ -1361,8 +1418,14 @@ export default function WpShopifyMigrationWizardPage() {
       );
       return;
     }
-    if (!brandId || !brandShopify?.connected) {
-      setMigrationRunError("Select a brand in step 1 and connect Shopify for that brand in Brands → Edit brand → Shopify.");
+    if (!brandId) {
+      setMigrationRunError("Select a brand in step 1.");
+      return;
+    }
+    if (migrationEntities.has("pdfs") && !brandShopify?.connected) {
+      setMigrationRunError(
+        "Connect Shopify for this brand (Brands → Edit brand → Shopify) when PDFs are included—Shopify Files and redirects need the connector.",
+      );
       return;
     }
     setMigrationRunLoading(true);
@@ -1373,6 +1436,13 @@ export default function WpShopifyMigrationWizardPage() {
         ...wooApiBase(),
         brand_id: brandId,
         entities: Array.from(migrationEntities),
+        excluded_ids_by_entity: migrationExcludedIds,
+        max_files: 500,
+        create_redirects: pdfImportCreateRedirects,
+        skip_if_exists_in_shopify: pdfImportSkipIfExists,
+        ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+          ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+          : {}),
       });
       setMigrationRunResult(result);
     } catch (e) {
@@ -1401,8 +1471,10 @@ export default function WpShopifyMigrationWizardPage() {
     setPdfImportError(null);
     setPdfImportResult(null);
     setPdfImportProgress(null);
+    setPdfActivePipelineRunId(null);
     try {
-      const result = await api.wpShopifyMigrationMigratePdfsStreaming(
+      setPdfImportProgress({ current: 0, total: 1, phase: "Enqueueing pipeline job…" });
+      const result = await api.wpShopifyMigrationMigratePdfs(
         {
           ...wooApiBase(),
           brand_id: brandId,
@@ -1413,34 +1485,14 @@ export default function WpShopifyMigrationWizardPage() {
             ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
             : {}),
         },
-        (line) => {
-          if (line.event === "init") {
-            setPdfImportProgress({
-              current: 0,
-              total: line.total,
-              phase: `Queued (up to ${line.max_files} of ${line.pdf_total_in_wordpress} PDFs in WordPress)`,
-            });
-          } else if (line.event === "item") {
-            if (line.step === "start") {
-              setPdfImportProgress({
-                current: line.current,
-                total: line.total,
-                title: line.title,
-                phase: "Matching Shopify Files / downloading / uploading…",
-              });
-            } else {
-              setPdfImportProgress({
-                current: line.current,
-                total: line.total,
-                title: line.title,
-                phase: line.error
-                  ? line.shopify_file_url
-                    ? "Finished (redirect or other warning)"
-                    : "Failed"
-                  : "Done",
-              });
-            }
-          }
+        {
+          onRunEnqueued: (runId) => {
+            setPdfActivePipelineRunId(runId);
+            setPdfImportProgress({ current: 0, total: 1, phase: "Runner executing…" });
+          },
+          onStatus: (status) => {
+            setPdfImportProgress({ current: 0, total: 1, phase: `Run status: ${status}` });
+          },
         },
       );
       setPdfImportResult(result);
@@ -1495,6 +1547,7 @@ export default function WpShopifyMigrationWizardPage() {
       for (;;) {
         const r = await api.wpShopifyMigrationPreviewItems({
           ...wooApiBase(),
+          brand_id: brandId!,
           entity: "pdfs",
           page,
           per_page: perPage,
@@ -1526,8 +1579,10 @@ export default function WpShopifyMigrationWizardPage() {
     setPdfResolveLoading(true);
     setPdfImportError(null);
     setPdfImportProgress(null);
+    setPdfActivePipelineRunId(null);
     try {
-      const resolved = await api.wpShopifyMigrationResolvePdfUrlsStreaming(
+      setPdfImportProgress({ current: 0, total: 1, phase: "Enqueueing resolve job…" });
+      const resolved = await api.wpShopifyMigrationResolvePdfUrls(
         {
           ...wooApiBase(),
           brand_id: brandId,
@@ -1537,34 +1592,14 @@ export default function WpShopifyMigrationWizardPage() {
             ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
             : {}),
         },
-        (line) => {
-          if (line.event === "init") {
-            setPdfImportProgress({
-              current: 0,
-              total: line.total,
-              phase: `Resolving ${wordpress_ids.length} PDFs from Shopify Files (no upload)`,
-            });
-          } else if (line.event === "item") {
-            if (line.step === "start") {
-              setPdfImportProgress({
-                current: line.current,
-                total: line.total,
-                title: line.title,
-                phase: "Looking up file in Shopify / waiting for CDN URL…",
-              });
-            } else {
-              setPdfImportProgress({
-                current: line.current,
-                total: line.total,
-                title: line.title,
-                phase: line.error
-                  ? line.shopify_file_url
-                    ? "URL resolved (redirect or other warning)"
-                    : "Could not resolve"
-                  : "Resolved",
-              });
-            }
-          }
+        {
+          onRunEnqueued: (runId) => {
+            setPdfActivePipelineRunId(runId);
+            setPdfImportProgress({ current: 0, total: 1, phase: "Resolving in runner…" });
+          },
+          onStatus: (status) => {
+            setPdfImportProgress({ current: 0, total: 1, phase: `Run status: ${status}` });
+          },
         },
       );
       setPdfImportResult((before) => {
@@ -2207,48 +2242,36 @@ export default function WpShopifyMigrationWizardPage() {
                   })}
                 </div>
                 <p className="mt-3 text-body-small text-fg-muted">
-                  <strong>How counts work:</strong> Blog posts, pages, and blog tags use the public WordPress REST API (
-                  <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/…</code>
-                  ) unless you add an application password above—then Details can list drafts/private. WooCommerce products/coupons use{" "}
-                  <code className="rounded bg-fg-muted/15 px-1">status=any</code> so you can confirm draft vs publish in Details.{" "}
-                  <strong>Redirects</strong> here is a preview count of product plus category URLs we would map to new destinations (Woo inventory), not “existing redirects” from a plugin like Redirection.{" "}
-                  <strong>PDFs</strong> lists <code className="rounded bg-fg-muted/15 px-1">application/pdf</code> attachments from WordPress media; import uploads each file to Shopify Files (requires a Shopify custom app with <code className="rounded bg-fg-muted/15 px-1">write_files</code>).
+                  Counts use WooCommerce and public WordPress REST unless you add an app password above (then Details can include drafts/private).{" "}
+                  <strong>Redirects</strong> here is a preview of product + category URLs to remap, not Redirection-plugin rows.
                 </p>
 
                 {migrationEntities.has("pdfs") && (
-                  <div className="mt-5 overflow-hidden rounded-xl border border-border bg-bg shadow-sm dark:shadow-none">
-                    <div className="border-b border-border bg-gradient-to-r from-brand-50/90 via-brand-50/40 to-transparent px-4 py-3 dark:from-brand-950/50 dark:via-brand-950/25 dark:to-transparent">
-                      <h3 className="text-sm font-semibold tracking-tight text-fg">PDF media → Shopify Files</h3>
-                      <p className="mt-1 max-w-3xl text-body-small leading-relaxed text-fg-muted">
-                        Uploads or links PDFs from WordPress media to Shopify Files (same site URL as WooCommerce). Up to{" "}
-                        <strong className="font-medium text-fg">500</strong> per import pass; expand <strong>PDFs</strong> above to exclude IDs.
-                        Results cache in this browser (brand + store URL). <strong>Fetch URLs</strong> matches Shopify by filename—no second upload.
+                  <div className="mt-5 rounded-lg border border-border bg-bg p-4">
+                    <h3 className="text-sm font-semibold text-fg">PDFs → Shopify Files</h3>
+                    <p className="mt-1 text-body-small text-fg-muted">
+                      Up to 500 per pass; exclude IDs under PDFs → Details. Import and Fetch run as pipeline jobs (runs, job_runs, artifacts). Shopify app needs{" "}
+                      <code className="rounded bg-fg-muted/15 px-1">write_files</code> (and redirect scopes if you enable redirects).
+                    </p>
+                    {(pdfImportLoading || pdfResolveLoading || pdfActivePipelineRunId) && (
+                      <p className="mt-2 text-body-small text-fg-muted">
+                        {pdfActivePipelineRunId ? (
+                          <>
+                            Pipeline run:{" "}
+                            <Link href={`/runs/${pdfActivePipelineRunId}`} className="text-link font-medium hover:underline">
+                              {pdfActivePipelineRunId.slice(0, 8)}…
+                            </Link>
+                            {" · "}
+                          </>
+                        ) : null}
+                        <Link href="/runs" className="text-link font-medium hover:underline">
+                          All runs
+                        </Link>
+                        {` · intent ${WP_SHOPIFY_MIGRATION_INTENT}`}
                       </p>
-                    </div>
-                    <div className="space-y-4 p-4">
-                      <div className="rounded-lg border border-amber-200/90 bg-amber-50/70 px-3 py-2.5 text-body-small dark:border-amber-900/60 dark:bg-amber-950/35">
-                        <p className="font-medium text-amber-950 dark:text-amber-100">Pipeline Runs &amp; artifacts</p>
-                        <p className="mt-1 leading-relaxed text-amber-950/85 dark:text-amber-100/90">
-                          This wizard calls the Control Plane <strong className="font-medium">directly</strong> (HTTP). It does{" "}
-                          <strong className="font-medium">not</strong> create a <code className="rounded bg-black/5 px-1 dark:bg-white/10">runs</code> row, runner{" "}
-                          <code className="rounded bg-black/5 px-1 dark:bg-white/10">job_runs</code>, or migration-report{" "}
-                          <strong className="font-medium">artifacts</strong> yet—so <strong className="font-medium">Pipeline Runs</strong> stays empty here.
-                          The orchestrated <strong className="font-medium">WP → Shopify migration</strong> DAG (inventory, GSC/GA4 snapshots, audit report, etc.) runs from an{" "}
-                          <Link href="/initiatives" className="font-medium text-brand-700 underline decoration-brand-700/30 hover:decoration-brand-700 dark:text-brand-400">
-                            Initiative
-                          </Link>{" "}
-                          with intent <code className="rounded bg-black/5 px-1 dark:bg-white/10">{WP_SHOPIFY_MIGRATION_INTENT}</code>; open{" "}
-                          <Link
-                            href={`/runs?intent_type=${WP_SHOPIFY_MIGRATION_INTENT}`}
-                            className="font-medium text-brand-700 underline decoration-brand-700/30 hover:decoration-brand-700 dark:text-brand-400"
-                          >
-                            WP → Shopify migration runs
-                          </Link>{" "}
-                          for those. End-to-end wiring of this wizard into plans/jobs/artifacts is planned.
-                        </p>
-                      </div>
+                    )}
 
-                      {pdfDryRunTotalCount != null ? (
+                    {pdfDryRunTotalCount != null ? (
                         <div>
                           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">PDF reconciliation</p>
                           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -2379,30 +2402,9 @@ export default function WpShopifyMigrationWizardPage() {
                     {pdfImportError && (
                       <p className="mt-2 text-body-small text-state-danger">{pdfImportError}</p>
                     )}
-                    {(pdfImportLoading || pdfResolveLoading) && pdfImportProgress && (
+                    {(pdfImportLoading || pdfResolveLoading) && pdfImportProgress?.phase && (
                       <div className="mt-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2.5">
-                        <p className="text-body-small text-fg">
-                          <strong>
-                            PDF {pdfImportProgress.current} of {pdfImportProgress.total}
-                          </strong>
-                          {pdfImportProgress.title ? (
-                            <span className="text-fg-muted">
-                              {" "}
-                              — {pdfImportProgress.title.length > 72 ? `${pdfImportProgress.title.slice(0, 72)}…` : pdfImportProgress.title}
-                            </span>
-                          ) : null}
-                        </p>
-                        {pdfImportProgress.phase && (
-                          <p className="mt-0.5 text-body-small text-fg-muted">{pdfImportProgress.phase}</p>
-                        )}
-                        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-fg-muted/15">
-                          <div
-                            className="h-full bg-brand-500 transition-[width] duration-300 ease-out"
-                            style={{
-                              width: `${Math.min(100, Math.round((pdfImportProgress.current / Math.max(1, pdfImportProgress.total)) * 100))}%`,
-                            }}
-                          />
-                        </div>
+                        <p className="text-body-small text-fg-muted">{pdfImportProgress.phase}</p>
                       </div>
                     )}
                     {pdfImportResult?.summary && (
@@ -2469,7 +2471,6 @@ export default function WpShopifyMigrationWizardPage() {
                         </div>
                       </div>
                     )}
-                    </div>
                   </div>
                 )}
 
@@ -2501,12 +2502,18 @@ export default function WpShopifyMigrationWizardPage() {
                     variant="primary"
                     onClick={runMigrationRun}
                     disabled={
-                      migrationRunLoading || migrationEntities.size === 0 || !shopifyCredentialsOk || !wooCredentialsOk
+                      migrationRunLoading ||
+                      migrationEntities.size === 0 ||
+                      !wooCredentialsOk ||
+                      (migrationEntities.has("pdfs") && !shopifyCredentialsOk)
                     }
                   >
                     {migrationRunLoading ? "Migrating…" : "Run migration"}
                   </Button>
                 </div>
+                <p className="mt-2 max-w-3xl text-body-small text-fg-muted">
+                  <strong>Run migration</strong> does real work only for what we support today: <strong>PDFs</strong> go to Shopify Files (needs Shopify connected). <strong>Blog tags</strong> are read from WordPress and stored on this run—Shopify attaches tags to articles, not as a standalone list, so full tag application ships with blog post migration. Products, collections, customers, posts, and other sheets still need export/Matrixify-style flows until ETL is built.
+                </p>
 
                 {migrationDryRunError && (
                   <div className="mt-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
@@ -2520,9 +2527,9 @@ export default function WpShopifyMigrationWizardPage() {
                 )}
                 {migrationRunResult && (
                   <div className="mt-3 rounded-lg border border-border bg-fg-muted/5 px-3 py-2 text-body-small">
-                    {migrationRunResult.job_id
-                      ? `Migration started. Job ID: ${migrationRunResult.job_id}`
-                      : migrationRunResult.message ?? "Migration started."}
+                    {migrationRunResult.run_id
+                      ? `Recorded on initiative. Run: /runs/${migrationRunResult.run_id}. ${migrationRunResult.message ?? ""}`.trim()
+                      : migrationRunResult.message ?? "Migration run completed."}
                   </div>
                 )}
               </CardContent>
@@ -3078,6 +3085,22 @@ export default function WpShopifyMigrationWizardPage() {
                     variant="primary"
                     disabled={!launchChecklist.redirectsImplemented || !launchChecklist.pagesCreated || !launchChecklist.metadataSet || !launchChecklist.internalLinksInPlace || !launchChecklist.fourOhFoursHandled || !launchAcked}
                     onClick={() => {
+                      if (brandId.trim()) {
+                        void api
+                          .wpShopifyWizardStateSnapshotEnqueue({
+                            brand_id: brandId,
+                            wizard_step: 9,
+                            summary: {
+                              launch_ack: true,
+                              checklist: launchChecklist,
+                              redirects: redirectMap.length,
+                              page_plan: pagePlan.length,
+                            },
+                          })
+                          .catch(() => {
+                            /* non-blocking */
+                          });
+                      }
                       alert("Launch checklist complete. Update your domain/DNS in Shopify (or your CDN) to point to the new site. Redirects and pages must already be live on the new platform.");
                     }}
                   >

@@ -289,6 +289,20 @@ export type PdfMigrationResult = {
   truncated: boolean;
 };
 
+export function pdfMigrationSummaryAndHint(result: PdfMigrationResult): {
+  summary: { uploaded: number; failed: number; warnings: number; truncated: boolean };
+  hint: string;
+} {
+  const uploaded = result.rows.filter((r) => r.shopify_file_url).length;
+  const failed = result.rows.filter((r) => r.error && !r.shopify_file_url).length;
+  const warnings = result.rows.filter((r) => r.shopify_file_url && r.error).length;
+  return {
+    summary: { uploaded, failed, warnings, truncated: result.truncated },
+    hint:
+      "Ensure the Shopify custom app includes the write_files scope. Shopify may return file status UPLOADED before the CDN URL exists; the server waits (polls) until the URL is ready. Use “Fetch URLs from Shopify” (no upload) for rows that uploaded but had no URL yet, or enable skip-if-exists before import to link existing Shopify files without fileCreate. For automatic URL redirects from old paths, add online store navigation redirect permissions (e.g. write_online_store_navigation). You can import redirect_csv in Shopify Admin if redirects were not created via API. If this run was truncated, open PDFs → Details and exclude WordPress media IDs that already uploaded, then run again.",
+  };
+}
+
 /** Streamed to the console as NDJSON while `migrateWordPressPdfsToShopify` runs. */
 export type PdfMigrationProgressEvent =
   | { event: "init"; total: number; pdf_total_in_wordpress: number; max_files: number }

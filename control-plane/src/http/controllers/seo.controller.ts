@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
 import { withTransaction } from "../../db.js";
-import { runMigrationCrawl } from "../../wp-shopify-migration-crawl.js";
 import { fetchSitemapProducts, type SitemapType } from "../../sitemap-products.js";
 import { productsFromUrl, type ProductsFromUrlType } from "../../products-from-url.js";
 import {
@@ -23,14 +22,9 @@ import {
   getWooCommerceStoreUrlForBrand,
   saveWooCommerceCredentialsForBrand,
   deleteWooCommerceCredentialsForBrand,
-  getWooCommerceCredentialsForBrand,
 } from "../../woocommerce-brand-connector.js";
-import {
-  migrateWordPressPdfsToShopify,
-  resolveWordPressPdfUrlsFromShopify,
-  wpFetchPdfMediaPage,
-  type PdfMigrationResult,
-} from "../../wp-shopify-migration-pdf-shopify.js";
+import { enqueueWpShopifyWizardJob } from "../../wp-shopify-migration-pipeline.js";
+import { parseWizardJobPayload } from "../../wp-shopify-migration-wizard-parse.js";
 import { listGa4Properties } from "../../seo-ga4-properties.js";
 import { CONTROL_PLANE_BASE, CONSOLE_URL, SEO_GOOGLE_CALLBACK_PATH } from "../constants.js";
 import { MAX_LIMIT } from "../lib/pagination.js";
@@ -483,755 +477,190 @@ export async function brandProfilesWooCommerceCredentialsDelete(req: Request, re
   }
 }
 
-type WooCommerceRestBody = {
-  woo_server?: string;
-  woo_consumer_key?: string;
-  woo_consumer_secret?: string;
-  brand_id?: string;
-};
-
-/** Use inline Woo trio if all present; else load from brand when brand_id is set. */
-async function resolveWooCommerceRestCredentials(
-  body: WooCommerceRestBody,
-): Promise<{ ok: true; server: string; key: string; secret: string } | { ok: false; error: string }> {
-  const server = (body.woo_server ?? "").trim().replace(/\/$/, "");
-  const key = (body.woo_consumer_key ?? "").trim();
-  const secret = (body.woo_consumer_secret ?? "").trim();
-  const brandId = body.brand_id?.trim();
-
-  if (server && key && secret) {
-    return { ok: true, server, key, secret };
-  }
-
-  if (!brandId) {
-    return {
-      ok: false,
-      error:
-        "Provide woo_server, woo_consumer_key, and woo_consumer_secret, or brand_id with WooCommerce credentials saved for the brand (Brands → Edit brand → WooCommerce).",
-    };
-  }
-
-  const row = await withTransaction((client) => getWooCommerceCredentialsForBrand(client, brandId));
-  if (!row) {
-    return {
-      ok: false,
-      error:
-        "This brand has no WooCommerce connector. Save store URL and REST API keys in Brands → Edit brand → WooCommerce, or pass woo_server, woo_consumer_key, and woo_consumer_secret.",
-    };
-  }
-
-  return {
-    ok: true,
-    server: row.store_url.replace(/\/$/, ""),
-    key: row.consumer_key,
-    secret: row.consumer_secret,
-  };
-}
-
-/** WP → Shopify migration wizard — Step 1: crawl source site (every live URL, optional link-following for WordPress). */
+/** WP → Shopify migration wizard — Step 1: enqueue source crawl (`wp_shopify_wizard_job` → artifact `wp_shopify_source_crawl`). Requires brand_id. */
 export async function wpShopifyMigrationCrawl(req: Request, res: Response): Promise<void> {
   try {
-    const body = req.body as {
-      source_url?: string;
-      use_link_crawl?: boolean;
-      max_urls?: number;
-      crawl_delay_ms?: number;
-      fetch_page_details?: boolean;
-    };
-    const source_url = body.source_url?.trim();
-    if (!source_url || !/^https?:\/\//i.test(source_url)) {
-      res.status(400).json({ error: "source_url is required and must be http(s)" });
+    const body = req.body as Record<string, unknown>;
+    const env = body.environment;
+    const environment = env === "staging" || env === "prod" ? env : "sandbox";
+    const payload = parseWizardJobPayload({ ...body, kind: "source_crawl" });
+    const out = await enqueueWpShopifyWizardJob({ brandId: payload.brand_id, environment, payload });
+    res.json({
+      ...out,
+      message: "Crawl queued. Poll GET /v1/runs/:run_id; artifact type wp_shopify_source_crawl contains urls and stats.",
+    });
+  } catch (e) {
+    const msg = String((e as Error).message);
+    if (msg.includes("required") || msg.includes("http") || msg.includes("brand_id")) {
+      res.status(400).json({ error: msg });
       return;
     }
-    const delayRaw = Number(body.crawl_delay_ms);
-    const crawl_delay_ms = Number.isFinite(delayRaw) ? Math.max(0, delayRaw) : 500;
-    const result = await runMigrationCrawl({
-      source_url,
-      use_link_crawl: Boolean(body.use_link_crawl),
-      max_urls: Math.min(5000, Math.max(1, Number(body.max_urls) || 2000)),
-      crawl_delay_ms,
-      fetch_page_details: Boolean(body.fetch_page_details),
-    });
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
+    res.status(500).json({ error: msg });
   }
 }
 
-/** WooCommerce API: get total count for an endpoint (GET with per_page=1, read X-WP-Total). */
-async function wooCount(
-  baseUrl: string,
-  authHeader: string,
-  path: string
-): Promise<number> {
-  const url = `${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}?per_page=1`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Authorization: authHeader, Accept: "application/json" },
-  });
-  if (!res.ok) return 0;
-  const total = res.headers.get("x-wp-total");
-  return total ? Math.max(0, parseInt(total, 10)) : 0;
-}
-
-/**
- * WordPress REST API published counts (wp/v2). WooCommerce consumer keys do not authenticate wp/v2;
- * this uses unauthenticated requests, which match public sitemap/crawl counts when the REST API is open.
- */
-async function wpPublicPublishedCount(siteOrigin: string, resource: "posts" | "pages" | "tags"): Promise<number> {
-  const base = siteOrigin.replace(/\/$/, "");
-  const qs = resource === "tags" ? "per_page=1" : "per_page=1&status=publish";
-  const url = `${base}/wp-json/wp/v2/${resource}?${qs}`;
+/** Unified orchestration entry: any wizard pipeline action (steps 1–9). POST body must include `kind` and `brand_id`. */
+export async function wpShopifyMigrationWizardJob(req: Request, res: Response): Promise<void> {
   try {
-    const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
-    if (!res.ok) return 0;
-    const total = res.headers.get("x-wp-total");
-    return total ? Math.max(0, parseInt(total, 10)) : 0;
-  } catch {
-    return 0;
+    const body = req.body as Record<string, unknown>;
+    const env = body.environment;
+    const environment = env === "staging" || env === "prod" ? env : "sandbox";
+    const payload = parseWizardJobPayload(body);
+    const out = await enqueueWpShopifyWizardJob({ brandId: payload.brand_id, environment, payload });
+    res.status(201).json({
+      ...out,
+      kind: payload.kind,
+      message: `Wizard job ${payload.kind} queued. Poll GET /v1/runs/:run_id for completion and artifacts.`,
+    });
+  } catch (e) {
+    const msg = String((e as Error).message);
+    if (msg.includes("required") || msg.includes("Unknown") || msg.includes("must be") || msg.includes("At most")) {
+      res.status(400).json({ error: msg });
+      return;
+    }
+    res.status(500).json({ error: msg });
   }
 }
 
-/** WP → Shopify migration wizard — Step 3: Dry run (preview counts from WooCommerce/WP API). */
+/** WP → Shopify migration wizard — Step 3: Dry run (preview counts). Enqueues `wp_shopify_wizard_job`; poll GET /v1/runs/:run_id and read artifact `wp_shopify_migration_dry_run`. */
 export async function wpShopifyMigrationDryRun(req: Request, res: Response): Promise<void> {
   try {
-    const body = req.body as {
-      woo_server?: string;
-      woo_consumer_key?: string;
-      woo_consumer_secret?: string;
-      brand_id?: string;
-      entities?: string[];
-      wp_username?: string;
-      wp_application_password?: string;
-    };
-    const woo = await resolveWooCommerceRestCredentials(body);
-    if (!woo.ok) {
-      res.status(400).json({ error: woo.error });
+    const body = req.body as Record<string, unknown>;
+    const env = body.environment;
+    const environment = env === "staging" || env === "prod" ? env : "sandbox";
+    const payload = parseWizardJobPayload({ ...body, kind: "dry_run" });
+    const out = await enqueueWpShopifyWizardJob({ brandId: payload.brand_id, environment, payload });
+    res.json({
+      ...out,
+      message:
+        "Dry run queued. Poll GET /v1/runs/:run_id until status is succeeded or failed; artifact type wp_shopify_migration_dry_run contains counts.",
+    });
+  } catch (e) {
+    const msg = String((e as Error).message);
+    if (msg.includes("required") || msg.includes("Unknown")) {
+      res.status(400).json({ error: msg });
       return;
     }
-    const { server, key, secret } = woo;
-    const entities = Array.isArray(body.entities) ? body.entities : ["products", "categories"];
-    const auth = Buffer.from(`${key}:${secret}`).toString("base64");
-    const authHeader = `Basic ${auth}`;
-    const wcBase = `${server}/wp-json/wc/v3`;
-    const wpUser = (body.wp_username ?? "").trim();
-    const wpPass = (body.wp_application_password ?? "").trim();
-    const wpAuth = wpUser && wpPass ? wpBasicAuthHeader(wpUser, wpPass) : null;
-    const counts: Record<string, number> = {};
-    const wcPaths: Record<string, string> = {
-      products: "products",
-      categories: "products/categories",
-      customers: "customers",
-      discounts: "coupons",
-      orders: "orders",
-    };
-    for (const e of entities) {
-      if (e === "redirects") {
-        continue;
-      }
-      if (wcPaths[e]) {
-        counts[e] = await wooCount(wcBase, authHeader, wcPaths[e]);
-        continue;
-      }
-      if (e === "blogs") {
-        counts.blogs = await wpPublicPublishedCount(server, "posts");
-        continue;
-      }
-      if (e === "pages") {
-        counts.pages = await wpPublicPublishedCount(server, "pages");
-        continue;
-      }
-      if (e === "blog_tags") {
-        counts.blog_tags = await wpPublicPublishedCount(server, "tags");
-        continue;
-      }
-      if (e === "pdfs") {
-        try {
-          const { total } = await wpFetchPdfMediaPage(server, wpAuth, 1, 1);
-          counts.pdfs = total;
-        } catch {
-          counts.pdfs = 0;
-        }
-        continue;
-      }
-    }
-    if (entities.includes("redirects")) {
-      let pc = counts.products;
-      let cc = counts.categories;
-      if (pc == null) pc = await wooCount(wcBase, authHeader, "products");
-      if (cc == null) cc = await wooCount(wcBase, authHeader, "products/categories");
-      counts.redirects = pc + cc;
-    }
-    res.json({ counts });
-  } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
+    res.status(500).json({ error: msg });
   }
 }
 
-type MigrationPreviewItem = {
-  id: string;
-  title: string;
-  status: string;
-  slug?: string;
-  url?: string;
-};
-
-async function wooFetchJson(
-  wcBase: string,
-  authHeader: string,
-  path: string,
-  query: string,
-): Promise<{ data: unknown[]; total: number }> {
-  const url = `${wcBase.replace(/\/$/, "")}/${path.replace(/^\//, "")}?${query}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Authorization: authHeader, Accept: "application/json" },
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`WooCommerce ${path} ${res.status}: ${t.slice(0, 200)}`);
-  }
-  const data = (await res.json()) as unknown[];
-  const totalHdr = res.headers.get("x-wp-total");
-  const total = totalHdr ? Math.max(0, parseInt(totalHdr, 10)) : data.length;
-  return { data: Array.isArray(data) ? data : [], total };
-}
-
-function wpBasicAuthHeader(user: string, appPassword: string): string {
-  return `Basic ${Buffer.from(`${user.replace(/^\s+|\s+$/g, "")}:${appPassword.replace(/\s/g, "")}`, "utf8").toString("base64")}`;
-}
-
-/** WP → Shopify migration wizard — Step 3: Paginated item preview for granular selection (status, URLs). */
+/** WP → Shopify migration wizard — Step 3: Paginated preview (pipeline). Poll artifact `wp_shopify_migration_preview`. */
 export async function wpShopifyMigrationPreviewItems(req: Request, res: Response): Promise<void> {
   try {
-    const body = req.body as {
-      woo_server?: string;
-      woo_consumer_key?: string;
-      woo_consumer_secret?: string;
-      brand_id?: string;
-      entity?: string;
-      page?: number;
-      per_page?: number;
-      wp_username?: string;
-      wp_application_password?: string;
-    };
-    const woo = await resolveWooCommerceRestCredentials(body);
-    if (!woo.ok) {
-      res.status(400).json({ error: woo.error });
-      return;
-    }
-    const { server, key, secret } = woo;
-    const entity = (body.entity ?? "").trim();
-    const page = Math.max(1, Math.min(500, Number(body.page) || 1));
-    const perPage = Math.max(5, Math.min(100, Number(body.per_page) || 50));
-    const allowed = new Set([
-      "products",
-      "categories",
-      "customers",
-      "discounts",
-      "blogs",
-      "pages",
-      "blog_tags",
-      "pdfs",
-      "redirects",
-    ]);
-    if (!allowed.has(entity)) {
-      res.status(400).json({ error: `entity must be one of: ${[...allowed].join(", ")}` });
-      return;
-    }
-    const auth = Buffer.from(`${key}:${secret}`).toString("base64");
-    const authHeader = `Basic ${auth}`;
-    const wcBase = `${server}/wp-json/wc/v3`;
-
-    const wpUser = (body.wp_username ?? "").trim();
-    const wpPass = (body.wp_application_password ?? "").trim();
-    const wpAuth = wpUser && wpPass ? wpBasicAuthHeader(wpUser, wpPass) : null;
-
-    const items: MigrationPreviewItem[] = [];
-    let total = 0;
-    let scopeNote: string | undefined;
-
-    if (entity === "products") {
-      const { data, total: t } = await wooFetchJson(
-        wcBase,
-        authHeader,
-        "products",
-        `page=${page}&per_page=${perPage}&status=any`,
-      );
-      total = t;
-      for (const row of data) {
-        const o = row as Record<string, unknown>;
-        const id = o.id != null ? String(o.id) : "";
-        const name = typeof o.name === "string" ? o.name : "";
-        const status = typeof o.status === "string" ? o.status : "unknown";
-        const slug = typeof o.slug === "string" ? o.slug : undefined;
-        const permalink = typeof o.permalink === "string" ? o.permalink : undefined;
-        if (id) items.push({ id, title: name || `(product ${id})`, status, slug, url: permalink });
-      }
-    } else if (entity === "categories") {
-      const { data, total: t } = await wooFetchJson(
-        wcBase,
-        authHeader,
-        "products/categories",
-        `page=${page}&per_page=${perPage}`,
-      );
-      total = t;
-      for (const row of data) {
-        const o = row as Record<string, unknown>;
-        const id = o.id != null ? String(o.id) : "";
-        const name = typeof o.name === "string" ? o.name : "";
-        const slug = typeof o.slug === "string" ? o.slug : undefined;
-        const perm = typeof (o as { permalink?: string }).permalink === "string" ? (o as { permalink: string }).permalink : undefined;
-        const href = typeof (o as { link?: string }).link === "string" ? (o as { link: string }).link : undefined;
-        const url =
-          perm ??
-          href ??
-          (slug ? `${server.replace(/\/$/, "")}/product-category/${encodeURIComponent(slug)}/` : undefined);
-        if (id) items.push({ id, title: name || `(category ${id})`, status: "—", slug, url });
-      }
-    } else if (entity === "customers") {
-      const { data, total: t } = await wooFetchJson(wcBase, authHeader, "customers", `page=${page}&per_page=${perPage}`);
-      total = t;
-      for (const row of data) {
-        const o = row as Record<string, unknown>;
-        const id = o.id != null ? String(o.id) : "";
-        const email =
-          typeof o.email === "string"
-            ? o.email
-            : typeof (o as { username?: string }).username === "string"
-              ? (o as { username: string }).username
-              : "";
-        if (id) items.push({ id, title: email || `Customer ${id}`, status: typeof o.role === "string" ? o.role : "customer" });
-      }
-    } else if (entity === "discounts") {
-      const { data, total: t } = await wooFetchJson(
-        wcBase,
-        authHeader,
-        "coupons",
-        `page=${page}&per_page=${perPage}&status=any`,
-      );
-      total = t;
-      for (const row of data) {
-        const o = row as Record<string, unknown>;
-        const id = o.id != null ? String(o.id) : "";
-        const code = typeof o.code === "string" ? o.code : "";
-        const status = typeof o.status === "string" ? o.status : "unknown";
-        if (id) items.push({ id, title: code || `Coupon ${id}`, status });
-      }
-    } else if (entity === "blogs" || entity === "pages") {
-      const resource = entity === "blogs" ? "posts" : "pages";
-      const useAuth = !!wpAuth;
-      const statusQs = useAuth ? "status=any" : "status=publish";
-      if (!useAuth) {
-        scopeNote =
-          "Only published content (public REST). Add WordPress username + application password below and reload preview to include drafts/private.";
-      }
-      const url = `${server}/wp-json/wp/v2/${resource}?${statusQs}&page=${page}&per_page=${perPage}&_fields=id,title,status,slug,link`;
-      const headers: Record<string, string> = { Accept: "application/json" };
-      if (wpAuth) headers.Authorization = wpAuth;
-      const r = await fetch(url, { method: "GET", headers });
-      if (!r.ok) {
-        const text = await r.text();
-        res.status(502).json({
-          error: `WordPress ${resource} ${r.status}: ${text.slice(0, 200)}`,
-          items: [],
-          total: 0,
-          scope_note: scopeNote,
-        });
-        return;
-      }
-      const data = (await r.json()) as unknown[];
-      const totalHdr = r.headers.get("x-wp-total");
-      total = totalHdr ? Math.max(0, parseInt(totalHdr, 10)) : data.length;
-      for (const row of data) {
-        const o = row as Record<string, unknown>;
-        const id = o.id != null ? String(o.id) : "";
-        const titleObj = o.title as { rendered?: string } | undefined;
-        const title =
-          typeof titleObj?.rendered === "string"
-            ? titleObj.rendered.replace(/<[^>]+>/g, "").trim()
-            : String(o.slug ?? id);
-        const status = typeof o.status === "string" ? o.status : "unknown";
-        const slug = typeof o.slug === "string" ? o.slug : undefined;
-        const link = typeof o.link === "string" ? o.link : undefined;
-        if (id) items.push({ id, title: title || `(${id})`, status, slug, url: link });
-      }
-    } else if (entity === "blog_tags") {
-      const useAuth = !!wpAuth;
-      if (!useAuth) {
-        scopeNote = "Tags are listed from public REST (all public tags).";
-      }
-      const url = `${server}/wp-json/wp/v2/tags?page=${page}&per_page=${perPage}&_fields=id,name,slug,link`;
-      const headers: Record<string, string> = { Accept: "application/json" };
-      if (wpAuth) headers.Authorization = wpAuth;
-      const r = await fetch(url, { method: "GET", headers });
-      if (!r.ok) {
-        const text = await r.text();
-        res.status(502).json({ error: `WordPress tags ${r.status}: ${text.slice(0, 200)}`, items: [], total: 0 });
-        return;
-      }
-      const data = (await r.json()) as unknown[];
-      const totalHdr = r.headers.get("x-wp-total");
-      total = totalHdr ? Math.max(0, parseInt(totalHdr, 10)) : data.length;
-      for (const row of data) {
-        const o = row as Record<string, unknown>;
-        const id = o.id != null ? String(o.id) : "";
-        const name = typeof o.name === "string" ? o.name : String(id);
-        const slug = typeof o.slug === "string" ? o.slug : undefined;
-        const link = typeof o.link === "string" ? o.link : undefined;
-        if (id) items.push({ id, title: name, status: "tag", slug, url: link });
-      }
-    } else if (entity === "pdfs") {
-      if (!wpAuth) {
-        scopeNote =
-          "Listing PDFs visible via public REST. Add WordPress username + application password above and reopen Details to include private / draft media.";
-      }
-      try {
-        const { rows: pdfRows, total: pdfTotal } = await wpFetchPdfMediaPage(server, wpAuth, page, perPage);
-        total = pdfTotal;
-        for (const raw of pdfRows) {
-          const id = raw.id != null ? String(raw.id) : "";
-          const titleObj = raw.title as { rendered?: string } | undefined;
-          const title =
-            typeof titleObj?.rendered === "string"
-              ? titleObj.rendered.replace(/<[^>]+>/g, "").trim()
-              : typeof raw.slug === "string"
-                ? raw.slug
-                : id;
-          const status = typeof raw.status === "string" ? raw.status : "inherit";
-          const slug = typeof raw.slug === "string" ? raw.slug : undefined;
-          const fileUrl = typeof raw.source_url === "string" ? raw.source_url : undefined;
-          if (id) items.push({ id, title: title || `PDF ${id}`, status, slug, url: fileUrl });
-        }
-      } catch (err) {
-        res.status(502).json({
-          error: `WordPress media: ${(err as Error).message}`,
-          items: [],
-          total: 0,
-          page,
-          per_page: perPage,
-          scope_note: scopeNote,
-        });
-        return;
-      }
-    } else if (entity === "redirects") {
-      scopeNote =
-        "Redirect rows are built from product and category permalinks. Uncheck URLs you do not want in the redirect map; items you have not paged through stay included.";
-      const per = Math.min(perPage, 100);
-      const { data: prods, total: pt } = await wooFetchJson(
-        wcBase,
-        authHeader,
-        "products",
-        `page=${page}&per_page=${per}&status=any`,
-      );
-      const { data: cats, total: ct } = await wooFetchJson(
-        wcBase,
-        authHeader,
-        "products/categories",
-        `page=${page}&per_page=${per}`,
-      );
-      total = pt + ct;
-      for (const row of prods) {
-        const o = row as Record<string, unknown>;
-        const id = o.id != null ? String(o.id) : "";
-        const name = typeof o.name === "string" ? o.name : "";
-        const permalink = typeof o.permalink === "string" ? o.permalink : "";
-        const status = typeof o.status === "string" ? o.status : "";
-        if (id && permalink)
-          items.push({ id: `p:${id}`, title: name || `Product ${id}`, status, url: permalink });
-      }
-      for (const row of cats) {
-        const o = row as Record<string, unknown>;
-        const id = o.id != null ? String(o.id) : "";
-        const name = typeof o.name === "string" ? o.name : "";
-        const slug = typeof o.slug === "string" ? o.slug : undefined;
-        const perm = typeof (o as { permalink?: string }).permalink === "string" ? (o as { permalink: string }).permalink : undefined;
-        const href = typeof (o as { link?: string }).link === "string" ? (o as { link: string }).link : undefined;
-        const link =
-          perm ??
-          href ??
-          (slug ? `${server.replace(/\/$/, "")}/product-category/${encodeURIComponent(slug)}/` : "");
-        if (id && link) items.push({ id: `c:${id}`, title: name || `Category ${id}`, status: "category", url: link });
-      }
-    }
-
-    res.json({ items, total, page, per_page: perPage, scope_note: scopeNote });
+    const body = req.body as Record<string, unknown>;
+    const env = body.environment;
+    const environment = env === "staging" || env === "prod" ? env : "sandbox";
+    const payload = parseWizardJobPayload({ ...body, kind: "migration_preview" });
+    const out = await enqueueWpShopifyWizardJob({ brandId: payload.brand_id, environment, payload });
+    res.json({
+      ...out,
+      message: "Preview queued. Poll GET /v1/runs/:run_id; artifact type wp_shopify_migration_preview has items, total, page, per_page, scope_note.",
+    });
   } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
+    const msg = String((e as Error).message);
+    if (msg.includes("required") || msg.includes("entity") || msg.includes("Unknown")) {
+      res.status(400).json({ error: msg });
+      return;
+    }
+    res.status(500).json({ error: msg });
   }
 }
 
-/** WP → Shopify migration wizard — Step 3: Run migration (WooCommerce → Shopify). Shopify is always from the brand connector (Brands → Edit → Shopify). Full ETL not yet implemented. */
+/** WP → Shopify migration wizard — Step 3 / launch: enqueue entity-aware migration run (`wp_shopify_migration_run` artifact: PDFs, blog tag export, pending ETL notes). */
 export async function wpShopifyMigrationRun(req: Request, res: Response): Promise<void> {
   try {
-    const body = req.body as {
-      woo_server?: string;
-      woo_consumer_key?: string;
-      woo_consumer_secret?: string;
-      brand_id?: string;
-      entities?: string[];
-    };
-    const brand_id = body.brand_id?.trim();
-    if (!brand_id) {
-      res.status(400).json({
-        error: "brand_id is required. Connect Shopify for the brand in Brands → Edit brand → Shopify.",
-      });
-      return;
-    }
-    const woo = await resolveWooCommerceRestCredentials(body);
-    if (!woo.ok) {
-      res.status(400).json({ error: woo.error });
-      return;
-    }
-    const hasShopify = await withTransaction((client) => hasShopifyCredentialsForBrand(client, brand_id));
-    if (!hasShopify) {
-      res.status(400).json({
-        error: "This brand has no Shopify connector. Connect Shopify in Brands → Edit this brand → Shopify (shop domain, Client ID, Client Secret).",
-      });
-      return;
-    }
+    const body = req.body as Record<string, unknown>;
+    const env = body.environment;
+    const environment = env === "staging" || env === "prod" ? env : "sandbox";
+    const payload = parseWizardJobPayload({ ...body, kind: "migration_run_placeholder" });
+    const out = await enqueueWpShopifyWizardJob({ brandId: payload.brand_id, environment, payload });
     res.json({
+      ...out,
       message:
-        "Full WooCommerce → Shopify migration is not yet implemented. When implemented, AI Factory will use this brand's Shopify connector (tokenized) and push to the Admin API (Matrixify-style).",
+        "Migration run queued. Poll GET /v1/runs/:run_id; artifact wp_shopify_migration_run contains per-entity results and any pending ETL notes.",
     });
   } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
+    const msg = String((e as Error).message);
+    if (msg.includes("required") || msg.includes("Unknown")) {
+      res.status(400).json({ error: msg });
+      return;
+    }
+    res.status(500).json({ error: msg });
   }
 }
 
-function pdfMigrationSummaryPayload(result: PdfMigrationResult): {
-  summary: { uploaded: number; failed: number; warnings: number; truncated: boolean };
-  hint: string;
-} {
-  const uploaded = result.rows.filter((r) => r.shopify_file_url).length;
-  const failed = result.rows.filter((r) => r.error && !r.shopify_file_url).length;
-  const warnings = result.rows.filter((r) => r.shopify_file_url && r.error).length;
-  return {
-    summary: { uploaded, failed, warnings, truncated: result.truncated },
-    hint:
-      "Ensure the Shopify custom app includes the write_files scope. Shopify may return file status UPLOADED before the CDN URL exists; the server waits (polls) until the URL is ready. Use “Fetch URLs from Shopify” (no upload) for rows that uploaded but had no URL yet, or enable skip-if-exists before import to link existing Shopify files without fileCreate. For automatic URL redirects from old paths, add online store navigation redirect permissions (e.g. write_online_store_navigation). You can import redirect_csv in Shopify Admin if redirects were not created via API. If this run was truncated, open PDFs → Details and exclude WordPress media IDs that already uploaded, then run again.",
-  };
-}
-
-/** WP → Shopify migration — upload WordPress media library PDFs to Shopify Files; optional URL redirects on the Shopify store. */
+/** WP → Shopify migration — enqueue PDF import as `wp_shopify_wizard_job` (artifact `wp_shopify_pdf_import`). Poll GET /v1/runs/:run_id. */
 export async function wpShopifyMigrationMigratePdfs(req: Request, res: Response): Promise<void> {
   try {
-    const body = req.body as {
-      woo_server?: string;
-      woo_consumer_key?: string;
-      woo_consumer_secret?: string;
-      brand_id?: string;
-      wp_username?: string;
-      wp_application_password?: string;
-      excluded_ids?: string[];
-      create_redirects?: boolean;
-      max_files?: number;
-      stream_progress?: boolean;
-      skip_if_exists_in_shopify?: boolean;
-    };
-    const brand_id = body.brand_id?.trim();
-    const woo = await resolveWooCommerceRestCredentials(body);
-    if (!woo.ok) {
-      res.status(400).json({ error: woo.error });
-      return;
-    }
-    const { server } = woo;
-    if (!brand_id) {
+    const body = req.body as Record<string, unknown>;
+    if (body.stream_progress === true) {
       res.status(400).json({
-        error: "brand_id is required. Connect Shopify for the brand in Brands → Edit brand → Shopify.",
+        error:
+          "stream_progress is no longer supported. PDF import runs on the pipeline runner; omit stream_progress and poll GET /v1/runs/:run_id for artifact wp_shopify_pdf_import.",
       });
       return;
     }
-    const hasShopify = await withTransaction((client) => hasShopifyCredentialsForBrand(client, brand_id));
+    const payload = parseWizardJobPayload({ ...body, kind: "pdf_import" });
+    const hasShopify = await withTransaction((client) => hasShopifyCredentialsForBrand(client, payload.brand_id));
     if (!hasShopify) {
       res.status(400).json({
         error: "This brand has no Shopify connector. Connect Shopify in Brands → Edit this brand → Shopify.",
       });
       return;
     }
-    const shopMeta = await withTransaction((client) => getShopifyShopForBrand(client, brand_id));
-    const tokenPack = await withTransaction((client) => getShopifyAccessTokenForBrand(client, brand_id));
-    if (!shopMeta || !tokenPack?.access_token) {
-      res.status(400).json({ error: "Could not obtain Shopify access token for this brand." });
-      return;
-    }
-    const wpUser = (body.wp_username ?? "").trim();
-    const wpPass = (body.wp_application_password ?? "").trim();
-    const wpAuth = wpUser && wpPass ? wpBasicAuthHeader(wpUser, wpPass) : null;
-    const excludedIds = new Set(
-      Array.isArray(body.excluded_ids) ? body.excluded_ids.map((x) => String(x)) : [],
-    );
-    const maxRaw = Number(body.max_files);
-    const maxFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
-    const createRedirects = body.create_redirects !== false;
-
-    if (body.stream_progress === true) {
-      res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("X-Accel-Buffering", "no");
-      const writeLine = (obj: unknown) => {
-        res.write(`${JSON.stringify(obj)}\n`);
-      };
-      try {
-        const result = await migrateWordPressPdfsToShopify({
-          wpOrigin: server,
-          wpAuthHeader: wpAuth,
-          shopDomain: shopMeta.shop_domain,
-          accessToken: tokenPack.access_token,
-          excludedIds,
-          maxFiles,
-          createRedirects,
-          skipIfExistsInShopify: body.skip_if_exists_in_shopify === true,
-          onProgress: (e) => writeLine({ type: "pdf_migration_progress", ...e }),
-        });
-        const { summary, hint } = pdfMigrationSummaryPayload(result);
-        writeLine({
-          type: "pdf_migration_complete",
-          rows: result.rows,
-          redirect_csv: result.redirect_csv,
-          truncated: result.truncated,
-          summary,
-          hint,
-        });
-        res.end();
-      } catch (err) {
-        writeLine({ type: "pdf_migration_error", error: String((err as Error).message) });
-        res.end();
-      }
-      return;
-    }
-
-    const result = await migrateWordPressPdfsToShopify({
-      wpOrigin: server,
-      wpAuthHeader: wpAuth,
-      shopDomain: shopMeta.shop_domain,
-      accessToken: tokenPack.access_token,
-      excludedIds,
-      maxFiles,
-      createRedirects,
-      skipIfExistsInShopify: body.skip_if_exists_in_shopify === true,
-    });
-    const { summary, hint } = pdfMigrationSummaryPayload(result);
+    const env = body.environment;
+    const environment = env === "staging" || env === "prod" ? env : "sandbox";
+    const out = await enqueueWpShopifyWizardJob({ brandId: payload.brand_id, environment, payload });
     res.json({
-      ...result,
-      summary,
-      hint,
+      ...out,
+      message:
+        "PDF import queued. Poll GET /v1/runs/:run_id until succeeded or failed; artifact type wp_shopify_pdf_import contains rows and redirect_csv.",
     });
   } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
+    const msg = String((e as Error).message);
+    if (msg.includes("required") || msg.includes("Unknown")) {
+      res.status(400).json({ error: msg });
+      return;
+    }
+    res.status(500).json({ error: msg });
   }
 }
 
-const PDF_RESOLVE_MAX_IDS = 2000;
-
-/** WP → Shopify migration — resolve CDN URLs for WordPress PDF media IDs against existing Shopify Files (no upload). */
+/** WP → Shopify migration — enqueue PDF URL resolve (no upload) as `wp_shopify_wizard_job` (artifact `wp_shopify_pdf_resolve`). */
 export async function wpShopifyMigrationResolvePdfUrls(req: Request, res: Response): Promise<void> {
   try {
-    const body = req.body as {
-      woo_server?: string;
-      woo_consumer_key?: string;
-      woo_consumer_secret?: string;
-      brand_id?: string;
-      wp_username?: string;
-      wp_application_password?: string;
-      wordpress_ids?: string[];
-      create_redirects?: boolean;
-      stream_progress?: boolean;
-    };
-    const brand_id = body.brand_id?.trim();
-    const woo = await resolveWooCommerceRestCredentials(body);
-    if (!woo.ok) {
-      res.status(400).json({ error: woo.error });
-      return;
-    }
-    const { server } = woo;
-    if (!brand_id) {
+    const body = req.body as Record<string, unknown>;
+    if (body.stream_progress === true) {
       res.status(400).json({
-        error: "brand_id is required. Connect Shopify for the brand in Brands → Edit brand → Shopify.",
+        error:
+          "stream_progress is no longer supported. Resolve runs on the pipeline runner; poll GET /v1/runs/:run_id for artifact wp_shopify_pdf_resolve.",
       });
       return;
     }
-    const idsRaw = Array.isArray(body.wordpress_ids) ? body.wordpress_ids.map((x) => String(x)) : [];
-    if (idsRaw.length === 0) {
-      res.status(400).json({ error: "wordpress_ids is required (non-empty array of media IDs)" });
-      return;
-    }
-    if (idsRaw.length > PDF_RESOLVE_MAX_IDS) {
-      res.status(400).json({ error: `At most ${PDF_RESOLVE_MAX_IDS} wordpress_ids per request` });
-      return;
-    }
-    const hasShopify = await withTransaction((client) => hasShopifyCredentialsForBrand(client, brand_id));
+    const payload = parseWizardJobPayload({ ...body, kind: "pdf_resolve" });
+    const hasShopify = await withTransaction((client) => hasShopifyCredentialsForBrand(client, payload.brand_id));
     if (!hasShopify) {
       res.status(400).json({
         error: "This brand has no Shopify connector. Connect Shopify in Brands → Edit this brand → Shopify.",
       });
       return;
     }
-    const shopMeta = await withTransaction((client) => getShopifyShopForBrand(client, brand_id));
-    const tokenPack = await withTransaction((client) => getShopifyAccessTokenForBrand(client, brand_id));
-    if (!shopMeta || !tokenPack?.access_token) {
-      res.status(400).json({ error: "Could not obtain Shopify access token for this brand." });
-      return;
-    }
-    const wpUser = (body.wp_username ?? "").trim();
-    const wpPass = (body.wp_application_password ?? "").trim();
-    const wpAuth = wpUser && wpPass ? wpBasicAuthHeader(wpUser, wpPass) : null;
-    const createRedirects = body.create_redirects !== false;
-
-    if (body.stream_progress === true) {
-      res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("X-Accel-Buffering", "no");
-      const writeLine = (obj: unknown) => {
-        res.write(`${JSON.stringify(obj)}\n`);
-      };
-      try {
-        const result = await resolveWordPressPdfUrlsFromShopify({
-          wpOrigin: server,
-          wpAuthHeader: wpAuth,
-          shopDomain: shopMeta.shop_domain,
-          accessToken: tokenPack.access_token,
-          wordpressIds: idsRaw,
-          createRedirects,
-          onProgress: (e) => writeLine({ type: "pdf_migration_progress", ...e }),
-        });
-        const { summary, hint } = pdfMigrationSummaryPayload(result);
-        writeLine({
-          type: "pdf_migration_complete",
-          rows: result.rows,
-          redirect_csv: result.redirect_csv,
-          truncated: result.truncated,
-          summary,
-          hint:
-            hint +
-            " Resolve scans recent Shopify Files; if a PDF is older than the scan window, run a full import with skip-if-exists or increase coverage in a future release.",
-        });
-        res.end();
-      } catch (err) {
-        writeLine({ type: "pdf_migration_error", error: String((err as Error).message) });
-        res.end();
-      }
-      return;
-    }
-
-    const result = await resolveWordPressPdfUrlsFromShopify({
-      wpOrigin: server,
-      wpAuthHeader: wpAuth,
-      shopDomain: shopMeta.shop_domain,
-      accessToken: tokenPack.access_token,
-      wordpressIds: idsRaw,
-      createRedirects,
-    });
-    const { summary, hint } = pdfMigrationSummaryPayload(result);
+    const env = body.environment;
+    const environment = env === "staging" || env === "prod" ? env : "sandbox";
+    const out = await enqueueWpShopifyWizardJob({ brandId: payload.brand_id, environment, payload });
     res.json({
-      ...result,
-      summary,
-      hint:
-        hint +
-        " Resolve scans recent Shopify Files; if a PDF is older than the scan window, run a full import with skip-if-exists or increase coverage in a future release.",
+      ...out,
+      message:
+        "PDF resolve queued. Poll GET /v1/runs/:run_id until succeeded or failed; artifact type wp_shopify_pdf_resolve contains rows and redirect_csv.",
     });
   } catch (e) {
-    res.status(500).json({ error: String((e as Error).message) });
+    const msg = String((e as Error).message);
+    if (msg.includes("required") || msg.includes("wordpress_ids") || msg.includes("At most") || msg.includes("Unknown")) {
+      res.status(400).json({ error: msg });
+      return;
+    }
+    res.status(500).json({ error: msg });
   }
 }
 

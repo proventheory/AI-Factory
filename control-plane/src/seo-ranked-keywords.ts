@@ -128,6 +128,7 @@ export async function fetchRankedKeywordsFromDataForSeo(
       status_message?: string;
     }>;
     status_code?: number;
+    status_message?: string;
   };
   if (data.status_code && data.status_code !== 20000) {
     throw new Error(data.status_message ?? `DataForSEO status ${data.status_code}`);

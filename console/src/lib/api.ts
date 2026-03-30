@@ -145,6 +145,119 @@ export async function getRunArtifacts(runId: string): Promise<{ items: ArtifactR
   return res.json();
 }
 
+const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "rolled_back"]);
+
+/** Response from enqueue-only WP → Shopify wizard endpoints (dry run, PDF import, PDF resolve). */
+export type WpShopifyWizardEnqueueResponse = {
+  run_id: string;
+  plan_id: string;
+  initiative_id: string;
+  message?: string;
+};
+
+export type WpShopifyPipelinePollOptions = {
+  intervalMs?: number;
+  maxWaitMs?: number;
+  onStatus?: (status: string) => void;
+  /** Fires as soon as the control plane returns `run_id` (before polling completes). */
+  onRunEnqueued?: (runId: string) => void;
+};
+
+/** Poll GET /v1/runs/:id/status until succeeded, failed, or rolled_back (default timeout 45 minutes). */
+export async function pollRunUntilTerminal(
+  runId: string,
+  opts?: { intervalMs?: number; maxWaitMs?: number; onStatus?: (status: string) => void },
+): Promise<{ status: string }> {
+  const intervalMs = opts?.intervalMs ?? 1500;
+  const maxWaitMs = opts?.maxWaitMs ?? 45 * 60_000;
+  const start = Date.now();
+  for (;;) {
+    const { status } = await getRunStatus(runId);
+    opts?.onStatus?.(status);
+    if (TERMINAL_RUN_STATUSES.has(status)) return { status };
+    if (Date.now() - start > maxWaitMs) {
+      throw new Error(
+        `Run ${runId} did not finish within ${Math.round(maxWaitMs / 1000)}s. Open Pipeline Runs to inspect it.`,
+      );
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
+function wpShopifyArtifactMeta(items: ArtifactRow[], artifactType: string): Record<string, unknown> | null {
+  const a = items.find((x) => x.artifact_type === artifactType);
+  const m = a?.metadata_json;
+  return m && typeof m === "object" && !Array.isArray(m) ? (m as Record<string, unknown>) : null;
+}
+
+async function throwWpShopifyRunFailed(runId: string, status: string): Promise<never> {
+  let detail = status;
+  try {
+    const res = await fetch(`${API}/v1/runs/${runId}`);
+    if (res.ok) {
+      const data = (await res.json()) as { job_runs?: Array<{ error_signature?: string }> };
+      const jr = Array.isArray(data.job_runs) ? data.job_runs[0] : undefined;
+      if (jr?.error_signature) detail = jr.error_signature;
+    }
+  } catch {
+    /* keep detail */
+  }
+  throw new Error(`Pipeline run failed (${detail}). Open /runs/${runId} for details.`);
+}
+
+function parseWizardEnqueueResponse(text: string, res: Response): WpShopifyWizardEnqueueResponse {
+  let enq: WpShopifyWizardEnqueueResponse & { error?: string };
+  try {
+    enq = JSON.parse(text) as WpShopifyWizardEnqueueResponse & { error?: string };
+  } catch {
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  if (!res.ok) throw new Error(enq.error ?? text);
+  if (!enq.run_id) throw new Error("Pipeline did not return run_id");
+  return enq;
+}
+
+async function postWpShopifyMigrationPost(path: string, body: Record<string, unknown>): Promise<WpShopifyWizardEnqueueResponse> {
+  const res = await fetch(`${API}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  return parseWizardEnqueueResponse(text, res);
+}
+
+async function waitForWizardArtifact(
+  runId: string,
+  artifactType: string,
+  pollOpts?: WpShopifyPipelinePollOptions,
+): Promise<Record<string, unknown>> {
+  const { status } = await pollRunUntilTerminal(runId, pollOpts);
+  if (status !== "succeeded") await throwWpShopifyRunFailed(runId, status);
+  const { items } = await getRunArtifacts(runId);
+  const meta = wpShopifyArtifactMeta(items, artifactType);
+  if (!meta) throw new Error(`Pipeline succeeded but artifact ${artifactType} was not found.`);
+  return meta;
+}
+
+/** Fire-and-forget: records wizard progress on the WP → Shopify initiative (artifact `wp_shopify_wizard_snapshot`). Does not poll. */
+export async function wpShopifyWizardStateSnapshotEnqueue(params: {
+  brand_id: string;
+  wizard_step: number;
+  summary: Record<string, unknown>;
+  previous_step?: number;
+  environment?: string;
+}): Promise<WpShopifyWizardEnqueueResponse> {
+  return postWpShopifyMigrationPost("/v1/wp-shopify-migration/wizard_job", {
+    kind: "wizard_state_snapshot",
+    brand_id: params.brand_id,
+    wizard_step: params.wizard_step,
+    summary: params.summary,
+    ...(params.previous_step != null ? { previous_step: params.previous_step } : {}),
+    ...(params.environment ? { environment: params.environment } : {}),
+  });
+}
+
 export async function getInitiatives(params?: { intent_type?: string; risk_level?: string; limit?: number }): Promise<{ items: InitiativeRow[] }> {
   const searchParams = new URLSearchParams();
   if (params?.intent_type) searchParams.set("intent_type", params.intent_type);
@@ -1045,13 +1158,15 @@ export async function fetchProductsFromUrl(params: {
   return res.json();
 }
 
-/** WP → Shopify migration wizard — Step 1: crawl source site (every live URL; optional link-following for WordPress). */
+/** WP → Shopify migration wizard — Step 1: crawl source site (every live URL; optional link-following for WordPress). Requires brand_id for initiative runs. */
 export type WpShopifyMigrationCrawlParams = {
+  brand_id: string;
   source_url: string;
   use_link_crawl?: boolean;
   max_urls?: number;
   crawl_delay_ms?: number;
   fetch_page_details?: boolean;
+  environment?: string;
 };
 
 export type WpShopifyMigrationCrawlResult = {
@@ -1071,18 +1186,33 @@ export type WpShopifyMigrationCrawlResult = {
   stats: { total_urls: number; by_type: Record<string, number>; status_counts: Record<string, number> };
 };
 
-export async function wpShopifyMigrationCrawl(params: WpShopifyMigrationCrawlParams): Promise<WpShopifyMigrationCrawlResult> {
-  const res = await fetch(`${API}/v1/wp-shopify-migration/crawl`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+export async function wpShopifyMigrationCrawl(
+  params: WpShopifyMigrationCrawlParams,
+  pollOpts?: WpShopifyPipelinePollOptions,
+): Promise<WpShopifyMigrationCrawlResult> {
+  const { brand_id, environment, ...rest } = params;
+  const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/crawl", {
+    brand_id,
+    source_url: rest.source_url,
+    use_link_crawl: rest.use_link_crawl,
+    max_urls: rest.max_urls,
+    crawl_delay_ms: rest.crawl_delay_ms,
+    fetch_page_details: rest.fetch_page_details,
+    ...(environment ? { environment } : {}),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  pollOpts?.onRunEnqueued?.(enq.run_id);
+  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_source_crawl", pollOpts);
+  return meta as unknown as WpShopifyMigrationCrawlResult;
 }
 
-/** WP → Shopify migration wizard — Step 2: Google Search Console report. */
-export type SeoGscReportParams = { site_url: string; date_range?: string; row_limit?: number; brand_id?: string };
+/** WP → Shopify migration wizard — Step 2: Google Search Console report (pipeline → `wp_shopify_seo_gsc_report`). */
+export type SeoGscReportParams = {
+  brand_id: string;
+  site_url: string;
+  date_range?: string;
+  row_limit?: number;
+  environment?: string;
+};
 export type SeoGscReport = {
   site_url: string;
   date_range: { start: string; end: string };
@@ -1093,18 +1223,22 @@ export type SeoGscReport = {
   error?: string;
 };
 
-export async function seoGscReport(params: SeoGscReportParams): Promise<SeoGscReport> {
-  const res = await fetch(`${API}/v1/seo/gsc_report`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+export async function seoGscReport(params: SeoGscReportParams, pollOpts?: WpShopifyPipelinePollOptions): Promise<SeoGscReport> {
+  const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/wizard_job", {
+    kind: "seo_gsc_report",
+    brand_id: params.brand_id,
+    site_url: params.site_url,
+    date_range: params.date_range ?? "last28days",
+    row_limit: params.row_limit ?? 500,
+    ...(params.environment ? { environment: params.environment } : {}),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  pollOpts?.onRunEnqueued?.(enq.run_id);
+  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_gsc_report", pollOpts);
+  return meta as unknown as SeoGscReport;
 }
 
-/** WP → Shopify migration wizard — Step 2: GA4 report. Pass brand_id to use the brand's connected GA4 property and OAuth. */
-export type SeoGa4ReportParams = { property_id?: string; row_limit?: number; brand_id?: string };
+/** WP → Shopify migration wizard — Step 2: GA4 report. With brand_id uses pipeline (`wp_shopify_seo_ga4_report`); with property_id only, calls control plane directly (no initiative run). */
+export type SeoGa4ReportParams = { property_id?: string; row_limit?: number; brand_id?: string; environment?: string };
 export type SeoGa4Report = {
   property_id: string;
   pages: Array<{
@@ -1121,7 +1255,20 @@ export type SeoGa4Report = {
   error?: string;
 };
 
-export async function seoGa4Report(params: SeoGa4ReportParams): Promise<SeoGa4Report> {
+export async function seoGa4Report(params: SeoGa4ReportParams, pollOpts?: WpShopifyPipelinePollOptions): Promise<SeoGa4Report> {
+  const brandId = params.brand_id?.trim();
+  if (brandId) {
+    const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/wizard_job", {
+      kind: "seo_ga4_report",
+      brand_id: brandId,
+      row_limit: params.row_limit ?? 500,
+      ...(params.property_id?.trim() ? { property_id: params.property_id.trim() } : {}),
+      ...(params.environment ? { environment: params.environment } : {}),
+    });
+    pollOpts?.onRunEnqueued?.(enq.run_id);
+    const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_ga4_report", pollOpts);
+    return meta as unknown as SeoGa4Report;
+  }
   const res = await fetch(`${API}/v1/seo/ga4_report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1131,49 +1278,33 @@ export async function seoGa4Report(params: SeoGa4ReportParams): Promise<SeoGa4Re
   return res.json();
 }
 
-/** WP → Shopify migration wizard — Keyword Planner: monthly search volume for a list of keywords (Google Ads API). */
-export type SeoKeywordVolumeParams = { keywords: string[] };
+/** WP → Shopify migration wizard — Keyword Planner: monthly search volume (pipeline → `wp_shopify_seo_keyword_volume`). */
+export type SeoKeywordVolumeParams = { brand_id: string; keywords: string[]; environment?: string };
 export type SeoKeywordVolumeResult = {
   volumes: Array<{ keyword: string; monthly_search_volume: number }>;
   error?: string;
 };
 
-/** Stay under common API / proxy limits (many stacks reject >500 keywords per request). */
-const SEO_KEYWORD_VOLUME_CHUNK = 400;
-
-export async function seoKeywordVolume(params: SeoKeywordVolumeParams): Promise<SeoKeywordVolumeResult> {
+export async function seoKeywordVolume(
+  params: SeoKeywordVolumeParams,
+  pollOpts?: WpShopifyPipelinePollOptions,
+): Promise<SeoKeywordVolumeResult> {
   const keywords = Array.isArray(params.keywords) ? params.keywords : [];
   if (keywords.length === 0) return { volumes: [] };
-  const merged: SeoKeywordVolumeResult["volumes"] = [];
-  const errors: string[] = [];
-  for (let i = 0; i < keywords.length; i += SEO_KEYWORD_VOLUME_CHUNK) {
-    const chunk = keywords.slice(i, i + SEO_KEYWORD_VOLUME_CHUNK);
-    const res = await fetch(`${API}/v1/seo/keyword_volume`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keywords: chunk }),
-    });
-    const text = await res.text();
-    let data: SeoKeywordVolumeResult | { error?: string } | null = null;
-    try {
-      data = text ? (JSON.parse(text) as SeoKeywordVolumeResult) : null;
-    } catch {
-      if (!res.ok) errors.push(text.slice(0, 500) || `HTTP ${res.status}`);
-      else errors.push(text.slice(0, 500));
-      continue;
-    }
-    if (!res.ok) {
-      const errMsg =
-        data && typeof data === "object" && data.error != null ? String(data.error) : text.slice(0, 500) || `HTTP ${res.status}`;
-      errors.push(errMsg);
-      continue;
-    }
-    const okBody = data as SeoKeywordVolumeResult | null;
-    if (okBody?.volumes) merged.push(...okBody.volumes);
-    if (okBody?.error) errors.push(String(okBody.error));
-  }
-  const uniqueErrors = Array.from(new Set(errors.map((s) => s.trim()).filter(Boolean)));
-  return { volumes: merged, ...(uniqueErrors.length > 0 ? { error: uniqueErrors.join("; ") } : {}) };
+  const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/wizard_job", {
+    kind: "seo_keyword_volume",
+    brand_id: params.brand_id,
+    keywords,
+    ...(params.environment ? { environment: params.environment } : {}),
+  });
+  pollOpts?.onRunEnqueued?.(enq.run_id);
+  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_keyword_volume", pollOpts);
+  const volumes = meta.volumes as SeoKeywordVolumeResult["volumes"] | undefined;
+  const error = meta.error != null ? String(meta.error) : undefined;
+  return {
+    volumes: Array.isArray(volumes) ? volumes : [],
+    ...(error ? { error } : {}),
+  };
 }
 
 /** WP → Shopify migration wizard — DataForSEO ranked keywords per URL (cached). Returns keywords each URL ranks for. */
@@ -1209,26 +1340,50 @@ export type WpShopifyMigrationDryRunParams = WpShopifyMigrationWooRestParams & {
   wp_username?: string;
   wp_application_password?: string;
 };
-export type WpShopifyMigrationDryRunResult = { counts?: Record<string, number>; message?: string };
+export type WpShopifyMigrationDryRunResult = { counts: Record<string, number>; run_id: string };
 
-export async function wpShopifyMigrationDryRun(params: WpShopifyMigrationDryRunParams): Promise<WpShopifyMigrationDryRunResult> {
+/** Dry-run counts via pipeline (`wp_shopify_wizard_job` → artifact `wp_shopify_migration_dry_run`). */
+export async function wpShopifyMigrationDryRun(
+  params: WpShopifyMigrationDryRunParams,
+  pollOpts?: WpShopifyPipelinePollOptions,
+): Promise<WpShopifyMigrationDryRunResult> {
   const res = await fetch(`${API}/v1/wp-shopify-migration/dry_run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const text = await res.text();
+  let enq: WpShopifyWizardEnqueueResponse & { error?: string };
+  try {
+    enq = JSON.parse(text) as WpShopifyWizardEnqueueResponse & { error?: string };
+  } catch {
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  if (!res.ok) throw new Error(enq.error ?? text);
+  const runId = enq.run_id;
+  if (!runId) throw new Error("dry_run did not return run_id");
+  pollOpts?.onRunEnqueued?.(runId);
+  const { status } = await pollRunUntilTerminal(runId, pollOpts);
+  if (status !== "succeeded") await throwWpShopifyRunFailed(runId, status);
+  const { items } = await getRunArtifacts(runId);
+  const meta = wpShopifyArtifactMeta(items, "wp_shopify_migration_dry_run");
+  const counts = meta?.counts as Record<string, number> | undefined;
+  if (!counts || typeof counts !== "object") {
+    throw new Error("Dry run succeeded but artifact wp_shopify_migration_dry_run is missing counts.");
+  }
+  return { counts, run_id: runId };
 }
 
 /** Paginated preview rows for step 3 granular migration selection. */
 export type MigrationPreviewItem = { id: string; title: string; status: string; slug?: string; url?: string };
 export type WpShopifyMigrationPreviewItemsParams = WpShopifyMigrationWooRestParams & {
+  brand_id: string;
   entity: string;
   page?: number;
   per_page?: number;
   wp_username?: string;
   wp_application_password?: string;
+  environment?: string;
 };
 export type WpShopifyMigrationPreviewItemsResult = {
   items: MigrationPreviewItem[];
@@ -1239,39 +1394,82 @@ export type WpShopifyMigrationPreviewItemsResult = {
   error?: string;
 };
 
-export async function wpShopifyMigrationPreviewItems(params: WpShopifyMigrationPreviewItemsParams): Promise<WpShopifyMigrationPreviewItemsResult> {
-  const res = await fetch(`${API}/v1/wp-shopify-migration/preview_items`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+export async function wpShopifyMigrationPreviewItems(
+  params: WpShopifyMigrationPreviewItemsParams,
+  pollOpts?: WpShopifyPipelinePollOptions,
+): Promise<WpShopifyMigrationPreviewItemsResult> {
+  const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/preview_items", {
+    brand_id: params.brand_id,
+    entity: params.entity,
+    page: params.page,
+    per_page: params.per_page,
+    ...(params.woo_server ? { woo_server: params.woo_server } : {}),
+    ...(params.woo_consumer_key ? { woo_consumer_key: params.woo_consumer_key } : {}),
+    ...(params.woo_consumer_secret ? { woo_consumer_secret: params.woo_consumer_secret } : {}),
+    ...(params.wp_username ? { wp_username: params.wp_username } : {}),
+    ...(params.wp_application_password ? { wp_application_password: params.wp_application_password } : {}),
+    ...(params.environment ? { environment: params.environment } : {}),
   });
-  const text = await res.text();
-  let data: WpShopifyMigrationPreviewItemsResult & { error?: string };
-  try {
-    data = JSON.parse(text) as WpShopifyMigrationPreviewItemsResult;
-  } catch {
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-  if (!res.ok) throw new Error(data.error ?? text);
-  return data;
+  pollOpts?.onRunEnqueued?.(enq.run_id);
+  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_migration_preview", pollOpts);
+  return {
+    items: (Array.isArray(meta.items) ? meta.items : []) as MigrationPreviewItem[],
+    total: Number(meta.total) || 0,
+    page: Number(meta.page) || 1,
+    per_page: Number(meta.per_page) || 50,
+    ...(typeof meta.scope_note === "string" ? { scope_note: meta.scope_note } : {}),
+    ...(meta.error != null ? { error: String(meta.error) } : {}),
+  };
 }
 
-/** WP → Shopify migration wizard — Step 3: Run migration (WooCommerce → Shopify). Shopify is always from the brand connector (Brands → Edit → Shopify). */
+/** WP → Shopify migration wizard — Step 3 / launch: entity-aware run (`wp_shopify_migration_run` artifact). PDFs import to Shopify Files; blog tags are exported from WordPress; other entities reported as pending ETL. */
 export type WpShopifyMigrationRunParams = WpShopifyMigrationWooRestParams & {
-  /** Brand with Shopify connected (Brands → Edit → Shopify). Required for migration. */
   brand_id: string;
   entities: string[];
+  /** Per-entity WordPress/Woo IDs excluded in the wizard (same keys as step 3 sheets). */
+  excluded_ids_by_entity?: Record<string, string[]>;
+  max_files?: number;
+  create_redirects?: boolean;
+  skip_if_exists_in_shopify?: boolean;
+  wp_username?: string;
+  wp_application_password?: string;
+  environment?: string;
 };
-export type WpShopifyMigrationRunResult = { job_id?: string; message?: string };
+export type WpShopifyMigrationRunResult = {
+  run_id: string;
+  message?: string;
+  entities?: string[];
+  unsupported?: string[];
+};
 
-export async function wpShopifyMigrationRun(params: WpShopifyMigrationRunParams): Promise<WpShopifyMigrationRunResult> {
-  const res = await fetch(`${API}/v1/wp-shopify-migration/run`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+export async function wpShopifyMigrationRun(
+  params: WpShopifyMigrationRunParams,
+  pollOpts?: WpShopifyPipelinePollOptions,
+): Promise<WpShopifyMigrationRunResult> {
+  const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/run", {
+    brand_id: params.brand_id,
+    entities: params.entities,
+    ...(params.excluded_ids_by_entity && Object.keys(params.excluded_ids_by_entity).length > 0
+      ? { excluded_ids_by_entity: params.excluded_ids_by_entity }
+      : {}),
+    ...(params.max_files != null ? { max_files: params.max_files } : {}),
+    ...(params.create_redirects === false ? { create_redirects: false } : {}),
+    ...(params.skip_if_exists_in_shopify === true ? { skip_if_exists_in_shopify: true } : {}),
+    ...(params.wp_username ? { wp_username: params.wp_username } : {}),
+    ...(params.wp_application_password ? { wp_application_password: params.wp_application_password } : {}),
+    ...(params.woo_server ? { woo_server: params.woo_server } : {}),
+    ...(params.woo_consumer_key ? { woo_consumer_key: params.woo_consumer_key } : {}),
+    ...(params.woo_consumer_secret ? { woo_consumer_secret: params.woo_consumer_secret } : {}),
+    ...(params.environment ? { environment: params.environment } : {}),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  pollOpts?.onRunEnqueued?.(enq.run_id);
+  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_migration_run", pollOpts);
+  return {
+    run_id: enq.run_id,
+    message: typeof meta.message === "string" ? meta.message : undefined,
+    entities: Array.isArray(meta.entities) ? (meta.entities as string[]) : undefined,
+    unsupported: Array.isArray(meta.unsupported) ? (meta.unsupported as string[]) : undefined,
+  };
 }
 
 /** WordPress PDF → Shopify Files (+ optional redirects). */
@@ -1304,98 +1502,50 @@ export type WpShopifyMigrationMigratePdfsResult = {
   hint?: string;
 };
 
-export async function wpShopifyMigrationMigratePdfs(params: WpShopifyMigrationMigratePdfsParams): Promise<WpShopifyMigrationMigratePdfsResult> {
+function parsePdfImportArtifact(meta: Record<string, unknown>): WpShopifyMigrationMigratePdfsResult {
+  const rows = meta.rows as WpShopifyMigrationPdfRow[] | undefined;
+  const redirect_csv = typeof meta.redirect_csv === "string" ? meta.redirect_csv : "";
+  const truncated = Boolean(meta.truncated);
+  if (!Array.isArray(rows)) throw new Error("PDF artifact missing rows array");
+  return {
+    rows,
+    redirect_csv,
+    truncated,
+    summary: meta.summary as WpShopifyMigrationMigratePdfsResult["summary"],
+    hint: typeof meta.hint === "string" ? meta.hint : undefined,
+  };
+}
+
+/** PDF import via pipeline (`wp_shopify_wizard_job` → artifact `wp_shopify_pdf_import`). */
+export async function wpShopifyMigrationMigratePdfs(
+  params: WpShopifyMigrationMigratePdfsParams,
+  pollOpts?: WpShopifyPipelinePollOptions,
+): Promise<WpShopifyMigrationMigratePdfsResult> {
   const res = await fetch(`${API}/v1/wp-shopify-migration/migrate_pdfs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
   const text = await res.text();
-  let data: WpShopifyMigrationMigratePdfsResult & { error?: string };
+  let enq: WpShopifyWizardEnqueueResponse & { error?: string };
   try {
-    data = JSON.parse(text) as WpShopifyMigrationMigratePdfsResult & { error?: string };
+    enq = JSON.parse(text) as WpShopifyWizardEnqueueResponse & { error?: string };
   } catch {
     throw new Error(text || `HTTP ${res.status}`);
   }
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? text);
-  return data;
+  if (!res.ok) throw new Error(enq.error ?? text);
+  const runId = enq.run_id;
+  if (!runId) throw new Error("migrate_pdfs did not return run_id");
+  pollOpts?.onRunEnqueued?.(runId);
+  const { status } = await pollRunUntilTerminal(runId, pollOpts);
+  if (status !== "succeeded") await throwWpShopifyRunFailed(runId, status);
+  const { items } = await getRunArtifacts(runId);
+  const meta = wpShopifyArtifactMeta(items, "wp_shopify_pdf_import");
+  if (!meta) throw new Error("Import succeeded but artifact wp_shopify_pdf_import was not found.");
+  return parsePdfImportArtifact(meta);
 }
 
-/** NDJSON stream: progress lines then one `pdf_migration_complete` (same shape as {@link wpShopifyMigrationMigratePdfs}). */
-export type WpShopifyMigrationPdfProgressInit = {
-  type: "pdf_migration_progress";
-  event: "init";
-  total: number;
-  pdf_total_in_wordpress: number;
-  max_files: number;
-};
-export type WpShopifyMigrationPdfProgressItem = {
-  type: "pdf_migration_progress";
-  event: "item";
-  current: number;
-  total: number;
-  wordpress_id: string;
-  title: string;
-  step: "start" | "complete";
-  shopify_file_url?: string;
-  error?: string;
-};
-export type WpShopifyMigrationPdfProgressLine = WpShopifyMigrationPdfProgressInit | WpShopifyMigrationPdfProgressItem;
-
-export async function wpShopifyMigrationMigratePdfsStreaming(
-  params: WpShopifyMigrationMigratePdfsParams,
-  onProgress: (line: WpShopifyMigrationPdfProgressLine) => void,
-): Promise<WpShopifyMigrationMigratePdfsResult> {
-  const res = await fetch(`${API}/v1/wp-shopify-migration/migrate_pdfs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
-    body: JSON.stringify({ ...params, stream_progress: true }),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    let err = t;
-    try {
-      const j = JSON.parse(t) as { error?: string };
-      if (j.error) err = j.error;
-    } catch {
-      /* use text */
-    }
-    throw new Error(err || `HTTP ${res.status}`);
-  }
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response body from migrate_pdfs stream");
-  const dec = new TextDecoder();
-  let buf = "";
-  let final: WpShopifyMigrationMigratePdfsResult | null = null;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const obj = JSON.parse(line) as
-        | WpShopifyMigrationPdfProgressLine
-        | { type: "pdf_migration_complete"; rows: WpShopifyMigrationPdfRow[]; redirect_csv: string; truncated: boolean; summary: WpShopifyMigrationMigratePdfsResult["summary"]; hint?: string }
-        | { type: "pdf_migration_error"; error: string };
-      if (obj.type === "pdf_migration_progress") onProgress(obj);
-      else if (obj.type === "pdf_migration_complete") {
-        final = {
-          rows: obj.rows,
-          redirect_csv: obj.redirect_csv,
-          truncated: obj.truncated,
-          summary: obj.summary,
-          hint: obj.hint,
-        };
-      } else if (obj.type === "pdf_migration_error") throw new Error(obj.error);
-    }
-  }
-  if (!final) throw new Error("Import stream ended without a final result");
-  return final;
-}
-
-/** Resolve CDN URLs for WordPress PDF media IDs from existing Shopify Files (no upload). Same NDJSON line types as import. */
+/** Resolve CDN URLs for WordPress PDF media IDs from existing Shopify Files (no upload). Pipeline artifact `wp_shopify_pdf_resolve`. */
 export type WpShopifyMigrationResolvePdfUrlsParams = Omit<
   WpShopifyMigrationMigratePdfsParams,
   "excluded_ids" | "max_files" | "skip_if_exists_in_shopify"
@@ -1403,57 +1553,32 @@ export type WpShopifyMigrationResolvePdfUrlsParams = Omit<
   wordpress_ids: string[];
 };
 
-export async function wpShopifyMigrationResolvePdfUrlsStreaming(
+export async function wpShopifyMigrationResolvePdfUrls(
   params: WpShopifyMigrationResolvePdfUrlsParams,
-  onProgress: (line: WpShopifyMigrationPdfProgressLine) => void,
+  pollOpts?: WpShopifyPipelinePollOptions,
 ): Promise<WpShopifyMigrationMigratePdfsResult> {
   const res = await fetch(`${API}/v1/wp-shopify-migration/resolve_pdf_urls`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
-    body: JSON.stringify({ ...params, stream_progress: true }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
   });
-  if (!res.ok) {
-    const txt = await res.text();
-    let err = txt;
-    try {
-      const j = JSON.parse(txt) as { error?: string };
-      if (j.error) err = j.error;
-    } catch {
-      /* use text */
-    }
-    throw new Error(err || `HTTP ${res.status}`);
+  const text = await res.text();
+  let enq: WpShopifyWizardEnqueueResponse & { error?: string };
+  try {
+    enq = JSON.parse(text) as WpShopifyWizardEnqueueResponse & { error?: string };
+  } catch {
+    throw new Error(text || `HTTP ${res.status}`);
   }
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response body from resolve_pdf_urls stream");
-  const dec = new TextDecoder();
-  let buf = "";
-  let final: WpShopifyMigrationMigratePdfsResult | null = null;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const obj = JSON.parse(line) as
-        | WpShopifyMigrationPdfProgressLine
-        | { type: "pdf_migration_complete"; rows: WpShopifyMigrationPdfRow[]; redirect_csv: string; truncated: boolean; summary: WpShopifyMigrationMigratePdfsResult["summary"]; hint?: string }
-        | { type: "pdf_migration_error"; error: string };
-      if (obj.type === "pdf_migration_progress") onProgress(obj);
-      else if (obj.type === "pdf_migration_complete") {
-        final = {
-          rows: obj.rows,
-          redirect_csv: obj.redirect_csv,
-          truncated: obj.truncated,
-          summary: obj.summary,
-          hint: obj.hint,
-        };
-      } else if (obj.type === "pdf_migration_error") throw new Error(obj.error);
-    }
-  }
-  if (!final) throw new Error("Resolve stream ended without a final result");
-  return final;
+  if (!res.ok) throw new Error(enq.error ?? text);
+  const runId = enq.run_id;
+  if (!runId) throw new Error("resolve_pdf_urls did not return run_id");
+  pollOpts?.onRunEnqueued?.(runId);
+  const { status } = await pollRunUntilTerminal(runId, pollOpts);
+  if (status !== "succeeded") await throwWpShopifyRunFailed(runId, status);
+  const { items } = await getRunArtifacts(runId);
+  const meta = wpShopifyArtifactMeta(items, "wp_shopify_pdf_resolve");
+  if (!meta) throw new Error("Resolve succeeded but artifact wp_shopify_pdf_resolve was not found.");
+  return parsePdfImportArtifact(meta);
 }
 
 export type EmailTemplateRow = {

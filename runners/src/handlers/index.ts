@@ -592,5 +592,10 @@ export function registerAllHandlers(): void {
     throw new Error("evolution_shadow not implemented in V1; use traffic_strategy=replay");
   });
 
+  registry.set("wp_shopify_wizard_job", async (client, context, params) => {
+    const { handleWpShopifyWizardJob } = await import("./wp-shopify-wizard-job.js");
+    await handleWpShopifyWizardJob(client, context, params);
+  });
+
   // deploy_preview and seo_* handlers require modules not yet in repo; register when those files are added
 }
