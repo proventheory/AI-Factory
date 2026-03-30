@@ -12,6 +12,7 @@ RUN echo "Control-plane: npm ci..." && npm ci --no-optional --no-audit
 COPY . .
 # Fail fast if http routers are missing (e.g. stale build cache); forces cache clear on Render.
 RUN test -f control-plane/src/http/routers/usage.router.ts || (echo "Missing control-plane/src/http/routers - clear build cache and redeploy" && exit 1)
+RUN test -f supabase/migrations/20260325000000_enable_rls_all_public_tables.sql || (echo "Missing RLS migration in Docker context — push migration file and/or clear Render build cache" && exit 1)
 # Bundle control-plane (includes runners SEO crawl + gsc-ga-api via static import; no dist/runners needed).
 # Use .cjs so Node always loads the bundle as CommonJS (repo root package.json is "type": "module").
 RUN echo "Control-plane: esbuild..." && mkdir -p dist && NODE_OPTIONS="--max-old-space-size=4096" npx esbuild control-plane/src/index.ts \
@@ -30,6 +31,9 @@ COPY --from=builder /app/scripts/run-migrate.mjs ./scripts/
 COPY --from=builder /app/scripts/sql-migrations.manifest.json ./scripts/
 COPY --from=builder /app/schemas ./schemas
 COPY --from=builder /app/supabase ./supabase
+# This file must exist in git; copy again from build context so a stale BuildKit cache on
+# `COPY --from=builder .../supabase` cannot ship an image without it (manifest lists this path).
+COPY supabase/migrations/20260325000000_enable_rls_all_public_tables.sql supabase/migrations/20260325000000_enable_rls_all_public_tables.sql
 EXPOSE 10000
 ENV PORT=10000
 # Do not run migrations before bind: Render's HTTP health check needs /health on PORT while migrations run.
