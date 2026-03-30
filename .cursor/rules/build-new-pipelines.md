@@ -13,7 +13,7 @@ That doc is the single source of truth. It covers:
 3. **Capability graph:** New artifact types and operators in seed/migration; `operator_produces_artifact_type` and `operator_consumes_artifact_type` edges so the resolver works.
 4. **Lineage:** Record consumption when handlers read predecessor artifacts; set producer on write.
 5. **Migrations (self-heal on deploy):** New `supabase/migrations/*.sql` must be added to `scripts/run-migrate.mjs` in the same change; `npm run verify:migrations` runs in CI. The Control Plane runs every migration in that list on every start—so only migrations registered there are applied on deploy. If you skip this, the new wizard/pipeline will hit "relation does not exist" after deploy.
-6. **Docs:** Update job contracts (e.g. `docs/seo-migration/job-contracts.md`) and `docs/ARTIFACT_HYGIENE.md` (where artifact content reaches the LLM, or paths that do not build prompts).
+6. **Docs:** Update job contracts (e.g. `docs/wp-shopify-migration/job-contracts.md`) and `docs/ARTIFACT_HYGIENE.md` (where artifact content reaches the LLM, or paths that do not build prompts).
 7. **Runbook:** Gate B in [docs/runbooks/large-deploy-verification.md](../../docs/runbooks/large-deploy-verification.md) after deploy.
 
 ## Do not skip

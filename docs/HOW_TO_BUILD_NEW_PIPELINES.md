@@ -46,11 +46,11 @@ Work through these in order. If you skip one, lineage, capability resolution, or
 ### 6. Control Plane: plan shape and by-artifact-type (if applicable)
 
 - [ ] If the pipeline is triggered by **POST /v1/runs/by-artifact-type** (e.g. "produce copy"): the resolver must return your operator for the requested `produces` (and optional `consumes`). Ensure capability graph seed includes your operator and produces edge.
-- [ ] If the pipeline is **compiled from an initiative** (e.g. intent_type `seo_migration_audit`, `email_design_generator`): ensure the plan compiler or template creates nodes with the correct `job_type` and edges so predecessor artifacts are available in `context.predecessor_artifacts`.
+- [ ] If the pipeline is **compiled from an initiative** (e.g. intent_type `wp_shopify_migration`, `email_design_generator`): ensure the plan compiler or template creates nodes with the correct `job_type` and edges so predecessor artifacts are available in `context.predecessor_artifacts`.
 
 ### 7. Docs and runbook
 
-- [ ] **Document the pipeline** (job contracts, inputs/outputs, artifact types). For SEO: `docs/seo-migration/job-contracts.md`. For email: see `docs/EMAIL_DESIGN_VS_CAMPAIGN.md`, `docs/KLAVIYO_OPERATOR_PACK.md`. For ads: `docs/ADS_COMMERCE_OPERATOR.md` or equivalent.
+- [ ] **Document the pipeline** (job contracts, inputs/outputs, artifact types). For SEO: `docs/wp-shopify-migration/job-contracts.md`. For email: see `docs/EMAIL_DESIGN_VS_CAMPAIGN.md`, `docs/KLAVIYO_OPERATOR_PACK.md`. For ads: `docs/ADS_COMMERCE_OPERATOR.md` or equivalent.
 - [ ] If you added a new **artifact_type** or **job_type**, update **`docs/ARTIFACT_HYGIENE.md`** (either "Where artifact content reaches the LLM" or "Paths that do not build prompts") so Cursor and code review don’t regress.
 - [ ] After deploy: complete the **Gate B** checklist in **`docs/runbooks/large-deploy-verification.md`** (tables exist, runner migrate→start, lineage API, capability resolver, capability loop).
 
@@ -68,11 +68,11 @@ Work through these in order. If you skip one, lineage, capability resolution, or
 
 ## SEO pipelines
 
-- **Intent types:** e.g. `seo_migration_audit`. Plan: DAG of nodes (source_inventory, target_inventory, url_matcher, redirect_verifier, content_parity, technical_diff, risk_scorer, audit_report, etc.). See **`docs/seo-migration/job-contracts.md`**.
+- **Intent types:** e.g. `wp_shopify_migration`. Plan: DAG of nodes (source_inventory, target_inventory, url_matcher, redirect_verifier, content_parity, technical_diff, risk_scorer, audit_report, etc.). See **`docs/wp-shopify-migration/job-contracts.md`**.
 - **Artifact types:** `seo_url_inventory`, `seo_url_match_report`, `seo_redirect_verification`, `seo_content_parity_report`, `seo_ranking_risk_report`, `seo_audit_summary`, etc. Each job_type produces one (or more) artifact types.
 - **Artifact hygiene:** SEO handlers today use artifact **metadata** (URLs, matches, counts) for logic and HTTP checks; they do **not** put artifact body into LLM prompts. If you add an SEO step that **does** send artifact content to an LLM (e.g. a summarizer or classifier), that path **must** use `loadArtifactContentForLlm` or `loadPredecessorContentsForLlm`, and you must update `docs/ARTIFACT_HYGIENE.md`.
-- **Capability graph:** Register every SEO job_type as an operator and link produces/consumes to the artifact types in `docs/seo-migration/job-contracts.md`. Seed in capability graph migration or a follow-up seed script.
-- **References:** `docs/seo-migration/README.md`, `docs/seo-migration/job-contracts.md`, `docs/seo-migration/artifact-schemas.md`, `docs/ARTIFACT_HYGIENE.md`.
+- **Capability graph:** Register every SEO job_type as an operator and link produces/consumes to the artifact types in `docs/wp-shopify-migration/job-contracts.md`. Seed in capability graph migration or a follow-up seed script.
+- **References:** `docs/wp-shopify-migration/README.md`, `docs/wp-shopify-migration/job-contracts.md`, `docs/wp-shopify-migration/artifact-schemas.md`, `docs/ARTIFACT_HYGIENE.md`.
 
 ---
 

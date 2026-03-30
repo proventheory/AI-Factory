@@ -1,16 +1,16 @@
-# SEO Migration – Docs and Artifacts
+# WP → Shopify migration – Docs and Artifacts
 
-This folder is the default output for standalone SEO migration scripts and a reference for pipeline artifacts.
+This folder is the default output for standalone migration scripts and a reference for pipeline artifacts.
 
 ## Scripts (standalone)
 
 | Script | Purpose |
 |--------|--------|
-| `scripts/seo-migration-url-inventory.mjs` | Sitemap-first URL discovery; writes `<host>-url-inventory.json` and `.md` here. |
+| `scripts/wp-shopify-migration-url-inventory.mjs` | Sitemap-first URL discovery; writes `<host>-url-inventory.json` and `.md` here. |
 | `scripts/seo/url-mapping-template.mjs` | Reads inventory JSON, writes `url_mapping.json` with `existing_url` filled, `migration_url` for manual fill. |
-| `scripts/seo-migration-gsc-ga-export.mjs` | GSC top pages/queries and GA4 top pages; writes `gsc_top_pages.json`, `gsc_queries.json`, `ga4_top_pages.json`. |
+| `scripts/wp-shopify-migration-gsc-ga-export.mjs` | GSC top pages/queries and GA4 top pages; writes `gsc_top_pages.json`, `gsc_queries.json`, `ga4_top_pages.json`. |
 
-Set `SEO_INVENTORY_OUT_DIR=./docs/seo-migration` to force output here (or leave default).
+Set `SEO_INVENTORY_OUT_DIR=./docs/wp-shopify-migration` to force output here (or leave default).
 
 ## GSC / GA4 (Option B/C)
 
@@ -22,15 +22,15 @@ Set `SEO_INVENTORY_OUT_DIR=./docs/seo-migration` to force output here (or leave 
 - `POST /v1/seo/gsc_report` — body: `{ "site_url": "https://example.com/", "date_range": "last28days", "row_limit": 500 }`. Returns `{ site_url, date_range, pages, queries, error? }`.
 - `POST /v1/seo/ga4_report` — body: `{ "property_id": "123456789", "row_limit": 500 }`. Returns `{ property_id, pages, error? }`.
 
-**Runner jobs (Option C):** In an `seo_migration_audit` run, set `goal_metadata.gsc_site_url` and/or `goal_metadata.ga4_property_id`. The `seo_gsc_snapshot` and `seo_ga4_snapshot` jobs call the same APIs and write `seo_gsc_snapshot` / `seo_ga4_snapshot` artifacts (used by `seo_risk_scorer`). Without credentials, jobs still succeed and write empty `pages`/`queries` plus an `error`/`note` field.
+**Runner jobs (Option C):** In an `wp_shopify_migration` run, set `goal_metadata.gsc_site_url` and/or `goal_metadata.ga4_property_id`. The `seo_gsc_snapshot` and `seo_ga4_snapshot` jobs call the same APIs and write `seo_gsc_snapshot` / `seo_ga4_snapshot` artifacts (used by `seo_risk_scorer`). Without credentials, jobs still succeed and write empty `pages`/`queries` plus an `error`/`note` field.
 
 ---
 
-## Pipeline (seo_migration_audit)
+## Pipeline (wp_shopify_migration)
 
 Create an initiative with:
 
-- `intent_type`: `"seo_migration_audit"`
+- `intent_type`: `"wp_shopify_migration"`
 - `goal_metadata`: `{ "source_url": "https://...", "target_url": "https://..." }`
 
 Optional: `crawl_delay_ms`, `max_urls`, `fetch_page_details`, `matching_rules`, `gsc_site_url`, `ga4_property_id`.

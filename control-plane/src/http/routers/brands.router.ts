@@ -25,6 +25,9 @@ import {
   brandProfilesShopifyConnected,
   brandProfilesShopifyCredentialsPut,
   brandProfilesShopifyCredentialsDelete,
+  brandProfilesWooCommerceConnected,
+  brandProfilesWooCommerceCredentialsPut,
+  brandProfilesWooCommerceCredentialsDelete,
 } from "../controllers/seo.controller.js";
 
 const router = Router();
@@ -40,6 +43,9 @@ router.delete("/v1/brand_profiles/:id/google_credentials", brandProfilesGoogleCr
 router.get("/v1/brand_profiles/:id/shopify_connected", brandProfilesShopifyConnected);
 router.put("/v1/brand_profiles/:id/shopify_credentials", brandProfilesShopifyCredentialsPut);
 router.delete("/v1/brand_profiles/:id/shopify_credentials", brandProfilesShopifyCredentialsDelete);
+router.get("/v1/brand_profiles/:id/woocommerce_connected", brandProfilesWooCommerceConnected);
+router.put("/v1/brand_profiles/:id/woocommerce_credentials", brandProfilesWooCommerceCredentialsPut);
+router.delete("/v1/brand_profiles/:id/woocommerce_credentials", brandProfilesWooCommerceCredentialsDelete);
 router.get("/v1/brand_profiles/:id", getBrandProfile);
 router.post("/v1/brand_profiles/prefill_from_url", prefillBrandFromUrl);
 router.post("/v1/brand_profiles", createBrandProfile);

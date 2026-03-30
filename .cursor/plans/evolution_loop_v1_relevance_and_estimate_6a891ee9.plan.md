@@ -418,7 +418,7 @@ The [AI_Factory_Architecture_Blueprint.md](AI_Factory_Architecture_Blueprint.md)
 | Vertical | Status | What it owns |
 |----------|--------|---------------|
 | **Deploy** | ✅ Documented + facade | Incidents, repair, evolution (deploy_repair), release routing, self-heal, Vercel/Render. |
-| **SEO** | ✅ Documented + facade | Migration audit, GSC/GA4, sitemap/products, landing page, *email design* (MJML). Pipeline patterns: `seo_migration_audit`, `email_design_generator`, `landing_page_generate`. |
+| **SEO** | ✅ Documented + facade | Migration audit, GSC/GA4, sitemap/products, landing page, *email design* (MJML). Pipeline patterns: `wp_shopify_migration`, `email_design_generator`, `landing_page_generate`. |
 
 ### SEO sub-domains (under one SEO vertical)
 
@@ -426,7 +426,7 @@ These are **not** separate kernels; they are **pipeline patterns or sub-areas** 
 
 | Sub-domain | In plan/codebase? | Note |
 |------------|-------------------|------|
-| **Migrations** | ✅ | `seo_migration_audit` (URL inventory, redirects, risk, GSC/GA4). |
+| **Migrations** | ✅ | `wp_shopify_migration` (URL inventory, redirects, risk, GSC/GA4). |
 | **Technical SEO** | Partial | GSC/GA4, risk scorer, sitemap; could add crawl/technical audit patterns. |
 | **Backlinking** | ❌ | Not yet; would be new pipeline pattern(s) under SEO vertical (e.g. backlink_audit, outreach). |
 | **Dev workflows / technical implementations** | Partial | Deploy vertical covers dev/deploy; SEO vertical covers technical SEO tooling. “Dev workflows” could stay as patterns under Deploy or SEO. |

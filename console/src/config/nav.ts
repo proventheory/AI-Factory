@@ -83,7 +83,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/email-design-generator", label: "Email Design Generator", branchId: "orchestration" },
       { href: "/klaviyo", label: "Klaviyo", branchId: "orchestration" },
       { href: "/landing-page-generator", label: "Landing Page Generator", branchId: "orchestration" },
-      { href: "/seo-migration", label: "SEO Migration Wizard", branchId: "orchestration" },
+      { href: "/wp-shopify-migration", label: "WordPress → Shopify migration", branchId: "orchestration" },
     ],
   },
   {
@@ -219,7 +219,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "email-design-generator": "Email Design Generator",
   klaviyo: "Klaviyo",
   "landing-page-generator": "Landing Page Generator",
-  "seo-migration": "SEO Migration Wizard",
+  "wp-shopify-migration": "WordPress → Shopify migration",
   tools: "Tools",
   launches: "Launches",
   "new": "New",

@@ -1,5 +1,5 @@
 /**
- * SEO audit report: aggregate match report + redirect verification + optional risk_scorer into seo_audit_summary.
+ * WP → Shopify audit report: aggregate match report + redirect verification + optional risk_scorer into seo_audit_summary.
  */
 import type pg from "pg";
 import type { JobContext } from "../job-context.js";

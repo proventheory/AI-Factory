@@ -101,11 +101,11 @@ This folder contains internal documentation for the AI Factory monorepo. Keep th
 
 | Document | Purpose |
 |----------|---------|
-| **[seo-migration/README.md](seo-migration/README.md)** | SEO migration overview: jobs, artifacts, scoring. |
-| **[seo-migration/artifact-schemas.md](seo-migration/artifact-schemas.md)** | SEO artifact schemas. |
-| **[seo-migration/job-contracts.md](seo-migration/job-contracts.md)** | SEO job contracts. |
-| **[seo-migration/scoring-model.md](seo-migration/scoring-model.md)** | SEO scoring model. |
-| **[seo-migration/CONSOLE_UI_VIEWS.md](seo-migration/CONSOLE_UI_VIEWS.md)** | Console UI views for SEO migration. |
+| **[wp-shopify-migration/README.md](wp-shopify-migration/README.md)** | WP → Shopify migration overview: jobs, artifacts, scoring. |
+| **[wp-shopify-migration/artifact-schemas.md](wp-shopify-migration/artifact-schemas.md)** | SEO artifact schemas. |
+| **[wp-shopify-migration/job-contracts.md](wp-shopify-migration/job-contracts.md)** | SEO job contracts. |
+| **[wp-shopify-migration/scoring-model.md](wp-shopify-migration/scoring-model.md)** | SEO scoring model. |
+| **[wp-shopify-migration/CONSOLE_UI_VIEWS.md](wp-shopify-migration/CONSOLE_UI_VIEWS.md)** | Console UI views for WP → Shopify audit runs. |
 | **[SOP_SEO_MIGRATION.md](SOP_SEO_MIGRATION.md)** | SOP for SEO migration. |
 
 ## LLM and quality

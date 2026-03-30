@@ -1,6 +1,6 @@
 import AppShell from "@/components/AppShell";
 
-export default function SeoMigrationLayout({
+export default function WpShopifyMigrationLayout({
   children,
 }: {
   children: React.ReactNode;

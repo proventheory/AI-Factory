@@ -5,6 +5,7 @@
  */
 
 import { createHash } from "crypto";
+import { WP_SHOPIFY_MIGRATION_INTENT, canonicalInitiativeIntentType } from "./lib/intent-type.js";
 import type { DbClient } from "./db.js";
 import type { Initiative, PlanNode, PlanEdge } from "./types.js";
 
@@ -179,8 +180,8 @@ const TEMPLATE_EMAIL_CAMPAIGN: { nodes: PlanTemplateNode[]; edges: PlanTemplateE
   edges: [],
 };
 
-/** SEO migration audit: optional GSC/GA/backlink snapshots; source + target inventory → url matcher → redirect verifier, content_parity, technical_diff → risk_scorer → audit report. */
-const TEMPLATE_SEO_MIGRATION_AUDIT: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
+/** WP → Shopify migration (intent wp_shopify_migration): optional GSC/GA/backlink snapshots; source + target inventory → url matcher → redirect verifier, content_parity, technical_diff → risk_scorer → audit report. */
+const TEMPLATE_WP_SHOPIFY_MIGRATION: { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } = {
   nodes: [
     { node_key: "source_inventory", job_type: "seo_source_inventory", agent_role: "engineer", node_type: "job" },
     { node_key: "target_inventory", job_type: "seo_target_inventory", agent_role: "engineer", node_type: "job" },
@@ -274,14 +275,15 @@ const TEMPLATES: Record<string, { nodes: PlanTemplateNode[]; edges: PlanTemplate
   marketing: TEMPLATE_MARKETING,
   landing: TEMPLATE_LANDING,
   email_design_generator: TEMPLATE_EMAIL_CAMPAIGN,
-  seo_migration_audit: TEMPLATE_SEO_MIGRATION_AUDIT,
+  wp_shopify_migration: TEMPLATE_WP_SHOPIFY_MIGRATION,
   software_deploy: TEMPLATE_SOFTWARE_DEPLOY,
   upgrade_initiative: TEMPLATE_UPGRADE_INITIATIVE,
 };
 
 /** Return template nodes/edges for an intent type (for prompt-built pipelines). */
 export function getTemplateByIntentType(intentType: string): { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } | null {
-  const t = TEMPLATES[intentType] ?? null;
+  const key = canonicalInitiativeIntentType(intentType);
+  const t = TEMPLATES[key] ?? null;
   return t ? { nodes: t.nodes, edges: t.edges } : null;
 }
 
@@ -322,12 +324,13 @@ export function computePlanHash(initiativeId: string, intentType: string, prdHas
 export function decomposeToDAG(initiative: Initiative): { nodes: PlanTemplateNode[]; edges: PlanTemplateEdge[] } {
   // intent_type "email_design_generator" (legacy "email_campaign" accepted) maps to plan template "email_design_generator" (single email_mjml node).
   // initiative.template_id is the MJML template selection (e.g. UUID), not a plan template key.
+  const intentType = canonicalInitiativeIntentType(initiative.intent_type);
   const templateId =
-    initiative.intent_type === "email_design_generator" || initiative.intent_type === "email_campaign" /* backward compat */
+    intentType === "email_design_generator" || intentType === "email_campaign" /* backward compat */
       ? "email_design_generator"
-      : initiative.intent_type === "seo_migration_audit"
-        ? "seo_migration_audit"
-        : (initiative.template_id ?? initiative.intent_type ?? "software");
+      : intentType === WP_SHOPIFY_MIGRATION_INTENT
+        ? WP_SHOPIFY_MIGRATION_INTENT
+        : (initiative.template_id ?? intentType ?? "software");
   const t = TEMPLATES[templateId] ?? TEMPLATE_SOFTWARE;
   return { nodes: t.nodes, edges: t.edges };
 }

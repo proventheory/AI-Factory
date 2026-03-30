@@ -1,6 +1,6 @@
-# SEO Migration – Job Contracts
+# WP → Shopify migration – Job Contracts
 
-Inputs, outputs, and responsibilities for each job type in the `seo_migration_audit` pipeline.
+Inputs, outputs, and responsibilities for each job type in the `wp_shopify_migration` (WP → Shopify audit) pipeline.
 
 | Job | Inputs | Outputs | Responsibilities |
 |-----|--------|---------|------------------|

@@ -28,7 +28,7 @@ export interface JobContext {
   llm_source: "gateway" | "openai_direct";
   /** Optional phase/config for quality gate and other handlers. */
   config?: { phase?: string };
-  /** Initiative goal_metadata (e.g. for seo_migration_audit: source_url, target_url, crawl options). */
+  /** Initiative goal_metadata (e.g. for wp_shopify_migration: source_url, target_url, crawl options). */
   goal_metadata?: Record<string, unknown> | null;
   /** Release runner_image_digest for this run (if set); runner must match or job fails. */
   runner_image_digest?: string | null;

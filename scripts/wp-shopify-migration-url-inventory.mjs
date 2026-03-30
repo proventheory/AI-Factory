@@ -4,19 +4,19 @@
  * Outputs url_inventory.json and url_inventory.md (and optional .csv).
  *
  * Usage:
- *   node scripts/seo-migration-url-inventory.mjs <BASE_URL> [BASE_URL2 ...]
- *   node scripts/seo-migration-url-inventory.mjs https://stigmahemp.com
- *   node scripts/seo-migration-url-inventory.mjs https://stigmahemp.com https://stigmathc.com
+ *   node scripts/wp-shopify-migration-url-inventory.mjs <BASE_URL> [BASE_URL2 ...]
+ *   node scripts/wp-shopify-migration-url-inventory.mjs https://stigmahemp.com
+ *   node scripts/wp-shopify-migration-url-inventory.mjs https://stigmahemp.com https://stigmathc.com
  *
  * Options (env):
- *   SEO_INVENTORY_OUT_DIR  default: ./docs/seo-migration
+ *   SEO_INVENTORY_OUT_DIR  default: ./docs/wp-shopify-migration
  *   SEO_INVENTORY_MAX_URLS default: 2000
  */
 
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 
-const OUT_DIR = process.env.SEO_INVENTORY_OUT_DIR ?? "./docs/seo-migration";
+const OUT_DIR = process.env.SEO_INVENTORY_OUT_DIR ?? "./docs/wp-shopify-migration";
 const MAX_URLS = Math.min(5000, Math.max(1, parseInt(process.env.SEO_INVENTORY_MAX_URLS ?? "2000", 10) || 2000));
 
 function classify(path) {
@@ -85,7 +85,7 @@ function toMarkdown(inventory) {
 async function main() {
   const baseUrls = process.argv.slice(2).filter((a) => a.startsWith("http"));
   if (baseUrls.length === 0) {
-    console.error("Usage: node scripts/seo-migration-url-inventory.mjs <BASE_URL> [BASE_URL2 ...]");
+    console.error("Usage: node scripts/wp-shopify-migration-url-inventory.mjs <BASE_URL> [BASE_URL2 ...]");
     process.exit(1);
   }
   mkdirSync(OUT_DIR, { recursive: true });

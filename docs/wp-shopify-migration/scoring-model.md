@@ -1,4 +1,4 @@
-# SEO Migration – Scoring Model
+# WP → Shopify migration – Scoring Model
 
 ## seo_value_score (0–1)
 

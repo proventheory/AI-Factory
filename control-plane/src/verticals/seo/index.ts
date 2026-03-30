@@ -1,5 +1,5 @@
 /**
- * SEO vertical — single entry point for SEO migration audit, GSC/GA4, sitemap, products, Google OAuth.
+ * SEO vertical — single entry point for WP → Shopify migration (intent wp_shopify_migration), GSC/GA4, sitemap, products, Google OAuth.
  * Runs on the same engine (runs, job_runs, artifacts); no domain tables in kernel.
  *
  * See docs/SEO_VERTICAL.md for boundary and kernel usage.

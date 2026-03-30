@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { withTransaction } from "../../db.js";
-import { runMigrationCrawl } from "../../seo-migration-crawl.js";
+import { runMigrationCrawl } from "../../wp-shopify-migration-crawl.js";
 import { fetchSitemapProducts, type SitemapType } from "../../sitemap-products.js";
 import { productsFromUrl, type ProductsFromUrlType } from "../../products-from-url.js";
 import {
@@ -19,11 +19,18 @@ import {
   getShopifyAccessTokenForBrand,
 } from "../../shopify-brand-connector.js";
 import {
+  hasWooCommerceCredentialsForBrand,
+  getWooCommerceStoreUrlForBrand,
+  saveWooCommerceCredentialsForBrand,
+  deleteWooCommerceCredentialsForBrand,
+  getWooCommerceCredentialsForBrand,
+} from "../../woocommerce-brand-connector.js";
+import {
   migrateWordPressPdfsToShopify,
   resolveWordPressPdfUrlsFromShopify,
   wpFetchPdfMediaPage,
   type PdfMigrationResult,
-} from "../../seo-migration-pdf-shopify.js";
+} from "../../wp-shopify-migration-pdf-shopify.js";
 import { listGa4Properties } from "../../seo-ga4-properties.js";
 import { CONTROL_PLANE_BASE, CONSOLE_URL, SEO_GOOGLE_CALLBACK_PATH } from "../constants.js";
 import { MAX_LIMIT } from "../lib/pagination.js";
@@ -425,8 +432,104 @@ export async function brandProfilesShopifyCredentialsDelete(req: Request, res: R
   }
 }
 
-/** SEO migration wizard — Step 1: crawl source site (every live URL, optional link-following for WordPress). */
-export async function seoMigrationCrawl(req: Request, res: Response): Promise<void> {
+/** GET /v1/brand_profiles/:id/woocommerce_connected — whether brand has WooCommerce REST credentials (store URL only in response). */
+export async function brandProfilesWooCommerceConnected(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id ?? "");
+    const row = await withTransaction(async (client) => {
+      const connected = await hasWooCommerceCredentialsForBrand(client, id);
+      if (!connected) return { connected: false, store_url: null as string | null };
+      const meta = await getWooCommerceStoreUrlForBrand(client, id);
+      return { connected: true, store_url: meta?.store_url ?? null };
+    });
+    res.json({
+      connected: row.connected,
+      ...(row.connected && row.store_url ? { store_url: row.store_url } : {}),
+    });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+/** PUT /v1/brand_profiles/:id/woocommerce_credentials — store URL + WooCommerce REST consumer key/secret (encrypted). */
+export async function brandProfilesWooCommerceCredentialsPut(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id ?? "");
+    const body = req.body as { store_url?: string; consumer_key?: string; consumer_secret?: string };
+    const store_url = body.store_url?.trim();
+    const consumer_key = body.consumer_key?.trim();
+    const consumer_secret = body.consumer_secret?.trim();
+    if (!store_url || !consumer_key || !consumer_secret) {
+      res.status(400).json({ error: "store_url, consumer_key, and consumer_secret are required" });
+      return;
+    }
+    await withTransaction((client) =>
+      saveWooCommerceCredentialsForBrand(client, id, { store_url, consumer_key, consumer_secret }),
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+/** DELETE /v1/brand_profiles/:id/woocommerce_credentials — disconnect WooCommerce REST for this brand. */
+export async function brandProfilesWooCommerceCredentialsDelete(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id ?? "");
+    await withTransaction((client) => deleteWooCommerceCredentialsForBrand(client, id));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+type WooCommerceRestBody = {
+  woo_server?: string;
+  woo_consumer_key?: string;
+  woo_consumer_secret?: string;
+  brand_id?: string;
+};
+
+/** Use inline Woo trio if all present; else load from brand when brand_id is set. */
+async function resolveWooCommerceRestCredentials(
+  body: WooCommerceRestBody,
+): Promise<{ ok: true; server: string; key: string; secret: string } | { ok: false; error: string }> {
+  const server = (body.woo_server ?? "").trim().replace(/\/$/, "");
+  const key = (body.woo_consumer_key ?? "").trim();
+  const secret = (body.woo_consumer_secret ?? "").trim();
+  const brandId = body.brand_id?.trim();
+
+  if (server && key && secret) {
+    return { ok: true, server, key, secret };
+  }
+
+  if (!brandId) {
+    return {
+      ok: false,
+      error:
+        "Provide woo_server, woo_consumer_key, and woo_consumer_secret, or brand_id with WooCommerce credentials saved for the brand (Brands → Edit brand → WooCommerce).",
+    };
+  }
+
+  const row = await withTransaction((client) => getWooCommerceCredentialsForBrand(client, brandId));
+  if (!row) {
+    return {
+      ok: false,
+      error:
+        "This brand has no WooCommerce connector. Save store URL and REST API keys in Brands → Edit brand → WooCommerce, or pass woo_server, woo_consumer_key, and woo_consumer_secret.",
+    };
+  }
+
+  return {
+    ok: true,
+    server: row.store_url.replace(/\/$/, ""),
+    key: row.consumer_key,
+    secret: row.consumer_secret,
+  };
+}
+
+/** WP → Shopify migration wizard — Step 1: crawl source site (every live URL, optional link-following for WordPress). */
+export async function wpShopifyMigrationCrawl(req: Request, res: Response): Promise<void> {
   try {
     const body = req.body as {
       source_url?: string;
@@ -489,24 +592,24 @@ async function wpPublicPublishedCount(siteOrigin: string, resource: "posts" | "p
   }
 }
 
-/** SEO migration wizard — Step 3: Dry run (preview counts from WooCommerce/WP API). */
-export async function seoMigrationDryRun(req: Request, res: Response): Promise<void> {
+/** WP → Shopify migration wizard — Step 3: Dry run (preview counts from WooCommerce/WP API). */
+export async function wpShopifyMigrationDryRun(req: Request, res: Response): Promise<void> {
   try {
     const body = req.body as {
       woo_server?: string;
       woo_consumer_key?: string;
       woo_consumer_secret?: string;
+      brand_id?: string;
       entities?: string[];
       wp_username?: string;
       wp_application_password?: string;
     };
-    const server = (body.woo_server ?? "").trim().replace(/\/$/, "");
-    const key = (body.woo_consumer_key ?? "").trim();
-    const secret = (body.woo_consumer_secret ?? "").trim();
-    if (!server || !key || !secret) {
-      res.status(400).json({ error: "woo_server, woo_consumer_key, and woo_consumer_secret are required" });
+    const woo = await resolveWooCommerceRestCredentials(body);
+    if (!woo.ok) {
+      res.status(400).json({ error: woo.error });
       return;
     }
+    const { server, key, secret } = woo;
     const entities = Array.isArray(body.entities) ? body.entities : ["products", "categories"];
     const auth = Buffer.from(`${key}:${secret}`).toString("base64");
     const authHeader = `Basic ${auth}`;
@@ -598,29 +701,29 @@ function wpBasicAuthHeader(user: string, appPassword: string): string {
   return `Basic ${Buffer.from(`${user.replace(/^\s+|\s+$/g, "")}:${appPassword.replace(/\s/g, "")}`, "utf8").toString("base64")}`;
 }
 
-/** SEO migration wizard — Step 3: Paginated item preview for granular selection (status, URLs). */
-export async function seoMigrationPreviewItems(req: Request, res: Response): Promise<void> {
+/** WP → Shopify migration wizard — Step 3: Paginated item preview for granular selection (status, URLs). */
+export async function wpShopifyMigrationPreviewItems(req: Request, res: Response): Promise<void> {
   try {
     const body = req.body as {
       woo_server?: string;
       woo_consumer_key?: string;
       woo_consumer_secret?: string;
+      brand_id?: string;
       entity?: string;
       page?: number;
       per_page?: number;
       wp_username?: string;
       wp_application_password?: string;
     };
-    const server = (body.woo_server ?? "").trim().replace(/\/$/, "");
-    const key = (body.woo_consumer_key ?? "").trim();
-    const secret = (body.woo_consumer_secret ?? "").trim();
+    const woo = await resolveWooCommerceRestCredentials(body);
+    if (!woo.ok) {
+      res.status(400).json({ error: woo.error });
+      return;
+    }
+    const { server, key, secret } = woo;
     const entity = (body.entity ?? "").trim();
     const page = Math.max(1, Math.min(500, Number(body.page) || 1));
     const perPage = Math.max(5, Math.min(100, Number(body.per_page) || 50));
-    if (!server || !key || !secret) {
-      res.status(400).json({ error: "woo_server, woo_consumer_key, and woo_consumer_secret are required" });
-      return;
-    }
     const allowed = new Set([
       "products",
       "categories",
@@ -858,8 +961,8 @@ export async function seoMigrationPreviewItems(req: Request, res: Response): Pro
   }
 }
 
-/** SEO migration wizard — Step 3: Run migration (WooCommerce → Shopify). Shopify is always from the brand connector (Brands → Edit → Shopify). Full ETL not yet implemented. */
-export async function seoMigrationRun(req: Request, res: Response): Promise<void> {
+/** WP → Shopify migration wizard — Step 3: Run migration (WooCommerce → Shopify). Shopify is always from the brand connector (Brands → Edit → Shopify). Full ETL not yet implemented. */
+export async function wpShopifyMigrationRun(req: Request, res: Response): Promise<void> {
   try {
     const body = req.body as {
       woo_server?: string;
@@ -873,6 +976,11 @@ export async function seoMigrationRun(req: Request, res: Response): Promise<void
       res.status(400).json({
         error: "brand_id is required. Connect Shopify for the brand in Brands → Edit brand → Shopify.",
       });
+      return;
+    }
+    const woo = await resolveWooCommerceRestCredentials(body);
+    if (!woo.ok) {
+      res.status(400).json({ error: woo.error });
       return;
     }
     const hasShopify = await withTransaction((client) => hasShopifyCredentialsForBrand(client, brand_id));
@@ -905,8 +1013,8 @@ function pdfMigrationSummaryPayload(result: PdfMigrationResult): {
   };
 }
 
-/** SEO migration — upload WordPress media library PDFs to Shopify Files; optional URL redirects on the Shopify store. */
-export async function seoMigrationMigratePdfs(req: Request, res: Response): Promise<void> {
+/** WP → Shopify migration — upload WordPress media library PDFs to Shopify Files; optional URL redirects on the Shopify store. */
+export async function wpShopifyMigrationMigratePdfs(req: Request, res: Response): Promise<void> {
   try {
     const body = req.body as {
       woo_server?: string;
@@ -921,14 +1029,13 @@ export async function seoMigrationMigratePdfs(req: Request, res: Response): Prom
       stream_progress?: boolean;
       skip_if_exists_in_shopify?: boolean;
     };
-    const server = (body.woo_server ?? "").trim().replace(/\/$/, "");
-    const key = (body.woo_consumer_key ?? "").trim();
-    const secret = (body.woo_consumer_secret ?? "").trim();
     const brand_id = body.brand_id?.trim();
-    if (!server || !key || !secret) {
-      res.status(400).json({ error: "woo_server, woo_consumer_key, and woo_consumer_secret are required" });
+    const woo = await resolveWooCommerceRestCredentials(body);
+    if (!woo.ok) {
+      res.status(400).json({ error: woo.error });
       return;
     }
+    const { server } = woo;
     if (!brand_id) {
       res.status(400).json({
         error: "brand_id is required. Connect Shopify for the brand in Brands → Edit brand → Shopify.",
@@ -1017,8 +1124,8 @@ export async function seoMigrationMigratePdfs(req: Request, res: Response): Prom
 
 const PDF_RESOLVE_MAX_IDS = 2000;
 
-/** SEO migration — resolve CDN URLs for WordPress PDF media IDs against existing Shopify Files (no upload). */
-export async function seoMigrationResolvePdfUrls(req: Request, res: Response): Promise<void> {
+/** WP → Shopify migration — resolve CDN URLs for WordPress PDF media IDs against existing Shopify Files (no upload). */
+export async function wpShopifyMigrationResolvePdfUrls(req: Request, res: Response): Promise<void> {
   try {
     const body = req.body as {
       woo_server?: string;
@@ -1031,14 +1138,13 @@ export async function seoMigrationResolvePdfUrls(req: Request, res: Response): P
       create_redirects?: boolean;
       stream_progress?: boolean;
     };
-    const server = (body.woo_server ?? "").trim().replace(/\/$/, "");
-    const key = (body.woo_consumer_key ?? "").trim();
-    const secret = (body.woo_consumer_secret ?? "").trim();
     const brand_id = body.brand_id?.trim();
-    if (!server || !key || !secret) {
-      res.status(400).json({ error: "woo_server, woo_consumer_key, and woo_consumer_secret are required" });
+    const woo = await resolveWooCommerceRestCredentials(body);
+    if (!woo.ok) {
+      res.status(400).json({ error: woo.error });
       return;
     }
+    const { server } = woo;
     if (!brand_id) {
       res.status(400).json({
         error: "brand_id is required. Connect Shopify for the brand in Brands → Edit brand → Shopify.",

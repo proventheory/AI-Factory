@@ -7,6 +7,7 @@ import { Button, Card, CardContent, CardHeader, Badge, Sheet, SheetTrigger, Shee
 import { useLaunches, useBuildSpecs, useCreateBuildSpec, useCreateBuildSpecFromStrategy } from "@/hooks/use-api";
 import * as api from "@/lib/api";
 import type { LaunchRow } from "@/lib/api";
+import { isWpShopifyMigrationIntent } from "@/config/intent-types";
 
 const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
 
@@ -93,9 +94,9 @@ export default function InitiativeDetailPage() {
     refetch();
   }, [refetch]);
 
-  // SEO migration audit: fetch Google connected status
+  // WP → Shopify migration (intent wp_shopify_migration): fetch Google connected status
   useEffect(() => {
-    if (!id || item?.intent_type !== "seo_migration_audit") return;
+    if (!id || !isWpShopifyMigrationIntent(item?.intent_type)) return;
     api.getInitiativeGoogleConnected(id).then((r) => setGoogleConnected(r.connected)).catch(() => setGoogleConnected(false));
   }, [id, item?.intent_type]);
 
@@ -229,7 +230,7 @@ export default function InitiativeDetailPage() {
           {item.source_ref && (<><dt className="text-slate-500">Source ref</dt><dd><a href={item.source_ref} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline truncate block max-w-md">{item.source_ref}</a></dd></>)}
         </dl>
       </div>
-      {item.intent_type === "seo_migration_audit" && (
+      {isWpShopifyMigrationIntent(item.intent_type) && (
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h2 className="font-semibold text-slate-900 mb-2">Google (GSC / GA4)</h2>
           <p className="text-slate-600 text-sm mb-3">Google is connected per brand. Connect or disconnect on the brand page; initiatives use their brand&apos;s connection.</p>

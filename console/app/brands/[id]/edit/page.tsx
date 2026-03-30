@@ -81,6 +81,14 @@ export default function EditBrandPage() {
   const [shopifyClientSecret, setShopifyClientSecret] = useState("");
   /** `null` = /health not loaded; `false` = API responded without shpat_ capability (redeploy CP). */
   const [shopifyCpSupportsShpat, setShopifyCpSupportsShpat] = useState<boolean | null>(null);
+  const [wooConnected, setWooConnected] = useState<boolean | null>(null);
+  const [wooStoreUrl, setWooStoreUrl] = useState<string | null>(null);
+  const [wooDisconnectBusy, setWooDisconnectBusy] = useState(false);
+  const [wooConnectError, setWooConnectError] = useState<string | null>(null);
+  const [wooConnectBusy, setWooConnectBusy] = useState(false);
+  const [wooStoreUrlInput, setWooStoreUrlInput] = useState("");
+  const [wooConsumerKeyInput, setWooConsumerKeyInput] = useState("");
+  const [wooConsumerSecretInput, setWooConsumerSecretInput] = useState("");
 
   const fetchGoogleConnected = useCallback(() => {
     if (!id) return;
@@ -101,6 +109,17 @@ export default function EditBrandPage() {
     }).catch(() => setShopifyConnected(false));
   }, [id]);
 
+  const fetchWooCommerceConnected = useCallback(() => {
+    if (!id) return;
+    api
+      .getBrandWooCommerceConnected(id)
+      .then((r) => {
+        setWooConnected(r.connected);
+        setWooStoreUrl(r.store_url ?? null);
+      })
+      .catch(() => setWooConnected(false));
+  }, [id]);
+
   useEffect(() => {
     fetchGoogleConnected();
   }, [fetchGoogleConnected]);
@@ -112,6 +131,10 @@ export default function EditBrandPage() {
   useEffect(() => {
     fetchShopifyConnected();
   }, [fetchShopifyConnected]);
+
+  useEffect(() => {
+    fetchWooCommerceConnected();
+  }, [fetchWooCommerceConnected]);
 
   useEffect(() => {
     let cancelled = false;
@@ -220,6 +243,41 @@ export default function EditBrandPage() {
       setShopifyUsesCustomAppToken(false);
     } finally {
       setShopifyDisconnectBusy(false);
+    }
+  }
+
+  async function handleConnectWooCommerce(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!id || !wooStoreUrlInput.trim() || !wooConsumerKeyInput.trim() || !wooConsumerSecretInput.trim()) return;
+    setWooConnectBusy(true);
+    setWooConnectError(null);
+    try {
+      await api.putBrandWooCommerceCredentials(id, {
+        store_url: wooStoreUrlInput.trim(),
+        consumer_key: wooConsumerKeyInput.trim(),
+        consumer_secret: wooConsumerSecretInput.trim(),
+      });
+      setWooConnected(true);
+      setWooStoreUrl(wooStoreUrlInput.trim().replace(/\/+$/, ""));
+      setWooStoreUrlInput("");
+      setWooConsumerKeyInput("");
+      setWooConsumerSecretInput("");
+    } catch (err) {
+      setWooConnectError(err instanceof Error ? err.message : "Failed to connect");
+    } finally {
+      setWooConnectBusy(false);
+    }
+  }
+
+  async function handleDisconnectWooCommerce() {
+    if (!id) return;
+    setWooDisconnectBusy(true);
+    try {
+      await api.deleteBrandWooCommerceCredentials(id);
+      setWooConnected(false);
+      setWooStoreUrl(null);
+    } finally {
+      setWooDisconnectBusy(false);
     }
   }
 
@@ -651,9 +709,90 @@ export default function EditBrandPage() {
             )}
           </CardSection>
 
+          <CardSection title="WooCommerce (source)">
+            <p className="text-body-small text-text-secondary mb-3">
+              WordPress / WooCommerce REST API v3 (Read key). Used by the <strong>WordPress → Shopify migration</strong> wizard as the source store. Keys are encrypted on the server (same key material as Shopify connector env:{" "}
+              <code className="text-xs bg-fg-muted/15 px-1 rounded">WOO_COMMERCE_CONNECTOR_ENCRYPTION_KEY</code> or{" "}
+              <code className="text-xs bg-fg-muted/15 px-1 rounded">SHOPIFY_CONNECTOR_ENCRYPTION_KEY</code>).
+            </p>
+            <p className="text-body-small text-text-secondary mb-3">
+              In WordPress: <strong>WooCommerce → Settings → Advanced → REST API → Add key</strong> (permissions: Read).
+            </p>
+            {wooConnectError && (
+              <div className="mb-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
+                {wooConnectError}
+              </div>
+            )}
+            {wooConnected === true ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-100 px-2.5 py-1 text-sm font-medium text-emerald-800">
+                  WooCommerce connected{wooStoreUrl ? ` (${wooStoreUrl})` : ""}
+                </span>
+                <Button type="button" variant="secondary" onClick={handleDisconnectWooCommerce} disabled={wooDisconnectBusy}>
+                  {wooDisconnectBusy ? "Disconnecting…" : "Disconnect WooCommerce"}
+                </Button>
+                <Link href="/wp-shopify-migration" className="text-body-small text-brand-600 hover:underline">
+                  WordPress → Shopify migration →
+                </Link>
+              </div>
+            ) : (
+              <div className="max-w-md space-y-4">
+                <div>
+                  <label className={labelCls}>
+                    Store URL (server) <span className="text-state-danger">*</span>
+                  </label>
+                  <p className="mb-1 text-body-small text-text-muted">Full site URL, e.g. https://your-store.com</p>
+                  <Input
+                    value={wooStoreUrlInput}
+                    onChange={(e) => setWooStoreUrlInput(e.target.value)}
+                    placeholder="https://your-woo-domain.com"
+                    autoComplete="off"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>
+                    Consumer key <span className="text-state-danger">*</span>
+                  </label>
+                  <Input
+                    type="password"
+                    value={wooConsumerKeyInput}
+                    onChange={(e) => setWooConsumerKeyInput(e.target.value)}
+                    placeholder="ck_…"
+                    autoComplete="off"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>
+                    Consumer secret <span className="text-state-danger">*</span>
+                  </label>
+                  <Input
+                    type="password"
+                    value={wooConsumerSecretInput}
+                    onChange={(e) => setWooConsumerSecretInput(e.target.value)}
+                    placeholder="cs_…"
+                    autoComplete="off"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={
+                    wooConnectBusy ||
+                    !wooStoreUrlInput.trim() ||
+                    !wooConsumerKeyInput.trim() ||
+                    !wooConsumerSecretInput.trim()
+                  }
+                  onClick={handleConnectWooCommerce}
+                >
+                  {wooConnectBusy ? "Saving…" : "Save WooCommerce credentials"}
+                </Button>
+              </div>
+            )}
+          </CardSection>
+
           <CardSection title="Shopify">
             <p className="text-body-small text-text-secondary mb-3">
-              Used by SEO Migration (e.g. PDF import), MCP, and other tools. <strong>Custom apps</strong> (Settings → Apps → Develop apps) cannot use OAuth client credentials on the shop—use <strong>Admin API access token</strong> (<code className="text-xs bg-fg-muted/15 px-1 rounded">shpat_…</code>). <strong>Partner / Dev Dashboard</strong> apps can use Client ID + Secret instead.
+              Used by WordPress → Shopify migration (e.g. PDF import), MCP, and other tools. <strong>Custom apps</strong> (Settings → Apps → Develop apps) cannot use OAuth client credentials on the shop—use <strong>Admin API access token</strong> (<code className="text-xs bg-fg-muted/15 px-1 rounded">shpat_…</code>). <strong>Partner / Dev Dashboard</strong> apps can use Client ID + Secret instead.
             </p>
             {shopifyCpSupportsShpat === false && (
               <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-body-small text-amber-950">
@@ -677,7 +816,7 @@ export default function EditBrandPage() {
                 <Button type="button" variant="secondary" onClick={handleDisconnectShopify} disabled={shopifyDisconnectBusy}>
                   {shopifyDisconnectBusy ? "Disconnecting…" : "Disconnect Shopify"}
                 </Button>
-                <Link href="/seo-migration" className="text-body-small text-brand-600 hover:underline">SEO Migration Wizard →</Link>
+                <Link href="/wp-shopify-migration" className="text-body-small text-brand-600 hover:underline">WordPress → Shopify migration →</Link>
               </div>
             ) : (
               <div className="space-y-4 max-w-md">

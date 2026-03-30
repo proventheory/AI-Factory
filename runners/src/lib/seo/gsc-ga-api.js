@@ -1,8 +1,6 @@
 /**
  * Google Search Console and GA4 Data API helpers. Requires googleapis and credentials
  * (GOOGLE_APPLICATION_CREDENTIALS or gcloud application-default).
- *
- * Keep in sync with gsc-ga-api.ts — control-plane loads this .js at runtime.
  */
 function loadGoogle() {
     return require("googleapis");
@@ -19,7 +17,7 @@ function getAuthFromAccessToken(accessToken) {
     oauth.setCredentials({ access_token: accessToken });
     return oauth;
 }
-/** Ensure URL-prefix properties use trailing slash (common GSC format). */
+/** Normalize site URL for Search Console API: ensure URL-prefix has trailing slash so it matches common GSC property format. */
 function normalizeGscSiteUrl(siteUrl) {
     const u = (siteUrl || "").trim();
     if (!u)
@@ -28,13 +26,14 @@ function normalizeGscSiteUrl(siteUrl) {
         return u;
     try {
         const parsed = new URL(u.startsWith("http") ? u : `https://${u}`);
-        return `${parsed.origin}/`;
+        const base = `${parsed.origin}/`;
+        return base;
     }
     catch {
         return u;
     }
 }
-/** When bulk [page,query] returns no rows, query each top page with a page filter. */
+/** When bulk [page,query] returns no rows, query each top page with a page filter (GSC API quirk on some properties). */
 async function fetchPageQueriesForTopPages(searchconsole, siteUrl, startStr, endStr, pages, maxPages) {
     const sorted = [...pages].sort((a, b) => b.clicks - a.clicks);
     const slice = sorted.slice(0, Math.min(maxPages, sorted.length));
@@ -80,7 +79,7 @@ async function fetchPageQueriesForTopPages(searchconsole, siteUrl, startStr, end
     return out;
 }
 /**
- * Fetch GSC Search Analytics: top pages, top queries, and keywords per page.
+ * Fetch GSC Search Analytics: top pages and top queries for the given site and date range.
  * When accessToken is provided (OAuth from control-plane), uses it instead of GOOGLE_APPLICATION_CREDENTIALS.
  */
 export async function fetchGscReport(siteUrl, options = {}) {
@@ -100,7 +99,7 @@ export async function fetchGscReport(siteUrl, options = {}) {
             : await getGoogleAuth(["https://www.googleapis.com/auth/webmasters.readonly"]);
         const { google } = loadGoogle();
         const searchconsole = google.searchconsole({ version: "v1", auth });
-        const pageQueryLimit = Math.min(25000, Math.max(1000, rowLimit * 40));
+        const pageQueryLimit = Math.min(25000, Math.max(1000, (rowLimit ?? 500) * 40));
         const commonDims = { type: "web", dataState: "all" };
         const [pageRes, queryRes, pageQueryRes] = await Promise.all([
             searchconsole.searchanalytics.query({
@@ -152,16 +151,11 @@ export async function fetchGscReport(siteUrl, options = {}) {
             clicks: r.clicks ?? 0,
             impressions: r.impressions ?? 0,
         }));
+        /** Some properties return empty page+query rows even when page/query dimensions work; fill from per-page query calls. */
         if (page_queries.length === 0 && pages.length > 0 && queries.length > 0) {
             page_queries = await fetchPageQueriesForTopPages(searchconsole, normalizedUrl, startStr, endStr, pages, 100);
         }
-        return {
-            site_url: normalizedUrl,
-            date_range: { start: startStr, end: endStr },
-            pages,
-            queries,
-            page_queries,
-        };
+        return { site_url: normalizedUrl, date_range: { start: startStr, end: endStr }, pages, queries, page_queries };
     }
     catch (err) {
         const message = err.message ?? String(err);
@@ -206,6 +200,7 @@ export async function fetchGa4Report(propertyId, options = {}) {
             screen_page_views: Number(r.metricValues?.[0]?.value ?? 0),
             user_engagement_duration: Number(r.metricValues?.[2]?.value ?? 0),
         }));
+        // Query-level organic search terms are not available via a supported GA4 Data API dimension (organicGoogleSearchQuery was removed from the public schema). Use Search Console API in fetchGscReport for queries / page+query.
         return { property_id: propertyId, pages };
     }
     catch (err) {

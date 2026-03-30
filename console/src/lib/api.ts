@@ -303,6 +303,35 @@ export async function deleteBrandShopifyCredentials(id: string): Promise<void> {
   if (!res.ok) throw new Error(await res.text());
 }
 
+/** GET /v1/brand_profiles/:id/woocommerce_connected — WooCommerce REST connector (store URL only; keys are server-side). */
+export async function getBrandWooCommerceConnected(id: string): Promise<{
+  connected: boolean;
+  store_url?: string;
+}> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/woocommerce_connected`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** PUT /v1/brand_profiles/:id/woocommerce_credentials — WooCommerce REST API (Read key). Encrypted on the server. */
+export async function putBrandWooCommerceCredentials(
+  id: string,
+  body: { store_url: string; consumer_key: string; consumer_secret: string },
+): Promise<void> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/woocommerce_credentials`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+/** DELETE /v1/brand_profiles/:id/woocommerce_credentials — disconnect WooCommerce REST for this brand. */
+export async function deleteBrandWooCommerceCredentials(id: string): Promise<void> {
+  const res = await fetch(`${API}/v1/brand_profiles/${id}/woocommerce_credentials`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await res.text());
+}
+
 export async function createInitiative(body: { intent_type: string; title?: string | null; risk_level: string; source_ref?: string; brand_profile_id?: string | null }): Promise<InitiativeRow> {
   const res = await fetch(`${API}/v1/initiatives`, {
     method: "POST",
@@ -1016,8 +1045,8 @@ export async function fetchProductsFromUrl(params: {
   return res.json();
 }
 
-/** SEO migration wizard — Step 1: crawl source site (every live URL; optional link-following for WordPress). */
-export type SeoMigrationCrawlParams = {
+/** WP → Shopify migration wizard — Step 1: crawl source site (every live URL; optional link-following for WordPress). */
+export type WpShopifyMigrationCrawlParams = {
   source_url: string;
   use_link_crawl?: boolean;
   max_urls?: number;
@@ -1025,7 +1054,7 @@ export type SeoMigrationCrawlParams = {
   fetch_page_details?: boolean;
 };
 
-export type SeoMigrationCrawlResult = {
+export type WpShopifyMigrationCrawlResult = {
   source_url: string;
   urls: Array<{
     url: string;
@@ -1042,8 +1071,8 @@ export type SeoMigrationCrawlResult = {
   stats: { total_urls: number; by_type: Record<string, number>; status_counts: Record<string, number> };
 };
 
-export async function seoMigrationCrawl(params: SeoMigrationCrawlParams): Promise<SeoMigrationCrawlResult> {
-  const res = await fetch(`${API}/v1/seo/migration/crawl`, {
+export async function wpShopifyMigrationCrawl(params: WpShopifyMigrationCrawlParams): Promise<WpShopifyMigrationCrawlResult> {
+  const res = await fetch(`${API}/v1/wp-shopify-migration/crawl`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1052,7 +1081,7 @@ export async function seoMigrationCrawl(params: SeoMigrationCrawlParams): Promis
   return res.json();
 }
 
-/** SEO migration wizard — Step 2: Google Search Console report. */
+/** WP → Shopify migration wizard — Step 2: Google Search Console report. */
 export type SeoGscReportParams = { site_url: string; date_range?: string; row_limit?: number; brand_id?: string };
 export type SeoGscReport = {
   site_url: string;
@@ -1074,7 +1103,7 @@ export async function seoGscReport(params: SeoGscReportParams): Promise<SeoGscRe
   return res.json();
 }
 
-/** SEO migration wizard — Step 2: GA4 report. Pass brand_id to use the brand's connected GA4 property and OAuth. */
+/** WP → Shopify migration wizard — Step 2: GA4 report. Pass brand_id to use the brand's connected GA4 property and OAuth. */
 export type SeoGa4ReportParams = { property_id?: string; row_limit?: number; brand_id?: string };
 export type SeoGa4Report = {
   property_id: string;
@@ -1102,7 +1131,7 @@ export async function seoGa4Report(params: SeoGa4ReportParams): Promise<SeoGa4Re
   return res.json();
 }
 
-/** SEO migration wizard — Keyword Planner: monthly search volume for a list of keywords (Google Ads API). */
+/** WP → Shopify migration wizard — Keyword Planner: monthly search volume for a list of keywords (Google Ads API). */
 export type SeoKeywordVolumeParams = { keywords: string[] };
 export type SeoKeywordVolumeResult = {
   volumes: Array<{ keyword: string; monthly_search_volume: number }>;
@@ -1147,7 +1176,7 @@ export async function seoKeywordVolume(params: SeoKeywordVolumeParams): Promise<
   return { volumes: merged, ...(uniqueErrors.length > 0 ? { error: uniqueErrors.join("; ") } : {}) };
 }
 
-/** SEO migration wizard — DataForSEO ranked keywords per URL (cached). Returns keywords each URL ranks for. */
+/** WP → Shopify migration wizard — DataForSEO ranked keywords per URL (cached). Returns keywords each URL ranks for. */
 export type SeoRankedKeywordsParams = { urls: string[]; limit_per_url?: number };
 export type SeoRankedKeywordItem = { keyword: string; monthly_search_volume?: number; position?: number };
 export type SeoRankedKeywordsResult = {
@@ -1165,20 +1194,25 @@ export async function seoRankedKeywords(params: SeoRankedKeywordsParams): Promis
   return res.json();
 }
 
-/** SEO migration wizard — Step 3: WooCommerce → Shopify migration (Matrixify-style). Dry run: preview counts from WooCommerce API. */
-export type SeoMigrationDryRunParams = {
-  woo_server: string;
-  woo_consumer_key: string;
-  woo_consumer_secret: string;
+/** WooCommerce REST: pass either `brand_id` (keys saved on brand) or all three woo_* fields (e.g. one-off / override). */
+export type WpShopifyMigrationWooRestParams = {
+  brand_id?: string;
+  woo_server?: string;
+  woo_consumer_key?: string;
+  woo_consumer_secret?: string;
+};
+
+/** WP → Shopify migration wizard — Step 3: WooCommerce → Shopify migration (Matrixify-style). Dry run: preview counts from WooCommerce API. */
+export type WpShopifyMigrationDryRunParams = WpShopifyMigrationWooRestParams & {
   entities: string[];
   /** Improves PDF media counts / preview when media is not public. */
   wp_username?: string;
   wp_application_password?: string;
 };
-export type SeoMigrationDryRunResult = { counts?: Record<string, number>; message?: string };
+export type WpShopifyMigrationDryRunResult = { counts?: Record<string, number>; message?: string };
 
-export async function seoMigrationDryRun(params: SeoMigrationDryRunParams): Promise<SeoMigrationDryRunResult> {
-  const res = await fetch(`${API}/v1/seo/migration/dry_run`, {
+export async function wpShopifyMigrationDryRun(params: WpShopifyMigrationDryRunParams): Promise<WpShopifyMigrationDryRunResult> {
+  const res = await fetch(`${API}/v1/wp-shopify-migration/dry_run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1189,17 +1223,14 @@ export async function seoMigrationDryRun(params: SeoMigrationDryRunParams): Prom
 
 /** Paginated preview rows for step 3 granular migration selection. */
 export type MigrationPreviewItem = { id: string; title: string; status: string; slug?: string; url?: string };
-export type SeoMigrationPreviewItemsParams = {
-  woo_server: string;
-  woo_consumer_key: string;
-  woo_consumer_secret: string;
+export type WpShopifyMigrationPreviewItemsParams = WpShopifyMigrationWooRestParams & {
   entity: string;
   page?: number;
   per_page?: number;
   wp_username?: string;
   wp_application_password?: string;
 };
-export type SeoMigrationPreviewItemsResult = {
+export type WpShopifyMigrationPreviewItemsResult = {
   items: MigrationPreviewItem[];
   total: number;
   page: number;
@@ -1208,16 +1239,16 @@ export type SeoMigrationPreviewItemsResult = {
   error?: string;
 };
 
-export async function seoMigrationPreviewItems(params: SeoMigrationPreviewItemsParams): Promise<SeoMigrationPreviewItemsResult> {
-  const res = await fetch(`${API}/v1/seo/migration/preview_items`, {
+export async function wpShopifyMigrationPreviewItems(params: WpShopifyMigrationPreviewItemsParams): Promise<WpShopifyMigrationPreviewItemsResult> {
+  const res = await fetch(`${API}/v1/wp-shopify-migration/preview_items`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
   const text = await res.text();
-  let data: SeoMigrationPreviewItemsResult & { error?: string };
+  let data: WpShopifyMigrationPreviewItemsResult & { error?: string };
   try {
-    data = JSON.parse(text) as SeoMigrationPreviewItemsResult;
+    data = JSON.parse(text) as WpShopifyMigrationPreviewItemsResult;
   } catch {
     throw new Error(text || `HTTP ${res.status}`);
   }
@@ -1225,19 +1256,16 @@ export async function seoMigrationPreviewItems(params: SeoMigrationPreviewItemsP
   return data;
 }
 
-/** SEO migration wizard — Step 3: Run migration (WooCommerce → Shopify). Shopify is always from the brand connector (Brands → Edit → Shopify). */
-export type SeoMigrationRunParams = {
-  woo_server: string;
-  woo_consumer_key: string;
-  woo_consumer_secret: string;
+/** WP → Shopify migration wizard — Step 3: Run migration (WooCommerce → Shopify). Shopify is always from the brand connector (Brands → Edit → Shopify). */
+export type WpShopifyMigrationRunParams = WpShopifyMigrationWooRestParams & {
   /** Brand with Shopify connected (Brands → Edit → Shopify). Required for migration. */
   brand_id: string;
   entities: string[];
 };
-export type SeoMigrationRunResult = { job_id?: string; message?: string };
+export type WpShopifyMigrationRunResult = { job_id?: string; message?: string };
 
-export async function seoMigrationRun(params: SeoMigrationRunParams): Promise<SeoMigrationRunResult> {
-  const res = await fetch(`${API}/v1/seo/migration/run`, {
+export async function wpShopifyMigrationRun(params: WpShopifyMigrationRunParams): Promise<WpShopifyMigrationRunResult> {
+  const res = await fetch(`${API}/v1/wp-shopify-migration/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1247,7 +1275,7 @@ export async function seoMigrationRun(params: SeoMigrationRunParams): Promise<Se
 }
 
 /** WordPress PDF → Shopify Files (+ optional redirects). */
-export type SeoMigrationPdfRow = {
+export type WpShopifyMigrationPdfRow = {
   wordpress_id: string;
   title: string;
   source_url: string;
@@ -1258,10 +1286,7 @@ export type SeoMigrationPdfRow = {
   note?: string;
   error?: string;
 };
-export type SeoMigrationMigratePdfsParams = {
-  woo_server: string;
-  woo_consumer_key: string;
-  woo_consumer_secret: string;
+export type WpShopifyMigrationMigratePdfsParams = WpShopifyMigrationWooRestParams & {
   brand_id: string;
   wp_username?: string;
   wp_application_password?: string;
@@ -1271,24 +1296,24 @@ export type SeoMigrationMigratePdfsParams = {
   /** Match recent Shopify Files by filename and skip fileCreate when found. */
   skip_if_exists_in_shopify?: boolean;
 };
-export type SeoMigrationMigratePdfsResult = {
-  rows: SeoMigrationPdfRow[];
+export type WpShopifyMigrationMigratePdfsResult = {
+  rows: WpShopifyMigrationPdfRow[];
   redirect_csv: string;
   truncated: boolean;
   summary?: { uploaded: number; failed: number; warnings?: number; truncated: boolean };
   hint?: string;
 };
 
-export async function seoMigrationMigratePdfs(params: SeoMigrationMigratePdfsParams): Promise<SeoMigrationMigratePdfsResult> {
-  const res = await fetch(`${API}/v1/seo/migration/migrate_pdfs`, {
+export async function wpShopifyMigrationMigratePdfs(params: WpShopifyMigrationMigratePdfsParams): Promise<WpShopifyMigrationMigratePdfsResult> {
+  const res = await fetch(`${API}/v1/wp-shopify-migration/migrate_pdfs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
   const text = await res.text();
-  let data: SeoMigrationMigratePdfsResult & { error?: string };
+  let data: WpShopifyMigrationMigratePdfsResult & { error?: string };
   try {
-    data = JSON.parse(text) as SeoMigrationMigratePdfsResult & { error?: string };
+    data = JSON.parse(text) as WpShopifyMigrationMigratePdfsResult & { error?: string };
   } catch {
     throw new Error(text || `HTTP ${res.status}`);
   }
@@ -1296,15 +1321,15 @@ export async function seoMigrationMigratePdfs(params: SeoMigrationMigratePdfsPar
   return data;
 }
 
-/** NDJSON stream: progress lines then one `pdf_migration_complete` (same shape as {@link seoMigrationMigratePdfs}). */
-export type SeoMigrationPdfProgressInit = {
+/** NDJSON stream: progress lines then one `pdf_migration_complete` (same shape as {@link wpShopifyMigrationMigratePdfs}). */
+export type WpShopifyMigrationPdfProgressInit = {
   type: "pdf_migration_progress";
   event: "init";
   total: number;
   pdf_total_in_wordpress: number;
   max_files: number;
 };
-export type SeoMigrationPdfProgressItem = {
+export type WpShopifyMigrationPdfProgressItem = {
   type: "pdf_migration_progress";
   event: "item";
   current: number;
@@ -1315,13 +1340,13 @@ export type SeoMigrationPdfProgressItem = {
   shopify_file_url?: string;
   error?: string;
 };
-export type SeoMigrationPdfProgressLine = SeoMigrationPdfProgressInit | SeoMigrationPdfProgressItem;
+export type WpShopifyMigrationPdfProgressLine = WpShopifyMigrationPdfProgressInit | WpShopifyMigrationPdfProgressItem;
 
-export async function seoMigrationMigratePdfsStreaming(
-  params: SeoMigrationMigratePdfsParams,
-  onProgress: (line: SeoMigrationPdfProgressLine) => void,
-): Promise<SeoMigrationMigratePdfsResult> {
-  const res = await fetch(`${API}/v1/seo/migration/migrate_pdfs`, {
+export async function wpShopifyMigrationMigratePdfsStreaming(
+  params: WpShopifyMigrationMigratePdfsParams,
+  onProgress: (line: WpShopifyMigrationPdfProgressLine) => void,
+): Promise<WpShopifyMigrationMigratePdfsResult> {
+  const res = await fetch(`${API}/v1/wp-shopify-migration/migrate_pdfs`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
     body: JSON.stringify({ ...params, stream_progress: true }),
@@ -1341,7 +1366,7 @@ export async function seoMigrationMigratePdfsStreaming(
   if (!reader) throw new Error("No response body from migrate_pdfs stream");
   const dec = new TextDecoder();
   let buf = "";
-  let final: SeoMigrationMigratePdfsResult | null = null;
+  let final: WpShopifyMigrationMigratePdfsResult | null = null;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -1351,8 +1376,8 @@ export async function seoMigrationMigratePdfsStreaming(
     for (const line of lines) {
       if (!line.trim()) continue;
       const obj = JSON.parse(line) as
-        | SeoMigrationPdfProgressLine
-        | { type: "pdf_migration_complete"; rows: SeoMigrationPdfRow[]; redirect_csv: string; truncated: boolean; summary: SeoMigrationMigratePdfsResult["summary"]; hint?: string }
+        | WpShopifyMigrationPdfProgressLine
+        | { type: "pdf_migration_complete"; rows: WpShopifyMigrationPdfRow[]; redirect_csv: string; truncated: boolean; summary: WpShopifyMigrationMigratePdfsResult["summary"]; hint?: string }
         | { type: "pdf_migration_error"; error: string };
       if (obj.type === "pdf_migration_progress") onProgress(obj);
       else if (obj.type === "pdf_migration_complete") {
@@ -1371,18 +1396,18 @@ export async function seoMigrationMigratePdfsStreaming(
 }
 
 /** Resolve CDN URLs for WordPress PDF media IDs from existing Shopify Files (no upload). Same NDJSON line types as import. */
-export type SeoMigrationResolvePdfUrlsParams = Omit<
-  SeoMigrationMigratePdfsParams,
+export type WpShopifyMigrationResolvePdfUrlsParams = Omit<
+  WpShopifyMigrationMigratePdfsParams,
   "excluded_ids" | "max_files" | "skip_if_exists_in_shopify"
 > & {
   wordpress_ids: string[];
 };
 
-export async function seoMigrationResolvePdfUrlsStreaming(
-  params: SeoMigrationResolvePdfUrlsParams,
-  onProgress: (line: SeoMigrationPdfProgressLine) => void,
-): Promise<SeoMigrationMigratePdfsResult> {
-  const res = await fetch(`${API}/v1/seo/migration/resolve_pdf_urls`, {
+export async function wpShopifyMigrationResolvePdfUrlsStreaming(
+  params: WpShopifyMigrationResolvePdfUrlsParams,
+  onProgress: (line: WpShopifyMigrationPdfProgressLine) => void,
+): Promise<WpShopifyMigrationMigratePdfsResult> {
+  const res = await fetch(`${API}/v1/wp-shopify-migration/resolve_pdf_urls`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
     body: JSON.stringify({ ...params, stream_progress: true }),
@@ -1402,7 +1427,7 @@ export async function seoMigrationResolvePdfUrlsStreaming(
   if (!reader) throw new Error("No response body from resolve_pdf_urls stream");
   const dec = new TextDecoder();
   let buf = "";
-  let final: SeoMigrationMigratePdfsResult | null = null;
+  let final: WpShopifyMigrationMigratePdfsResult | null = null;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -1412,8 +1437,8 @@ export async function seoMigrationResolvePdfUrlsStreaming(
     for (const line of lines) {
       if (!line.trim()) continue;
       const obj = JSON.parse(line) as
-        | SeoMigrationPdfProgressLine
-        | { type: "pdf_migration_complete"; rows: SeoMigrationPdfRow[]; redirect_csv: string; truncated: boolean; summary: SeoMigrationMigratePdfsResult["summary"]; hint?: string }
+        | WpShopifyMigrationPdfProgressLine
+        | { type: "pdf_migration_complete"; rows: WpShopifyMigrationPdfRow[]; redirect_csv: string; truncated: boolean; summary: WpShopifyMigrationMigratePdfsResult["summary"]; hint?: string }
         | { type: "pdf_migration_error"; error: string };
       if (obj.type === "pdf_migration_progress") onProgress(obj);
       else if (obj.type === "pdf_migration_complete") {

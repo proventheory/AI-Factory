@@ -1,6 +1,6 @@
-# SOP: SEO Migration (Pre-Launch, Launch, Post-Launch)
+# SOP: WP → Shopify migration (Pre-Launch, Launch, Post-Launch)
 
-Standard operating procedures for running an SEO migration (e.g. WordPress/WooCommerce → Shopify) with URL inventory, redirect map, and verification. Aligns with the 9-step strategic pipeline and 20-step operational pipeline in the SEO Migration plan.
+Standard operating procedures for moving WordPress/WooCommerce → Shopify with URL inventory, redirect map, and SEO-safe verification. Aligns with the 9-step strategic pipeline and 20-step operational pipeline in the WP → Shopify migration plan.
 
 ## SOP 1 – Pre-migration URL inventory, technical baseline, and mapping
 
@@ -8,18 +8,18 @@ Standard operating procedures for running an SEO migration (e.g. WordPress/WooCo
    e.g. `https://stigmahemp.com`, optionally `https://stigmathc.com`.
 
 2. **Run URL inventory**  
-   - Pipeline: Create initiative with `intent_type: "seo_migration_audit"`, `goal_metadata: { source_url, target_url }`, run plan (source/target inventory).  
+   - Pipeline: Create initiative with `intent_type: "wp_shopify_migration"`, `goal_metadata: { source_url, target_url }`, run plan (source/target inventory).  
    - Or standalone:  
-     `node scripts/seo-migration-url-inventory.mjs https://stigmahemp.com`  
-     Output: `docs/seo-migration/<host>-url-inventory.json` and `.md`.
+     `node scripts/wp-shopify-migration-url-inventory.mjs https://stigmahemp.com`  
+     Output: `docs/wp-shopify-migration/<host>-url-inventory.json` and `.md`.
 
 3. **Capture technical baseline (optional but recommended)**  
    - Canonical tags, title tags, meta descriptions, H1/H2, schema, robots, status codes.  
    - Store: `technical_snapshot.json`, `title_meta_inventory.csv`, `schema_inventory.json`.
 
 4. **Export GSC/GA baseline**  
-   - Option A: `node scripts/seo-migration-gsc-ga-export.mjs` (set `GSC_SITE_URL`, `GA4_PROPERTY_ID`, `GOOGLE_APPLICATION_CREDENTIALS`).  
-   - Output: `gsc_top_pages.json`, `gsc_queries.json`, `ga4_top_pages.json` in `docs/seo-migration/`.
+   - Option A: `node scripts/wp-shopify-migration-gsc-ga-export.mjs` (set `GSC_SITE_URL`, `GA4_PROPERTY_ID`, `GOOGLE_APPLICATION_CREDENTIALS`).  
+   - Output: `gsc_top_pages.json`, `gsc_queries.json`, `ga4_top_pages.json` in `docs/wp-shopify-migration/`.
 
 5. **Merge into priority table**  
    - Join URL inventory with GSC (clicks/impressions) and GA4 (sessions).  
@@ -29,7 +29,7 @@ Standard operating procedures for running an SEO migration (e.g. WordPress/WooCo
    - Document `canonical_url_strategy.md` and `meta_robots_rules.json` for target platform (e.g. Shopify: product → `/products/slug`, collection → `/collections/slug`).
 
 7. **Build URL mapping**  
-   - Run: `node scripts/seo/url-mapping-template.mjs ./docs/seo-migration/stigmahemp-url-inventory.json`  
+   - Run: `node scripts/seo/url-mapping-template.mjs ./docs/wp-shopify-migration/stigmahemp-url-inventory.json`  
    - Fill `migration_url`, `redirect_type`, `priority`, `notes` in `url_mapping.json`.  
    - Use for redirect config and post-migration verification.
 
@@ -60,7 +60,7 @@ Standard operating procedures for running an SEO migration (e.g. WordPress/WooCo
 ## SOP 3 – Post-migration verification
 
 1. **Run audit pipeline**  
-   - Initiative `seo_migration_audit` with `source_url` = old site (or baseline) and `target_url` = new site.  
+   - Initiative `wp_shopify_migration` with `source_url` = old site (or baseline) and `target_url` = new site.  
    - Review artifacts: `seo_audit_summary`, `seo_ranking_risk_report`, `seo_redirect_verification`, `seo_content_parity_report`, `seo_technical_diff_report`.
 
 2. **Verify redirect map**  
@@ -99,7 +99,7 @@ Standard operating procedures for running an SEO migration (e.g. WordPress/WooCo
 
 ## References
 
-- Plan: `.cursor/plans/seo_migration_url_inventory_ceba486c.plan.md` (or repo SEO Migration plan).
-- Scripts: `scripts/seo-migration-url-inventory.mjs`, `scripts/seo/url-mapping-template.mjs`, `scripts/seo-migration-gsc-ga-export.mjs`.
-- Pipeline: `intent_type: "seo_migration_audit"` in control-plane; runners in `runners/src/handlers/seo-*.ts` and `runners/src/lib/seo/`.
+- Plan: `.cursor/plans/seo_migration_url_inventory_ceba486c.plan.md` (or repo WP → Shopify migration plan).
+- Scripts: `scripts/wp-shopify-migration-url-inventory.mjs`, `scripts/seo/url-mapping-template.mjs`, `scripts/wp-shopify-migration-gsc-ga-export.mjs`.
+- Pipeline: `intent_type: "wp_shopify_migration"` in control-plane; runners in `runners/src/handlers/seo-*.ts` and `runners/src/lib/seo/`.
 - Runbook style: `docs/SECURITY_AND_RUNBOOKS.md`.

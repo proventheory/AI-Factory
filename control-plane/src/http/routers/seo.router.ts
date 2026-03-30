@@ -12,23 +12,23 @@ import {
   brandProfilesGoogleCredentialsDelete,
   brandProfilesGoogleGa4Properties,
   brandProfilesGoogleGa4PropertyPatch,
-  seoMigrationCrawl,
-  seoMigrationDryRun,
-  seoMigrationPreviewItems,
-  seoMigrationRun,
-  seoMigrationMigratePdfs,
-  seoMigrationResolvePdfUrls,
+  wpShopifyMigrationCrawl,
+  wpShopifyMigrationDryRun,
+  wpShopifyMigrationPreviewItems,
+  wpShopifyMigrationRun,
+  wpShopifyMigrationMigratePdfs,
+  wpShopifyMigrationResolvePdfUrls,
 } from "../controllers/seo.controller.js";
 
 const router = Router();
 
 router.post("/v1/sitemap/products", sitemapProducts);
-router.post("/v1/seo/migration/crawl", seoMigrationCrawl);
-router.post("/v1/seo/migration/dry_run", seoMigrationDryRun);
-router.post("/v1/seo/migration/preview_items", seoMigrationPreviewItems);
-router.post("/v1/seo/migration/run", seoMigrationRun);
-router.post("/v1/seo/migration/migrate_pdfs", seoMigrationMigratePdfs);
-router.post("/v1/seo/migration/resolve_pdf_urls", seoMigrationResolvePdfUrls);
+router.post("/v1/wp-shopify-migration/crawl", wpShopifyMigrationCrawl);
+router.post("/v1/wp-shopify-migration/dry_run", wpShopifyMigrationDryRun);
+router.post("/v1/wp-shopify-migration/preview_items", wpShopifyMigrationPreviewItems);
+router.post("/v1/wp-shopify-migration/run", wpShopifyMigrationRun);
+router.post("/v1/wp-shopify-migration/migrate_pdfs", wpShopifyMigrationMigratePdfs);
+router.post("/v1/wp-shopify-migration/resolve_pdf_urls", wpShopifyMigrationResolvePdfUrls);
 router.post("/v1/products/from_url", productsFromUrlHandler);
 router.post("/v1/seo/gsc_report", seoGscReport);
 router.post("/v1/seo/ga4_report", seoGa4Report);

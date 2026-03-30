@@ -20,15 +20,17 @@ import {
 import type { Column } from "@/components/ui/DataTable";
 import * as api from "@/lib/api";
 import type {
-  SeoMigrationCrawlResult,
+  WpShopifyMigrationCrawlResult,
   SeoGscReport,
   SeoGa4Report,
   BrandProfileRow,
   MigrationPreviewItem,
-  SeoMigrationMigratePdfsResult,
-  SeoMigrationPdfRow,
+  WpShopifyMigrationMigratePdfsResult,
+  WpShopifyMigrationPdfRow,
+  WpShopifyMigrationWooRestParams,
 } from "@/lib/api";
 import { formatApiError } from "@/lib/api";
+import { WP_SHOPIFY_MIGRATION_INTENT } from "@/config/intent-types";
 
 const STEPS = [
   { id: 1, title: "Crawl source site", description: "Map every live URL (sitemap + optional link-following for WordPress)." },
@@ -108,6 +110,14 @@ function normalizeRedirectStatus(s: string): RedirectStatus {
   return "301";
 }
 
+/** Stable key so merge matches crawl full URLs with Shopify CSV path-only "Redirect from" values. */
+function redirectMapOldUrlMergeKey(oldUrl: string, siteBaseUrl: string): string {
+  const base = (siteBaseUrl || "").trim();
+  const safeBase = base.startsWith("http") ? base : base ? `https://${base.replace(/^\/+/, "")}` : "https://example.com";
+  const path = normalizeUrlToPath(oldUrl, safeBase);
+  return toCanonicalPath(path);
+}
+
 function parseRedirectCsvToRows(text: string): RedirectRow[] {
   const lines = text.split(/\r?\n/).filter((ln) => ln.trim().length > 0);
   if (lines.length === 0) return [];
@@ -145,19 +155,30 @@ function parseRedirectCsvToRows(text: string): RedirectRow[] {
   return rows;
 }
 
-function mergeRedirectImports(existing: RedirectRow[], incoming: RedirectRow[]): RedirectRow[] {
-  const byOld = new Map(existing.map((r) => [r.old_url, { ...r }]));
+function mergeRedirectImports(
+  existing: RedirectRow[],
+  incoming: RedirectRow[],
+  siteBaseUrl: string,
+): RedirectRow[] {
+  const byKey = new Map<string, RedirectRow>();
+  for (const r of existing) {
+    if (!(r.old_url || "").trim()) continue;
+    const key = redirectMapOldUrlMergeKey(r.old_url, siteBaseUrl);
+    byKey.set(key, { ...r });
+  }
   for (const row of incoming) {
-    const prev = byOld.get(row.old_url);
-    byOld.set(row.old_url, {
-      old_url: row.old_url,
+    if (!(row.old_url || "").trim()) continue;
+    const key = redirectMapOldUrlMergeKey(row.old_url, siteBaseUrl);
+    const prev = byKey.get(key);
+    byKey.set(key, {
+      old_url: prev?.old_url ?? row.old_url,
       new_url: row.new_url,
       status: row.status,
       destinationOk: prev?.destinationOk,
       issue: prev?.issue,
     });
   }
-  return Array.from(byOld.values());
+  return Array.from(byKey.values());
 }
 
 function escapeCsvField(val: string): string {
@@ -175,28 +196,28 @@ function buildRedirectMapCsv(rows: RedirectRow[]): string {
 
 const KEYWORD_VOLUME_CHUNK = 400;
 
-const CRAWL_CACHE_KEY = "seo-migration-crawl-cache";
-const WIZARD_SESSION_KEY = "seo-migration-wizard-session";
+const CRAWL_CACHE_KEY = "wp-shopify-migration-crawl-cache";
+const WIZARD_SESSION_KEY = "wp-shopify-migration-wizard-session";
 /** Small snapshot so brand / step / URLs survive even if the full session JSON fails (quota) or predates session feature. */
-const WIZARD_LITE_KEY = "seo-migration-wizard-lite";
+const WIZARD_LITE_KEY = "wp-shopify-migration-wizard-lite";
 /** WooCommerce REST credentials: kept separate so they survive clearing the main wizard session (e.g. changing brand). */
-const WOO_STORE_CACHE_KEY = "seo-migration-woo-store";
+const WOO_STORE_CACHE_KEY = "wp-shopify-migration-woo-store";
 /** Redirect map (step 6–7): separate from main session so mappings survive localStorage quota failures on large GSC/crawl payloads. */
-const REDIRECT_MAP_SIDE_KEY = "seo-migration-redirect-map-side";
+const REDIRECT_MAP_SIDE_KEY = "wp-shopify-migration-redirect-map-side";
 
 function normalizeWooServerForPdfCache(s: string): string {
   return s.trim().replace(/\/+$/, "").toLowerCase();
 }
 
 function pdfImportCacheStorageKey(brandId: string, wooNorm: string): string {
-  return `ai-factory.seoPdfImport.v1:${brandId}:${wooNorm}`;
+  return `ai-factory.wpShopifyPdfImport.v1:${brandId}:${wooNorm}`;
 }
 
 type PdfImportBrowserCache = {
   savedAt: string;
   dryPdfCount?: number;
-  rows: SeoMigrationPdfRow[];
-  summary?: SeoMigrationMigratePdfsResult["summary"];
+  rows: WpShopifyMigrationPdfRow[];
+  summary?: WpShopifyMigrationMigratePdfsResult["summary"];
   truncated?: boolean;
   redirect_csv: string;
 };
@@ -274,7 +295,7 @@ function setWizardSession(session: WizardSession): void {
   try {
     localStorage.setItem(WIZARD_SESSION_KEY, JSON.stringify(session));
   } catch (e) {
-    console.warn("SEO migration: could not save full wizard session (localStorage quota?). Lite backup still has brand & URLs.", e);
+    console.warn("WP → Shopify migration: could not save full wizard session (localStorage quota?). Lite backup still has brand & URLs.", e);
   }
 }
 
@@ -393,7 +414,7 @@ function setRedirectMapSidecar(brandId: string, sourceUrl: string, rows: Redirec
   try {
     localStorage.setItem(REDIRECT_MAP_SIDE_KEY, JSON.stringify(payload));
   } catch (e) {
-    console.warn("SEO migration: could not save redirect map sidecar (quota?).", e);
+    console.warn("WP → Shopify migration: could not save redirect map sidecar (quota?).", e);
   }
 }
 
@@ -502,7 +523,7 @@ function priorityPlacementFromDemandRank(index: number, total: number): {
   const placement: PagePlanRow["placement"] = index < navCut ? "nav" : index < footCut ? "footer" : "deep";
   return { priority, placement };
 }
-function getCrawlCache(): Record<string, { crawledAt: string; result: SeoMigrationCrawlResult }> {
+function getCrawlCache(): Record<string, { crawledAt: string; result: WpShopifyMigrationCrawlResult }> {
   if (typeof window === "undefined") return {};
   try {
     const raw = localStorage.getItem(CRAWL_CACHE_KEY);
@@ -511,7 +532,7 @@ function getCrawlCache(): Record<string, { crawledAt: string; result: SeoMigrati
     return {};
   }
 }
-function setCrawlCacheEntry(key: string, result: SeoMigrationCrawlResult): void {
+function setCrawlCacheEntry(key: string, result: WpShopifyMigrationCrawlResult): void {
   if (typeof window === "undefined") return;
   try {
     const cache = getCrawlCache();
@@ -522,7 +543,7 @@ function setCrawlCacheEntry(key: string, result: SeoMigrationCrawlResult): void 
   }
 }
 
-export default function SeoMigrationWizardPage() {
+export default function WpShopifyMigrationWizardPage() {
   const [step, setStep] = useState(1);
 
   // Brand (step 1): select brand so step 2 can use its Google/GA4
@@ -530,6 +551,9 @@ export default function SeoMigrationWizardPage() {
   const [brandId, setBrandId] = useState<string>("");
   const [brandGoogle, setBrandGoogle] = useState<{ connected: boolean; ga4_property_id?: string } | null>(null);
   const [brandShopify, setBrandShopify] = useState<{ connected: boolean; shop_domain?: string } | null>(null);
+  const [brandWoo, setBrandWoo] = useState<{ connected: boolean; store_url?: string } | null>(null);
+  /** When the brand has Woo saved, allow optional in-wizard credentials instead (not persisted to brand). */
+  const [wooManualOverride, setWooManualOverride] = useState(false);
   const ga4AutoFetchedRef = useRef(false);
 
   // Step 1: Crawl (with cache per source URL)
@@ -538,7 +562,7 @@ export default function SeoMigrationWizardPage() {
   const [maxUrls, setMaxUrls] = useState(2000);
   const [crawlLoading, setCrawlLoading] = useState(false);
   const [crawlError, setCrawlError] = useState<string | null>(null);
-  const [crawlResult, setCrawlResult] = useState<SeoMigrationCrawlResult | null>(null);
+  const [crawlResult, setCrawlResult] = useState<WpShopifyMigrationCrawlResult | null>(null);
   const [crawlCachedAt, setCrawlCachedAt] = useState<string | null>(null);
 
   // Step 2: GSC / GA4
@@ -564,7 +588,7 @@ export default function SeoMigrationWizardPage() {
   const [migrationRunResult, setMigrationRunResult] = useState<{ job_id?: string; message?: string } | null>(null);
   const [pdfImportLoading, setPdfImportLoading] = useState(false);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
-  const [pdfImportResult, setPdfImportResult] = useState<SeoMigrationMigratePdfsResult | null>(null);
+  const [pdfImportResult, setPdfImportResult] = useState<WpShopifyMigrationMigratePdfsResult | null>(null);
   const [pdfImportProgress, setPdfImportProgress] = useState<{
     current: number;
     total: number;
@@ -621,6 +645,22 @@ export default function SeoMigrationWizardPage() {
   const [wpPreviewUser, setWpPreviewUser] = useState("");
   const [wpPreviewAppPassword, setWpPreviewAppPassword] = useState("");
   const migrationPreviewRequestSeq = useRef(0);
+
+  const wooFromBrand = Boolean(brandId && brandWoo?.connected === true && !wooManualOverride);
+  const wooCredentialsOk =
+    wooFromBrand ||
+    (wooServer.trim().length > 0 && wooConsumerKey.trim().length > 0 && wooConsumerSecret.trim().length > 0);
+
+  const wooApiBase = useCallback((): WpShopifyMigrationWooRestParams => {
+    if (brandId && brandWoo?.connected === true && !wooManualOverride) {
+      return { brand_id: brandId };
+    }
+    return {
+      woo_server: wooServer.trim(),
+      woo_consumer_key: wooConsumerKey.trim(),
+      woo_consumer_secret: wooConsumerSecret.trim(),
+    };
+  }, [brandId, brandWoo?.connected, wooManualOverride, wooServer, wooConsumerKey, wooConsumerSecret]);
 
   const toggleMigrationEntity = (id: string) => {
     setMigrationEntities((prev) => {
@@ -816,11 +856,20 @@ export default function SeoMigrationWizardPage() {
     });
   }, [brandId, step, sourceUrl, gscSiteUrl, useLinkCrawl, maxUrls]);
 
-  // Persist WooCommerce fields whenever they change (small payload; survives main session clear on brand change).
+  // Persist WooCommerce fields whenever they change (browser only). Skip when using the brand connector so keys are not cached locally.
   useEffect(() => {
     if (typeof window === "undefined" || !hasRestoredSessionRef.current || !wooPersistEnabledRef.current) return;
+    if (wooFromBrand) return;
     setWooStoreCache({ wooServer, wooConsumerKey, wooConsumerSecret });
-  }, [wooServer, wooConsumerKey, wooConsumerSecret]);
+  }, [wooServer, wooConsumerKey, wooConsumerSecret, wooFromBrand]);
+
+  // When the selected brand has WooCommerce saved, use its store URL and avoid keeping secrets in this browser.
+  useEffect(() => {
+    if (!brandId || brandWoo?.connected !== true || wooManualOverride) return;
+    if (brandWoo.store_url) setWooServer(brandWoo.store_url);
+    setWooConsumerKey("");
+    setWooConsumerSecret("");
+  }, [brandId, brandWoo?.connected, brandWoo?.store_url, wooManualOverride]);
 
   // Redirect map: dedicated sidecar so new_url / status edits survive reload even when the full wizard JSON is too large to store.
   useEffect(() => {
@@ -833,6 +882,7 @@ export default function SeoMigrationWizardPage() {
   // When user changes brand in step 1: clear persisted session and reset derived state so they start fresh for the new brand
   const handleBrandChange = useCallback((newBrandId: string) => {
     if (newBrandId === brandId) return;
+    setWooManualOverride(false);
     clearWizardSession();
     setCrawlResult(null);
     setCrawlCachedAt(null);
@@ -912,10 +962,12 @@ export default function SeoMigrationWizardPage() {
     if (!brandId) {
       setBrandGoogle(null);
       setBrandShopify(null);
+      setBrandWoo(null);
       return;
     }
     api.getBrandGoogleConnected(brandId).then(setBrandGoogle).catch(() => setBrandGoogle(null));
     api.getBrandShopifyConnected(brandId).then(setBrandShopify).catch(() => setBrandShopify(null));
+    api.getBrandWooCommerceConnected(brandId).then(setBrandWoo).catch(() => setBrandWoo(null));
   }, [brandId]);
 
   // When entering step 2, sync GSC site URL from crawl source so Fetch GSC uses same URL as crawl (required for keywords to match)
@@ -1149,7 +1201,7 @@ export default function SeoMigrationWizardPage() {
           if (!window.confirm(`Replace all redirects with ${incoming.length} rows from this file?`)) return;
           setRedirectMap(incoming);
         } else {
-          setRedirectMap((prev) => mergeRedirectImports(prev, incoming));
+          setRedirectMap((prev) => mergeRedirectImports(prev, incoming, sourceUrl));
         }
         setRedirectCsvImportError(null);
       } catch (e) {
@@ -1227,7 +1279,7 @@ export default function SeoMigrationWizardPage() {
     setCrawlResult(null);
     setCrawlCachedAt(null);
     try {
-      const result = await api.seoMigrationCrawl({
+      const result = await api.wpShopifyMigrationCrawl({
         source_url: sourceUrl.trim(),
         use_link_crawl: useLinkCrawl,
         max_urls: maxUrls,
@@ -1288,18 +1340,18 @@ export default function SeoMigrationWizardPage() {
   };
 
   const runMigrationDryRun = async () => {
-    if (!wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()) {
-      setMigrationDryRunError("WooCommerce server URL, consumer key, and consumer secret are required.");
+    if (!wooCredentialsOk) {
+      setMigrationDryRunError(
+        "Connect WooCommerce for this brand in Brands → Edit brand → WooCommerce, or enter store URL and REST API keys below (wizard only).",
+      );
       return;
     }
     setMigrationDryRunLoading(true);
     setMigrationDryRunError(null);
     setMigrationDryRunResult(null);
     try {
-      const result = await api.seoMigrationDryRun({
-        woo_server: wooServer.trim(),
-        woo_consumer_key: wooConsumerKey.trim(),
-        woo_consumer_secret: wooConsumerSecret.trim(),
+      const result = await api.wpShopifyMigrationDryRun({
+        ...wooApiBase(),
         entities: Array.from(migrationEntities),
         ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
           ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
@@ -1321,16 +1373,14 @@ export default function SeoMigrationWizardPage() {
 
   const fetchMigrationPreview = useCallback(
     async (entity: string, page: number) => {
-      if (!wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()) return;
+      if (!wooCredentialsOk) return;
       const seq = ++migrationPreviewRequestSeq.current;
       setMigrationPreviewLoadingEntity(entity);
       setMigrationPreviewErrorByEntity((prev) => ({ ...prev, [entity]: null }));
       try {
         const needsWpAuth = entity === "blogs" || entity === "pages" || entity === "blog_tags" || entity === "pdfs";
-        const result = await api.seoMigrationPreviewItems({
-          woo_server: wooServer.trim(),
-          woo_consumer_key: wooConsumerKey.trim(),
-          woo_consumer_secret: wooConsumerSecret.trim(),
+        const result = await api.wpShopifyMigrationPreviewItems({
+          ...wooApiBase(),
           entity,
           page,
           per_page: 50,
@@ -1353,7 +1403,7 @@ export default function SeoMigrationWizardPage() {
         if (seq === migrationPreviewRequestSeq.current) setMigrationPreviewLoadingEntity(null);
       }
     },
-    [wooServer, wooConsumerKey, wooConsumerSecret, wpPreviewUser, wpPreviewAppPassword],
+    [wooApiBase, wooCredentialsOk, wpPreviewUser, wpPreviewAppPassword],
   );
 
   const toggleMigrationItemExcluded = (entity: string, itemId: string) => {
@@ -1372,8 +1422,10 @@ export default function SeoMigrationWizardPage() {
   };
 
   const runMigrationRun = async () => {
-    if (!wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()) {
-      setMigrationRunError("WooCommerce credentials are required.");
+    if (!wooCredentialsOk) {
+      setMigrationRunError(
+        "Connect WooCommerce for this brand in Brands → Edit brand → WooCommerce, or enter REST keys in the wizard below.",
+      );
       return;
     }
     if (!brandId || !brandShopify?.connected) {
@@ -1384,10 +1436,8 @@ export default function SeoMigrationWizardPage() {
     setMigrationRunError(null);
     setMigrationRunResult(null);
     try {
-      const result = await api.seoMigrationRun({
-        woo_server: wooServer.trim(),
-        woo_consumer_key: wooConsumerKey.trim(),
-        woo_consumer_secret: wooConsumerSecret.trim(),
+      const result = await api.wpShopifyMigrationRun({
+        ...wooApiBase(),
         brand_id: brandId,
         entities: Array.from(migrationEntities),
       });
@@ -1400,8 +1450,10 @@ export default function SeoMigrationWizardPage() {
   };
 
   const runPdfImport = async () => {
-    if (!wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()) {
-      setPdfImportError("WooCommerce server URL, consumer key, and consumer secret are required.");
+    if (!wooCredentialsOk) {
+      setPdfImportError(
+        "Connect WooCommerce for this brand in Brands → Edit brand → WooCommerce, or enter REST keys in the wizard below.",
+      );
       return;
     }
     if (!brandId || !brandShopify?.connected) {
@@ -1417,11 +1469,9 @@ export default function SeoMigrationWizardPage() {
     setPdfImportResult(null);
     setPdfImportProgress(null);
     try {
-      const result = await api.seoMigrationMigratePdfsStreaming(
+      const result = await api.wpShopifyMigrationMigratePdfsStreaming(
         {
-          woo_server: wooServer.trim(),
-          woo_consumer_key: wooConsumerKey.trim(),
-          woo_consumer_secret: wooConsumerSecret.trim(),
+          ...wooApiBase(),
           brand_id: brandId,
           excluded_ids: migrationExcludedIds.pdfs ?? [],
           create_redirects: pdfImportCreateRedirects,
@@ -1470,8 +1520,10 @@ export default function SeoMigrationWizardPage() {
   };
 
   const runFetchPdfUrlsFromShopify = async () => {
-    if (!wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()) {
-      setPdfImportError("WooCommerce server URL, consumer key, and consumer secret are required.");
+    if (!wooCredentialsOk) {
+      setPdfImportError(
+        "Connect WooCommerce for this brand in Brands → Edit brand → WooCommerce, or enter REST keys in the wizard below.",
+      );
       return;
     }
     if (!brandId || !brandShopify?.connected) {
@@ -1508,10 +1560,8 @@ export default function SeoMigrationWizardPage() {
       const maxPages = 25;
       let page = 1;
       for (;;) {
-        const r = await api.seoMigrationPreviewItems({
-          woo_server: wooServer.trim(),
-          woo_consumer_key: wooConsumerKey.trim(),
-          woo_consumer_secret: wooConsumerSecret.trim(),
+        const r = await api.wpShopifyMigrationPreviewItems({
+          ...wooApiBase(),
           entity: "pdfs",
           page,
           per_page: perPage,
@@ -1544,11 +1594,9 @@ export default function SeoMigrationWizardPage() {
     setPdfImportError(null);
     setPdfImportProgress(null);
     try {
-      const resolved = await api.seoMigrationResolvePdfUrlsStreaming(
+      const resolved = await api.wpShopifyMigrationResolvePdfUrlsStreaming(
         {
-          woo_server: wooServer.trim(),
-          woo_consumer_key: wooConsumerKey.trim(),
-          woo_consumer_secret: wooConsumerSecret.trim(),
+          ...wooApiBase(),
           brand_id: brandId,
           create_redirects: pdfImportCreateRedirects,
           wordpress_ids,
@@ -1590,7 +1638,7 @@ export default function SeoMigrationWizardPage() {
         const base =
           before ??
           prev ?? {
-            rows: [] as SeoMigrationPdfRow[],
+            rows: [] as WpShopifyMigrationPdfRow[],
             redirect_csv: "",
             truncated: false,
           };
@@ -1677,7 +1725,7 @@ export default function SeoMigrationWizardPage() {
   const pdfAttachmentsNotInThisTable =
     pdfEffectiveWordPressCount != null ? Math.max(0, pdfEffectiveWordPressCount - pdfTableRowCount) : null;
 
-  const crawlColumns: Column<SeoMigrationCrawlResult["urls"][0]>[] = [
+  const crawlColumns: Column<WpShopifyMigrationCrawlResult["urls"][0]>[] = [
     { key: "path", header: "Path", render: (r) => <code className="text-body-small">{r.path || "/"}</code> },
     { key: "type", header: "Type", render: (r) => <Badge variant="neutral">{r.type}</Badge> },
     { key: "status", header: "Status", render: (r) => r.status },
@@ -1696,13 +1744,13 @@ export default function SeoMigrationWizardPage() {
     <PageFrame className="min-w-0 overflow-x-hidden">
       <Stack className="min-w-0">
         <PageHeader
-          title="SEO Migration Wizard"
+          title="WordPress → Shopify migration"
           description="WordPress → Shopify (or any platform). Crawl source, pull GSC/GA4, then plan keyword strategy, redirects, and launch."
         />
         <p className="text-body-small text-fg-muted">
           <Link href="/initiatives" className="text-brand-600 hover:underline">Initiatives</Link>
           {" · "}
-          <Link href="/runs?intent_type=seo_migration_audit" className="text-brand-600 hover:underline">SEO audit runs</Link>
+          <Link href={`/runs?intent_type=${WP_SHOPIFY_MIGRATION_INTENT}`} className="text-brand-600 hover:underline">WP → Shopify migration runs</Link>
         </p>
 
         {/* Stepper */}
@@ -1974,13 +2022,47 @@ export default function SeoMigrationWizardPage() {
               <CardHeader>
                 <h3 className="font-semibold">WordPress / WooCommerce (source)</h3>
                 <p className="text-body-small text-fg-muted mt-1">
-                  Use WooCommerce REST API v3. In WordPress: WooCommerce → Settings → Advanced → REST API → Add key (Read). Use the consumer key and secret below.
+                  WooCommerce REST API v3 (Read key). Prefer saving credentials on the brand:{" "}
+                  <strong>Brands → Edit brand → WooCommerce</strong> — they are encrypted on the server and reused here automatically.
                 </p>
                 <p className="text-body-small text-fg-muted mt-2">
-                  Store URL and keys are saved in this browser only (localStorage) so you can return to this wizard without re-entering them.
+                  Optional: enter keys only in this wizard (saved in this browser via localStorage) when the brand has no connector, or enable “Manual credentials” below to override the brand for this session.
                 </p>
               </CardHeader>
               <CardContent>
+                {brandId && brandWoo?.connected === true ? (
+                  <div className="mb-4 rounded-lg border border-border bg-fg-muted/5 p-3">
+                    <p className="text-body-small font-medium text-fg">Using this brand’s WooCommerce</p>
+                    <p className="text-body-small text-fg-muted mt-1">
+                      {(brandWoo.store_url ?? wooServer.trim()) || "Store connected"}. REST keys are stored on the server for this brand.
+                    </p>
+                    <Link href={`/brands/${brandId}/edit`} className="mt-2 inline-block text-body-small text-brand-600 hover:underline">
+                      Edit brand → WooCommerce
+                    </Link>
+                    <label className="mt-3 flex cursor-pointer items-start gap-2 text-body-small text-fg">
+                      <Checkbox
+                        checked={wooManualOverride}
+                        onChange={(ev) => setWooManualOverride(ev.target.checked)}
+                        className="shrink-0"
+                      />
+                      <span>
+                        <strong>Manual credentials</strong> — use the fields below for this browser session only (not saved to the brand). Uncheck to use the brand connector again.
+                      </span>
+                    </label>
+                  </div>
+                ) : brandId ? (
+                  <p className="mb-4 text-body-small text-fg-muted">
+                    This brand has no WooCommerce connector.{" "}
+                    <Link href={`/brands/${brandId}/edit`} className="text-brand-600 hover:underline">
+                      Add store URL and REST keys in Brands → Edit this brand → WooCommerce
+                    </Link>{" "}
+                    (recommended), or fill the fields below — they stay in this browser only (localStorage).
+                  </p>
+                ) : (
+                  <p className="mb-4 text-body-small text-fg-muted">
+                    Select a brand in step 1 to use saved WooCommerce credentials, or enter a store URL and keys below for a one-off session in this browser.
+                  </p>
+                )}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-body-small font-medium">Store URL (server)</label>
@@ -1989,6 +2071,7 @@ export default function SeoMigrationWizardPage() {
                       onChange={(e) => setWooServer(e.target.value)}
                       placeholder="https://your-woo-domain.com"
                       className="w-full"
+                      disabled={wooFromBrand && !wooManualOverride}
                     />
                   </div>
                   <div>
@@ -1999,6 +2082,7 @@ export default function SeoMigrationWizardPage() {
                       onChange={(e) => setWooConsumerKey(e.target.value)}
                       placeholder="ck_..."
                       className="w-full"
+                      disabled={wooFromBrand && !wooManualOverride}
                     />
                   </div>
                   <div className="sm:col-span-2">
@@ -2009,6 +2093,7 @@ export default function SeoMigrationWizardPage() {
                       onChange={(e) => setWooConsumerSecret(e.target.value)}
                       placeholder="cs_..."
                       className="w-full"
+                      disabled={wooFromBrand && !wooManualOverride}
                     />
                   </div>
                 </div>
@@ -2137,7 +2222,7 @@ export default function SeoMigrationWizardPage() {
                               type="button"
                               variant="secondary"
                               size="sm"
-                              disabled={!selected || !wooServer.trim() || !wooConsumerKey.trim() || !wooConsumerSecret.trim()}
+                              disabled={!selected || !wooCredentialsOk}
                               onClick={() => {
                                 if (expanded) {
                                   setMigrationExpandedEntity(null);
@@ -2275,16 +2360,16 @@ export default function SeoMigrationWizardPage() {
                           <strong className="font-medium">not</strong> create a <code className="rounded bg-black/5 px-1 dark:bg-white/10">runs</code> row, runner{" "}
                           <code className="rounded bg-black/5 px-1 dark:bg-white/10">job_runs</code>, or migration-report{" "}
                           <strong className="font-medium">artifacts</strong> yet—so <strong className="font-medium">Pipeline Runs</strong> stays empty here.
-                          The orchestrated <strong className="font-medium">SEO migration audit</strong> DAG (inventory, GSC/GA4 snapshots, audit report, etc.) runs from an{" "}
+                          The orchestrated <strong className="font-medium">WP → Shopify migration</strong> DAG (inventory, GSC/GA4 snapshots, audit report, etc.) runs from an{" "}
                           <Link href="/initiatives" className="font-medium text-brand-700 underline decoration-brand-700/30 hover:decoration-brand-700 dark:text-brand-400">
                             Initiative
                           </Link>{" "}
-                          with intent <code className="rounded bg-black/5 px-1 dark:bg-white/10">seo_migration_audit</code>; open{" "}
+                          with intent <code className="rounded bg-black/5 px-1 dark:bg-white/10">{WP_SHOPIFY_MIGRATION_INTENT}</code>; open{" "}
                           <Link
-                            href="/runs?intent_type=seo_migration_audit"
+                            href={`/runs?intent_type=${WP_SHOPIFY_MIGRATION_INTENT}`}
                             className="font-medium text-brand-700 underline decoration-brand-700/30 hover:decoration-brand-700 dark:text-brand-400"
                           >
-                            SEO audit runs
+                            WP → Shopify migration runs
                           </Link>{" "}
                           for those. End-to-end wiring of this wizard into plans/jobs/artifacts is planned.
                         </p>
@@ -2389,9 +2474,7 @@ export default function SeoMigrationWizardPage() {
                           pdfImportLoading ||
                           pdfResolveLoading ||
                           !shopifyCredentialsOk ||
-                          !wooServer.trim() ||
-                          !wooConsumerKey.trim() ||
-                          !wooConsumerSecret.trim()
+                          !wooCredentialsOk
                         }
                       >
                         {pdfImportLoading ? "Importing PDFs…" : "Import PDFs to Shopify"}
@@ -2404,9 +2487,7 @@ export default function SeoMigrationWizardPage() {
                           pdfImportLoading ||
                           pdfResolveLoading ||
                           !shopifyCredentialsOk ||
-                          !wooServer.trim() ||
-                          !wooConsumerKey.trim() ||
-                          !wooConsumerSecret.trim() ||
+                          !wooCredentialsOk ||
                           pdfImportFetchUrlsTargetCount === 0
                         }
                       >
@@ -2539,14 +2620,16 @@ export default function SeoMigrationWizardPage() {
                   <Button
                     variant="secondary"
                     onClick={runMigrationDryRun}
-                    disabled={migrationDryRunLoading || migrationEntities.size === 0}
+                    disabled={migrationDryRunLoading || migrationEntities.size === 0 || !wooCredentialsOk}
                   >
                     {migrationDryRunLoading ? "Running…" : "Dry run (preview)"}
                   </Button>
                   <Button
                     variant="primary"
                     onClick={runMigrationRun}
-                    disabled={migrationRunLoading || migrationEntities.size === 0 || !shopifyCredentialsOk}
+                    disabled={
+                      migrationRunLoading || migrationEntities.size === 0 || !shopifyCredentialsOk || !wooCredentialsOk
+                    }
                   >
                     {migrationRunLoading ? "Migrating…" : "Run migration"}
                   </Button>
@@ -2860,6 +2943,9 @@ export default function SeoMigrationWizardPage() {
                 <p className="text-body-small text-fg-muted mb-3">Map every old URL to a new destination (path or full URL). Status: 301/302 permanent/temporary redirect, or drop/consolidate.</p>
                 <p className="text-body-small text-fg-muted mb-3">
                   Mappings are saved in this browser and reload after refresh or redeploy (same origin). They are tied to the brand and source URL from step 1; changing the brand clears saved redirects.
+                </p>
+                <p className="text-body-small text-fg-muted mb-3">
+                  <strong>Import CSV (merge)</strong> updates rows when the <strong>pathname</strong> matches (e.g. crawl rows as full URLs and Shopify PDF export as <code className="rounded bg-fg-muted/15 px-1">/wp-content/…</code> are treated as the same old URL). New paths in the file are appended.
                 </p>
                 <input
                   ref={redirectCsvInputRef}

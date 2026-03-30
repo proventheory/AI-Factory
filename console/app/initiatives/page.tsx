@@ -263,7 +263,7 @@ export default function InitiativesPage() {
             )}
           </label>
           <label className="block text-body-small text-text-secondary">
-            Brand (for SEO: connect Google on the brand page)
+            Brand (for GSC/GA4: connect Google on the brand page)
             <Select className="mt-1" value={createBrandId} onChange={(e) => setCreateBrandId(e.target.value)}>
               <option value="">None</option>
               {brands.map((b) => (

@@ -160,7 +160,7 @@ export default function PlannerPage() {
   const onCompose = async () => {
     const keys = composePatternKeys.split(",").map((k) => k.trim()).filter(Boolean);
     if (keys.length < 2) {
-      setDraftError("Enter at least two pattern keys separated by commas (e.g. seo_migration_audit, email_design_generator)");
+      setDraftError("Enter at least two pattern keys separated by commas (e.g. wp_shopify_migration, email_design_generator)");
       return;
     }
     setComposeLoading(true);
@@ -189,7 +189,7 @@ export default function PlannerPage() {
 
         <CardSection title="Build pipeline from prompt">
           <p className="text-body-small text-text-secondary mb-2">
-            Describe the pipeline (e.g. &quot;SEO migration audit for WordPress to Shopify&quot;, &quot;email design generator&quot;, &quot;self-heal fix repo&quot;). The system picks a pattern and returns a draft you can compile into a plan.
+            Describe the pipeline (e.g. &quot;WP to Shopify audit for WordPress → Shopify&quot;, &quot;email design generator&quot;, &quot;self-heal fix repo&quot;). The system picks a pattern and returns a draft you can compile into a plan.
           </p>
           <div className="flex flex-wrap items-end gap-2 mb-2">
             <span className="text-body-small text-text-muted">Load saved draft:</span>
@@ -217,7 +217,7 @@ export default function PlannerPage() {
           </div>
           <textarea
             className="w-full min-h-[80px] rounded-lg border border-border-default bg-surface-default px-3 py-2 text-body-small text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="e.g. Build an SEO migration audit pipeline for WordPress → Shopify"
+            placeholder="e.g. Build a WP–Shopify audit pipeline for WordPress → Shopify"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />

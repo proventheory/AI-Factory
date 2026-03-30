@@ -1,6 +1,6 @@
-# SEO Migration – Artifact Schemas
+# WP → Shopify migration – Artifact Schemas
 
-Artifacts produced by the `seo_migration_audit` pipeline. Stored in `artifacts.metadata_json` (or referenced by `uri`).
+Artifacts produced by the `wp_shopify_migration` pipeline. Stored in `artifacts.metadata_json` (or referenced by `uri`).
 
 ## seo_url_inventory
 

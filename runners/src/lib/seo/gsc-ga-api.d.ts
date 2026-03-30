@@ -28,6 +28,7 @@ export interface GscReport {
     };
     pages: GscPageRow[];
     queries: GscQueryRow[];
+    /** Keywords that generated traffic per page (GSC dimensions: page + query). */
     page_queries: GscPageQueryRow[];
     error?: string;
 }
@@ -38,9 +39,18 @@ export interface Ga4PageRow {
     screen_page_views?: number;
     user_engagement_duration?: number;
 }
+/** Legacy shape; GA4 Data API no longer exposes an organic search query dimension — use GSC for query lists. */
+export interface Ga4SearchConsoleQueryRow {
+    query: string;
+    clicks: number;
+    impressions: number;
+}
 export interface Ga4Report {
     property_id: string;
     pages: Ga4PageRow[];
+    /** Not populated: organic query dimension removed from public GA4 schema; use Search Console (fetchGscReport). */
+    search_console_queries?: Ga4SearchConsoleQueryRow[];
+    search_console_error?: string;
     error?: string;
 }
 /**

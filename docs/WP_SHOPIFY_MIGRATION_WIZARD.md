@@ -1,6 +1,6 @@
-# SEO Migration Wizard (WordPress → Shopify)
+# WordPress → Shopify migration wizard
 
-This document defines the **9-step SEO migration wizard** for moving a site (e.g. [stigmahemp.com](https://stigmahemp.com/) on WordPress) to a new platform (e.g. [stigmathc.com](https://stigmathc.com/) on Shopify) without losing rankings, traffic, or authority. The keyword-mapping step is central: migration should be driven by **future search opportunity**, not by replicating the old site structure 1:1.
+This document defines the **9-step WordPress → Shopify migration wizard** for moving a site (e.g. [stigmahemp.com](https://stigmahemp.com/) on WordPress) to a new platform (e.g. [stigmathc.com](https://stigmathc.com/) on Shopify) without losing rankings, traffic, or authority. The keyword-mapping step is central: migration should be driven by **future search opportunity**, not by replicating the old site structure 1:1.
 
 ---
 
@@ -49,8 +49,8 @@ This document defines the **9-step SEO migration wizard** for moving a site (e.g
 
 - **Goal:** Connect WordPress/WooCommerce (source) and Shopify (destination) via API; optionally migrate products, categories, customers, redirects, discounts, blog posts, and pages in one place (Matrixify-style).
 - **Existing:**  
-  - **Dry run:** `POST /v1/seo/migration/dry_run` — WooCommerce server URL + consumer key/secret + entities; returns counts from WooCommerce REST API v3 and WP REST API (products, categories, customers, coupons, orders, posts, pages).  
-  - **Run:** `POST /v1/seo/migration/run` — same WooCommerce credentials + Shopify store URL and Admin API access token + entities; currently returns a “not yet implemented” message; when implemented will pull from WooCommerce/WP and push to Shopify Admin API.
+  - **Dry run:** `POST /v1/wp-shopify-migration/dry_run` — WooCommerce server URL + consumer key/secret + entities; returns counts from WooCommerce REST API v3 and WP REST API (products, categories, customers, coupons, orders, posts, pages).  
+  - **Run:** `POST /v1/wp-shopify-migration/run` — same WooCommerce credentials + Shopify store URL and Admin API access token + entities; currently returns a “not yet implemented” message; when implemented will pull from WooCommerce/WP and push to Shopify Admin API.
 - **Reference:** [Matrixify: Migrate from WordPress/WooCommerce to Shopify](https://matrixify.app/tutorials/migrate-store-from-wordpress-woocommerce-to-shopify/) — WooCommerce API URL format `https://consumer_key:consumer_secret@server`, dry run to preview, then full import; redirects generated from product/category URLs.
 - **To implement (full ETL):** Pull products, categories, customers, orders, coupons from `wc/v3`; posts and pages from `wp/v2`; generate redirects from product/category permalinks to Shopify equivalents; push to Shopify via Admin API (products, collections, customers, redirects, price rules, blog articles, pages).
 
@@ -134,12 +134,12 @@ Step 8: Launch            → Checklist + optional gate
 
 ## Where this lives in AI Factory
 
-- **Pipeline:** Extend `seo_migration_audit` (or add `seo_migration_wizard`) with nodes for steps 3–7. Steps 1–2 already exist (source/target inventory, GSC/GA4).  
+- **Pipeline:** Extend `wp_shopify_migration` (or add `seo_migration_wizard`) with nodes for steps 3–7. Steps 1–2 already exist (source/target inventory, GSC/GA4).  
 - **Runner:** New job types: `seo_keyword_mapping`, `seo_page_priority`, `seo_redirect_map`, `seo_redirect_validation`, `seo_internal_links`. Handlers call into shared SEO lib and optionally LLM. For Step 1, `seo_source_inventory` supports `goal_metadata.use_link_crawl` to enable link-following crawl.  
 - **Control Plane:**  
-  - **Step 1 (crawl):** `POST /v1/seo/migration/crawl` — body: `{ source_url, use_link_crawl?, max_urls?, crawl_delay_ms?, fetch_page_details? }`. Returns `{ source_url, urls, crawl_mode, stats }` (same shape as runner artifact). Use for wizard UI without creating a run.  
+  - **Step 1 (crawl):** `POST /v1/wp-shopify-migration/crawl` — body: `{ source_url, use_link_crawl?, max_urls?, crawl_delay_ms?, fetch_page_details? }`. Returns `{ source_url, urls, crawl_mode, stats }` (same shape as runner artifact). Use for wizard UI without creating a run.  
   - Steps 2–8: GSC/GA4 via existing `POST /v1/seo/gsc_report`, `POST /v1/seo/ga4_report`; steps 3–7 via initiative → plan → run when those nodes exist.  
-- **Console:** **SEO Migration Wizard** flow: one page per step (or stepper UI). Each step: configure (e.g. source URL, target URL, GSC site), run, view artifact (table/export). Step 8 = launch checklist + “Go live” (no domain flip in app; user does that in Shopify/DNS).
+- **Console:** **WordPress → Shopify migration** flow (`/wp-shopify-migration`): one page per step (or stepper UI). Each step: configure (e.g. source URL, target URL, GSC site), run, view artifact (table/export). Step 8 = launch checklist + “Go live” (no domain flip in app; user does that in Shopify/DNS).
 
 ---
 
@@ -162,7 +162,7 @@ Step 8: Launch            → Checklist + optional gate
 
 1. **Crawl (Step 1):** Add WordPress sitemap candidates and link-following crawl in `runners/src/lib/seo/crawl.ts`; optional `useLinkCrawl` in `CrawlOptions`.  
 2. **Backlinks (Step 2):** Optional: CSV upload or API client for backlinks; merge into “value” view.  
-3. **Steps 3–7:** New runner job types + artifacts; plan-compiler template for `seo_migration_wizard` (or extend `seo_migration_audit`).  
+3. **Steps 3–7:** New runner job types + artifacts; plan-compiler template for `seo_migration_wizard` (or extend `wp_shopify_migration`).  
 4. **Console:** Wizard UI (stepper) that creates an initiative, runs the pipeline, and displays artifacts per step; Step 8 = checklist + launch.
 
 This keeps the wizard consistent with the existing SEO vertical (same engine, no new kernel tables) and makes the keyword-mapping step the driver for redirect and page strategy.

@@ -2,13 +2,13 @@
 
 import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { PageFrame, Stack, CardSection, TableFrame, PageHeader, DataTable, EmptyState, LoadingSkeleton, Badge, Button, AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel } from "@/components/ui";
 import type { Column } from "@/components/ui/DataTable";
 import { useRuns, useCancelRun } from "@/hooks/use-api";
 import { useEnvironment } from "@/contexts/EnvironmentContext";
 import { formatApiError } from "@/lib/api";
-import { INTENT_TYPES } from "@/config/intent-types";
+import { INTENT_TYPES, WP_SHOPIFY_MIGRATION_INTENT, normalizeWpShopifyIntentQueryParam } from "@/config/intent-types";
 
 type RunRow = {
   id: string;
@@ -49,11 +49,20 @@ function RunsPageSkeleton() {
 
 function RunsPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { environment } = useEnvironment();
-  const intentFromUrl = searchParams.get("intent_type") ?? "";
+  const intentFromUrl = normalizeWpShopifyIntentQueryParam(searchParams.get("intent_type") ?? "");
   const [intentFilter, setIntentFilter] = useState<string>(intentFromUrl);
   const [confirmingRunId, setConfirmingRunId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  useEffect(() => {
+    const raw = searchParams.get("intent_type");
+    if (raw && normalizeWpShopifyIntentQueryParam(raw) !== raw) {
+      const sp = new URLSearchParams(searchParams.toString());
+      sp.set("intent_type", WP_SHOPIFY_MIGRATION_INTENT);
+      router.replace(`/runs?${sp.toString()}`, { scroll: false });
+    }
+  }, [searchParams, router]);
   useEffect(() => {
     if (intentFromUrl && intentFilter !== intentFromUrl) setIntentFilter(intentFromUrl);
   }, [intentFromUrl]);
@@ -199,11 +208,19 @@ function RunsPageContent() {
         <CardSection>
           {items.length === 0 ? (
             <EmptyState
-              title={intentFilter === "email_design_generator" ? "No email design generator runs yet" : "No runs yet"}
+              title={
+                intentFilter === "email_design_generator"
+                  ? "No email design generator runs yet"
+                  : intentFilter === WP_SHOPIFY_MIGRATION_INTENT
+                    ? "No WP → Shopify migration runs yet"
+                    : "No runs yet"
+              }
               description={
                 intentFilter === "email_design_generator"
                   ? "Email design generator runs appear after you finish the wizard (Generate) or click Start run on an email design plan. If you just ran the wizard, set Pipeline to All and check the top of the list (newest first). If you see an error on the Generate page (e.g. Start run failed), the run was not created—fix that error and try again."
-                  : "Create an initiative and run a plan to see runs here."
+                  : intentFilter === WP_SHOPIFY_MIGRATION_INTENT
+                    ? "WP → Shopify migration runs appear after you create an initiative with this pipeline, compile a plan, and start a run. Set Pipeline to All if you expect older runs under a different filter."
+                    : "Create an initiative and run a plan to see runs here."
               }
             />
           ) : (

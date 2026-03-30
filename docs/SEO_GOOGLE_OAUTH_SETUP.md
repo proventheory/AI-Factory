@@ -49,7 +49,7 @@ If the console runs on a different origin, set:
 3. Control-plane returns `{ url: "https://accounts.google.com/…" }`; user is redirected to Google.
 4. User signs in (and picks account if prompted) and grants access; Google redirects to `GET <control-plane>/v1/seo/google/callback?code=…&state=…`.
 5. Control-plane exchanges the code for tokens, encrypts and stores the refresh token in `brand_google_credentials`, then redirects to the brand page with `?google_connected=1`.
-6. When creating an initiative (e.g. SEO migration audit), user selects a **brand**; that initiative uses the brand’s Google connection.
+6. When creating an initiative (e.g. WP → Shopify audit), user selects a **brand**; that initiative uses the brand’s Google connection.
 7. Runners call `GET <control-plane>/v1/initiatives/:id/google_access_token`; the API resolves the initiative’s brand and returns a token from `brand_google_credentials` (or legacy `initiative_google_credentials`).
 
 ---
@@ -64,7 +64,7 @@ The OAuth scopes above only allow the app to *request* access; the corresponding
    - **Link:** [Google Cloud Console → Search Console API](https://console.cloud.google.com/apis/library/searchconsole.googleapis.com)
    - Open the link, select the **same project** you use for OAuth, and click **Enable**.
 2. In [Google Search Console](https://search.google.com/search-console), add and verify the property for your site (e.g. `https://stigmahemp.com` or `sc-domain:stigmahemp.com`). The account you use for “Connect Google” on the brand must have access to that property.
-3. In the SEO Migration Wizard **Step 2**, select the brand, set the **Site URL** to match the GSC property (e.g. `https://stigmahemp.com`), and click **Fetch GSC report**. Step 4 will then show **Traffic keywords (GSC)** per URL.
+3. In the WP → Shopify migration wizard **Step 2**, select the brand, set the **Site URL** to match the GSC property (e.g. `https://stigmahemp.com`), and click **Fetch GSC report**. Step 4 will then show **Traffic keywords (GSC)** per URL.
 
 ### Monthly search volume (Google Ads) — optional
 
@@ -103,4 +103,4 @@ To fill **Monthly search volume** in Step 4 (and the “Fetch monthly search vol
    - **Key:** `GOOGLE_ADS_REFRESH_TOKEN` → **Value:** the refresh token you copied from the Playground in Step 2.
 4. Click **Save Changes**. Render will redeploy the service.
 
-You should already have `GOOGLE_ADS_DEVELOPER_TOKEN` and `GOOGLE_ADS_CUSTOMER_ID` set (e.g. from API Center and MCP). Once all five vars are set, “Fetch monthly search volume (Google Ads)” in the SEO Migration Wizard Step 4 should work.
+You should already have `GOOGLE_ADS_DEVELOPER_TOKEN` and `GOOGLE_ADS_CUSTOMER_ID` set (e.g. from API Center and MCP). Once all five vars are set, “Fetch monthly search volume (Google Ads)” in the WP → Shopify migration wizard Step 4 should work.

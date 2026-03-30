@@ -10,6 +10,7 @@ import { requireRole } from "../security/rbac.js";
 import { handleDbMissingTable } from "../middleware/error-handler.js";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "../lib/pagination.js";
 import { isTemplateImageContractsMissing } from "../lib/template-lint-gate.js";
+import { intentTypeFilterValues } from "../../lib/intent-type.js";
 
 export async function list(req: Request, res: Response): Promise<void> {
   try {
@@ -35,8 +36,14 @@ export async function list(req: Request, res: Response): Promise<void> {
     }
     const intent_type = req.query.intent_type as string | undefined;
     if (intent_type) {
-      conditions.push(`i.intent_type = $${i++}`);
-      params.push(intent_type);
+      const vals = intentTypeFilterValues(intent_type);
+      if (vals.length === 1) {
+        conditions.push(`i.intent_type = $${i++}`);
+        params.push(vals[0]);
+      } else {
+        conditions.push(`i.intent_type IN ($${i++}, $${i++})`);
+        params.push(vals[0], vals[1]);
+      }
     }
     params.push(limit, offset);
     const limitIdx = params.length - 1;

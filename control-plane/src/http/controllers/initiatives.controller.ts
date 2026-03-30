@@ -8,6 +8,7 @@ import {
 import { requireRole } from "../security/rbac.js";
 import { normalizeRiskLevel } from "../lib/risk.js";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "../lib/pagination.js";
+import { canonicalInitiativeIntentType, intentTypeFilterValues } from "../../lib/intent-type.js";
 
 export async function list(req: Request, res: Response): Promise<void> {
   try {
@@ -19,23 +20,17 @@ export async function list(req: Request, res: Response): Promise<void> {
     const params: unknown[] = [];
     let i = 1;
     if (intent_type) {
-      conditions.push(`intent_type = $${i++}`);
-      params.push(intent_type);
+      const vals = intentTypeFilterValues(intent_type);
+      if (vals.length === 1) {
+        conditions.push(`intent_type = $${i++}`);
+        params.push(vals[0]);
+      } else {
+        conditions.push(`intent_type IN ($${i++}, $${i++})`);
+        params.push(vals[0], vals[1]);
+      }
     }
     if (risk_level) {
       const normalized = normalizeRiskLevel(risk_level);
-      fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0db674" },
-        body: JSON.stringify({
-          sessionId: "0db674",
-          hypothesisId: "H3",
-          location: "api.ts:GET initiatives",
-          message: "risk_level filter",
-          data: { raw: risk_level, normalized },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
       conditions.push(`risk_level = $${i++}`);
       params.push(normalized);
     }
@@ -84,6 +79,9 @@ export async function patch(req: Request, res: Response): Promise<void> {
         if (field === "risk_level") {
           sets.push(`${field} = $${i++}::risk_level`);
           params.push(normalizeRiskLevel(body[field] as string));
+        } else if (field === "intent_type") {
+          sets.push(`${field} = $${i++}`);
+          params.push(canonicalInitiativeIntentType(String(body[field])));
         } else {
           sets.push(`${field} = $${i++}`);
           params.push(body[field]);
@@ -129,11 +127,12 @@ export async function create(req: Request, res: Response): Promise<void> {
       return;
     }
     const rl = normalizeRiskLevel(risk_level);
+    const storedIntent = canonicalInitiativeIntentType(intent_type);
     const r = await pool.query(
       `INSERT INTO initiatives (intent_type, title, risk_level, created_by, goal_state, goal_metadata, source_ref, template_id, priority, brand_profile_id)
        VALUES ($1,$2,$3::risk_level,$4,$5,$6::jsonb,$7,$8,$9,$10) RETURNING *`,
       [
-        intent_type,
+        storedIntent,
         title ?? null,
         rl,
         created_by ?? null,
@@ -153,7 +152,7 @@ export async function create(req: Request, res: Response): Promise<void> {
         .query(
           `INSERT INTO initiatives (intent_type, title, risk_level, created_by) VALUES ($1,$2,$3::risk_level,$4) RETURNING *`,
           [
-            (req.body as { intent_type: string }).intent_type,
+            canonicalInitiativeIntentType((req.body as { intent_type: string }).intent_type),
             (req.body as { title?: string }).title ?? null,
             normalizeRiskLevel((req.body as { risk_level: string }).risk_level),
             (req.body as { created_by?: string }).created_by ?? null,

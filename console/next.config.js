@@ -32,6 +32,9 @@ const nextConfig = {
   },
   // Proxy /email-design-generator to the Email Design Generator app only when target is a public URL.
   // Skip rewrites for localhost/private so Vercel never tries to proxy to them (avoids 404 DNS_HOSTNAME_RESOLVED_PRIVATE).
+  async redirects() {
+    return [{ source: "/seo-migration", destination: "/wp-shopify-migration", permanent: true }];
+  },
   async rewrites() {
     const target = process.env.NEXT_PUBLIC_EMAIL_MARKETING_ORIGIN;
     if (!target || typeof target !== "string") return [];

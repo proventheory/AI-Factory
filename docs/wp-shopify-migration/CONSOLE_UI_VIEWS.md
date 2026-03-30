@@ -1,8 +1,8 @@
-# SEO Migration – Console/UI Views (Design Reference)
+# WP → Shopify migration – Console/UI Views (Design Reference)
 
-Suggested run-detail and list views for the Console when displaying `seo_migration_audit` runs. Implement as needed.
+Suggested run-detail and list views for the Console when displaying `wp_shopify_migration` (WP → Shopify audit) runs. Implement as needed.
 
-## Initiative run detail (seo_migration_audit)
+## Initiative run detail (`wp_shopify_migration`)
 
 - **Crawl summary** – From `seo_url_inventory` (source + target): total URLs, by type, status counts, crawl_mode.
 - **URL match summary** – From `seo_url_match_report`: total, exact, rule, none; link to match list.

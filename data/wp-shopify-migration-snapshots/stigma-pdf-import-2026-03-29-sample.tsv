@@ -1,0 +1,16 @@
+# Snapshot: Stigma THC — PDF import run ~2026-03-29 (before server-side URL polling fix).
+# UI showed "Uploaded: 0, failed: 420" while files appeared in Shopify Admin → Content → Files.
+# Root cause: fileCreate returned fileStatus UPLOADED with empty url until Shopify finished processing.
+# Fix: control-plane polls GenericFile until url is available (see wp-shopify-migration-pdf-shopify.ts).
+# Full export from the wizard was ~420 rows; below is a sample (wordpress_id, title, result).
+wordpress_id	title	result
+57756	Stigma-Peach-Iced-Tea-16oz-STG69-01	Shopify fileCreate returned no URL (status UPLOADED)
+57755	Stigma-Lime-Seltzer-Water-16oz-STG70-01 LS-2	Shopify fileCreate returned no URL (status UPLOADED)
+57754	Stigma-Lime-Seltzer-Water-16oz-260319Q038-001 CoA	Shopify fileCreate returned no URL (status UPLOADED)
+57734	Stigma Variety Pack 12oz STG76-01 CS	Shopify fileCreate returned no URL (status UPLOADED)
+57733	Stigma Variety Pack 12oz STG75-01 LS	Shopify fileCreate returned no URL (status UPLOADED)
+57732	Stigma Variety Pack 12oz STG74-01 PIT	Shopify fileCreate returned no URL (status UPLOADED)
+57731	Stigma Variety Pack 12oz STG73-01 LIT	Shopify fileCreate returned no URL (status UPLOADED)
+57721	Stigma-Energy-Tonic-12oz-260309P010-001 CoA	Shopify fileCreate returned no URL (status UPLOADED)
+57694	Stigma-Lemonade-Iced-Tea-16oz-260304Q041-001 CoA	Shopify fileCreate returned no URL (status UPLOADED)
+57692	Stigma-Sleep-Tonic-12oz-260304Q042-001 CoA	Shopify fileCreate returned no URL (status UPLOADED)

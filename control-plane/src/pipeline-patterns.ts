@@ -5,19 +5,20 @@
  */
 
 import { getTemplateByIntentType } from "./plan-compiler.js";
+import { canonicalInitiativeIntentType } from "./lib/intent-type.js";
 
 /** Draft node shape (matches plan-compiler DraftNodeLike). */
 export type PipelineDraftNode = { node_key: string; job_type: string; node_type?: string; agent_role?: string; consumes_artifact_types?: string[] };
 /** Draft edge shape (matches plan-compiler DraftEdgeLike). */
 export type PipelineDraftEdge = { from_key: string; to_key: string; condition?: string };
 
-export const PIPELINE_PATTERN_IDS = ["seo_migration_audit", "email_design_generator", "self_heal", "software_deploy", "upgrade_initiative"] as const;
+export const PIPELINE_PATTERN_IDS = ["wp_shopify_migration", "email_design_generator", "self_heal", "software_deploy", "upgrade_initiative"] as const;
 
 export type PipelinePatternId = (typeof PIPELINE_PATTERN_IDS)[number];
 
 /** Required input keys per pattern (for validation and draft enrichment). */
 export const PATTERN_REQUIRED_INPUTS: Record<string, string[]> = {
-  seo_migration_audit: ["initiative_id"],
+  wp_shopify_migration: ["initiative_id"],
   email_design_generator: ["initiative_id", "template_id"],
   self_heal: ["initiative_id"],
   software_deploy: ["initiative_id"],
@@ -26,7 +27,7 @@ export const PATTERN_REQUIRED_INPUTS: Record<string, string[]> = {
 
 /** Human-readable labels for pattern inputs (for UI and prompt extraction). */
 export const PATTERN_INPUT_LABELS: Record<string, Record<string, string>> = {
-  seo_migration_audit: { initiative_id: "Initiative", source_platform: "Source platform", target_platform: "Target platform" },
+  wp_shopify_migration: { initiative_id: "Initiative", source_platform: "Source platform", target_platform: "Target platform" },
   email_design_generator: { initiative_id: "Initiative", template_id: "Email template" },
   self_heal: { initiative_id: "Initiative" },
   software_deploy: { initiative_id: "Initiative", environment: "Environment" },
@@ -35,7 +36,7 @@ export const PATTERN_INPUT_LABELS: Record<string, Record<string, string>> = {
 
 /** Success criteria per pattern (for draft.successCriteria and lint). */
 export const PATTERN_SUCCESS_CRITERIA: Record<string, string[]> = {
-  seo_migration_audit: ["Audit report generated", "URL mapping and redirect verification complete"],
+  wp_shopify_migration: ["Audit report generated", "URL mapping and redirect verification complete"],
   email_design_generator: ["MJML email artifact produced", "Template contract satisfied"],
   self_heal: ["Patch applied and PR submitted", "Tests passing"],
   software_deploy: ["Migration guard passed", "Build succeeded", "Preview deploy healthy", "Smoke test passed"],
@@ -49,7 +50,8 @@ export function getPattern(intentType: string): {
   input_labels?: Record<string, string>;
   success_criteria?: string[];
 } | null {
-  const t = getTemplateByIntentType(intentType);
+  const patternKey = canonicalInitiativeIntentType(intentType);
+  const t = getTemplateByIntentType(patternKey);
   if (!t) return null;
   const nodes: PipelineDraftNode[] = t.nodes.map((n: any) => ({
     node_key: n.node_key,
@@ -66,8 +68,8 @@ export function getPattern(intentType: string): {
   return {
     nodes,
     edges,
-    required_inputs: PATTERN_REQUIRED_INPUTS[intentType] ?? [],
-    input_labels: PATTERN_INPUT_LABELS[intentType],
-    success_criteria: PATTERN_SUCCESS_CRITERIA[intentType],
+    required_inputs: PATTERN_REQUIRED_INPUTS[patternKey] ?? [],
+    input_labels: PATTERN_INPUT_LABELS[patternKey],
+    success_criteria: PATTERN_SUCCESS_CRITERIA[patternKey],
   };
 }

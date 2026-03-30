@@ -14,7 +14,7 @@
  *   GA4_PROPERTY_ID  e.g. 123456789
  *   GOOGLE_APPLICATION_CREDENTIALS  path to service account JSON (or use OAuth flow)
  *
- * Output: writes to ./docs/seo-migration/ (or SEO_INVENTORY_OUT_DIR):
+ * Output: writes to ./docs/wp-shopify-migration/ (or SEO_INVENTORY_OUT_DIR):
  *   gsc_top_pages.json, gsc_queries.json, ga4_top_pages.json
  *
  * Without credentials, writes empty arrays and a note. Run with credentials for real data.
@@ -23,7 +23,7 @@
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 
-const OUT_DIR = process.env.SEO_INVENTORY_OUT_DIR ?? "./docs/seo-migration";
+const OUT_DIR = process.env.SEO_INVENTORY_OUT_DIR ?? "./docs/wp-shopify-migration";
 const GSC_SITE = process.env.GSC_SITE_URL ?? "https://stigmahemp.com/";
 const GA4_PROPERTY = process.env.GA4_PROPERTY_ID ?? "";
 

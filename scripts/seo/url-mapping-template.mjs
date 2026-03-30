@@ -5,15 +5,15 @@
  *
  * Usage:
  *   node scripts/seo/url-mapping-template.mjs [path/to/url-inventory.json]
- *   node scripts/seo/url-mapping-template.mjs ./docs/seo-migration/stigmahemp-url-inventory.json
+ *   node scripts/seo/url-mapping-template.mjs ./docs/wp-shopify-migration/stigmahemp-url-inventory.json
  *
- * Output: url_mapping.json in same dir as input (or ./docs/seo-migration/url_mapping.json).
+ * Output: url_mapping.json in same dir as input (or ./docs/wp-shopify-migration/url_mapping.json).
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 
-const inputPath = process.argv[2] ?? "./docs/seo-migration/stigmahemp-url-inventory.json";
+const inputPath = process.argv[2] ?? "./docs/wp-shopify-migration/stigmahemp-url-inventory.json";
 const outPath = join(dirname(inputPath), "url_mapping.json");
 
 let inventory;

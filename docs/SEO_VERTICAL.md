@@ -10,7 +10,7 @@ A second vertical runs on the same substrate **without adding domain meaning to 
 
 | Kernel primitive | How SEO vertical uses it |
 |------------------|---------------------------|
-| **runs** | Initiatives with `intent_type: "seo_migration_audit"` (or landing page, content) compile to plans; `createRun(planId, …)` starts a run. |
+| **runs** | Initiatives with `intent_type: "wp_shopify_migration"` (or landing page, content) compile to plans; `createRun(planId, …)` starts a run. |
 | **job_runs** | Runner executes nodes: crawl, url_inventory, seo_gsc_snapshot, seo_ga4_snapshot, seo_risk_scorer, landing_page_generate, etc. |
 | **artifacts** | Runs produce artifacts: seo_url_inventory, seo_audit_summary, landing_page, email_template, etc. |
 | **events** | run_events, job_events record execution (no SEO-specific event types). |
@@ -21,7 +21,7 @@ SEO vertical **does not** add SEO-specific columns to runs or job_runs. It uses 
 
 | Area | Description | Control-plane / runner |
 |------|-------------|-------------------------|
-| **SEO migration audit** | Pipeline pattern `seo_migration_audit`; URL inventory, redirect verification, risk report, GSC/GA4 snapshots. | plan-compiler templates, pipeline-patterns, runners (seo_* handlers) |
+| **WP → Shopify audit** | Pipeline pattern `wp_shopify_migration`; URL inventory, redirect verification, risk report, GSC/GA4 snapshots. | plan-compiler templates, pipeline-patterns, runners (seo_* handlers) |
 | **GSC / GA4** | Fetch reports (top pages, queries). | seo-gsc-ga-client.ts, API POST /v1/seo/gsc_report, /v1/seo/ga4_report |
 | **Google OAuth** | Connect initiatives/brands to Google (Search Console, Analytics). | seo-google-oauth.ts, API /v1/seo/google/*, /v1/initiatives/:id/google_* |
 | **Sitemap / products** | Fetch sitemap products, products from URL (Shopify/sitemap). | sitemap-products.ts, products-from-url.ts, API POST /v1/sitemap/products, /v1/products/from_url |
@@ -36,12 +36,12 @@ No new **kernel** tables for SEO. Optional vertical-specific tables (e.g. seo_au
 ## Boundary rules
 
 1. **No SEO domain in kernel schema** — No keyword_clusters, seo_topics, or audit_run tables in the core kernel. Any future SEO-specific tables go in vertical migrations.
-2. **Same execution engine** — SEO runs use the same createRun, scheduler, job_runs, runner, and artifacts as deploy. Pipeline pattern `seo_migration_audit` (and email, landing page) produce plans and runs like `self_heal`.
+2. **Same execution engine** — SEO runs use the same createRun, scheduler, job_runs, runner, and artifacts as deploy. Pipeline pattern `wp_shopify_migration` (and email, landing page) produce plans and runs like `self_heal`.
 3. **Console and API** — Console pages (e.g. initiatives, launches, landing-page-generator) and API routes that serve SEO are unchanged; they call into verticals/seo or existing modules. No requirement to move all SEO routes into a separate Express router for Phase 4; the vertical is defined by ownership of domain logic and the facade.
 
 ## Pipeline patterns that belong to SEO / marketing vertical
 
-- **seo_migration_audit** — SEO migration audit (URL inventory, GSC, GA4, risk).
+- **wp_shopify_migration** — WP → Shopify audit (URL inventory, GSC, GA4, risk).
 - **email_design_generator** — Email design (MJML, templates); can be grouped with SEO/marketing.
 - **landing_page_generate** — Landing page generation (often used with SEO/content).
 

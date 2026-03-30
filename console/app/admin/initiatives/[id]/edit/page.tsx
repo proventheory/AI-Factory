@@ -6,7 +6,7 @@ import Link from "next/link";
 import { PageHeader, Card, CardContent, Button, Input, Select } from "@/components/ui";
 import { useInitiative, useUpdateInitiative } from "@/hooks/use-api";
 import { getResource } from "@/lib/admin-registry";
-import { INTENT_TYPES } from "@/config/intent-types";
+import { INTENT_TYPES, isWpShopifyMigrationIntent } from "@/config/intent-types";
 
 const resource = getResource("initiatives")!;
 
@@ -25,7 +25,7 @@ export default function AdminInitiativeEditPage() {
   const [goal_metadata, setGoalMetadata] = useState<{ source_url?: string; target_url?: string; gsc_site_url?: string; ga4_property_id?: string }>({});
 
   const resolvedIntent = intent_type === "other" ? intent_type_other.trim() : intent_type;
-  const isSeoAudit = resolvedIntent === "seo_migration_audit";
+  const isWpShopifyMigration = isWpShopifyMigrationIntent(resolvedIntent);
 
   useEffect(() => {
     if (data) {
@@ -58,7 +58,7 @@ export default function AdminInitiativeEditPage() {
         risk_level,
         source_ref: source_ref || undefined,
       };
-      if (isSeoAudit) {
+      if (isWpShopifyMigration) {
         body.goal_metadata = {
           ...(goal_metadata.source_url && { source_url: goal_metadata.source_url }),
           ...(goal_metadata.target_url && { target_url: goal_metadata.target_url }),
@@ -153,7 +153,7 @@ export default function AdminInitiativeEditPage() {
               <label className="mb-1 block text-body-small font-medium text-text-primary">Source ref</label>
               <Input value={source_ref} onChange={(e) => setSourceRef(e.target.value)} className="w-full" />
             </div>
-            {isSeoAudit && (
+            {isWpShopifyMigration && (
               <>
                 <div>
                   <label className="mb-1 block text-body-small font-medium text-text-primary">Source URL (SEO)</label>

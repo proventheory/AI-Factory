@@ -1,5 +1,5 @@
 /**
- * SEO migration wizard — Step 1 crawl. Bundles runners crawlSite into control-plane (no runtime path).
+ * WP → Shopify migration wizard — Step 1 crawl. Bundles runners crawlSite into control-plane (no runtime path).
  */
 import { crawlSite } from "../../runners/src/lib/seo/crawl.js";
 
