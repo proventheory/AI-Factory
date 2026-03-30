@@ -36,20 +36,41 @@ const nextConfig = {
     return [{ source: "/seo-migration", destination: "/wp-shopify-migration", permanent: true }];
   },
   async rewrites() {
-    const target = process.env.NEXT_PUBLIC_EMAIL_MARKETING_ORIGIN;
-    if (!target || typeof target !== "string") return [];
-    const trimmed = target.trim();
-    if (!trimmed) return [];
-    try {
-      const u = new URL(trimmed);
-      if (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname.endsWith(".local")) return [];
-    } catch {
-      return [];
+    const out = [];
+
+    const emailTarget = process.env.NEXT_PUBLIC_EMAIL_MARKETING_ORIGIN;
+    if (emailTarget && typeof emailTarget === "string") {
+      const trimmed = emailTarget.trim();
+      if (trimmed) {
+        try {
+          const u = new URL(trimmed);
+          if (u.hostname !== "localhost" && u.hostname !== "127.0.0.1" && !u.hostname.endsWith(".local")) {
+            out.push(
+              { source: "/email-design-generator", destination: `${trimmed}/email-design-generator` },
+              { source: "/email-design-generator/:path*", destination: `${trimmed}/email-design-generator/:path*` },
+            );
+          }
+        } catch {
+          /* skip invalid email origin */
+        }
+      }
     }
-    return [
-      { source: "/email-design-generator", destination: `${trimmed}/email-design-generator` },
-      { source: "/email-design-generator/:path*", destination: `${trimmed}/email-design-generator/:path*` },
-    ];
+
+    // Browser → deployed console uses this path (same origin); Vercel forwards to Render. Avoids CORS / mixed-content when
+    // operators use https://*.vercel.app and NEXT_PUBLIC_CONTROL_PLANE_API points at https://*.onrender.com.
+    const cp = process.env.NEXT_PUBLIC_CONTROL_PLANE_API?.trim().replace(/\/$/, "");
+    if (cp) {
+      try {
+        const u = new URL(cp.startsWith("http") ? cp : `https://${cp}`);
+        if (u.hostname !== "localhost" && u.hostname !== "127.0.0.1" && !u.hostname.endsWith(".local")) {
+          out.push({ source: "/api/control-plane/:path*", destination: `${cp}/:path*` });
+        }
+      } catch {
+        /* skip invalid control plane URL */
+      }
+    }
+
+    return out;
   },
 };
 

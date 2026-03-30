@@ -1,7 +1,22 @@
 /**
  * Control Plane API client. Use with React Query hooks.
  */
-const API = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001";
+const API_DIRECT = (process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:3001").replace(/\/$/, "");
+
+/**
+ * When the console runs on Vercel (or any non-localhost host), call the API through Next.js
+ * `rewrites` at `/api/control-plane/*` so the browser only talks same-origin (see console/next.config.js).
+ * Local dev keeps using NEXT_PUBLIC_CONTROL_PLANE_API directly (e.g. http://localhost:3001).
+ */
+export function controlPlaneApiBase(): string {
+  if (typeof window !== "undefined") {
+    const h = window.location.hostname;
+    if (h !== "localhost" && h !== "127.0.0.1") {
+      return `${window.location.origin}/api/control-plane`;
+    }
+  }
+  return API_DIRECT;
+}
 
 /** Response shape from Control Plane `GET /health` (capabilities added for Shopify shpat_ support). */
 export type ControlPlaneHealth = {
@@ -13,7 +28,7 @@ export type ControlPlaneHealth = {
 /** Lightweight probe; use to warn if the console points at an old API build. */
 export async function getControlPlaneHealth(): Promise<ControlPlaneHealth | null> {
   try {
-    const res = await fetch(`${API}/health`, { method: "GET", cache: "no-store" });
+    const res = await fetch(`${controlPlaneApiBase()}/health`, { method: "GET", cache: "no-store" });
     if (!res.ok) return null;
     const data = (await res.json()) as ControlPlaneHealth;
     return data && typeof data === "object" ? data : null;
@@ -32,7 +47,7 @@ export function controlPlaneSupportsShopifyAdminToken(health: ControlPlaneHealth
 export function formatApiError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes("ENETUNREACH") || msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
-    return "Cannot reach the Control Plane API. If this app is deployed, set NEXT_PUBLIC_CONTROL_PLANE_API to your deployed API URL (e.g. your Render service URL) and ensure CORS allows this origin.";
+    return "Cannot reach the Control Plane API. On Vercel, set NEXT_PUBLIC_CONTROL_PLANE_API to your Render API URL (https, no trailing slash) at build time so rewrites can proxy /api/control-plane → the API. For local dev, run the control plane and keep the default http://localhost:3001 or match it in .env.local.";
   }
   if (msg.includes("404") || msg.includes("Not Found")) return "The requested resource was not found.";
   if (msg.includes("Database schema not applied") || (msg.includes("relation ") && msg.includes(" does not exist"))) {
@@ -125,25 +140,25 @@ export async function getRuns(params?: { status?: string; intent_type?: string; 
   if (params?.intent_type) searchParams.set("intent_type", params.intent_type);
   if (params?.environment) searchParams.set("environment", params.environment);
   if (params?.limit) searchParams.set("limit", String(params.limit ?? 50));
-  const res = await fetch(`${API}/v1/runs?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/runs?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getRun(id: string): Promise<RunRow & { job_runs?: unknown[] }> {
-  const res = await fetch(`${API}/v1/runs/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getRunStatus(id: string): Promise<{ status: string }> {
-  const res = await fetch(`${API}/v1/runs/${id}/status`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}/status`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getRunArtifacts(runId: string): Promise<{ items: ArtifactRow[] }> {
-  const res = await fetch(`${API}/v1/runs/${runId}/artifacts`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${runId}/artifacts`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -196,7 +211,7 @@ function wpShopifyArtifactMeta(items: ArtifactRow[], artifactType: string): Reco
 async function throwWpShopifyRunFailed(runId: string, status: string): Promise<never> {
   let detail = status;
   try {
-    const res = await fetch(`${API}/v1/runs/${runId}`);
+    const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${runId}`);
     if (res.ok) {
       const data = (await res.json()) as { job_runs?: Array<{ error_signature?: string }> };
       const jr = Array.isArray(data.job_runs) ? data.job_runs[0] : undefined;
@@ -221,7 +236,7 @@ function parseWizardEnqueueResponse(text: string, res: Response): WpShopifyWizar
 }
 
 async function postWpShopifyMigrationPost(path: string, body: Record<string, unknown>): Promise<WpShopifyWizardEnqueueResponse> {
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${controlPlaneApiBase()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -232,7 +247,7 @@ async function postWpShopifyMigrationPost(path: string, body: Record<string, unk
 
 /** POST /v1/wp-shopify-migration/wizard_job; returns null if the deployed API has no route yet (404). */
 async function tryPostWizardJob(body: Record<string, unknown>): Promise<WpShopifyWizardEnqueueResponse | null> {
-  const res = await fetch(`${API}/v1/wp-shopify-migration/wizard_job`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/wp-shopify-migration/wizard_job`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -281,13 +296,13 @@ export async function getInitiatives(params?: { intent_type?: string; risk_level
   if (params?.intent_type) searchParams.set("intent_type", params.intent_type);
   if (params?.risk_level) searchParams.set("risk_level", params.risk_level);
   if (params?.limit) searchParams.set("limit", String(params.limit ?? 50));
-  const res = await fetch(`${API}/v1/initiatives?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/initiatives?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getInitiative(id: string): Promise<InitiativeRow> {
-  const res = await fetch(`${API}/v1/initiatives/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/initiatives/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -296,7 +311,7 @@ export async function updateInitiative(
   id: string,
   body: Partial<{ intent_type: string; title: string | null; risk_level: string; source_ref: string; goal_metadata: Record<string, unknown> }>,
 ): Promise<InitiativeRow> {
-  const res = await fetch(`${API}/v1/initiatives/${id}`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/initiatives/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify(body),
@@ -307,27 +322,27 @@ export async function updateInitiative(
 
 /** GET /v1/initiatives/:id/google_connected — whether initiative has Google OAuth credentials (for SEO). */
 export async function getInitiativeGoogleConnected(id: string): Promise<{ connected: boolean }> {
-  const res = await fetch(`${API}/v1/initiatives/${id}/google_connected`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/initiatives/${id}/google_connected`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** DELETE /v1/initiatives/:id/google_credentials — disconnect Google for this initiative (legacy only). */
 export async function deleteInitiativeGoogleCredentials(id: string): Promise<void> {
-  const res = await fetch(`${API}/v1/initiatives/${id}/google_credentials`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/initiatives/${id}/google_credentials`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
 }
 
 /** GET /v1/brand_profiles/:id/google_connected — whether brand has Google OAuth credentials (GSC/GA4) and selected GA4 property. */
 export async function getBrandGoogleConnected(id: string): Promise<{ connected: boolean; ga4_property_id?: string }> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/google_connected`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/google_connected`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/seo/google_ga4_properties?brand_id= or /v1/brand_profiles/:id/google_ga4_properties — list GA4 properties for the connected Google account. */
 export async function getBrandGoogleGa4Properties(id: string): Promise<{ properties: { propertyId: string; displayName: string; accountDisplayName?: string }[] }> {
-  const res = await fetch(`${API}/v1/seo/google_ga4_properties?brand_id=${encodeURIComponent(id)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/seo/google_ga4_properties?brand_id=${encodeURIComponent(id)}`);
   if (!res.ok) {
     const body = await res.text();
     let msg = body;
@@ -344,7 +359,7 @@ export async function getBrandGoogleGa4Properties(id: string): Promise<{ propert
 
 /** PATCH /v1/brand_profiles/:id/google_ga4_property — set selected GA4 property for this brand. */
 export async function patchBrandGoogleGa4Property(id: string, body: { property_id: string | null }): Promise<{ ok: boolean; ga4_property_id?: string }> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/google_ga4_property`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/google_ga4_property`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -355,20 +370,20 @@ export async function patchBrandGoogleGa4Property(id: string, body: { property_i
 
 /** DELETE /v1/brand_profiles/:id/google_credentials — disconnect Google for this brand. */
 export async function deleteBrandGoogleCredentials(id: string): Promise<void> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/google_credentials`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/google_credentials`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
 }
 
 /** GET /v1/brand_profiles/:id/klaviyo_connected — whether brand has Klaviyo credentials. */
 export async function getBrandKlaviyoConnected(id: string): Promise<{ connected: boolean }> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/klaviyo_connected`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/klaviyo_connected`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** PUT /v1/brand_profiles/:id/klaviyo_credentials — set Klaviyo API key and optional default list. */
 export async function putBrandKlaviyoCredentials(id: string, body: { api_key: string; default_list_id?: string }): Promise<void> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/klaviyo_credentials`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/klaviyo_credentials`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -378,7 +393,7 @@ export async function putBrandKlaviyoCredentials(id: string, body: { api_key: st
 
 /** DELETE /v1/brand_profiles/:id/klaviyo_credentials — disconnect Klaviyo for this brand. */
 export async function deleteBrandKlaviyoCredentials(id: string): Promise<void> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/klaviyo_credentials`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/klaviyo_credentials`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
 }
 
@@ -389,7 +404,7 @@ export async function getBrandShopifyConnected(id: string): Promise<{
   /** True when credentials use shpat_ custom app token (not OAuth client credentials). */
   uses_custom_app_token?: boolean;
 }> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/shopify_connected`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/shopify_connected`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -405,7 +420,7 @@ export async function putBrandShopifyCredentials(
     scopes?: string[];
   }
 ): Promise<void> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/shopify_credentials`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/shopify_credentials`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -430,7 +445,7 @@ export async function putBrandShopifyCredentials(
 
 /** DELETE /v1/brand_profiles/:id/shopify_credentials — disconnect Shopify for this brand. */
 export async function deleteBrandShopifyCredentials(id: string): Promise<void> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/shopify_credentials`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/shopify_credentials`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
 }
 
@@ -439,7 +454,7 @@ export async function getBrandWooCommerceConnected(id: string): Promise<{
   connected: boolean;
   store_url?: string;
 }> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/woocommerce_connected`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/woocommerce_connected`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -449,7 +464,7 @@ export async function putBrandWooCommerceCredentials(
   id: string,
   body: { store_url: string; consumer_key: string; consumer_secret: string },
 ): Promise<void> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/woocommerce_credentials`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/woocommerce_credentials`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -459,12 +474,12 @@ export async function putBrandWooCommerceCredentials(
 
 /** DELETE /v1/brand_profiles/:id/woocommerce_credentials — disconnect WooCommerce REST for this brand. */
 export async function deleteBrandWooCommerceCredentials(id: string): Promise<void> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}/woocommerce_credentials`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}/woocommerce_credentials`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
 }
 
 export async function createInitiative(body: { intent_type: string; title?: string | null; risk_level: string; source_ref?: string; brand_profile_id?: string | null }): Promise<InitiativeRow> {
-  const res = await fetch(`${API}/v1/initiatives`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/initiatives`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -493,13 +508,13 @@ export type LaunchRow = {
 };
 
 export async function getBuildSpecs(initiativeId: string): Promise<{ items: BuildSpecRow[] }> {
-  const res = await fetch(`${API}/v1/build_specs?initiative_id=${encodeURIComponent(initiativeId)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/build_specs?initiative_id=${encodeURIComponent(initiativeId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getBuildSpec(id: string): Promise<BuildSpecRow> {
-  const res = await fetch(`${API}/v1/build_specs/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/build_specs/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -509,7 +524,7 @@ export async function createBuildSpec(body: {
   spec: Record<string, unknown>;
   extended?: boolean;
 }): Promise<{ build_spec_id: string; launch_id: string; launch: LaunchRow }> {
-  const res = await fetch(`${API}/v1/build_specs`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/build_specs`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify(body),
@@ -523,7 +538,7 @@ export async function createBuildSpecFromStrategy(body: {
   initiative_id: string;
   strategy_doc: string;
 }): Promise<{ build_spec_id: string; launch_id: string; launch: LaunchRow }> {
-  const res = await fetch(`${API}/v1/build_specs/from_strategy`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/build_specs/from_strategy`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify(body),
@@ -537,13 +552,13 @@ export async function getLaunches(params?: { initiative_id?: string; limit?: num
   const searchParams = new URLSearchParams();
   if (params?.initiative_id) searchParams.set("initiative_id", params.initiative_id);
   if (params?.limit) searchParams.set("limit", String(params.limit));
-  const res = await fetch(`${API}/v1/launches?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/launches?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getLaunch(id: string): Promise<LaunchRow> {
-  const res = await fetch(`${API}/v1/launches/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/launches/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -552,7 +567,7 @@ export async function postLaunchAction(
   action: string,
   inputs: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`${API}/v1/launches/actions/${encodeURIComponent(action)}`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/launches/actions/${encodeURIComponent(action)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify(inputs),
@@ -563,7 +578,7 @@ export async function postLaunchAction(
 }
 
 export async function postLaunchValidate(launchId: string): Promise<{ passed: boolean; checks?: unknown[] }> {
-  const res = await fetch(`${API}/v1/launches/${launchId}/validate`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/launches/${launchId}/validate`, {
     method: "POST",
     headers: { "x-role": "operator" },
   });
@@ -597,7 +612,7 @@ export async function createPipelineDraft(params: {
   inputs?: Record<string, unknown>;
   compose_with?: string[];
 }): Promise<{ draft: PipelineDraft; lint: PipelineLintResult }> {
-  const res = await fetch(`${API}/v1/pipelines/draft`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/pipelines/draft`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify(params),
@@ -609,7 +624,7 @@ export async function createPipelineDraft(params: {
 
 /** POST /v1/pipelines/drafts — save draft (V1.5). */
 export async function savePipelineDraft(draft: PipelineDraft, name?: string): Promise<{ id: string; draft_hash: string }> {
-  const res = await fetch(`${API}/v1/pipelines/drafts`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/pipelines/drafts`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify({ draft, name }),
@@ -622,21 +637,21 @@ export async function savePipelineDraft(draft: PipelineDraft, name?: string): Pr
 /** GET /v1/pipelines/drafts — list saved drafts. */
 export async function listPipelineDrafts(limit?: number): Promise<{ items: { id: string; draft_hash: string; name: string | null; created_at: string }[] }> {
   const q = limit != null ? `?limit=${limit}` : "";
-  const res = await fetch(`${API}/v1/pipelines/drafts${q}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/pipelines/drafts${q}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/pipelines/drafts/:id — load a saved draft (returns draft + lint). */
 export async function getPipelineDraft(id: string): Promise<{ draft: PipelineDraft; name: string | null; lint: PipelineLintResult }> {
-  const res = await fetch(`${API}/v1/pipelines/drafts/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/pipelines/drafts/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/pipelines/templates — save draft as pattern override (V2). */
 export async function savePipelineTemplate(patternKey: string, draft: PipelineDraft): Promise<{ ok: boolean; pattern_key: string }> {
-  const res = await fetch(`${API}/v1/pipelines/templates`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/pipelines/templates`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify({ pattern_key: patternKey, draft }),
@@ -648,7 +663,7 @@ export async function savePipelineTemplate(patternKey: string, draft: PipelineDr
 
 /** POST /v1/pipelines/drafts/compose — merge two drafts or two pattern keys (V2). */
 export async function composePipelineDrafts(body: { draft_ids?: string[]; pattern_keys?: string[] }): Promise<{ draft: PipelineDraft; lint: PipelineLintResult }> {
-  const res = await fetch(`${API}/v1/pipelines/drafts/compose`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/pipelines/drafts/compose`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify(body),
@@ -660,7 +675,7 @@ export async function composePipelineDrafts(body: { draft_ids?: string[]; patter
 
 /** POST /v1/initiatives/:id/plan/from-draft — compile plan from pipeline draft. */
 export async function compilePlanFromDraft(initiativeId: string, draft: PipelineDraft, options?: { force?: boolean }): Promise<{ id: string; initiative_id: string; status: string; nodes: number; plan_hash: string }> {
-  const res = await fetch(`${API}/v1/initiatives/${initiativeId}/plan/from-draft`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/initiatives/${initiativeId}/plan/from-draft`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify({ draft, force: options?.force }),
@@ -674,20 +689,20 @@ export async function getPlans(params?: { initiative_id?: string; limit?: number
   const searchParams = new URLSearchParams();
   if (params?.initiative_id) searchParams.set("initiative_id", params.initiative_id);
   if (params?.limit) searchParams.set("limit", String(params.limit ?? 50));
-  const res = await fetch(`${API}/v1/plans?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/plans?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getPlan(id: string): Promise<PlanRow> {
-  const res = await fetch(`${API}/v1/plans/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/plans/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/plans/:id/start — create a run for this plan. Returns run id. */
 export async function startPlanRun(planId: string, options?: { environment?: "sandbox" | "staging" | "prod" }): Promise<{ id: string }> {
-  const res = await fetch(`${API}/v1/plans/${planId}/start`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/plans/${planId}/start`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify({ environment: options?.environment ?? "sandbox" }),
@@ -702,27 +717,27 @@ export async function getArtifacts(params?: { limit?: number; artifact_class?: s
   if (params?.limit) searchParams.set("limit", String(params.limit ?? 50));
   if (params?.artifact_class) searchParams.set("artifact_class", params.artifact_class);
   if (params?.run_id) searchParams.set("run_id", params.run_id);
-  const res = await fetch(`${API}/v1/artifacts?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/artifacts?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getArtifact(id: string): Promise<ArtifactRow> {
-  const res = await fetch(`${API}/v1/artifacts/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/artifacts/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/artifacts/:id/content — raw body (HTML or text) for edit/preview. */
 export async function getArtifactContent(id: string): Promise<string> {
-  const res = await fetch(`${API}/v1/artifacts/${id}/content`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/artifacts/${id}/content`);
   if (!res.ok) throw new Error(await res.text());
   return res.text();
 }
 
 /** PATCH /v1/artifacts/:id — update content and/or metadata (Phase 5 email edit). */
 export async function updateArtifact(id: string, payload: UpdateArtifactPayload): Promise<ArtifactRow> {
-  const res = await fetch(`${API}/v1/artifacts/${id}`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/artifacts/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", "x-role": "operator" },
     body: JSON.stringify(payload),
@@ -737,7 +752,7 @@ export async function getJobRuns(params?: { status?: string; environment?: strin
   if (params?.environment) searchParams.set("environment", params.environment);
   if (params?.run_id) searchParams.set("run_id", params.run_id);
   if (params?.limit) searchParams.set("limit", String(params.limit ?? 50));
-  const res = await fetch(`${API}/v1/job_runs?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/job_runs?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -754,7 +769,7 @@ export async function getToolCalls(params?: { run_id?: string; job_run_id?: stri
   if (params?.run_id) searchParams.set("run_id", params.run_id);
   if (params?.job_run_id) searchParams.set("job_run_id", params.job_run_id);
   if (params?.limit) searchParams.set("limit", String(params.limit ?? 50));
-  const res = await fetch(`${API}/v1/tool_calls?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/tool_calls?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return { items: data.items ?? [] };
@@ -764,31 +779,31 @@ export async function getApprovals(params?: { status?: string; limit?: number })
   const searchParams = new URLSearchParams();
   if (params?.status) searchParams.set("status", params.status);
   if (params?.limit) searchParams.set("limit", String(params.limit ?? 50));
-  const res = await fetch(`${API}/v1/approvals?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/approvals?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getPendingApprovals(): Promise<{ items: ApprovalRow[] }> {
-  const res = await fetch(`${API}/v1/approvals/pending`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/approvals/pending`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getApproval(id: string): Promise<ApprovalRow> {
-  const res = await fetch(`${API}/v1/approvals/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/approvals/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function rerunRun(id: string): Promise<{ id: string }> {
-  const res = await fetch(`${API}/v1/runs/${id}/rerun`, { method: "POST" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}/rerun`, { method: "POST" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function cancelRun(id: string, reason?: string): Promise<{ id: string; status: string; cancelled_at?: string }> {
-  const res = await fetch(`${API}/v1/runs/${id}/cancel`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}/cancel`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(reason != null ? { reason } : {}),
@@ -844,7 +859,7 @@ export async function getLlmCalls(params?: { run_id?: string; model_tier?: strin
   if (params?.model_tier) searchParams.set("model_tier", params.model_tier);
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
-  const res = await fetch(`${API}/v1/llm_calls?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/llm_calls?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -853,7 +868,7 @@ export async function getUsage(params?: { from?: string; to?: string }): Promise
   const searchParams = new URLSearchParams();
   if (params?.from) searchParams.set("from", params.from);
   if (params?.to) searchParams.set("to", params.to);
-  const res = await fetch(`${API}/v1/usage?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/usage?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -876,13 +891,13 @@ export async function getAgentMemory(params?: { initiative_id?: string; run_id?:
   if (params?.run_id) searchParams.set("run_id", params.run_id);
   if (params?.scope) searchParams.set("scope", params.scope);
   if (params?.limit) searchParams.set("limit", String(params.limit));
-  const res = await fetch(`${API}/v1/agent_memory?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/agent_memory?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getAgentMemoryById(id: string): Promise<AgentMemoryRow> {
-  const res = await fetch(`${API}/v1/agent_memory/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/agent_memory/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -905,19 +920,19 @@ export type McpServerRow = {
 export async function getMcpServers(params?: { limit?: number }): Promise<{ items: McpServerRow[] }> {
   const searchParams = new URLSearchParams();
   if (params?.limit) searchParams.set("limit", String(params.limit));
-  const res = await fetch(`${API}/v1/mcp_servers?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/mcp_servers?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getMcpServer(id: string): Promise<McpServerRow> {
-  const res = await fetch(`${API}/v1/mcp_servers/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/mcp_servers/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function createMcpServer(body: { name: string; server_type: string; url_or_cmd: string; args_json?: unknown; capabilities?: string[] }): Promise<McpServerRow> {
-  const res = await fetch(`${API}/v1/mcp_servers`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/mcp_servers`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-role": "admin" },
     body: JSON.stringify(body),
@@ -927,12 +942,12 @@ export async function createMcpServer(body: { name: string; server_type: string;
 }
 
 export async function deleteMcpServer(id: string): Promise<void> {
-  const res = await fetch(`${API}/v1/mcp_servers/${id}`, { method: "DELETE", headers: { "x-role": "admin" } });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/mcp_servers/${id}`, { method: "DELETE", headers: { "x-role": "admin" } });
   if (!res.ok) throw new Error(await res.text());
 }
 
 export async function testMcpServer(id: string): Promise<{ reachable?: boolean; status?: number; message?: string }> {
-  const res = await fetch(`${API}/v1/mcp_servers/${id}/test`, { method: "POST" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/mcp_servers/${id}/test`, { method: "POST" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -947,7 +962,7 @@ export type JobRunLlmSummary = {
 };
 
 export async function getJobRunLlmCalls(jobRunId: string): Promise<{ items: LlmCallRow[]; summary: JobRunLlmSummary }> {
-  const res = await fetch(`${API}/v1/job_runs/${jobRunId}/llm_calls`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/job_runs/${jobRunId}/llm_calls`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -963,7 +978,7 @@ export type RoutingPolicyRow = {
 };
 
 export async function getRoutingPolicies(): Promise<{ items: RoutingPolicyRow[] }> {
-  const res = await fetch(`${API}/v1/routing_policies`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/routing_policies`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -990,13 +1005,13 @@ export async function getWebhookOutbox(params?: { status?: string; limit?: numbe
   if (params?.status) searchParams.set("status", params.status);
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
-  const res = await fetch(`${API}/v1/webhook_outbox?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/webhook_outbox?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function patchWebhookOutbox(id: string, body: { status?: string; attempt_count?: number; last_error?: string; next_retry_at?: string | null; sent_at?: string | null }): Promise<WebhookOutboxRow> {
-  const res = await fetch(`${API}/v1/webhook_outbox/${id}`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/webhook_outbox/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -1023,7 +1038,7 @@ export async function getLlmBudgets(params?: { limit?: number; offset?: number }
   const searchParams = new URLSearchParams();
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
-  const res = await fetch(`${API}/v1/llm_budgets?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/llm_budgets?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1042,7 +1057,7 @@ export async function getUsageByJobType(params?: { from?: string; to?: string })
   const searchParams = new URLSearchParams();
   if (params?.from) searchParams.set("from", params.from);
   if (params?.to) searchParams.set("to", params.to);
-  const res = await fetch(`${API}/v1/usage/by_job_type?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/usage/by_job_type?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1061,7 +1076,7 @@ export async function getAnalytics(params?: { from?: string; to?: string }): Pro
   const searchParams = new URLSearchParams();
   if (params?.from) searchParams.set("from", params.from);
   if (params?.to) searchParams.set("to", params.to);
-  const res = await fetch(`${API}/v1/analytics?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/analytics?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1088,13 +1103,13 @@ export async function getEmailCampaigns(params?: { limit?: number; offset?: numb
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
   if (params?.campaign_kind) searchParams.set("campaign_kind", params.campaign_kind);
-  const res = await fetch(`${API}/v1/email_designs?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/email_designs?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getEmailCampaign(id: string): Promise<EmailCampaignRow & { reply_to?: string | null; metadata_json?: unknown }> {
-  const res = await fetch(`${API}/v1/email_designs/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/email_designs/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1109,7 +1124,7 @@ export async function createEmailCampaign(body: {
   template_artifact_id?: string;
   metadata_json?: unknown;
 }): Promise<EmailCampaignRow> {
-  const res = await fetch(`${API}/v1/email_designs`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/email_designs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -1136,7 +1151,7 @@ export async function updateEmailCampaign(id: string, body: {
   template_artifact_id?: string;
   metadata_json?: unknown;
 }): Promise<EmailCampaignRow> {
-  const res = await fetch(`${API}/v1/email_designs/${id}`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/email_designs/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -1151,7 +1166,7 @@ export async function fetchSitemapProducts(params: {
   page?: number;
   limit?: number;
 }): Promise<{ items: Array<{ src: string; title: string; product_url: string; description?: string }>; has_more: boolean; total?: number }> {
-  const res = await fetch(`${API}/v1/sitemap/products`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/sitemap/products`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1167,7 +1182,7 @@ export async function fetchProductsFromUrl(params: {
   sitemap_type?: string;
   limit?: number;
 }): Promise<{ items: Array<{ src: string; title: string; product_url: string; description?: string }>; has_more: boolean; total?: number }> {
-  const res = await fetch(`${API}/v1/products/from_url`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/products/from_url`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1255,7 +1270,7 @@ export async function seoGscReport(params: SeoGscReportParams, pollOpts?: WpShop
     const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_gsc_report", pollOpts);
     return meta as unknown as SeoGscReport;
   }
-  const res = await fetch(`${API}/v1/seo/gsc_report`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/seo/gsc_report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1303,7 +1318,7 @@ export async function seoGa4Report(params: SeoGa4ReportParams, pollOpts?: WpShop
       return meta as unknown as SeoGa4Report;
     }
   }
-  const res = await fetch(`${API}/v1/seo/ga4_report`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/seo/ga4_report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1347,7 +1362,7 @@ export async function seoKeywordVolume(
   const errors: string[] = [];
   for (let i = 0; i < keywords.length; i += SEO_KEYWORD_VOLUME_CHUNK) {
     const chunk = keywords.slice(i, i + SEO_KEYWORD_VOLUME_CHUNK);
-    const res = await fetch(`${API}/v1/seo/keyword_volume`, {
+    const res = await fetch(`${controlPlaneApiBase()}/v1/seo/keyword_volume`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ keywords: chunk }),
@@ -1384,7 +1399,7 @@ export type SeoRankedKeywordsResult = {
 };
 
 export async function seoRankedKeywords(params: SeoRankedKeywordsParams): Promise<SeoRankedKeywordsResult> {
-  const res = await fetch(`${API}/v1/seo/ranked_keywords`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/seo/ranked_keywords`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1416,7 +1431,7 @@ export async function wpShopifyMigrationDryRun(
   params: WpShopifyMigrationDryRunParams,
   pollOpts?: WpShopifyPipelinePollOptions,
 ): Promise<WpShopifyMigrationDryRunResult> {
-  const res = await fetch(`${API}/v1/wp-shopify-migration/dry_run`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/wp-shopify-migration/dry_run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1591,7 +1606,7 @@ export async function wpShopifyMigrationMigratePdfs(
   params: WpShopifyMigrationMigratePdfsParams,
   pollOpts?: WpShopifyPipelinePollOptions,
 ): Promise<WpShopifyMigrationMigratePdfsResult> {
-  const res = await fetch(`${API}/v1/wp-shopify-migration/migrate_pdfs`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/wp-shopify-migration/migrate_pdfs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1627,7 +1642,7 @@ export async function wpShopifyMigrationResolvePdfUrls(
   params: WpShopifyMigrationResolvePdfUrlsParams,
   pollOpts?: WpShopifyPipelinePollOptions,
 ): Promise<WpShopifyMigrationMigratePdfsResult> {
-  const res = await fetch(`${API}/v1/wp-shopify-migration/resolve_pdf_urls`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/wp-shopify-migration/resolve_pdf_urls`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -1686,7 +1701,7 @@ export type EmailComponentRow = {
 export async function getEmailComponentLibrary(params?: { limit?: number }): Promise<{ items: EmailComponentRow[]; total: number }> {
   const sp = new URLSearchParams();
   if (params?.limit) sp.set("limit", String(params.limit));
-  const res = await fetch(`${API}/v1/email_component_library?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/email_component_library?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1710,7 +1725,7 @@ export async function pexelsSearch(params: { q: string; per_page?: number; page?
   sp.set("q", params.q.trim() || "nature");
   if (params.per_page) sp.set("per_page", String(params.per_page));
   if (params.page) sp.set("page", String(params.page));
-  const res = await fetch(`${API}/v1/pexels/search?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/pexels/search?${sp}`);
   const text = await res.text();
   if (!res.ok) {
     if (text.trimStart().startsWith("<") || res.headers.get("content-type")?.includes("text/html")) {
@@ -1727,7 +1742,7 @@ export async function pexelsSearch(params: { q: string; per_page?: number; page?
 
 /** Copy image from URL (e.g. Pexels) to our CDN; returns stable URL for emails. */
 export async function copyCampaignImageToCdn(url: string): Promise<{ cdn_url: string }> {
-  const res = await fetch(`${API}/v1/campaign-images/copy`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/campaign-images/copy`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
@@ -1745,20 +1760,20 @@ export async function getEmailTemplates(params?: { type?: string; brand_profile_
   if (params?.brand_profile_id) searchParams.set("brand_profile_id", params.brand_profile_id);
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
-  const res = await fetch(`${API}/v1/email_templates?${searchParams}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/email_templates?${searchParams}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getEmailTemplate(id: string): Promise<EmailTemplateRow> {
-  const res = await fetch(`${API}/v1/email_templates/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/email_templates/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** URL for HTML preview of an email template. */
 export function getEmailTemplatePreviewUrl(id: string): string {
-  return `${API}/v1/email_templates/${id}/preview`;
+  return `${controlPlaneApiBase()}/v1/email_templates/${id}/preview`;
 }
 
 /** Fetch rendered HTML for template preview (use in iframe srcdoc to avoid cross-origin issues). */
@@ -1770,7 +1785,7 @@ export async function fetchEmailTemplatePreviewHtml(id: string): Promise<string>
 
 /** Delete an email template. */
 export async function deleteEmailTemplate(id: string): Promise<{ deleted: boolean; id: string }> {
-  const res = await fetch(`${API}/v1/email_templates/${id}`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/email_templates/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1844,13 +1859,13 @@ export async function getBrandProfiles(params?: { status?: string; search?: stri
   if (params?.search) sp.set("search", params.search);
   if (params?.limit) sp.set("limit", String(params.limit));
   if (params?.offset) sp.set("offset", String(params.offset));
-  const res = await fetch(`${API}/v1/brand_profiles?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getBrandProfile(id: string): Promise<BrandProfileRow> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1864,7 +1879,7 @@ export type BrandUsageRow = {
 };
 
 export async function getBrandUsage(brandProfileId: string): Promise<BrandUsageRow> {
-  const res = await fetch(`${API}/v1/brand_profiles/${brandProfileId}/usage`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${brandProfileId}/usage`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1889,7 +1904,7 @@ export type BrandPrefillFromUrlResult = {
 };
 
 export async function prefillBrandFromUrl(url: string): Promise<BrandPrefillFromUrlResult> {
-  const res = await fetch(`${API}/v1/brand_profiles/prefill_from_url`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/prefill_from_url`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url: url.trim() }),
@@ -1899,19 +1914,19 @@ export async function prefillBrandFromUrl(url: string): Promise<BrandPrefillFrom
 }
 
 export async function createBrandProfile(body: { name: string; identity?: Record<string, unknown>; tone?: Record<string, unknown>; visual_style?: Record<string, unknown>; copy_style?: Record<string, unknown>; design_tokens?: Record<string, unknown>; deck_theme?: Record<string, unknown>; report_theme?: Record<string, unknown> }): Promise<BrandProfileRow> {
-  const res = await fetch(`${API}/v1/brand_profiles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function updateBrandProfile(id: string, body: Partial<BrandProfileRow>): Promise<BrandProfileRow> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function deleteBrandProfile(id: string): Promise<{ id: string; status: string }> {
-  const res = await fetch(`${API}/v1/brand_profiles/${id}`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1920,36 +1935,36 @@ export async function getBrandEmbeddings(brandId: string, params?: { embedding_t
   const sp = new URLSearchParams();
   if (params?.embedding_type) sp.set("embedding_type", params.embedding_type);
   if (params?.limit) sp.set("limit", String(params.limit));
-  const res = await fetch(`${API}/v1/brand_profiles/${brandId}/embeddings?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${brandId}/embeddings?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function createBrandEmbedding(brandId: string, body: { content: string; embedding_type: string; metadata?: Record<string, unknown> }): Promise<BrandEmbeddingRow> {
-  const res = await fetch(`${API}/v1/brand_profiles/${brandId}/embeddings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${brandId}/embeddings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function deleteBrandEmbedding(brandId: string, embeddingId: string): Promise<void> {
-  const res = await fetch(`${API}/v1/brand_profiles/${brandId}/embeddings/${embeddingId}`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${brandId}/embeddings/${embeddingId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
 }
 
 export async function getBrandAssets(brandId: string): Promise<{ items: BrandAssetRow[] }> {
-  const res = await fetch(`${API}/v1/brand_profiles/${brandId}/assets`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${brandId}/assets`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function createBrandAsset(brandId: string, body: { asset_type: string; uri: string; filename?: string; mime_type?: string }): Promise<BrandAssetRow> {
-  const res = await fetch(`${API}/v1/brand_profiles/${brandId}/assets`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${brandId}/assets`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function deleteBrandAsset(brandId: string, assetId: string): Promise<void> {
-  const res = await fetch(`${API}/v1/brand_profiles/${brandId}/assets/${assetId}`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/brand_profiles/${brandId}/assets/${assetId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
 }
 
@@ -1958,31 +1973,31 @@ export async function getDocumentTemplates(params?: { brand_profile_id?: string;
   if (params?.brand_profile_id) sp.set("brand_profile_id", params.brand_profile_id);
   if (params?.template_type) sp.set("template_type", params.template_type);
   if (params?.limit) sp.set("limit", String(params.limit));
-  const res = await fetch(`${API}/v1/document_templates?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/document_templates?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getDocumentTemplate(id: string): Promise<DocumentTemplateRow> {
-  const res = await fetch(`${API}/v1/document_templates/${id}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/document_templates/${id}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function createDocumentTemplate(body: { brand_profile_id?: string; template_type: string; name: string; description?: string; template_config?: Record<string, unknown>; component_sequence?: unknown[] }): Promise<DocumentTemplateRow> {
-  const res = await fetch(`${API}/v1/document_templates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/document_templates`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function updateDocumentTemplate(id: string, body: Partial<DocumentTemplateRow>): Promise<DocumentTemplateRow> {
-  const res = await fetch(`${API}/v1/document_templates/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/document_templates/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function deleteDocumentTemplate(id: string): Promise<{ id: string; status: string }> {
-  const res = await fetch(`${API}/v1/document_templates/${id}`, { method: "DELETE" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/document_templates/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1996,7 +2011,7 @@ export async function getV1SliceFunnel(): Promise<{
   revenue_total: number | null;
   events_by_type: Record<string, number>;
 }> {
-  const res = await fetch(`${API}/v1/v1_slice/funnel`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/v1_slice/funnel`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2006,7 +2021,7 @@ export async function getDecisionLoopObserve(): Promise<{
   anomalies: Array<{ kpi_key: string; current: number; baseline: number; deviation_pct?: number }>;
   baselines: Array<{ kpi_key: string; value: number }>;
 }> {
-  const res = await fetch(`${API}/v1/decision_loop/observe`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/decision_loop/observe`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2020,7 +2035,7 @@ export async function postDecisionLoopTick(body?: { auto_act?: boolean; compute_
   learned?: unknown;
   baselines_computed?: number;
 }> {
-  const res = await fetch(`${API}/v1/decision_loop/tick`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/decision_loop/tick`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body ?? {}),
@@ -2043,7 +2058,7 @@ export async function getDeployEventRepairPlan(deployId: string): Promise<{
   build_config_snapshot: { dependencies_json: unknown; externals_json: unknown; created_at: string } | null;
   suggested_file_actions: { suggested_files: string[]; unresolved_path: string | null };
 }> {
-  const res = await fetch(`${API}/v1/deploy_events/${encodeURIComponent(deployId)}/repair_plan`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/deploy_events/${encodeURIComponent(deployId)}/repair_plan`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2066,21 +2081,21 @@ export async function getDeployEvents(params?: { service_id?: string; status?: s
   if (params?.service_id) sp.set("service_id", params.service_id);
   if (params?.status) sp.set("status", params.status);
   if (params?.limit) sp.set("limit", String(params.limit));
-  const res = await fetch(`${API}/v1/deploy_events?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/deploy_events?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/deploy_events/sync — sync from Render API. */
 export async function postDeployEventsSync(): Promise<{ synced: number; message?: string }> {
-  const res = await fetch(`${API}/v1/deploy_events/sync`, { method: "POST" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/deploy_events/sync`, { method: "POST" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/deploy_events/sync_github — sync from GitHub Actions. */
 export async function postDeployEventsSyncGitHub(): Promise<{ synced: number; message?: string }> {
-  const res = await fetch(`${API}/v1/deploy_events/sync_github`, { method: "POST" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/deploy_events/sync_github`, { method: "POST" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2096,7 +2111,7 @@ export type RenderServiceStatus = {
 };
 
 export async function getRenderStatus(): Promise<{ services: RenderServiceStatus[]; message?: string }> {
-  const res = await fetch(`${API}/v1/render/status`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/render/status`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2108,7 +2123,7 @@ export async function getImportGraph(serviceId: string): Promise<{
   snapshot_json: unknown;
   created_at: string;
 } | null> {
-  const res = await fetch(`${API}/v1/import_graph?service_id=${encodeURIComponent(serviceId)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/import_graph?service_id=${encodeURIComponent(serviceId)}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -2116,7 +2131,7 @@ export async function getImportGraph(serviceId: string): Promise<{
 
 /** POST /v1/import_graph — store import graph snapshot. */
 export async function postImportGraph(serviceId: string, snapshotJson: unknown): Promise<{ snapshot_id: string; service_id: string; created_at: string }> {
-  const res = await fetch(`${API}/v1/import_graph`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/import_graph`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ service_id: serviceId, snapshot_json: snapshotJson }),
@@ -2132,14 +2147,14 @@ export async function getSchemaDrift(params?: { environment_a?: string; environm
   diff?: unknown;
 }> {
   const sp = params ? new URLSearchParams(params) : new URLSearchParams();
-  const res = await fetch(`${API}/v1/schema_drift?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/schema_drift?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/schema_snapshots/capture — store current schema as snapshot. */
 export async function postSchemaSnapshotsCapture(environment: string): Promise<{ schema_snapshot_id: string; environment: string; created_at: string }> {
-  const res = await fetch(`${API}/v1/schema_snapshots/capture`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/schema_snapshots/capture`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ environment }),
@@ -2155,14 +2170,14 @@ export async function getContractBreakageScan(params?: { scope_key?: string }): 
   message?: string;
 }> {
   const sp = params?.scope_key ? `?scope_key=${encodeURIComponent(params.scope_key)}` : "";
-  const res = await fetch(`${API}/v1/contract_breakage_scan${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/contract_breakage_scan${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/change_events/:id/backfill_plan — suggested backfill steps. */
 export async function getChangeEventBackfillPlan(changeEventId: string): Promise<{ steps: unknown[] }> {
-  const res = await fetch(`${API}/v1/change_events/${changeEventId}/backfill_plan`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/change_events/${changeEventId}/backfill_plan`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2175,7 +2190,7 @@ export async function getIncidentMemory(params?: { limit?: number; failure_class
   const sp = new URLSearchParams();
   if (params?.limit) sp.set("limit", String(params.limit));
   if (params?.failure_class) sp.set("failure_class", params.failure_class);
-  const res = await fetch(`${API}/v1/incident_memory?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/incident_memory?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2185,7 +2200,7 @@ export async function getMemoryLookup(params: { signature?: string; limit?: numb
   const sp = new URLSearchParams();
   if (params.signature) sp.set("signature", params.signature);
   if (params.limit) sp.set("limit", String(params.limit));
-  const res = await fetch(`${API}/v1/memory/lookup?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/memory/lookup?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2199,14 +2214,14 @@ export async function getCheckpoints(params?: { limit?: number; scope_type?: str
   if (params?.limit) sp.set("limit", String(params.limit));
   if (params?.scope_type) sp.set("scope_type", params.scope_type);
   if (params?.scope_id) sp.set("scope_id", params.scope_id);
-  const res = await fetch(`${API}/v1/checkpoints?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/checkpoints?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/checkpoints/:id — single checkpoint. */
 export async function getCheckpoint(id: string): Promise<{ checkpoint_id: string; scope_type: string; scope_id: string; run_id?: string | null; created_at: string }> {
-  const res = await fetch(`${API}/v1/checkpoints/${encodeURIComponent(id)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/checkpoints/${encodeURIComponent(id)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2217,14 +2232,14 @@ export async function getCheckpointDiff(id: string): Promise<{
   current_schema?: unknown; current_tables?: unknown[]; current_columns?: unknown[];
   snapshot_artifact_id?: string | null; snapshot_diff?: unknown;
 }> {
-  const res = await fetch(`${API}/v1/checkpoints/${encodeURIComponent(id)}/diff`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/checkpoints/${encodeURIComponent(id)}/diff`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/checkpoints — create checkpoint. */
 export async function postCheckpoint(body: { scope_type: string; scope_id: string; run_id?: string }): Promise<{ checkpoint_id: string; scope_type: string; scope_id: string; created_at: string }> {
-  const res = await fetch(`${API}/v1/checkpoints`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/checkpoints`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2238,7 +2253,7 @@ export async function getFailureClusters(params?: { limit?: number }): Promise<{
   clusters: Array<{ failure_class: string; count: string; last_seen?: string }>;
 }> {
   const sp = params?.limit ? `?limit=${params.limit}` : "";
-  const res = await fetch(`${API}/v1/failure_clusters${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/failure_clusters${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2252,56 +2267,56 @@ export async function getChangeEvents(params?: { limit?: number; offset?: number
   const sp = new URLSearchParams();
   if (params?.limit) sp.set("limit", String(params.limit));
   if (params?.offset) sp.set("offset", String(params.offset));
-  const res = await fetch(`${API}/v1/change_events?${sp}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/change_events?${sp}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/change_events/:id — single change event. */
 export async function getChangeEvent(id: string): Promise<{ change_event_id: string; source_type?: string; source_ref?: string; change_class?: string; summary?: string | null; created_at: string }> {
-  const res = await fetch(`${API}/v1/change_events/${encodeURIComponent(id)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/change_events/${encodeURIComponent(id)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/change_events/:id/impacts — list graph impacts for change event. */
 export async function getChangeEventImpacts(id: string): Promise<{ items: Array<{ impact_id: string; change_event_id: string; run_id?: string; plan_id?: string; plan_node_id?: string; artifact_id?: string; impact_type?: string; reason?: string }> }> {
-  const res = await fetch(`${API}/v1/change_events/${encodeURIComponent(id)}/impacts`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/change_events/${encodeURIComponent(id)}/impacts`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/change_events/:id/impact — compute impacts (stub). */
 export async function postChangeEventImpact(id: string): Promise<{ change_event_id: string; impacts: unknown[] }> {
-  const res = await fetch(`${API}/v1/change_events/${encodeURIComponent(id)}/impact`, { method: "POST" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/change_events/${encodeURIComponent(id)}/impact`, { method: "POST" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/graph/topology/:planId — plan node graph. */
 export async function getGraphTopology(planId: string): Promise<{ plan_id: string; nodes: unknown[]; edges: unknown[] }> {
-  const res = await fetch(`${API}/v1/graph/topology/${encodeURIComponent(planId)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/graph/topology/${encodeURIComponent(planId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/graph/frontier/:runId — run frontier. */
 export async function getGraphFrontier(runId: string): Promise<{ run_id: string; completed_node_ids: string[]; pending_node_ids: string[] }> {
-  const res = await fetch(`${API}/v1/graph/frontier/${encodeURIComponent(runId)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/graph/frontier/${encodeURIComponent(runId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/graph/repair_plan/:runId/:nodeId — repair plan for failed node. */
 export async function getGraphRepairPlan(runId: string, nodeId: string): Promise<{ run_id: string; node_id: string; suggested_actions: unknown[]; subgraph_replay_scope: unknown[] }> {
-  const res = await fetch(`${API}/v1/graph/repair_plan/${encodeURIComponent(runId)}/${encodeURIComponent(nodeId)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/graph/repair_plan/${encodeURIComponent(runId)}/${encodeURIComponent(nodeId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/graph/subgraph_replay — trigger subgraph replay. */
 export async function postGraphSubgraphReplay(body: { run_id: string; node_ids?: string[] }): Promise<{ run_id: string | null; replayed: number }> {
-  const res = await fetch(`${API}/v1/graph/subgraph_replay`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/graph/subgraph_replay`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2312,7 +2327,7 @@ export async function postGraphSubgraphReplay(body: { run_id: string; node_ids?:
 
 /** POST /v1/migration_guard — analyze migration SQL. */
 export async function postMigrationGuard(body: { sql?: string; migration_ref?: string }): Promise<{ tables_touched: unknown[]; columns: unknown[]; risks: unknown[]; checkpoint_suggestion: unknown; raw?: string | null }> {
-  const res = await fetch(`${API}/v1/migration_guard`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/migration_guard`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2323,56 +2338,56 @@ export async function postMigrationGuard(body: { sql?: string; migration_ref?: s
 
 /** GET /v1/graph/audit/:runId — graph audit. */
 export async function getGraphAudit(runId: string): Promise<{ run_id: string; issues: unknown[]; summary: unknown }> {
-  const res = await fetch(`${API}/v1/graph/audit/${encodeURIComponent(runId)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/graph/audit/${encodeURIComponent(runId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/graph/missing_capabilities/:planId — missing capabilities. */
 export async function getGraphMissingCapabilities(planId: string): Promise<{ plan_id: string; missing: unknown[] }> {
-  const res = await fetch(`${API}/v1/graph/missing_capabilities/${encodeURIComponent(planId)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/graph/missing_capabilities/${encodeURIComponent(planId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** GET /v1/graph/lineage/:artifactId — artifact lineage. */
 export async function getGraphLineage(artifactId: string): Promise<{ artifact_id: string; producers: unknown[]; consumers: unknown[] }> {
-  const res = await fetch(`${API}/v1/graph/lineage/${encodeURIComponent(artifactId)}`);
+  const res = await fetch(`${controlPlaneApiBase()}/v1/graph/lineage/${encodeURIComponent(artifactId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/baselines/compute — compute KPI baselines. */
 export async function postBaselinesCompute(): Promise<{ baselines: number; items: unknown[] }> {
-  const res = await fetch(`${API}/v1/baselines/compute`, { method: "POST" });
+  const res = await fetch(`${controlPlaneApiBase()}/v1/baselines/compute`, { method: "POST" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 // ——— Klaviyo operator pack ———
 export async function getKlaviyoTemplates(brand_profile_id?: string): Promise<{ items: { id: string; brand_profile_id: string; artifact_id: string; klaviyo_template_id: string; sync_state: string; last_synced_at: string | null; last_error: string | null; created_at: string }[] }> {
-  const url = brand_profile_id ? `${API}/v1/klaviyo/templates?brand_profile_id=${encodeURIComponent(brand_profile_id)}` : `${API}/v1/klaviyo/templates`;
+  const url = brand_profile_id ? `${controlPlaneApiBase()}/v1/klaviyo/templates?brand_profile_id=${encodeURIComponent(brand_profile_id)}` : `${controlPlaneApiBase()}/v1/klaviyo/templates`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getKlaviyoCampaigns(brand_profile_id?: string): Promise<{ items: { id: string; initiative_id: string | null; run_id: string | null; artifact_id: string; brand_profile_id: string; klaviyo_campaign_id: string; send_job_id: string | null; sync_state: string; scheduled_at: string | null; last_error: string | null; created_at: string }[] }> {
-  const url = brand_profile_id ? `${API}/v1/klaviyo/campaigns?brand_profile_id=${encodeURIComponent(brand_profile_id)}` : `${API}/v1/klaviyo/campaigns`;
+  const url = brand_profile_id ? `${controlPlaneApiBase()}/v1/klaviyo/campaigns?brand_profile_id=${encodeURIComponent(brand_profile_id)}` : `${controlPlaneApiBase()}/v1/klaviyo/campaigns`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function getKlaviyoFlows(brand_profile_id?: string): Promise<{ items: { id: string; brand_profile_id: string; flow_type: string; klaviyo_flow_id: string; sync_state: string; last_remote_status: string | null; last_error: string | null; created_at: string }[] }> {
-  const url = brand_profile_id ? `${API}/v1/klaviyo/flows?brand_profile_id=${encodeURIComponent(brand_profile_id)}` : `${API}/v1/klaviyo/flows`;
+  const url = brand_profile_id ? `${controlPlaneApiBase()}/v1/klaviyo/flows?brand_profile_id=${encodeURIComponent(brand_profile_id)}` : `${controlPlaneApiBase()}/v1/klaviyo/flows`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function postKlaviyoCampaignsPush(body: { initiative_id?: string; run_id?: string; artifact_id: string; schedule_at?: string; audience_list_ids?: string[] }): Promise<{ template_id: string; campaign_id: string; send_job_id?: string; sync_state: string; klaviyo_sent_campaigns_id: string }> {
-  const res = await fetch(`${API}/v1/klaviyo/campaigns/push`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/klaviyo/campaigns/push`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2382,7 +2397,7 @@ export async function postKlaviyoCampaignsPush(body: { initiative_id?: string; r
 }
 
 export async function postKlaviyoFlows(body: { brand_profile_id: string; flow_type: string; flow_name?: string; template_ids?: string[]; delays_minutes?: number[] }): Promise<{ flow_id: string; sync_state: string; klaviyo_flow_sync_id: string }> {
-  const res = await fetch(`${API}/v1/klaviyo/flows`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/klaviyo/flows`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2392,7 +2407,7 @@ export async function postKlaviyoFlows(body: { brand_profile_id: string; flow_ty
 }
 
 export async function patchKlaviyoFlowStatus(flowId: string, body: { status: "draft" | "manual" | "live"; brand_profile_id?: string; approved_by?: string }): Promise<{ flow_id: string; status: string }> {
-  const res = await fetch(`${API}/v1/klaviyo/flows/${encodeURIComponent(flowId)}/status`, {
+  const res = await fetch(`${controlPlaneApiBase()}/v1/klaviyo/flows/${encodeURIComponent(flowId)}/status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
