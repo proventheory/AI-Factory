@@ -200,8 +200,6 @@ const CRAWL_CACHE_KEY = "wp-shopify-migration-crawl-cache";
 const WIZARD_SESSION_KEY = "wp-shopify-migration-wizard-session";
 /** Small snapshot so brand / step / URLs survive even if the full session JSON fails (quota) or predates session feature. */
 const WIZARD_LITE_KEY = "wp-shopify-migration-wizard-lite";
-/** WooCommerce REST credentials: kept separate so they survive clearing the main wizard session (e.g. changing brand). */
-const WOO_STORE_CACHE_KEY = "wp-shopify-migration-woo-store";
 /** Redirect map (step 6–7): separate from main session so mappings survive localStorage quota failures on large GSC/crawl payloads. */
 const REDIRECT_MAP_SIDE_KEY = "wp-shopify-migration-redirect-map-side";
 
@@ -270,14 +268,6 @@ type WizardSession = {
   launchAcked: boolean;
   migrationEntities: string[];
   wooServer?: string;
-  wooConsumerKey?: string;
-  wooConsumerSecret?: string;
-};
-
-type WooStoreCache = {
-  wooServer: string;
-  wooConsumerKey: string;
-  wooConsumerSecret: string;
 };
 
 function getWizardSession(): WizardSession | null {
@@ -337,37 +327,6 @@ function setWizardLite(lite: WizardLite): void {
   } catch {
     // ignore
   }
-}
-
-function getWooStoreCache(): WooStoreCache | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(WOO_STORE_CACHE_KEY);
-    if (!raw) return null;
-    const o = JSON.parse(raw) as Partial<WooStoreCache>;
-    return {
-      wooServer: typeof o.wooServer === "string" ? o.wooServer : "",
-      wooConsumerKey: typeof o.wooConsumerKey === "string" ? o.wooConsumerKey : "",
-      wooConsumerSecret: typeof o.wooConsumerSecret === "string" ? o.wooConsumerSecret : "",
-    };
-  } catch {
-    return null;
-  }
-}
-
-function setWooStoreCache(woo: WooStoreCache): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(WOO_STORE_CACHE_KEY, JSON.stringify(woo));
-  } catch {
-    // ignore
-  }
-}
-
-function coalesceWooField(saved: string | undefined, cached: string | undefined): string {
-  const s = (saved ?? "").trim();
-  if (s.length > 0) return s;
-  return (cached ?? "").trim();
 }
 
 type RedirectMapSidecarV1 = {
@@ -552,8 +511,8 @@ export default function WpShopifyMigrationWizardPage() {
   const [brandGoogle, setBrandGoogle] = useState<{ connected: boolean; ga4_property_id?: string } | null>(null);
   const [brandShopify, setBrandShopify] = useState<{ connected: boolean; shop_domain?: string } | null>(null);
   const [brandWoo, setBrandWoo] = useState<{ connected: boolean; store_url?: string } | null>(null);
-  /** When the brand has Woo saved, allow optional in-wizard credentials instead (not persisted to brand). */
-  const [wooManualOverride, setWooManualOverride] = useState(false);
+  /** True while fetching Woo/Shopify/Google connector status after brand change. */
+  const [platformStatusLoading, setPlatformStatusLoading] = useState(false);
   const ga4AutoFetchedRef = useRef(false);
 
   // Step 1: Crawl (with cache per source URL)
@@ -576,9 +535,8 @@ export default function WpShopifyMigrationWizardPage() {
   const [ga4Result, setGa4Result] = useState<SeoGa4Report | null>(null);
 
   // Step 3: Connect platforms & migrate data (WooCommerce → Shopify, Matrixify-style)
+  /** Woo store URL (synced from brand connector; used for PDF import cache keys). */
   const [wooServer, setWooServer] = useState("");
-  const [wooConsumerKey, setWooConsumerKey] = useState("");
-  const [wooConsumerSecret, setWooConsumerSecret] = useState("");
   const [migrationEntities, setMigrationEntities] = useState<Set<string>>(new Set(["products", "categories", "redirects"]));
   const [migrationDryRunLoading, setMigrationDryRunLoading] = useState(false);
   const [migrationDryRunError, setMigrationDryRunError] = useState<string | null>(null);
@@ -598,13 +556,6 @@ export default function WpShopifyMigrationWizardPage() {
   const [pdfImportCreateRedirects, setPdfImportCreateRedirects] = useState(true);
   const [pdfImportSkipIfExists, setPdfImportSkipIfExists] = useState(true);
   const [pdfResolveLoading, setPdfResolveLoading] = useState(false);
-
-  /** Vercel preview hostnames change per deployment; localStorage is per-origin, so each preview starts empty. */
-  const [isVercelPreviewHost, setIsVercelPreviewHost] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setIsVercelPreviewHost(window.location.hostname.endsWith(".vercel.app"));
-  }, []);
 
   // Step 4: Keyword strategy (merged URL list + theme/action)
   const [keywordRows, setKeywordRows] = useState<KeywordRow[]>([]);
@@ -646,21 +597,16 @@ export default function WpShopifyMigrationWizardPage() {
   const [wpPreviewAppPassword, setWpPreviewAppPassword] = useState("");
   const migrationPreviewRequestSeq = useRef(0);
 
-  const wooFromBrand = Boolean(brandId && brandWoo?.connected === true && !wooManualOverride);
-  const wooCredentialsOk =
-    wooFromBrand ||
-    (wooServer.trim().length > 0 && wooConsumerKey.trim().length > 0 && wooConsumerSecret.trim().length > 0);
+  const wooCredentialsOk = Boolean(brandId && brandWoo?.connected === true);
+  const shopifyCredentialsOk = Boolean(brandId && brandShopify?.connected);
+  const platformsConnected = Boolean(wooCredentialsOk && shopifyCredentialsOk && !platformStatusLoading);
 
   const wooApiBase = useCallback((): WpShopifyMigrationWooRestParams => {
-    if (brandId && brandWoo?.connected === true && !wooManualOverride) {
-      return { brand_id: brandId };
+    if (!brandId) {
+      return { woo_server: "", woo_consumer_key: "", woo_consumer_secret: "" };
     }
-    return {
-      woo_server: wooServer.trim(),
-      woo_consumer_key: wooConsumerKey.trim(),
-      woo_consumer_secret: wooConsumerSecret.trim(),
-    };
-  }, [brandId, brandWoo?.connected, wooManualOverride, wooServer, wooConsumerKey, wooConsumerSecret]);
+    return { brand_id: brandId };
+  }, [brandId]);
 
   const toggleMigrationEntity = (id: string) => {
     setMigrationEntities((prev) => {
@@ -752,19 +698,11 @@ export default function WpShopifyMigrationWizardPage() {
     const lite = getWizardLite();
     try {
       if (!session && !lite) {
-        const wooOnly = getWooStoreCache();
-        if (wooOnly && (wooOnly.wooServer || wooOnly.wooConsumerKey)) {
-          setWooServer(wooOnly.wooServer);
-          setWooConsumerKey(wooOnly.wooConsumerKey);
-          setWooConsumerSecret(wooOnly.wooConsumerSecret);
-        }
         hasRestoredSessionRef.current = true;
         return;
       }
       hasRestoredSessionRef.current = true;
       skipNextPersistRef.current = true;
-
-      const wooCached = getWooStoreCache();
       const brandFromLite = lite?.brandId ?? "";
       const stepFromLite = lite?.step ?? 1;
       const sourceFromLite = lite?.sourceUrl ?? "https://stigmahemp.com";
@@ -810,9 +748,7 @@ export default function WpShopifyMigrationWizardPage() {
         setLaunchAcked(!!session.launchAcked);
         if (Array.isArray(session.migrationEntities)) setMigrationEntities(new Set(session.migrationEntities));
         ga4AutoFetchedRef.current = (session.ga4Result?.pages?.length ?? 0) > 0;
-        setWooServer(coalesceWooField(session.wooServer, wooCached?.wooServer));
-        setWooConsumerKey(coalesceWooField(session.wooConsumerKey, wooCached?.wooConsumerKey));
-        setWooConsumerSecret(coalesceWooField(session.wooConsumerSecret, wooCached?.wooConsumerSecret));
+        setWooServer(typeof session.wooServer === "string" ? session.wooServer : "");
         setWizardLite({
           brandId: nextBrand,
           step: nextStep,
@@ -829,9 +765,7 @@ export default function WpShopifyMigrationWizardPage() {
         setStep(Math.min(Math.max(1, lite.step), 9));
         setGscSiteUrl(lite.gscSiteUrl);
         ga4AutoFetchedRef.current = false;
-        setWooServer(coalesceWooField(undefined, wooCached?.wooServer));
-        setWooConsumerKey(coalesceWooField(undefined, wooCached?.wooConsumerKey));
-        setWooConsumerSecret(coalesceWooField(undefined, wooCached?.wooConsumerSecret));
+        setWooServer("");
         setWizardLite(lite);
         {
           const diskRm = getRedirectMapSidecar(lite.brandId, lite.sourceUrl);
@@ -856,20 +790,11 @@ export default function WpShopifyMigrationWizardPage() {
     });
   }, [brandId, step, sourceUrl, gscSiteUrl, useLinkCrawl, maxUrls]);
 
-  // Persist WooCommerce fields whenever they change (browser only). Skip when using the brand connector so keys are not cached locally.
+  // When the selected brand has WooCommerce saved, sync store URL for PDF cache keys.
   useEffect(() => {
-    if (typeof window === "undefined" || !hasRestoredSessionRef.current || !wooPersistEnabledRef.current) return;
-    if (wooFromBrand) return;
-    setWooStoreCache({ wooServer, wooConsumerKey, wooConsumerSecret });
-  }, [wooServer, wooConsumerKey, wooConsumerSecret, wooFromBrand]);
-
-  // When the selected brand has WooCommerce saved, use its store URL and avoid keeping secrets in this browser.
-  useEffect(() => {
-    if (!brandId || brandWoo?.connected !== true || wooManualOverride) return;
+    if (!brandId || brandWoo?.connected !== true) return;
     if (brandWoo.store_url) setWooServer(brandWoo.store_url);
-    setWooConsumerKey("");
-    setWooConsumerSecret("");
-  }, [brandId, brandWoo?.connected, brandWoo?.store_url, wooManualOverride]);
+  }, [brandId, brandWoo?.connected, brandWoo?.store_url]);
 
   // Redirect map: dedicated sidecar so new_url / status edits survive reload even when the full wizard JSON is too large to store.
   useEffect(() => {
@@ -882,7 +807,6 @@ export default function WpShopifyMigrationWizardPage() {
   // When user changes brand in step 1: clear persisted session and reset derived state so they start fresh for the new brand
   const handleBrandChange = useCallback((newBrandId: string) => {
     if (newBrandId === brandId) return;
-    setWooManualOverride(false);
     clearWizardSession();
     setCrawlResult(null);
     setCrawlCachedAt(null);
@@ -933,12 +857,10 @@ export default function WpShopifyMigrationWizardPage() {
         launchAcked,
         migrationEntities: Array.from(migrationEntities),
         wooServer,
-        wooConsumerKey,
-        wooConsumerSecret,
       });
     }, 800);
     return () => clearTimeout(t);
-  }, [brandId, sourceUrl, useLinkCrawl, maxUrls, step, gscSiteUrl, gscResult, ga4PropertyId, ga4Result, keywordRows, keywordVolumeMap, targetBaseUrl, pagePlan, redirectMap, internalLinkPlan, launchChecklist, launchAcked, migrationEntities, wooServer, wooConsumerKey, wooConsumerSecret]);
+  }, [brandId, sourceUrl, useLinkCrawl, maxUrls, step, gscSiteUrl, gscResult, ga4PropertyId, ga4Result, keywordRows, keywordVolumeMap, targetBaseUrl, pagePlan, redirectMap, internalLinkPlan, launchChecklist, launchAcked, migrationEntities, wooServer]);
 
   // Restore cached crawl for current source URL on load and when URL changes so the table shows without re-running crawl
   useLayoutEffect(() => {
@@ -956,18 +878,31 @@ export default function WpShopifyMigrationWizardPage() {
     }
   }, [sourceUrl]);
 
-  // When brand changes, load Google/GA4 and Shopify status for steps 2 and 3
+  // When brand changes, load Google/GA4 and Shopify/Woo status for steps 2 and 3
   useEffect(() => {
     ga4AutoFetchedRef.current = false;
     if (!brandId) {
       setBrandGoogle(null);
       setBrandShopify(null);
       setBrandWoo(null);
+      setPlatformStatusLoading(false);
       return;
     }
-    api.getBrandGoogleConnected(brandId).then(setBrandGoogle).catch(() => setBrandGoogle(null));
-    api.getBrandShopifyConnected(brandId).then(setBrandShopify).catch(() => setBrandShopify(null));
-    api.getBrandWooCommerceConnected(brandId).then(setBrandWoo).catch(() => setBrandWoo(null));
+    setPlatformStatusLoading(true);
+    setBrandGoogle(null);
+    setBrandShopify(null);
+    setBrandWoo(null);
+    let cancelled = false;
+    Promise.all([
+      api.getBrandGoogleConnected(brandId).then(setBrandGoogle).catch(() => setBrandGoogle(null)),
+      api.getBrandShopifyConnected(brandId).then(setBrandShopify).catch(() => setBrandShopify(null)),
+      api.getBrandWooCommerceConnected(brandId).then(setBrandWoo).catch(() => setBrandWoo(null)),
+    ]).finally(() => {
+      if (!cancelled) setPlatformStatusLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [brandId]);
 
   // When entering step 2, sync GSC site URL from crawl source so Fetch GSC uses same URL as crawl (required for keywords to match)
@@ -1341,9 +1276,7 @@ export default function WpShopifyMigrationWizardPage() {
 
   const runMigrationDryRun = async () => {
     if (!wooCredentialsOk) {
-      setMigrationDryRunError(
-        "Connect WooCommerce for this brand in Brands → Edit brand → WooCommerce, or enter store URL and REST API keys below (wizard only).",
-      );
+      setMigrationDryRunError("Connect WooCommerce for this brand under Brands → Edit brand → WooCommerce.");
       return;
     }
     setMigrationDryRunLoading(true);
@@ -1424,7 +1357,7 @@ export default function WpShopifyMigrationWizardPage() {
   const runMigrationRun = async () => {
     if (!wooCredentialsOk) {
       setMigrationRunError(
-        "Connect WooCommerce for this brand in Brands → Edit brand → WooCommerce, or enter REST keys in the wizard below.",
+        "Connect WooCommerce for this brand under Brands → Edit brand → WooCommerce.",
       );
       return;
     }
@@ -1452,7 +1385,7 @@ export default function WpShopifyMigrationWizardPage() {
   const runPdfImport = async () => {
     if (!wooCredentialsOk) {
       setPdfImportError(
-        "Connect WooCommerce for this brand in Brands → Edit brand → WooCommerce, or enter REST keys in the wizard below.",
+        "Connect WooCommerce for this brand under Brands → Edit brand → WooCommerce.",
       );
       return;
     }
@@ -1522,7 +1455,7 @@ export default function WpShopifyMigrationWizardPage() {
   const runFetchPdfUrlsFromShopify = async () => {
     if (!wooCredentialsOk) {
       setPdfImportError(
-        "Connect WooCommerce for this brand in Brands → Edit brand → WooCommerce, or enter REST keys in the wizard below.",
+        "Connect WooCommerce for this brand under Brands → Edit brand → WooCommerce.",
       );
       return;
     }
@@ -1695,8 +1628,6 @@ export default function WpShopifyMigrationWizardPage() {
     URL.revokeObjectURL(url);
   };
 
-  const shopifyCredentialsOk = Boolean(brandId && brandShopify?.connected);
-
   const pdfImportMissingUrlCount = useMemo(
     () => (pdfImportResult?.rows ?? []).filter((r) => !r.shopify_file_url?.trim()).length,
     [pdfImportResult?.rows],
@@ -1770,16 +1701,6 @@ export default function WpShopifyMigrationWizardPage() {
             </button>
           ))}
         </div>
-
-        {isVercelPreviewHost && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-body-small text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-            <strong className="font-medium">Preview URL:</strong> This wizard stores crawl results, GSC/GA4 state, redirects, and Woo keys in{" "}
-            <strong>this browser for this exact address only</strong>. Each <code className="rounded bg-black/5 px-1 dark:bg-white/10">*.vercel.app</code> preview is a
-            different address, so a new deployment link will look empty until you run steps again. Your{" "}
-            <strong>production</strong> console URL keeps the same origin across deploys. Step 5 includes demand-based sorting, a Demand column, and &quot;Re-sort &amp;
-            reprioritize by demand&quot; on the latest build—hard-refresh if you still see an old UI.
-          </div>
-        )}
 
         {step === 1 && (
           <Card>
@@ -2020,115 +1941,67 @@ export default function WpShopifyMigrationWizardPage() {
           <Stack>
             <Card>
               <CardHeader>
-                <h3 className="font-semibold">WordPress / WooCommerce (source)</h3>
+                <h3 className="font-semibold">Platform connections</h3>
                 <p className="text-body-small text-fg-muted mt-1">
-                  WooCommerce REST API v3 (Read key). Prefer saving credentials on the brand:{" "}
-                  <strong>Brands → Edit brand → WooCommerce</strong> — they are encrypted on the server and reused here automatically.
-                </p>
-                <p className="text-body-small text-fg-muted mt-2">
-                  Optional: enter keys only in this wizard (saved in this browser via localStorage) when the brand has no connector, or enable “Manual credentials” below to override the brand for this session.
+                  WordPress/WooCommerce and Shopify must be connected on the brand. Credentials are saved under{" "}
+                  <strong>Brands → Edit brand</strong> (not in this wizard).
                 </p>
               </CardHeader>
-              <CardContent>
-                {brandId && brandWoo?.connected === true ? (
-                  <div className="mb-4 rounded-lg border border-border bg-fg-muted/5 p-3">
-                    <p className="text-body-small font-medium text-fg">Using this brand’s WooCommerce</p>
-                    <p className="text-body-small text-fg-muted mt-1">
-                      {(brandWoo.store_url ?? wooServer.trim()) || "Store connected"}. REST keys are stored on the server for this brand.
-                    </p>
-                    <Link href={`/brands/${brandId}/edit`} className="mt-2 inline-block text-body-small text-brand-600 hover:underline">
-                      Edit brand → WooCommerce
-                    </Link>
-                    <label className="mt-3 flex cursor-pointer items-start gap-2 text-body-small text-fg">
-                      <Checkbox
-                        checked={wooManualOverride}
-                        onChange={(ev) => setWooManualOverride(ev.target.checked)}
-                        className="shrink-0"
-                      />
+              <CardContent className="space-y-3">
+                {!brandId ? (
+                  <div className="rounded-lg border border-amber-200/80 bg-amber-50/60 px-3 py-2 text-body-small text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                    Select a <strong>brand</strong> in step 1, then return here. Migration uses that brand&apos;s WooCommerce and Shopify connectors.
+                  </div>
+                ) : platformStatusLoading ? (
+                  <p className="text-body-small text-fg-muted">Checking WooCommerce and Shopify…</p>
+                ) : (
+                  <>
+                    <div
+                      className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-body-small ${
+                        brandWoo?.connected
+                          ? "border-emerald-200/80 bg-emerald-50/50 text-emerald-950 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-100"
+                          : "border-state-dangerMuted bg-state-dangerMuted/20 text-state-danger"
+                      }`}
+                    >
                       <span>
-                        <strong>Manual credentials</strong> — use the fields below for this browser session only (not saved to the brand). Uncheck to use the brand connector again.
+                        <strong>WooCommerce (WordPress API)</strong>
+                        {brandWoo?.connected
+                          ? ` — ${(brandWoo.store_url ?? wooServer).trim() || "connected"}`
+                          : " — not connected"}
                       </span>
-                    </label>
-                  </div>
-                ) : brandId ? (
-                  <p className="mb-4 text-body-small text-fg-muted">
-                    This brand has no WooCommerce connector.{" "}
-                    <Link href={`/brands/${brandId}/edit`} className="text-brand-600 hover:underline">
-                      Add store URL and REST keys in Brands → Edit this brand → WooCommerce
-                    </Link>{" "}
-                    (recommended), or fill the fields below — they stay in this browser only (localStorage).
-                  </p>
-                ) : (
-                  <p className="mb-4 text-body-small text-fg-muted">
-                    Select a brand in step 1 to use saved WooCommerce credentials, or enter a store URL and keys below for a one-off session in this browser.
-                  </p>
-                )}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-body-small font-medium">Store URL (server)</label>
-                    <Input
-                      value={wooServer}
-                      onChange={(e) => setWooServer(e.target.value)}
-                      placeholder="https://your-woo-domain.com"
-                      className="w-full"
-                      disabled={wooFromBrand && !wooManualOverride}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-body-small font-medium">Consumer key</label>
-                    <Input
-                      type="password"
-                      value={wooConsumerKey}
-                      onChange={(e) => setWooConsumerKey(e.target.value)}
-                      placeholder="ck_..."
-                      className="w-full"
-                      disabled={wooFromBrand && !wooManualOverride}
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="mb-1 block text-body-small font-medium">Consumer secret</label>
-                    <Input
-                      type="password"
-                      value={wooConsumerSecret}
-                      onChange={(e) => setWooConsumerSecret(e.target.value)}
-                      placeholder="cs_..."
-                      className="w-full"
-                      disabled={wooFromBrand && !wooManualOverride}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <h3 className="font-semibold">Shopify (destination)</h3>
-                <p className="text-body-small text-fg-muted mt-1">
-                  Shopify is connected per brand. Each brand has its own app (Client ID + Secret) in <strong>Brands → Edit brand → Shopify</strong>. Select a brand in step 1 and connect its Shopify store there first.
-                </p>
-              </CardHeader>
-              <CardContent>
-                {brandId && brandShopify?.connected ? (
-                  <div className="rounded-lg border border-border bg-fg-muted/5 p-3">
-                    <p className="text-body-small font-medium text-fg">Using this brand’s Shopify</p>
-                    <p className="text-body-small text-fg-muted mt-1">
-                      {brandShopify.shop_domain ?? "Shopify connected"}. Credentials are stored and tokenized at the brand level. Run migration will use this connector.
-                    </p>
-                  </div>
-                ) : brandId ? (
-                  <p className="text-body-small text-fg-muted">
-                    This brand has no Shopify connector.{" "}
-                    <Link href={`/brands/${brandId}/edit`} className="text-brand-600 hover:underline">
-                      Connect Shopify in Brands → Edit this brand → Shopify
-                    </Link>{" "}
-                    (enter shop domain, Client ID, and Client Secret from the app you created for this store). Then return here to run the migration.
-                  </p>
-                ) : (
-                  <p className="text-body-small text-fg-muted">
-                    Select a brand in step 1. Then connect Shopify for that brand in <strong>Brands → [Brand name] → Edit → Shopify</strong>. Shopify requires a separate app per store/partner; add the shop domain and app credentials there.
-                  </p>
+                      {!brandWoo?.connected && (
+                        <Link href={`/brands/${brandId}/edit`} className="shrink-0 font-medium text-brand-600 hover:underline">
+                          Connect WooCommerce
+                        </Link>
+                      )}
+                    </div>
+                    <div
+                      className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-body-small ${
+                        brandShopify?.connected
+                          ? "border-emerald-200/80 bg-emerald-50/50 text-emerald-950 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-100"
+                          : "border-state-dangerMuted bg-state-dangerMuted/20 text-state-danger"
+                      }`}
+                    >
+                      <span>
+                        <strong>Shopify</strong>
+                        {brandShopify?.connected
+                          ? ` — ${brandShopify.shop_domain ?? "connected"}`
+                          : " — not connected"}
+                      </span>
+                      {!brandShopify?.connected && (
+                        <Link href={`/brands/${brandId}/edit`} className="shrink-0 font-medium text-brand-600 hover:underline">
+                          Connect Shopify
+                        </Link>
+                      )}
+                    </div>
+                    {platformsConnected && (
+                      <p className="text-body-small text-fg-muted">Both platforms are connected — migration tools below are enabled.</p>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
+            {platformsConnected && (
             <Card>
               <CardHeader>
                 <h3 className="font-semibold">What to migrate</h3>
@@ -2654,6 +2527,7 @@ export default function WpShopifyMigrationWizardPage() {
                 )}
               </CardContent>
             </Card>
+            )}
           </Stack>
         )}
 
