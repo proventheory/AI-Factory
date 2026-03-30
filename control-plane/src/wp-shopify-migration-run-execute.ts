@@ -218,11 +218,6 @@ export async function executeWizardMigrationRun(opts: {
       if (!opts.shopDomain || !opts.shopAccessToken) {
         throw new Error("Shopify must be connected to import blog posts (Brands → Edit brand → Shopify).");
       }
-      if (!opts.wpAuthHeader) {
-        throw new Error(
-          "WordPress username + application password are required to read full post HTML for Shopify. Add them under Blog posts → Details in step 3.",
-        );
-      }
       const excluded = opts.excludedByEntity.blogs ?? new Set<string>();
       const result = await migrateWordPressPostsToShopify({
         wpOrigin: opts.server,
@@ -242,6 +237,7 @@ export async function executeWizardMigrationRun(opts: {
         truncated: result.truncated,
         shopify_blog_id: result.shopify_blog_id,
         shopify_blog_handle: result.shopify_blog_handle,
+        ...(result.wordpress_posts_source ? { wordpress_posts_source: result.wordpress_posts_source } : {}),
         ...(hintMerged.trim() ? { hint: hintMerged.trim() } : {}),
       };
     } else if (e === "pdfs") {

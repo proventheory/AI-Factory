@@ -24,6 +24,8 @@ export type BlogMigrationResult = {
   truncated: boolean;
   shopify_blog_id?: number;
   shopify_blog_handle?: string;
+  /** application_password = context=edit + any status; public_rest = published only, no WP user (Woo keys alone are not valid for wp/v2). */
+  wordpress_posts_source?: "application_password" | "public_rest";
 };
 
 function stripRendered(html: string): string {
@@ -181,14 +183,19 @@ function featuredSrc(post: WpPostApi): string | undefined {
 
 async function wpFetchPost(
   wpOrigin: string,
-  wpAuthHeader: string,
+  wpAuthHeader: string | null,
   postId: string,
 ): Promise<WpPostApi | null> {
   const base = wpOrigin.replace(/\/$/, "");
-  const url = `${base}/wp-json/wp/v2/posts/${encodeURIComponent(postId)}?context=edit&_embed=author,wp:featuredmedia,wp:term`;
+  const qs = wpAuthHeader
+    ? "context=edit&_embed=author,wp:featuredmedia,wp:term"
+    : "_embed=author,wp:featuredmedia,wp:term";
+  const url = `${base}/wp-json/wp/v2/posts/${encodeURIComponent(postId)}?${qs}`;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (wpAuthHeader) headers.Authorization = wpAuthHeader;
   const res = await fetch(url, {
     method: "GET",
-    headers: { Accept: "application/json", Authorization: wpAuthHeader },
+    headers,
   });
   if (res.status === 404) return null;
   if (!res.ok) {
@@ -200,15 +207,20 @@ async function wpFetchPost(
 
 async function wpListPostIdsPage(
   wpOrigin: string,
-  wpAuthHeader: string,
+  wpAuthHeader: string | null,
   page: number,
   perPage: number,
 ): Promise<{ ids: string[]; total: number }> {
   const base = wpOrigin.replace(/\/$/, "");
-  const url = `${base}/wp-json/wp/v2/posts?context=edit&status=any&page=${page}&per_page=${perPage}&_fields=id`;
+  const qs = wpAuthHeader
+    ? `context=edit&status=any&page=${page}&per_page=${perPage}&_fields=id`
+    : `status=publish&page=${page}&per_page=${perPage}&_fields=id`;
+  const url = `${base}/wp-json/wp/v2/posts?${qs}`;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (wpAuthHeader) headers.Authorization = wpAuthHeader;
   const res = await fetch(url, {
     method: "GET",
-    headers: { Accept: "application/json", Authorization: wpAuthHeader },
+    headers,
   });
   if (!res.ok) {
     const t = await res.text();
@@ -240,7 +252,8 @@ export function blogMigrationSummaryAndHint(result: BlogMigrationResult): { summ
 
 export async function migrateWordPressPostsToShopify(opts: {
   wpOrigin: string;
-  wpAuthHeader: string;
+  /** Null = public REST only (published posts). WooCommerce REST keys do not authenticate wp/v2. */
+  wpAuthHeader: string | null;
   shopDomain: string;
   accessToken: string;
   /** Target Shopify blog handle; if null, first/lowest-id blog. */
@@ -263,6 +276,12 @@ export async function migrateWordPressPostsToShopify(opts: {
     opts.shopifyBlogHandle,
   );
   if (blogNote) hintExtra = blogNote;
+  const wpSource: "application_password" | "public_rest" = opts.wpAuthHeader ? "application_password" : "public_rest";
+  if (!opts.wpAuthHeader) {
+    const pub =
+      "Using public WordPress REST only (published posts). WooCommerce API credentials are for /wc/v3, not blog posts (/wp/v2/posts). Add a WordPress application password for drafts/private posts and context=edit HTML.";
+    hintExtra = hintExtra ? `${hintExtra} ${pub}` : pub;
+  }
 
   const perPage = 50;
   let page = 1;
@@ -396,6 +415,7 @@ export async function migrateWordPressPostsToShopify(opts: {
     truncated,
     shopify_blog_id: blogId,
     shopify_blog_handle: blogHandle,
+    wordpress_posts_source: wpSource,
     ...(hintExtra ? { hint: hintExtra } : {}),
   };
 }

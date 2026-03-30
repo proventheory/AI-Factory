@@ -1471,12 +1471,6 @@ export default function WpShopifyMigrationWizardPage() {
         );
         return;
       }
-      if (!wpPreviewUser.trim() || !wpPreviewAppPassword.trim()) {
-        setMigrationRunError(
-          "Add WordPress username + application password above (Blog posts → Details) so we can read full post HTML (context=edit).",
-        );
-        return;
-      }
     }
     setMigrationRunLoading(true);
     setMigrationRunError(null);
@@ -2630,7 +2624,7 @@ export default function WpShopifyMigrationWizardPage() {
                   </div>
                 )}
                 <p className="mt-2 max-w-3xl text-body-small text-fg-muted">
-                  <strong>Run migration</strong>: <strong>PDFs</strong> → Shopify Files. <strong>Blog posts</strong> → Shopify blog articles (Admin API; needs Shopify + WordPress app password; same <strong>max 500</strong> batch as PDFs—run again to continue). <strong>Blog tags</strong> → redirect CSV. Other sheets are still manual/Matrixify. Shopify app needs <code className="rounded bg-fg-muted/15 px-1">read_content</code> and <code className="rounded bg-fg-muted/15 px-1">write_content</code> for articles.
+                  <strong>Run migration</strong>: <strong>PDFs</strong> → Shopify Files. <strong>Blog posts</strong> → Shopify articles via Admin API (needs Shopify; <strong>max 500</strong> per run). WooCommerce keys alone do <strong>not</strong> read WordPress posts—that is <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/posts</code>, like Matrixify using exports or public data. Without a WP application password we import <strong>published</strong> posts only from public REST; add username + app password under Blog posts → Details for drafts and <code className="rounded bg-fg-muted/15 px-1">context=edit</code> HTML. <strong>Blog tags</strong> → redirect CSV. Shopify app: <code className="rounded bg-fg-muted/15 px-1">read_content</code> + <code className="rounded bg-fg-muted/15 px-1">write_content</code>.
                 </p>
 
                 {(migrationRunLoading || migrationPipelineRunId) && (
@@ -2672,6 +2666,11 @@ export default function WpShopifyMigrationWizardPage() {
                         </>
                       ) : null}
                       {migrationRunResult.blog_migration.truncated ? " · Batch limit reached—run again to import more." : ""}
+                      {migrationRunResult.blog_migration.wordpress_posts_source === "public_rest" ? (
+                        <> · WordPress source: <strong>public REST</strong> (published only)</>
+                      ) : migrationRunResult.blog_migration.wordpress_posts_source === "application_password" ? (
+                        <> · WordPress source: app password (drafts + full edit context)</>
+                      ) : null}
                     </p>
                     {migrationRunResult.blog_migration.hint ? (
                       <p className="text-body-small text-state-warning mb-2">{migrationRunResult.blog_migration.hint}</p>

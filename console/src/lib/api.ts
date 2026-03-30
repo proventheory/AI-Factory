@@ -1620,6 +1620,8 @@ export type WpShopifyMigrationRunResult = {
     truncated?: boolean;
     shopify_blog_handle?: string;
     hint?: string;
+    /** public_rest = no WP app password (published only); application_password = full wp/v2 access */
+    wordpress_posts_source?: "application_password" | "public_rest";
   };
 };
 
@@ -1669,6 +1671,9 @@ export async function wpShopifyMigrationRun(
           ...(blogsBlock?.truncated === true ? { truncated: true } : {}),
           ...(typeof blogsBlock?.shopify_blog_handle === "string" ? { shopify_blog_handle: blogsBlock.shopify_blog_handle } : {}),
           ...(typeof blogsBlock?.hint === "string" ? { hint: blogsBlock.hint } : {}),
+          ...(blogsBlock?.wordpress_posts_source === "application_password" || blogsBlock?.wordpress_posts_source === "public_rest"
+            ? { wordpress_posts_source: blogsBlock.wordpress_posts_source }
+            : {}),
         }
       : undefined;
   return {
