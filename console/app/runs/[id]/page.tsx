@@ -11,7 +11,7 @@ const RunFlowViewer = dynamic(
   { ssr: false, loading: () => <LoadingSkeleton className="h-[500px] w-full rounded-lg" /> },
 );
 import type { Column } from "@/components/ui/DataTable";
-import { controlPlaneApiBase } from "@/lib/api";
+import { controlPlaneApiBase, formatApiError } from "@/lib/api";
 
 type PinnedContext = {
   runner_image_digest: string | null;
@@ -45,25 +45,38 @@ function RepairPreviewPanel({
   runId: string;
   jobRuns: { plan_node_id: string; status: string; error_signature?: string }[];
 }) {
+  const router = useRouter();
   const failed = [...new Map(jobRuns.filter((j) => j.status === "failed").map((j) => [j.plan_node_id, j])).values()];
   const [replayBusy, setReplayBusy] = useState<string | null>(null);
-  async function replaySubgraph(nodeId: string) {
-    setReplayBusy(nodeId);
+  const [replayError, setReplayError] = useState<string | null>(null);
+
+  async function replaySubgraph(planNodeId: string) {
+    setReplayError(null);
+    setReplayBusy(planNodeId);
     try {
       const r = await fetch(`${controlPlaneApiBase()}/v1/graph/subgraph_replay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ run_id: runId, root_node_id: nodeId }),
+        body: JSON.stringify({ run_id: runId, root_node_id: planNodeId }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "Replay failed");
-      window.location.reload();
+      const text = await r.text();
+      let j: { error?: string; run_id?: string | null; message?: string };
+      try {
+        j = text ? (JSON.parse(text) as typeof j) : {};
+      } catch {
+        throw new Error(text.slice(0, 300) || `HTTP ${r.status}`);
+      }
+      if (!r.ok) throw new Error(j.error ?? `Replay failed (${r.status})`);
+      const newRunId = j.run_id;
+      if (newRunId) router.push(`/runs/${newRunId}`);
+      else throw new Error("API did not return a new run_id");
     } catch (e) {
-      console.error(e);
+      setReplayError(e instanceof Error ? formatApiError(e) : String(e));
     } finally {
       setReplayBusy(null);
     }
   }
+
   if (failed.length === 0) {
     return (
       <CardSection title="Repair">
@@ -74,17 +87,22 @@ function RepairPreviewPanel({
   return (
     <CardSection title="Repair">
       <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-        Failed nodes and recommended repair (replay subgraph). Open Repair Preview for full plan and similar incidents.
+        <strong>Replay subgraph</strong> asks the control plane to create a <em>new run</em> using the same plan so jobs can execute again (today this is a full-plan replay; the failed node id is kept for context). You are redirected to the new run when it succeeds.
       </p>
+      {replayError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 px-3 py-2 text-sm text-red-800 dark:text-red-200 mb-3">
+          {replayError}
+        </div>
+      )}
       <ul className="space-y-3">
         {failed.map((j) => (
           <li key={j.plan_node_id} className="rounded border border-slate-200 dark:border-slate-700 p-3 flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs">{String(j.plan_node_id).slice(0, 8)}…</span>
             <span className="text-slate-500 text-sm truncate max-w-[280px]" title={j.error_signature}>{j.error_signature ?? "—"}</span>
-            <Link href={`/graph/repair-preview?run_id=${runId}&node_id=${j.plan_node_id}`} className="text-brand-600 hover:underline text-sm">
+            <Link href={`/graph/repair-preview?run_id=${encodeURIComponent(runId)}&node_id=${encodeURIComponent(j.plan_node_id)}`} className="text-brand-600 hover:underline text-sm">
               Repair Preview
             </Link>
-            <Button size="sm" onClick={() => replaySubgraph(j.plan_node_id)} disabled={replayBusy === j.plan_node_id}>
+            <Button size="sm" onClick={() => replaySubgraph(j.plan_node_id)} disabled={replayBusy !== null}>
               {replayBusy === j.plan_node_id ? "Replaying…" : "Replay subgraph"}
             </Button>
           </li>

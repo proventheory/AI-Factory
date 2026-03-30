@@ -25,58 +25,62 @@ export async function reapStaleLeases(pool: pg.Pool, maxAttemptsPerNode: number 
   );
 
   let reaped = 0;
+  if (staleLeases.rows.length === 0) return 0;
 
-  for (const lease of staleLeases.rows) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
+  /** One client for the whole batch avoids N× pool.connect under a tiny max pool (see db.ts). */
+  const client = await pool.connect();
+  try {
+    for (const lease of staleLeases.rows) {
+      try {
+        await client.query("BEGIN");
 
-      await client.query(
-        `UPDATE job_claims SET released_at = now() WHERE id = $1 AND released_at IS NULL`,
-        [lease.id],
-      );
+        await client.query(
+          `UPDATE job_claims SET released_at = now() WHERE id = $1 AND released_at IS NULL`,
+          [lease.id],
+        );
 
-      // Load job info first (for next_retry_at and for sweep to create attempt+1; Plan §10 delayed retry)
-      const jobInfo = await client.query<{
-        run_id: string;
-        plan_node_id: string;
-        attempt: number;
-      }>(
-        `SELECT run_id, plan_node_id, attempt FROM job_runs WHERE id = $1`,
-        [lease.job_run_id],
-      );
+        // Load job info first (for next_retry_at and for sweep to create attempt+1; Plan §10 delayed retry)
+        const jobInfo = await client.query<{
+          run_id: string;
+          plan_node_id: string;
+          attempt: number;
+        }>(
+          `SELECT run_id, plan_node_id, attempt FROM job_runs WHERE id = $1`,
+          [lease.job_run_id],
+        );
 
-      const retryAllowed = jobInfo.rows.length > 0 && jobInfo.rows[0].attempt < maxAttemptsPerNode;
+        const retryAllowed = jobInfo.rows.length > 0 && jobInfo.rows[0].attempt < maxAttemptsPerNode;
 
-      await client.query(
-        `UPDATE job_runs SET status = 'failed', ended_at = now(),
+        await client.query(
+          `UPDATE job_runs SET status = 'failed', ended_at = now(),
            error_signature = COALESCE(error_signature, 'lease_expired')
          WHERE id = $1 AND status = 'running'`,
-        [lease.job_run_id],
-      );
+          [lease.job_run_id],
+        );
 
-      if (retryAllowed) {
+        if (retryAllowed) {
+          await client.query(
+            `UPDATE job_runs SET next_retry_at = $2 WHERE id = $1`,
+            [lease.job_run_id, new Date()],
+          ).catch(() => {});
+        }
+
         await client.query(
-          `UPDATE job_runs SET next_retry_at = $2 WHERE id = $1`,
-          [lease.job_run_id, new Date()],
-        ).catch(() => {});
-      }
-
-      await client.query(
-        `INSERT INTO job_events (job_run_id, event_type, payload_json)
+          `INSERT INTO job_events (job_run_id, event_type, payload_json)
          VALUES ($1, 'attempt_failed', '{"reason":"lease_expired"}'::jsonb)`,
-        [lease.job_run_id],
-      );
+          [lease.job_run_id],
+        );
 
-      // Do not insert attempt+1 here; sweepDelayedRetries() will create it when next_retry_at <= now()
+        // Do not insert attempt+1 here; sweepDelayedRetries() will create it when next_retry_at <= now()
 
-      await client.query("COMMIT");
-      reaped++;
-    } catch {
-      await client.query("ROLLBACK").catch(() => {});
-    } finally {
-      client.release();
+        await client.query("COMMIT");
+        reaped++;
+      } catch {
+        await client.query("ROLLBACK").catch(() => {});
+      }
     }
+  } finally {
+    client.release();
   }
 
   return reaped;
@@ -111,28 +115,32 @@ export async function sweepDelayedRetries(
   );
 
   let swept = 0;
-  for (const row of rows.rows) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      const newJobRunId = uuid();
-      const idempotencyKey = `${row.run_id}:${row.plan_node_id}`;
-      await client.query(
-        `INSERT INTO job_runs (id, run_id, plan_node_id, attempt, status, idempotency_key)
+  if (rows.rows.length === 0) return 0;
+
+  const client = await pool.connect();
+  try {
+    for (const row of rows.rows) {
+      try {
+        await client.query("BEGIN");
+        const newJobRunId = uuid();
+        const idempotencyKey = `${row.run_id}:${row.plan_node_id}`;
+        await client.query(
+          `INSERT INTO job_runs (id, run_id, plan_node_id, attempt, status, idempotency_key)
          VALUES ($1, $2, $3, $4, 'queued', $5)`,
-        [newJobRunId, row.run_id, row.plan_node_id, row.attempt + 1, idempotencyKey],
-      );
-      await client.query(
-        `UPDATE job_runs SET next_retry_at = NULL WHERE id = $1`,
-        [row.id],
-      );
-      await client.query("COMMIT");
-      swept++;
-    } catch {
-      await client.query("ROLLBACK").catch(() => {});
-    } finally {
-      client.release();
+          [newJobRunId, row.run_id, row.plan_node_id, row.attempt + 1, idempotencyKey],
+        );
+        await client.query(
+          `UPDATE job_runs SET next_retry_at = NULL WHERE id = $1`,
+          [row.id],
+        );
+        await client.query("COMMIT");
+        swept++;
+      } catch {
+        await client.query("ROLLBACK").catch(() => {});
+      }
     }
+  } finally {
+    client.release();
   }
   return swept;
 }
@@ -239,35 +247,39 @@ export async function reconcileRunningRunsWithStaleQueuedJobs(pool: pg.Pool): Pr
     [since],
   );
   let failed = 0;
-  for (const row of runs.rows) {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      // DB allows only queued->running, running->failed
-      await client.query(
-        `UPDATE job_runs SET status = 'running', started_at = now() WHERE run_id = $1 AND status = 'queued'`,
-        [row.id],
-      );
-      await client.query(
-        `UPDATE job_runs SET status = 'failed', ended_at = now(), error_signature = COALESCE(error_signature, 'never_claimed')
+  if (runs.rows.length === 0) return 0;
+
+  const client = await pool.connect();
+  try {
+    for (const row of runs.rows) {
+      try {
+        await client.query("BEGIN");
+        // DB allows only queued->running, running->failed
+        await client.query(
+          `UPDATE job_runs SET status = 'running', started_at = now() WHERE run_id = $1 AND status = 'queued'`,
+          [row.id],
+        );
+        await client.query(
+          `UPDATE job_runs SET status = 'failed', ended_at = now(), error_signature = COALESCE(error_signature, 'never_claimed')
          WHERE run_id = $1 AND status = 'running' AND started_at IS NOT NULL AND ended_at IS NULL`,
-        [row.id],
-      );
-      const r = await client.query(
-        `UPDATE runs SET status = 'failed', ended_at = now() WHERE id = $1 AND status = 'running' RETURNING id`,
-        [row.id],
-      );
-      if (r.rowCount && r.rowCount > 0) {
-        await client.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`, [row.id]).catch(() => {});
-        await client.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`, [row.id]).catch(() => {});
-        failed++;
+          [row.id],
+        );
+        const r = await client.query(
+          `UPDATE runs SET status = 'failed', ended_at = now() WHERE id = $1 AND status = 'running' RETURNING id`,
+          [row.id],
+        );
+        if (r.rowCount && r.rowCount > 0) {
+          await client.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`, [row.id]).catch(() => {});
+          await client.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`, [row.id]).catch(() => {});
+          failed++;
+        }
+        await client.query("COMMIT");
+      } catch {
+        await client.query("ROLLBACK").catch(() => {});
       }
-      await client.query("COMMIT");
-    } catch {
-      await client.query("ROLLBACK").catch(() => {});
-    } finally {
-      client.release();
     }
+  } finally {
+    client.release();
   }
   return failed;
 }

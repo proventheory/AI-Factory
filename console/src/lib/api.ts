@@ -2308,14 +2308,25 @@ export async function getGraphFrontier(runId: string): Promise<{ run_id: string;
 }
 
 /** GET /v1/graph/repair_plan/:runId/:nodeId — repair plan for failed node. */
-export async function getGraphRepairPlan(runId: string, nodeId: string): Promise<{ run_id: string; node_id: string; suggested_actions: unknown[]; subgraph_replay_scope: unknown[] }> {
+export async function getGraphRepairPlan(runId: string, nodeId: string): Promise<{
+  run_id: string;
+  node_id: string;
+  suggested_actions: unknown[];
+  subgraph_replay_scope: unknown[];
+  error_signature?: string | null;
+}> {
   const res = await fetch(`${controlPlaneApiBase()}/v1/graph/repair_plan/${encodeURIComponent(runId)}/${encodeURIComponent(nodeId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /** POST /v1/graph/subgraph_replay — trigger subgraph replay. */
-export async function postGraphSubgraphReplay(body: { run_id: string; node_ids?: string[] }): Promise<{ run_id: string | null; replayed: number }> {
+export async function postGraphSubgraphReplay(body: {
+  run_id: string;
+  node_ids?: string[];
+  /** Reserved for future partial subgraph replay; control plane currently creates a full-plan replay run. */
+  root_node_id?: string;
+}): Promise<{ run_id: string | null; replayed: number; message?: string }> {
   const res = await fetch(`${controlPlaneApiBase()}/v1/graph/subgraph_replay`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -1,13 +1,23 @@
 import pg from "pg";
 
-/** Default 3: Supabase Session pooler shares a small max; runner + gateway also use DATABASE_URL. */
-const poolSize = Math.max(1, Math.min(50, Number(process.env.DATABASE_POOL_MAX) || 3));
+/**
+ * Default 10: long-running control plane runs API + many interval jobs (reaper, self-heal, drift).
+ * With max=3, parallel self-heal remediations + reaper loops often exhaust the pool and
+ * `pool.connect()` hits connectionTimeoutMillis ("timeout exceeded when trying to connect").
+ * Use DATABASE_POOL_MAX=3 (or lower) if your Postgres role / Supabase pooler enforces a low cap.
+ */
+const poolSize = Math.max(1, Math.min(50, Number(process.env.DATABASE_POOL_MAX) || 10));
+
+const connectionTimeoutMs = Math.max(
+  5_000,
+  Math.min(120_000, Number(process.env.DATABASE_CONNECTION_TIMEOUT_MS) || 20_000),
+);
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   max: poolSize,
   idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
+  connectionTimeoutMillis: connectionTimeoutMs,
 });
 
 export type DbClient = pg.Pool | pg.PoolClient;

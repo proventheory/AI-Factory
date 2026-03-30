@@ -82,32 +82,51 @@ export async function runNoArtifactsRemediation(runId: string): Promise<void> {
 }
 
 /**
- * If this run is eligible (terminal, had jobs, zero artifacts), trigger remediation in background.
- * Used by GET /v1/runs/:id/artifacts and by the background scan.
+ * Eligibility only (DB reads). Caller may await remediation to avoid stacking many parallel
+ * `runNoArtifactsRemediation` calls that each hold pool connections + hit Render API.
  */
-export async function triggerNoArtifactsRemediationForRun(runId: string): Promise<void> {
+async function isNoArtifactsRemediationEligible(runId: string): Promise<boolean> {
   const selfHeal = process.env.ENABLE_SELF_HEAL === "true";
   const hasKey = !!process.env.RENDER_API_KEY?.trim();
-  if (!selfHeal || !hasKey) return;
-  if (noArtifactsRemediatedRunIds.has(runId)) return;
+  if (!selfHeal || !hasKey) return false;
+  if (noArtifactsRemediatedRunIds.has(runId)) return false;
 
   const run = await pool.query<{ status: string }>(
     "SELECT status FROM runs WHERE id = $1",
     [runId]
   );
-  if (run.rows.length === 0) return;
-  if (!TERMINAL_STATUSES.includes(run.rows[0].status as (typeof TERMINAL_STATUSES)[number])) return;
+  if (run.rows.length === 0) return false;
+  if (!TERMINAL_STATUSES.includes(run.rows[0].status as (typeof TERMINAL_STATUSES)[number])) return false;
 
   const jobCount = await pool.query<{ c: number }>(
     "SELECT count(*)::int AS c FROM job_runs WHERE run_id = $1",
     [runId]
   );
-  if ((jobCount.rows[0]?.c ?? 0) === 0) return;
+  if ((jobCount.rows[0]?.c ?? 0) === 0) return false;
 
   const art = await pool.query("SELECT 1 FROM artifacts WHERE run_id = $1 LIMIT 1", [runId]);
-  if (art.rows.length > 0) return;
+  if (art.rows.length > 0) return false;
 
-  setImmediate(() => runNoArtifactsRemediation(runId));
+  return true;
+}
+
+/**
+ * If this run is eligible (terminal, had jobs, zero artifacts), trigger remediation in background.
+ * Used by GET /v1/runs/:id/artifacts (non-blocking).
+ */
+export async function triggerNoArtifactsRemediationForRun(runId: string): Promise<void> {
+  if (!(await isNoArtifactsRemediationEligible(runId))) return;
+  setImmediate(() => {
+    void runNoArtifactsRemediation(runId).catch((e) =>
+      console.warn("[self-heal] No-artifacts remediation error:", (e as Error).message),
+    );
+  });
+}
+
+/** Same as trigger but awaits remediation — used by periodic scan so we do not burst the DB pool. */
+export async function awaitNoArtifactsRemediationForRunIfEligible(runId: string): Promise<void> {
+  if (!(await isNoArtifactsRemediationEligible(runId))) return;
+  await runNoArtifactsRemediation(runId);
 }
 
 /**
@@ -133,32 +152,29 @@ export async function scanAndRemediateNoArtifactsRuns(): Promise<void> {
 
   for (const row of runs.rows) {
     if (noArtifactsRemediatedRunIds.has(row.id)) continue;
-    await triggerNoArtifactsRemediationForRun(row.id);
+    await awaitNoArtifactsRemediationForRunIfEligible(row.id);
   }
 }
 
-/**
- * If this run has at least one email_template artifact that is bad (failed verification or heuristic),
- * trigger the same remediation as no-artifacts (sync worker env, create new run).
- */
-export async function triggerBadArtifactsRemediationForRun(runId: string): Promise<void> {
+/** True if this run should get bad-artifact remediation (same env + DB checks as trigger). */
+async function shouldRemediateBadArtifacts(runId: string): Promise<boolean> {
   const selfHeal = process.env.ENABLE_SELF_HEAL === "true";
   const hasKey = !!process.env.RENDER_API_KEY?.trim();
-  if (!selfHeal || !hasKey) return;
-  if (noArtifactsRemediatedRunIds.has(runId) || badArtifactsRemediatedRunIds.has(runId)) return;
+  if (!selfHeal || !hasKey) return false;
+  if (noArtifactsRemediatedRunIds.has(runId) || badArtifactsRemediatedRunIds.has(runId)) return false;
 
   const run = await pool.query<{ status: string }>("SELECT status FROM runs WHERE id = $1", [runId]);
-  if (run.rows.length === 0) return;
-  if (!TERMINAL_STATUSES.includes(run.rows[0].status as (typeof TERMINAL_STATUSES)[number])) return;
+  if (run.rows.length === 0) return false;
+  if (!TERMINAL_STATUSES.includes(run.rows[0].status as (typeof TERMINAL_STATUSES)[number])) return false;
 
   const jobCount = await pool.query<{ c: number }>("SELECT count(*)::int AS c FROM job_runs WHERE run_id = $1", [runId]);
-  if ((jobCount.rows[0]?.c ?? 0) === 0) return;
+  if ((jobCount.rows[0]?.c ?? 0) === 0) return false;
 
   const arts = await pool.query<{ id: string; metadata_json: Record<string, unknown> | null }>(
     "SELECT id, metadata_json FROM artifacts WHERE run_id = $1 AND artifact_type = 'email_template'",
     [runId]
   );
-  if (arts.rows.length === 0) return;
+  if (arts.rows.length === 0) return false;
 
   let hasBad = false;
   try {
@@ -184,10 +200,21 @@ export async function triggerBadArtifactsRemediationForRun(runId: string): Promi
     }
   }
 
-  if (hasBad) {
-    badArtifactsRemediatedRunIds.add(runId);
-    setImmediate(() => runNoArtifactsRemediation(runId));
-  }
+  return hasBad;
+}
+
+/**
+ * If this run has at least one email_template artifact that is bad (failed verification or heuristic),
+ * trigger the same remediation as no-artifacts (sync worker env, create new run).
+ */
+export async function triggerBadArtifactsRemediationForRun(runId: string): Promise<void> {
+  if (!(await shouldRemediateBadArtifacts(runId))) return;
+  badArtifactsRemediatedRunIds.add(runId);
+  setImmediate(() => {
+    void runNoArtifactsRemediation(runId).catch((e) =>
+      console.warn("[self-heal] Bad-artifacts remediation error:", (e as Error).message),
+    );
+  });
 }
 
 /**
@@ -217,6 +244,8 @@ export async function scanAndRemediateBadArtifactRuns(): Promise<void> {
 
   for (const row of runIds) {
     if (badArtifactsRemediatedRunIds.has(row.id)) continue;
-    await triggerBadArtifactsRemediationForRun(row.id);
+    if (!(await shouldRemediateBadArtifacts(row.id))) continue;
+    badArtifactsRemediatedRunIds.add(row.id);
+    await runNoArtifactsRemediation(row.id);
   }
 }

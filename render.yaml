@@ -4,7 +4,7 @@
 #   Runner: CONTROL_PLANE_URL = API service URL (e.g. https://ai-factory-api-staging.onrender.com); LLM_GATEWAY_URL = gateway service URL (or set OPENAI_API_KEY to call OpenAI directly).
 #   API: CORS_ORIGIN = Console URL (e.g. https://your-console.vercel.app). Optional RATE_LIMIT_MAX_PER_MIN (default 300).
 #   API: SHOPIFY_CONNECTOR_ENCRYPTION_KEY = required to store Shopify client secrets or Admin API tokens (shpat_) on brands.
-#   API + Runner: DATABASE_URL (same Supabase/Neon pooler URL). Optional DATABASE_POOL_MAX (default 5).
+#   API + Runner: DATABASE_URL (same Supabase/Neon pooler URL). Optional DATABASE_POOL_MAX (default 10 in code; set lower if pooler caps connections). Optional DATABASE_CONNECTION_TIMEOUT_MS (default 20000).
 # Gateway: OPENAI_API_KEY (required), ANTHROPIC_API_KEY (optional), REDIS_URL (optional, for caching).
 #
 # Health paths: API and Runner use /health; Gateway uses /health/readiness (LiteLLM convention).
