@@ -93,7 +93,7 @@ async function insertDataArtifact(
   const uri = `mem://${artifactType}/${params.runId}/${params.planNodeId}`;
   await client.query(
     `INSERT INTO artifacts (id, run_id, job_run_id, producer_plan_node_id, artifact_type, artifact_class, uri, metadata_json)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, 'data', $5, $6::jsonb)`,
+     VALUES (gen_random_uuid(), $1, $2, $3, $4, 'build_outputs', $5, $6::jsonb)`,
     [params.runId, params.jobRunId, params.planNodeId, artifactType, uri, JSON.stringify(metadata)],
   );
 }

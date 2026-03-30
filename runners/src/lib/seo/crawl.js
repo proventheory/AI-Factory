@@ -176,6 +176,7 @@ export async function crawlSite(options) {
         }
     }
     let linkCrawlSet = null;
+    /** Status from link-phase GET; reused below to avoid a second HEAD/GET per URL when fetchPageDetails is false. */
     let linkPhaseStatusByUrl = null;
     if (useLinkCrawl) {
         const seeds = allUrls.length > 0 ? [baseUrl, ...allUrls.slice(0, 30)] : [baseUrl];

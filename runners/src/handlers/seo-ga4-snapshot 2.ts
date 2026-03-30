@@ -5,7 +5,20 @@
 import type pg from "pg";
 import type { JobContext } from "../job-context.js";
 import { fetchGa4Report } from "../lib/seo/gsc-ga-api.js";
-import { getGoogleAccessTokenFromControlPlane } from "../lib/control-plane-google-token.js";
+
+const CONTROL_PLANE_URL = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
+
+async function getGoogleAccessToken(initiativeId: string | null): Promise<string | undefined> {
+  if (!initiativeId) return undefined;
+  try {
+    const res = await fetch(`${CONTROL_PLANE_URL}/v1/initiatives/${initiativeId}/google_access_token`);
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { access_token?: string };
+    return data.access_token;
+  } catch {
+    return undefined;
+  }
+}
 
 export async function handleSeoGa4Snapshot(
   client: pg.PoolClient,
@@ -15,9 +28,7 @@ export async function handleSeoGa4Snapshot(
   const meta = context.goal_metadata ?? {};
   const ga4PropertyId = (meta.ga4_property_id as string) ?? "";
 
-  const accessToken = context.initiative_id
-    ? await getGoogleAccessTokenFromControlPlane(context.initiative_id)
-    : undefined;
+  const accessToken = await getGoogleAccessToken(context.initiative_id);
 
   const report = ga4PropertyId
     ? await fetchGa4Report(ga4PropertyId, { rowLimit: 500, accessToken })
