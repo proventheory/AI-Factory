@@ -165,8 +165,18 @@ export function buildMigrationRunUserMessage(byEntity: Record<string, unknown>, 
     );
   }
   if (unsupported.length > 0) {
+    const label: Record<string, string> = {
+      blogs: "blog posts (articles)",
+      pages: "static pages",
+      products: "products",
+      categories: "collections/categories",
+      customers: "customers",
+      redirects: "redirect rules",
+      discounts: "discounts",
+    };
+    const names = unsupported.map((id) => label[id] ?? id);
     parts.push(
-      `Not migrated automatically yet: ${unsupported.join(", ")}. Product/collection/customer/blog-post ETL to Shopify Admin is still being built; use exports or a Matrixify-style workflow where needed.`,
+      `No Shopify import ran for: ${names.join(", ")}. This button only performs real imports for PDFs (Shopify Files) and records WordPress blog tags for redirect planning. Blog posts and other entities are not wired up yet—use Matrixify, a CSV/export tool, or another migration app, then return here for redirects and tag CSV merge.`,
     );
   }
   return parts.join(" ").trim() || "Migration run finished.";
