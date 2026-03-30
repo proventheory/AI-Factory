@@ -1,6 +1,6 @@
 import "dotenv/config";
 import * as Sentry from "@sentry/node";
-import { spawnSync } from "child_process";
+import { spawn } from "child_process";
 import path from "path";
 
 /** Validate required env before migrations. Exits if DATABASE_URL missing; logs warnings for self-heal config. */
@@ -25,20 +25,27 @@ function getAppRoot(): string {
   return path.join(bundleDir, "..");
 }
 
-/** Run DB migrations on startup so schema is always applied (self-heal). Runs scripts/run-migrate.mjs from app root so every deploy applies migrations regardless of Render start command. */
-function runMigrationsOnStartup(): void {
+/** Run DB migrations on startup (async child process so the HTTP server can answer Render /health while migrations run). */
+function runMigrationsOnStartup(): Promise<void> {
   const appRoot = getAppRoot();
   const scriptPath = path.join(appRoot, "scripts", "run-migrate.mjs");
-  const result = spawnSync(process.execPath, [scriptPath], {
-    env: process.env,
-    cwd: appRoot,
-    stdio: "inherit",
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath], {
+      env: process.env,
+      cwd: appRoot,
+      stdio: "inherit",
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        console.log("[control-plane] Migrations complete.");
+        resolve();
+      } else {
+        console.error("[control-plane] Migrations failed; exiting.");
+        reject(new Error(`run-migrate.mjs exited with code ${code ?? "unknown"}`));
+      }
+    });
   });
-  if (result.status !== 0) {
-    console.error("[control-plane] Migrations failed; exiting.");
-    process.exit(result.status ?? 1);
-  }
-  console.log("[control-plane] Migrations complete.");
 }
 
 validateEnv();
@@ -241,7 +248,7 @@ async function main(): Promise<void> {
   startApi();
   console.log("[control-plane] API started (health check available)");
 
-  runMigrationsOnStartup();
+  await runMigrationsOnStartup();
 
   await startReaperLoop();
   console.log("[control-plane] Lease reaper started");

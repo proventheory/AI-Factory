@@ -31,5 +31,6 @@ COPY --from=builder /app/schemas ./schemas
 COPY --from=builder /app/supabase ./supabase
 EXPOSE 10000
 ENV PORT=10000
-# Run migrations then start the API (DATABASE_URL must be set in Render env)
-CMD ["sh", "-c", "node scripts/run-migrate.mjs && exec node dist/control-plane-bundle.cjs"]
+# Do not run migrations before bind: Render's HTTP health check needs /health on PORT while migrations run.
+# control-plane/src/index.ts starts the API first, then runMigrationsOnStartup() (see comment there).
+CMD ["node", "dist/control-plane-bundle.cjs"]

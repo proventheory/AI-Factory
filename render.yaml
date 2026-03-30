@@ -11,7 +11,7 @@
 #
 # Self-heal (Control Plane): ENABLE_SELF_HEAL=true, RENDER_API_KEY, RENDER_STAGING_SERVICE_IDS (api, gateway, runner IDs), optionally VERCEL_TOKEN + VERCEL_PROJECT_IDS. See docs/OPERATIONS_RUNBOOK.md.
 #
-# Docker: All services use dockerContext: . (repo root) so Dockerfiles can COPY . and build from root; migrations and scripts live at repo root. Start Command left EMPTY so image CMD runs (migrate then API for Control Plane).
+# Docker: All services use dockerContext: . (repo root). Control Plane image CMD runs the bundled API only; migrations run after bind so Render /health can pass during long migrate (see Dockerfile.control-plane + control-plane/src/index.ts).
 
 services:
   - type: web
