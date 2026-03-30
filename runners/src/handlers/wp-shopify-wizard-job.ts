@@ -244,14 +244,15 @@ export async function handleWpShopifyWizardJob(
 
       const needsShopifyPdfs = entities.includes("pdfs");
       const wantsTagRedirects = entities.includes("blog_tags");
+      const needsShopifyBlogs = entities.includes("blogs");
       let shopDomain: string | null = null;
       let shopAccessToken: string | null = null;
-      if (needsShopifyPdfs || wantsTagRedirects) {
+      if (needsShopifyPdfs || wantsTagRedirects || needsShopifyBlogs) {
         const sm = await getShopifyShopForBrand(client, brandId);
         const tp = await getShopifyAccessTokenForBrand(client, brandId);
-        if (needsShopifyPdfs) {
+        if (needsShopifyPdfs || needsShopifyBlogs) {
           if (!sm || !tp?.access_token) {
-            throw new Error("Shopify must be connected to migrate PDFs (Brands → Edit brand → Shopify).");
+            throw new Error("Shopify must be connected for PDF or blog post import (Brands → Edit brand → Shopify).");
           }
         }
         shopDomain = sm?.shop_domain ?? null;
@@ -272,6 +273,7 @@ export async function handleWpShopifyWizardJob(
         entities,
         excludedByEntity,
         maxPdfFiles,
+        maxBlogPosts: maxPdfFiles,
         createRedirects: payload.create_redirects !== false,
         skipIfExistsInShopify: payload.skip_if_exists_in_shopify === true,
       });

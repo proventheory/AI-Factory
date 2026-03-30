@@ -3,6 +3,7 @@
  */
 
 import { migrateWordPressPdfsToShopify, pdfMigrationSummaryAndHint } from "./wp-shopify-migration-pdf-shopify.js";
+import { migrateWordPressPostsToShopify, blogMigrationSummaryAndHint } from "./wp-shopify-migration-blog-shopify.js";
 
 const SHOPIFY_REST_VERSION = "2024-10";
 
@@ -12,7 +13,6 @@ const ETL_PENDING = new Set([
   "customers",
   "redirects",
   "discounts",
-  "blogs",
   "pages",
 ]);
 
@@ -151,6 +151,17 @@ export function buildMigrationRunUserMessage(byEntity: Record<string, unknown>, 
       `PDFs: uploaded ${pdf.summary.uploaded ?? 0}, failed ${pdf.summary.failed ?? 0}.${pdf.hint ? ` ${pdf.hint}` : ""}`,
     );
   }
+  const blogs = byEntity.blogs as {
+    summary?: { created?: number; skipped?: number; failed?: number };
+    hint?: string;
+    truncated?: boolean;
+  } | undefined;
+  if (blogs?.summary && typeof blogs.summary === "object") {
+    const s = blogs.summary;
+    parts.push(
+      `Blog posts: created ${s.created ?? 0}, skipped ${s.skipped ?? 0}, failed ${s.failed ?? 0}.${blogs.truncated ? " (batch limit reached—run again to continue.)" : ""}${blogs.hint ? ` ${blogs.hint}` : ""}`.trim(),
+    );
+  }
   const tags = byEntity.blog_tags as {
     count?: number;
     note?: string;
@@ -166,7 +177,6 @@ export function buildMigrationRunUserMessage(byEntity: Record<string, unknown>, 
   }
   if (unsupported.length > 0) {
     const label: Record<string, string> = {
-      blogs: "blog posts (articles)",
       pages: "static pages",
       products: "products",
       categories: "collections/categories",
@@ -176,7 +186,7 @@ export function buildMigrationRunUserMessage(byEntity: Record<string, unknown>, 
     };
     const names = unsupported.map((id) => label[id] ?? id);
     parts.push(
-      `No Shopify import ran for: ${names.join(", ")}. This button only performs real imports for PDFs (Shopify Files) and records WordPress blog tags for redirect planning. Blog posts and other entities are not wired up yet—use Matrixify, a CSV/export tool, or another migration app, then return here for redirects and tag CSV merge.`,
+      `No Shopify import ran for: ${names.join(", ")}. Supported today: PDFs → Shopify Files, WordPress posts → Shopify blog articles (when “blogs” is selected), and WordPress tag export for redirects. Use Matrixify or exports for other entities.`,
     );
   }
   return parts.join(" ").trim() || "Migration run finished.";
@@ -194,6 +204,8 @@ export async function executeWizardMigrationRun(opts: {
   entities: string[];
   excludedByEntity: Record<string, Set<string>>;
   maxPdfFiles: number;
+  /** Same cap as PDF batch size (from wizard max_files). */
+  maxBlogPosts: number;
   createRedirects: boolean;
   skipIfExistsInShopify: boolean;
 }): Promise<Record<string, unknown>> {
@@ -202,7 +214,37 @@ export async function executeWizardMigrationRun(opts: {
   const uniq = [...new Set(opts.entities.map((x) => String(x).trim()).filter(Boolean))];
 
   for (const e of uniq) {
-    if (e === "pdfs") {
+    if (e === "blogs") {
+      if (!opts.shopDomain || !opts.shopAccessToken) {
+        throw new Error("Shopify must be connected to import blog posts (Brands → Edit brand → Shopify).");
+      }
+      if (!opts.wpAuthHeader) {
+        throw new Error(
+          "WordPress username + application password are required to read full post HTML for Shopify. Add them under Blog posts → Details in step 3.",
+        );
+      }
+      const excluded = opts.excludedByEntity.blogs ?? new Set<string>();
+      const result = await migrateWordPressPostsToShopify({
+        wpOrigin: opts.server,
+        wpAuthHeader: opts.wpAuthHeader,
+        shopDomain: opts.shopDomain,
+        accessToken: opts.shopAccessToken,
+        shopifyBlogHandle: opts.shopifyBlogHandle,
+        excludedIds: excluded,
+        maxPosts: opts.maxBlogPosts,
+        skipIfExistsInShopify: opts.skipIfExistsInShopify,
+      });
+      const { summary, hint } = blogMigrationSummaryAndHint(result);
+      const hintMerged = [result.hint, hint].filter(Boolean).join(" ");
+      by_entity.blogs = {
+        summary,
+        rows: result.rows,
+        truncated: result.truncated,
+        shopify_blog_id: result.shopify_blog_id,
+        shopify_blog_handle: result.shopify_blog_handle,
+        ...(hintMerged.trim() ? { hint: hintMerged.trim() } : {}),
+      };
+    } else if (e === "pdfs") {
       if (!opts.shopDomain || !opts.shopAccessToken) {
         throw new Error("Shopify must be connected to migrate PDFs (Brands → Edit brand → Shopify).");
       }

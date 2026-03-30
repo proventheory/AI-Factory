@@ -551,6 +551,9 @@ export default function WpShopifyMigrationWizardPage() {
   const [migrationRunLoading, setMigrationRunLoading] = useState(false);
   const [migrationRunError, setMigrationRunError] = useState<string | null>(null);
   const [migrationRunResult, setMigrationRunResult] = useState<WpShopifyMigrationRunResult | null>(null);
+  /** Pipeline run id while “Run migration” is polling (link to /runs/:id). */
+  const [migrationPipelineRunId, setMigrationPipelineRunId] = useState<string | null>(null);
+  const [migrationRunPollHint, setMigrationRunPollHint] = useState("");
   const [pdfImportLoading, setPdfImportLoading] = useState(false);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
   const [pdfImportResult, setPdfImportResult] = useState<WpShopifyMigrationMigratePdfsResult | null>(null);
@@ -1461,30 +1464,60 @@ export default function WpShopifyMigrationWizardPage() {
       );
       return;
     }
+    if (migrationEntities.has("blogs")) {
+      if (!brandShopify?.connected) {
+        setMigrationRunError(
+          "Connect Shopify for this brand when Blog posts are included—articles are created via the Shopify Admin API.",
+        );
+        return;
+      }
+      if (!wpPreviewUser.trim() || !wpPreviewAppPassword.trim()) {
+        setMigrationRunError(
+          "Add WordPress username + application password above (Blog posts → Details) so we can read full post HTML (context=edit).",
+        );
+        return;
+      }
+    }
     setMigrationRunLoading(true);
     setMigrationRunError(null);
     setMigrationRunResult(null);
+    setMigrationPipelineRunId(null);
+    setMigrationRunPollHint("");
     try {
-      const result = await api.wpShopifyMigrationRun({
-        ...wooApiBase(),
-        brand_id: brandId,
-        entities: Array.from(migrationEntities),
-        excluded_ids_by_entity: migrationExcludedIds,
-        max_files: 500,
-        create_redirects: pdfImportCreateRedirects,
-        skip_if_exists_in_shopify: pdfImportSkipIfExists,
-        environment: pipelineEnvironment,
-        ...(targetBaseUrl.trim() ? { target_store_url: targetBaseUrl.trim() } : {}),
-        ...(migrationTagBlogHandle.trim() ? { shopify_blog_handle: migrationTagBlogHandle.trim() } : {}),
-        ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
-          ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
-          : {}),
-      });
+      const result = await api.wpShopifyMigrationRun(
+        {
+          ...wooApiBase(),
+          brand_id: brandId,
+          entities: Array.from(migrationEntities),
+          excluded_ids_by_entity: migrationExcludedIds,
+          max_files: 500,
+          create_redirects: pdfImportCreateRedirects,
+          skip_if_exists_in_shopify: pdfImportSkipIfExists,
+          environment: pipelineEnvironment,
+          ...(targetBaseUrl.trim() ? { target_store_url: targetBaseUrl.trim() } : {}),
+          ...(migrationTagBlogHandle.trim() ? { shopify_blog_handle: migrationTagBlogHandle.trim() } : {}),
+          ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+            ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+            : {}),
+        },
+        {
+          onRunEnqueued: (runId) => {
+            setMigrationPipelineRunId(runId);
+            setMigrationRunPollHint("Queued — waiting for runner…");
+          },
+          onStatus: (st) => {
+            if (st === "running") setMigrationRunPollHint("Running — importing to Shopify (this can take several minutes)…");
+            else if (st === "queued") setMigrationRunPollHint("Queued…");
+            else setMigrationRunPollHint(`Status: ${st}`);
+          },
+        },
+      );
       setMigrationRunResult(result);
     } catch (e) {
       setMigrationRunError(formatApiError(e));
     } finally {
       setMigrationRunLoading(false);
+      setMigrationRunPollHint("");
     }
   };
 
@@ -2573,7 +2606,7 @@ export default function WpShopifyMigrationWizardPage() {
                       migrationRunLoading ||
                       migrationEntities.size === 0 ||
                       !wooCredentialsOk ||
-                      (migrationEntities.has("pdfs") && !shopifyCredentialsOk)
+                      ((migrationEntities.has("pdfs") || migrationEntities.has("blogs")) && !shopifyCredentialsOk)
                     }
                   >
                     {migrationRunLoading ? "Migrating…" : "Run migration"}
@@ -2597,8 +2630,86 @@ export default function WpShopifyMigrationWizardPage() {
                   </div>
                 )}
                 <p className="mt-2 max-w-3xl text-body-small text-fg-muted">
-                  <strong>Run migration</strong> does real work only for what we support today: <strong>PDFs</strong> go to Shopify Files (needs Shopify connected). <strong>Blog tags</strong> builds a <strong>redirect CSV</strong> from WordPress (suggested Shopify <code className="rounded bg-fg-muted/15 px-1">/blogs/…/tagged/…</code> targets when Shopify + step 5 URL are set). For a real migration, bring <strong>posts and their tags</strong> into Shopify first (Matrixify, manual, or future blog ETL); then run tags and merge into step 6. Automated “blogs” entity ETL in this wizard is still pending.
+                  <strong>Run migration</strong>: <strong>PDFs</strong> → Shopify Files. <strong>Blog posts</strong> → Shopify blog articles (Admin API; needs Shopify + WordPress app password; same <strong>max 500</strong> batch as PDFs—run again to continue). <strong>Blog tags</strong> → redirect CSV. Other sheets are still manual/Matrixify. Shopify app needs <code className="rounded bg-fg-muted/15 px-1">read_content</code> and <code className="rounded bg-fg-muted/15 px-1">write_content</code> for articles.
                 </p>
+
+                {(migrationRunLoading || migrationPipelineRunId) && (
+                  <div className="mt-4 max-w-xl rounded-lg border border-border bg-fg-muted/5 px-3 py-3 space-y-2">
+                    {migrationPipelineRunId ? (
+                      <p className="text-body-small text-fg-muted">
+                        Pipeline run:{" "}
+                        <Link href={`/runs/${migrationPipelineRunId}`} className="text-link font-medium hover:underline">
+                          {migrationPipelineRunId}
+                        </Link>
+                        {" · "}
+                        <Link href="/runs" className="text-link font-medium hover:underline">
+                          All runs
+                        </Link>
+                      </p>
+                    ) : null}
+                    {migrationRunPollHint ? <p className="text-body-small text-fg-muted">{migrationRunPollHint}</p> : null}
+                    {migrationRunLoading ? (
+                      <div className="space-y-1">
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-fg-muted/25">
+                          <div className="h-full w-2/5 animate-pulse rounded-full bg-primary" />
+                        </div>
+                        <p className="text-xs text-fg-muted">Import runs on the pipeline runner; keep this tab open until it finishes.</p>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {migrationRunResult?.blog_migration && migrationRunResult.blog_migration.rows.length > 0 && (
+                  <div className="mt-4 max-w-4xl">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted mb-2">Blog import — last run</p>
+                    <p className="text-body-small text-fg-muted mb-2">
+                      Created {migrationRunResult.blog_migration.summary.created}, skipped {migrationRunResult.blog_migration.summary.skipped}, failed{" "}
+                      {migrationRunResult.blog_migration.summary.failed}
+                      {migrationRunResult.blog_migration.shopify_blog_handle ? (
+                        <>
+                          {" "}
+                          · Shopify blog <code className="rounded bg-fg-muted/15 px-1">{migrationRunResult.blog_migration.shopify_blog_handle}</code>
+                        </>
+                      ) : null}
+                      {migrationRunResult.blog_migration.truncated ? " · Batch limit reached—run again to import more." : ""}
+                    </p>
+                    {migrationRunResult.blog_migration.hint ? (
+                      <p className="text-body-small text-state-warning mb-2">{migrationRunResult.blog_migration.hint}</p>
+                    ) : null}
+                    <div className="max-h-[min(40vh,360px)] overflow-auto rounded-lg border border-border shadow-inner">
+                      <table className="w-full min-w-[640px] border-collapse text-body-small">
+                        <thead className="sticky top-0 z-10 border-b border-border bg-fg-muted/10">
+                          <tr className="text-left">
+                            <th className="px-3 py-2 text-xs font-semibold uppercase text-fg-muted">WP ID</th>
+                            <th className="px-3 py-2 text-xs font-semibold uppercase text-fg-muted">Title</th>
+                            <th className="px-3 py-2 text-xs font-semibold uppercase text-fg-muted">Shopify</th>
+                            <th className="px-3 py-2 text-xs font-semibold uppercase text-fg-muted">Note / error</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {migrationRunResult.blog_migration.rows.map((r) => (
+                            <tr key={r.wordpress_id} className="border-b border-border/80">
+                              <td className="px-3 py-2 font-mono text-xs">{r.wordpress_id}</td>
+                              <td className="px-3 py-2 max-w-[200px] truncate" title={r.title}>
+                                {r.title}
+                              </td>
+                              <td className="px-3 py-2">
+                                {r.shopify_admin_url ? (
+                                  <a href={r.shopify_admin_url} target="_blank" rel="noreferrer" className="text-link hover:underline">
+                                    Open
+                                  </a>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-fg-muted">{r.error ?? r.note ?? "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 {migrationDryRunError && (
                   <div className="mt-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">

@@ -1594,6 +1594,17 @@ export type WpShopifyMigrationRunParams = WpShopifyMigrationWooRestParams & {
   wp_application_password?: string;
   environment?: string;
 };
+export type WpShopifyBlogMigrationRow = {
+  wordpress_id: string;
+  title: string;
+  slug?: string;
+  wordpress_url?: string;
+  shopify_article_id?: string;
+  shopify_admin_url?: string;
+  note?: string;
+  error?: string;
+};
+
 export type WpShopifyMigrationRunResult = {
   run_id: string;
   message?: string;
@@ -1602,6 +1613,14 @@ export type WpShopifyMigrationRunResult = {
   /** WordPress tag archive URLs → suggested Shopify /blogs/{handle}/tagged/{slug} when Shopify + target URL are set. */
   blog_tag_redirect_csv?: string;
   blog_tag_redirect_csv_rows?: number;
+  /** When “blogs” entity ran: per-post outcomes (verify in Shopify Admin → Content → Blog posts). */
+  blog_migration?: {
+    summary: { created: number; skipped: number; failed: number };
+    rows: WpShopifyBlogMigrationRow[];
+    truncated?: boolean;
+    shopify_blog_handle?: string;
+    hint?: string;
+  };
 };
 
 export async function wpShopifyMigrationRun(
@@ -1635,6 +1654,23 @@ export async function wpShopifyMigrationRun(
     typeof blogBlock?.tag_archive_urls_in_redirect_csv === "number"
       ? blogBlock.tag_archive_urls_in_redirect_csv
       : undefined;
+  const blogsBlock = byEntity?.blogs && typeof byEntity.blogs === "object" && !Array.isArray(byEntity.blogs) ? (byEntity.blogs as Record<string, unknown>) : undefined;
+  const blogRows = Array.isArray(blogsBlock?.rows) ? (blogsBlock!.rows as WpShopifyBlogMigrationRow[]) : undefined;
+  const blogSummary = blogsBlock?.summary && typeof blogsBlock.summary === "object" && !Array.isArray(blogsBlock.summary) ? (blogsBlock.summary as { created?: number; skipped?: number; failed?: number }) : undefined;
+  const blogMigration =
+    blogRows && blogSummary
+      ? {
+          summary: {
+            created: Number(blogSummary.created) || 0,
+            skipped: Number(blogSummary.skipped) || 0,
+            failed: Number(blogSummary.failed) || 0,
+          },
+          rows: blogRows,
+          ...(blogsBlock?.truncated === true ? { truncated: true } : {}),
+          ...(typeof blogsBlock?.shopify_blog_handle === "string" ? { shopify_blog_handle: blogsBlock.shopify_blog_handle } : {}),
+          ...(typeof blogsBlock?.hint === "string" ? { hint: blogsBlock.hint } : {}),
+        }
+      : undefined;
   return {
     run_id: enq.run_id,
     message: typeof meta.message === "string" ? meta.message : undefined,
@@ -1642,6 +1678,7 @@ export async function wpShopifyMigrationRun(
     unsupported: Array.isArray(meta.unsupported) ? (meta.unsupported as string[]) : undefined,
     ...(blogCsv ? { blog_tag_redirect_csv: blogCsv } : {}),
     ...(blogCsvRows != null ? { blog_tag_redirect_csv_rows: blogCsvRows } : {}),
+    ...(blogMigration ? { blog_migration: blogMigration } : {}),
   };
 }
 
