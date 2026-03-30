@@ -22,7 +22,7 @@ import {
   getShopifyShopForBrand,
   getShopifyAccessTokenForBrand,
 } from "../../../control-plane/src/shopify-brand-connector.js";
-import { getGoogleAccessTokenFromControlPlane } from "../lib/control-plane-google-token.js";
+import { getGoogleAccessTokenFromControlPlaneOrThrow } from "../lib/control-plane-google-token.js";
 
 function wpBasicAuthHeader(user: string, appPassword: string): string {
   return `Basic ${Buffer.from(`${user.replace(/^\s+|\s+$/g, "")}:${appPassword.replace(/\s/g, "")}`, "utf8").toString("base64")}`;
@@ -72,6 +72,18 @@ async function resolveWooFromPayload(
   };
 }
 
+async function googleAccessTokenForWizard(
+  payload: WpShopifyWizardJobPayload,
+  initiativeId: string,
+): Promise<string> {
+  const pre =
+    typeof payload._prefetched_google_access_token === "string"
+      ? payload._prefetched_google_access_token.trim()
+      : "";
+  if (pre) return pre;
+  return getGoogleAccessTokenFromControlPlaneOrThrow(initiativeId);
+}
+
 async function insertDataArtifact(
   client: pg.PoolClient,
   params: { runId: string; jobRunId: string; planNodeId: string },
@@ -116,12 +128,7 @@ export async function handleWpShopifyWizardJob(
 
     if (kind === "seo_gsc_report") {
       const site_url = String(payload.site_url ?? "").trim();
-      const accessToken = await getGoogleAccessTokenFromControlPlane(initiativeId);
-      if (!accessToken) {
-        throw new Error(
-          "Google OAuth token unavailable for this initiative. Connect Google on the brand and ensure CONTROL_PLANE_URL on the runner reaches the API (GET /v1/initiatives/:id/google_access_token).",
-        );
-      }
+      const accessToken = await googleAccessTokenForWizard(payload, initiativeId);
       const { fetchGscReport } = await import("../../../control-plane/src/seo-gsc-ga-client.js");
       const report = await fetchGscReport(site_url, {
         dateRange: String(payload.date_range ?? "last28days"),
@@ -135,12 +142,7 @@ export async function handleWpShopifyWizardJob(
     if (kind === "seo_ga4_report") {
       const rowLimit = Math.min(1000, Math.max(1, Number(payload.row_limit) || 500));
       let property_id = String(payload.property_id ?? "").trim();
-      const accessToken = await getGoogleAccessTokenFromControlPlane(initiativeId);
-      if (!accessToken) {
-        throw new Error(
-          "Google OAuth token unavailable for this initiative. Connect Google on the brand and ensure CONTROL_PLANE_URL on the runner reaches the API.",
-        );
-      }
+      const accessToken = await googleAccessTokenForWizard(payload, initiativeId);
       if (!property_id) {
         const r = await client.query<{ ga4_property_id: string | null }>(
           "SELECT ga4_property_id FROM brand_google_credentials WHERE brand_profile_id = $1",

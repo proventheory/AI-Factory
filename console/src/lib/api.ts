@@ -213,9 +213,21 @@ async function throwWpShopifyRunFailed(runId: string, status: string): Promise<n
   try {
     const res = await fetch(`${controlPlaneApiBase()}/v1/runs/${runId}`);
     if (res.ok) {
-      const data = (await res.json()) as { job_runs?: Array<{ error_signature?: string }> };
-      const jr = Array.isArray(data.job_runs) ? data.job_runs[0] : undefined;
-      if (jr?.error_signature) detail = jr.error_signature;
+      const data = (await res.json()) as {
+        job_runs?: Array<{ error_signature?: string; status?: string }>;
+        job_events?: Array<{ event_type?: string; payload_json?: unknown }>;
+      };
+      const failed = (data.job_runs ?? []).filter((j) => j.status === "failed");
+      const sig = failed[0]?.error_signature;
+      if (sig) detail = sig;
+      const ev = (data.job_events ?? []).find((e) => e.event_type === "attempt_failed");
+      const pl = ev?.payload_json;
+      if (pl && typeof pl === "object" && !Array.isArray(pl)) {
+        const msg = (pl as { message?: string }).message;
+        if (typeof msg === "string" && msg.trim()) {
+          detail = sig ? `${sig}: ${msg.trim()}` : msg.trim();
+        }
+      }
     }
   } catch {
     /* keep detail */

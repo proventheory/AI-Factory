@@ -180,6 +180,7 @@ export async function completeJobFailure(
   planNodeId: string,
   workerId: string,
   errorSignature: string,
+  failureMessage?: string,
 ): Promise<void> {
   await client.query(
     `UPDATE job_runs SET status = 'failed', ended_at = now(), error_signature = $2
@@ -192,10 +193,14 @@ export async function completeJobFailure(
     [jobRunId],
   ).catch(() => {});
 
+  const payload: Record<string, string> = { error_signature: errorSignature };
+  if (failureMessage && failureMessage.trim()) {
+    payload.message = failureMessage.trim().slice(0, 4000);
+  }
   await client.query(
     `INSERT INTO job_events (job_run_id, event_type, payload_json)
      VALUES ($1, 'attempt_failed', $2::jsonb)`,
-    [jobRunId, JSON.stringify({ error_signature: errorSignature })],
+    [jobRunId, JSON.stringify(payload)],
   );
 
   await client.query(

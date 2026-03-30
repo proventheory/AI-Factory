@@ -222,6 +222,7 @@ async function pollAndExecute(): Promise<void> {
       }
     } catch (err) {
       const errorSig = normalizeErrorSignature(err);
+      const failureMsg = err instanceof Error ? err.message : String(err);
       if (process.env.SENTRY_DSN?.trim()) {
         Sentry.withScope((scope) => {
           scope.setTag("job_type", jobContext?.job_type ?? "unknown");
@@ -238,7 +239,15 @@ async function pollAndExecute(): Promise<void> {
       const txClient = await pool.connect();
       try {
         await txClient.query("BEGIN");
-        await completeJobFailure(txClient, jobRun.id, jobRun.run_id, jobRun.plan_node_id, config.workerId, errorSig);
+        await completeJobFailure(
+          txClient,
+          jobRun.id,
+          jobRun.run_id,
+          jobRun.plan_node_id,
+          config.workerId,
+          errorSig,
+          failureMsg,
+        );
         await markRunFailedIfNoPendingJobs(txClient, jobRun.run_id);
         await txClient.query("COMMIT");
       } catch {

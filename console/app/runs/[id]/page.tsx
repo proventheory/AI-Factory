@@ -38,6 +38,32 @@ type LogEntryRow = { id: string; run_id: string; job_run_id: string | null; sour
 type LlmCallRow = { id: string; job_run_id: string | null; model_tier: string; model_id: string; tokens_in: number | null; tokens_out: number | null; latency_ms: number | null; created_at: string };
 type AuditRow = { source: string; id: string; run_id: string; job_run_id: string | null; event_type: string; created_at: string; payload_json: unknown };
 
+const RUN_DETAIL_FETCH_MS = 25_000;
+
+async function loadRunDetail(runId: string): Promise<RunDetail> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), RUN_DETAIL_FETCH_MS);
+  try {
+    const r = await fetch(`${controlPlaneApiBase()}/v1/runs/${runId}`, { signal: ctrl.signal });
+    if (!r.ok) {
+      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      throw new Error(j.error ?? "Failed to load run");
+    }
+    const d = (await r.json()) as RunDetail;
+    if (!d?.run) throw new Error("Invalid run response");
+    return d;
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(
+        `Timed out after ${RUN_DETAIL_FETCH_MS / 1000}s loading run. Check NEXT_PUBLIC_CONTROL_PLANE_API matches the API that owns this run.`,
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function RepairPreviewPanel({
   runId,
   jobRuns,
@@ -135,31 +161,17 @@ export default function RunDetailPage() {
   const refetch = useCallback(() => {
     if (!id) return;
     setError(null);
-    fetch(`${controlPlaneApiBase()}/v1/runs/${id}`)
-      .then((r) => {
-        if (!r.ok) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Failed to load run"); });
-        return r.json();
-      })
-      .then((d: RunDetail) => {
-        if (!d?.run) throw new Error("Invalid run response");
-        setData(d);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load run"));
+    loadRunDetail(id)
+      .then((d) => setData(d))
+      .catch((e) => setError(formatApiError(e)));
   }, [id]);
 
   useEffect(() => {
     if (!id) return;
     setError(null);
-    fetch(`${controlPlaneApiBase()}/v1/runs/${id}`)
-      .then((r) => {
-        if (!r.ok) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Failed to load run"); });
-        return r.json();
-      })
-      .then((d: RunDetail) => {
-        if (!d?.run) throw new Error("Invalid run response");
-        setData(d);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load run"));
+    loadRunDetail(id)
+      .then((d) => setData(d))
+      .catch((e) => setError(formatApiError(e)));
   }, [id]);
 
   // Poll run while status is running/queued so UI updates when reaper or cancel changes status

@@ -10,6 +10,7 @@ import { compilePlanFromDraft } from "./plan-compiler.js";
 import { createRun } from "./scheduler.js";
 import { routeRun } from "./release-manager.js";
 import { WP_SHOPIFY_MIGRATION_INTENT } from "./lib/intent-type.js";
+import { getAccessTokenForInitiative } from "./seo-google-oauth.js";
 
 export const WP_SHOPIFY_WIZARD_JOB_TYPE = "wp_shopify_wizard_job" as const;
 
@@ -30,6 +31,9 @@ export const WIZARD_JOB_KINDS = new Set([
 export type WpShopifyWizardJobPayload = Record<string, unknown> & {
   kind: string;
   brand_id: string;
+  /** Set only by the control plane at enqueue time; runner uses this so it does not call back for OAuth. */
+  _prefetched_google_access_token?: string;
+  _prefetched_google_expires_in?: number;
 };
 
 async function ensureWizardInitiative(client: pg.PoolClient, brandId: string): Promise<string> {
@@ -97,6 +101,21 @@ export async function enqueueWpShopifyWizardJob(opts: {
         // while a job finishes can deadlock (40P01).
         await client.query("SELECT id FROM initiatives WHERE id = $1 FOR UPDATE", [initiativeId]);
 
+        let jobPayload: WpShopifyWizardJobPayload = opts.payload;
+        if (opts.payload.kind === "seo_gsc_report" || opts.payload.kind === "seo_ga4_report") {
+          const tok = await getAccessTokenForInitiative(client, initiativeId);
+          if (!tok?.access_token) {
+            throw new Error(
+              "Google is not connected for this brand, or token refresh failed. In the console: Brands → connect Google (GSC/GA4). On the API: set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_ENCRYPTION_KEY, and CONTROL_PLANE_URL to this service’s public URL (for OAuth redirect).",
+            );
+          }
+          jobPayload = {
+            ...opts.payload,
+            _prefetched_google_access_token: tok.access_token,
+            _prefetched_google_expires_in: tok.expires_in,
+          };
+        }
+
         const nodeKey = `wiz_${uuid()}`;
         const { planId, nodeIds } = await compilePlanFromDraft(
           client,
@@ -121,7 +140,7 @@ export async function enqueueWpShopifyWizardJob(opts: {
         });
 
         const metaR = await client.query("SELECT goal_metadata FROM initiatives WHERE id = $1", [initiativeId]);
-        const nextMeta = attachPayloadToInitiative(metaR.rows[0]?.goal_metadata, runId, opts.payload);
+        const nextMeta = attachPayloadToInitiative(metaR.rows[0]?.goal_metadata, runId, jobPayload);
         await client.query("UPDATE initiatives SET goal_metadata = $2::jsonb WHERE id = $1", [
           initiativeId,
           JSON.stringify(nextMeta),

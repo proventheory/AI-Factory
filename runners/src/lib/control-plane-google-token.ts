@@ -1,16 +1,42 @@
 /**
  * OAuth access token for an initiative: minted on the Control Plane (has GOOGLE_OAUTH_* + encryption key).
- * Runners should use this instead of calling getAccessTokenForBrand/getAccessTokenForInitiative with DB rows directly,
- * which requires the same secrets on the worker and fails on Render if only the API service has them.
+ * WP → Shopify wizard jobs usually embed a prefetched token at enqueue time so the runner does not depend on CONTROL_PLANE_URL.
+ * Use OrThrow when falling back so failures are visible in job_events / UI instead of a generic OAuth error.
  */
 
-export async function getGoogleAccessTokenFromControlPlane(initiativeId: string): Promise<string | undefined> {
+export async function getGoogleAccessTokenFromControlPlaneOrThrow(initiativeId: string): Promise<string> {
   const base = (process.env.CONTROL_PLANE_URL ?? "http://localhost:3001").replace(/\/$/, "");
+  let res: Response;
   try {
-    const res = await fetch(`${base}/v1/initiatives/${encodeURIComponent(initiativeId)}/google_access_token`);
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { access_token?: string };
-    return typeof data.access_token === "string" ? data.access_token : undefined;
+    res = await fetch(`${base}/v1/initiatives/${encodeURIComponent(initiativeId)}/google_access_token`);
+  } catch (e) {
+    throw new Error(
+      `Runner could not reach Control Plane at ${base} (set CONTROL_PLANE_URL to the public API URL, e.g. https://your-api.onrender.com). ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  const text = await res.text();
+  let data: { access_token?: string; error?: string } = {};
+  try {
+    data = text ? (JSON.parse(text) as typeof data) : {};
+  } catch {
+    /* non-JSON body */
+  }
+  if (!res.ok) {
+    throw new Error(
+      data.error ?? text.slice(0, 400) || `Google token request failed (HTTP ${res.status}).`,
+    );
+  }
+  const t = data.access_token;
+  if (typeof t !== "string" || !t.trim()) {
+    throw new Error("Control Plane returned no access_token after refresh.");
+  }
+  return t.trim();
+}
+
+/** Soft failure: returns undefined on any error (legacy SEO snapshot handlers). */
+export async function getGoogleAccessTokenFromControlPlane(initiativeId: string): Promise<string | undefined> {
+  try {
+    return await getGoogleAccessTokenFromControlPlaneOrThrow(initiativeId);
   } catch {
     return undefined;
   }
