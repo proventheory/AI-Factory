@@ -226,11 +226,15 @@ function startEvalInitiativeLoop(): void {
 async function main(): Promise<void> {
   console.log("[control-plane] Starting AI Factory Control Plane...");
 
-  // Start HTTP server first so Render health check gets 200 before migrations/reaper (avoids deploy stuck in "Deploying").
-  startApi();
-  console.log("[control-plane] API started (health check available)");
+  // Bind HTTP before migrations so Render /health can pass; await listen so the port is open before heavy migrate I/O.
+  await startApi();
+  console.log("[control-plane] API listening (health check available)");
 
-  await runMigrationsOnStartup();
+  if (process.env.SKIP_STARTUP_MIGRATIONS === "true") {
+    console.warn("[control-plane] SKIP_STARTUP_MIGRATIONS=true — skipping startup SQL migrations (run db:migrate separately).");
+  } else {
+    await runMigrationsOnStartup();
+  }
 
   await startReaperLoop();
   console.log("[control-plane] Lease reaper started");
@@ -255,11 +259,14 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
+  const e = err as Error & { code?: string; detail?: string };
+  console.error("[control-plane] Fatal:", e?.message ?? err);
+  if (e?.code) console.error("[control-plane] Fatal code:", e.code, e.detail ?? "");
+  if (e?.stack) console.error(e.stack);
   if (process.env.SENTRY_DSN?.trim()) {
     Sentry.captureException(err);
     void Sentry.close(2000).then(() => process.exit(1));
   } else {
-    console.error("[control-plane] Fatal:", err);
     process.exit(1);
   }
 });

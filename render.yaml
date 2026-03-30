@@ -11,7 +11,7 @@
 #
 # Self-heal (Control Plane): ENABLE_SELF_HEAL=true, RENDER_API_KEY, RENDER_STAGING_SERVICE_IDS (api, gateway, runner IDs), optionally VERCEL_TOKEN + VERCEL_PROJECT_IDS. See docs/OPERATIONS_RUNBOOK.md.
 #
-# Docker: All services use dockerContext: . (repo root). Control Plane image CMD runs the bundled API only; migrations run after bind so Render /health can pass during long migrate (see Dockerfile.control-plane + control-plane/src/index.ts).
+# Docker: All services use dockerContext: . (repo root). Control Plane: API listens first, then migrations (await listen so /health is reliable). If deploy fails on migrate, set SKIP_STARTUP_MIGRATIONS=true temporarily and run db:migrate from CI/local; optional DATABASE_URL_MIGRATE for direct Postgres DDL if pooler errors.
 
 services:
   - type: web
@@ -52,7 +52,7 @@ services:
         value: "10000"
       - key: NODE_ENV
         value: production
-      # Set in Dashboard: DATABASE_URL (staging), CORS_ORIGIN (staging console URL). Optional: DATABASE_POOL_MAX (default 5). Health check timeout: set in Render Dashboard if needed (defaults ~30s).
+      # Set in Dashboard: DATABASE_URL (staging), CORS_ORIGIN (staging console URL). Optional: DATABASE_POOL_MAX, DATABASE_URL_MIGRATE (direct DB for migrations), SKIP_STARTUP_MIGRATIONS=true (debug only). Health check timeout: increase in Dashboard if first deploy is slow.
     healthCheckPath: /health
 
   - type: web

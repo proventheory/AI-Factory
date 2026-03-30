@@ -83,10 +83,17 @@ app.use(graphLegacyRouter);
 registerGraphRoutes(app);
 app.use("/v1/evolution", evolutionRouter);
 
-export function startApi(port: number = Number(process.env.PORT) || 3001): void {
+/** Resolves when the HTTP server is accepting connections (so Render /health can pass before migrations run). */
+export function startApi(port: number = Number(process.env.PORT) || 3001): Promise<void> {
   if (process.env.SENTRY_DSN?.trim()) {
     Sentry.setupExpressErrorHandler(app);
   }
   const host = process.env.HOST?.trim() || "0.0.0.0";
-  app.listen(port, host, () => console.log(`[api] Listening on ${host}:${port}`));
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, host, () => {
+      console.log(`[api] Listening on ${host}:${port}`);
+      resolve();
+    });
+    server.on("error", reject);
+  });
 }

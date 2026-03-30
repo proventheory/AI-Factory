@@ -14,7 +14,7 @@ COPY . .
 RUN test -f control-plane/src/http/routers/usage.router.ts || (echo "Missing control-plane/src/http/routers - clear build cache and redeploy" && exit 1)
 # Bundle control-plane (includes runners SEO crawl + gsc-ga-api via static import; no dist/runners needed).
 # Use .cjs so Node always loads the bundle as CommonJS (repo root package.json is "type": "module").
-RUN echo "Control-plane: esbuild..." && mkdir -p dist && NODE_OPTIONS="--max-old-space-size=2048" npx esbuild control-plane/src/index.ts \
+RUN echo "Control-plane: esbuild..." && mkdir -p dist && NODE_OPTIONS="--max-old-space-size=4096" npx esbuild control-plane/src/index.ts \
   --bundle --platform=node --target=node20 --format=cjs \
   --outfile=dist/control-plane-bundle.cjs --sourcemap \
   --external:pg --external:express --external:cors --external:uuid --external:mjml --external:@supabase/supabase-js --external:googleapis --external:google-auth-library
