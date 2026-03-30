@@ -12,6 +12,12 @@
     "skipMessage": "objects already exist"
   },
   {
+    "path": "supabase/migrations/20250303000005_multi_framework.sql",
+    "name": "multi_framework",
+    "skipIfErrorCode": "42710",
+    "skipMessage": "objects already exist"
+  },
+  {
     "path": "supabase/migrations/20250303000008_vault_secret_refs.sql",
     "name": "vault_secret_refs"
   },
@@ -498,5 +504,22 @@
       "23514"
     ],
     "skipMessage": "column or constraint already applied"
+  },
+  {
+    "path": "supabase/migrations/20260330100000_brand_woocommerce_credentials.sql",
+    "name": "brand_woocommerce_credentials",
+    "skipIfErrorCodes": [
+      "42P07",
+      "42710"
+    ],
+    "skipMessage": "table or policy already exists"
+  },
+  {
+    "path": "supabase/migrations/20260331140000_wp_shopify_migration_doc_comments.sql",
+    "name": "wp_shopify_migration_doc_comments"
+  },
+  {
+    "path": "supabase/migrations/20260331150000_initiative_intent_wp_shopify_migration.sql",
+    "name": "initiative_intent_wp_shopify_migration"
   }
 ]

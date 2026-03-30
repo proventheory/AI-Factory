@@ -10,7 +10,6 @@ const SKIP_NOT_IN_RUN_MIGRATE = new Set([
   "supabase/migrations/20250303000001_ai_factory_state_machines.sql",
   "supabase/migrations/20250303000002_ai_factory_rls.sql",
   "supabase/migrations/20250303000003_brand_themes.sql",
-  "supabase/migrations/20250303000005_multi_framework.sql",
   "supabase/migrations/20250303000006_gateway_and_mcp.sql",
   "supabase/migrations/20250303000007_brand_engine.sql",
   "supabase/migrations/20250303100005_runs_llm_source.sql",
