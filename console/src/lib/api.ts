@@ -38,6 +38,9 @@ export function formatApiError(err: unknown): string {
   if (msg.includes("Database schema not applied") || (msg.includes("relation ") && msg.includes(" does not exist"))) {
     return "Control Plane database schema is missing. Run migrations against the same DB the API uses (see docs/runbooks/console-db-relation-does-not-exist.md).";
   }
+  if (/deadlock/i.test(msg)) {
+    return "Database briefly deadlocked (usually concurrent wizard actions). Retry once; if it persists, wait a few seconds and try again.";
+  }
   return msg;
 }
 

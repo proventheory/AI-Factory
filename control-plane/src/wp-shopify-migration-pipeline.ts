@@ -89,6 +89,11 @@ export async function enqueueWpShopifyWizardJob(opts: {
 
   return withTransaction(async (client) => {
     const initiativeId = await ensureWizardInitiative(client, opts.brandId);
+    // Lock initiative before plans/runs so we match lock ordering with the runner's finally block
+    // (stripWizardJobPayloadFromInitiative updates this row). Otherwise concurrent GSC+GA4 enqueues
+    // while a job finishes can deadlock (40P01).
+    await client.query("SELECT id FROM initiatives WHERE id = $1 FOR UPDATE", [initiativeId]);
+
     const nodeKey = `wiz_${uuid()}`;
     const { planId, nodeIds } = await compilePlanFromDraft(
       client,
@@ -112,7 +117,7 @@ export async function enqueueWpShopifyWizardJob(opts: {
       llmSource,
     });
 
-    const metaR = await client.query("SELECT goal_metadata FROM initiatives WHERE id = $1 FOR UPDATE", [initiativeId]);
+    const metaR = await client.query("SELECT goal_metadata FROM initiatives WHERE id = $1", [initiativeId]);
     const nextMeta = attachPayloadToInitiative(metaR.rows[0]?.goal_metadata, runId, opts.payload);
     await client.query("UPDATE initiatives SET goal_metadata = $2::jsonb WHERE id = $1", [
       initiativeId,
@@ -128,17 +133,20 @@ export async function stripWizardJobPayloadFromInitiative(
   initiativeId: string,
   runId: string,
 ): Promise<void> {
-  const metaR = await client.query("SELECT goal_metadata FROM initiatives WHERE id = $1 FOR UPDATE", [initiativeId]);
-  const gm = metaR.rows[0]?.goal_metadata;
-  if (!gm || typeof gm !== "object" || Array.isArray(gm)) return;
-  const rec = gm as Record<string, unknown>;
-  const jobs = rec.wp_shopify_pipeline_jobs;
-  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) return;
-  const next = { ...(jobs as Record<string, unknown>) };
-  delete next[runId];
-  const nextGm = { ...rec, wp_shopify_pipeline_jobs: next };
-  await client.query("UPDATE initiatives SET goal_metadata = $2::jsonb WHERE id = $1", [
-    initiativeId,
-    JSON.stringify(nextGm),
-  ]);
+  // Single atomic UPDATE avoids SELECT ... FOR UPDATE after holding job_run/artifact locks (runner),
+  // which could deadlock with enqueueWpShopifyWizardJob (plans/runs then initiative).
+  await client.query(
+    `UPDATE initiatives
+     SET goal_metadata = CASE
+       WHEN goal_metadata IS NULL OR jsonb_typeof(goal_metadata->'wp_shopify_pipeline_jobs') <> 'object'
+         THEN goal_metadata
+       ELSE jsonb_set(
+         goal_metadata,
+         '{wp_shopify_pipeline_jobs}',
+         (goal_metadata->'wp_shopify_pipeline_jobs') - $2::text
+       )
+     END
+     WHERE id = $1`,
+    [initiativeId, runId],
+  );
 }
