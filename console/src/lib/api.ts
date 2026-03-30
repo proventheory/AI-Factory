@@ -248,6 +248,10 @@ async function throwWpShopifyRunFailed(runId: string, status: string): Promise<n
   } catch {
     /* keep detail */
   }
+  if (detail === status && status === "failed") {
+    detail =
+      "failed (no error_signature or attempt_failed payload on this run — open the run page or runner logs). Each crawl is its own pipeline run: filter Pipeline Runs by status failed or search this run ID; quick GSC/GA successes are different rows.";
+  }
   throw new Error(`Pipeline run failed (${detail}). Open /runs/${runId} for details.`);
 }
 
