@@ -11,18 +11,10 @@
 import pg from "pg";
 import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { dirname, join, resolve } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, "..");
-
-const url = process.env.DATABASE_URL;
-if (!url) {
-  console.error("DATABASE_URL is not set");
-  process.exit(1);
-}
-
-const client = new pg.Client({ connectionString: url });
+const defaultRoot = join(__dirname, "..");
 
 const migrations = [
   { path: "schemas/001_core_schema.sql", name: "001_core_schema", skipIfErrorCode: "42710", skipMessage: "objects already exist" },
@@ -128,8 +120,17 @@ const migrations = [
   },
 ];
 
-async function run() {
-  // Guard: every listed migration file must exist (no silent skips).
+/**
+ * @param {string} [overrideRoot] - App root (parent of schemas/, supabase/). Defaults to repo root when run as CLI.
+ */
+export async function runMigrations(overrideRoot) {
+  const url = process.env.DATABASE_URL;
+  if (!url?.trim()) {
+    throw new Error("DATABASE_URL is not set");
+  }
+  const root = overrideRoot ?? defaultRoot;
+  const client = new pg.Client({ connectionString: url });
+
   for (const m of migrations) {
     const fullPath = join(root, m.path);
     if (!existsSync(fullPath)) {
@@ -172,7 +173,11 @@ async function run() {
   }
 }
 
-run().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const selfPath = fileURLToPath(import.meta.url);
+const invokedAsCli = Boolean(process.argv[1] && resolve(process.argv[1]) === resolve(selfPath));
+if (invokedAsCli) {
+  runMigrations().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

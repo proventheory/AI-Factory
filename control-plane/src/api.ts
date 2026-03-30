@@ -87,5 +87,6 @@ export function startApi(port: number = Number(process.env.PORT) || 3001): void 
   if (process.env.SENTRY_DSN?.trim()) {
     Sentry.setupExpressErrorHandler(app);
   }
-  app.listen(port, () => console.log(`[api] Listening on port ${port}`));
+  const host = process.env.HOST?.trim() || "0.0.0.0";
+  app.listen(port, host, () => console.log(`[api] Listening on ${host}:${port}`));
 }

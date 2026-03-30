@@ -1,7 +1,7 @@
 import "dotenv/config";
 import * as Sentry from "@sentry/node";
-import { spawn } from "child_process";
 import path from "path";
+import { pathToFileURL } from "url";
 
 /** Validate required env before migrations. Exits if DATABASE_URL missing; logs warnings for self-heal config. */
 function validateEnv(): void {
@@ -25,27 +25,13 @@ function getAppRoot(): string {
   return path.join(bundleDir, "..");
 }
 
-/** Run DB migrations on startup (async child process so the HTTP server can answer Render /health while migrations run). */
-function runMigrationsOnStartup(): Promise<void> {
+/** Run migrations in-process (no second Node) so Render starter-plan memory stays within limit; server already listening for /health. */
+async function runMigrationsOnStartup(): Promise<void> {
   const appRoot = getAppRoot();
   const scriptPath = path.join(appRoot, "scripts", "run-migrate.mjs");
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [scriptPath], {
-      env: process.env,
-      cwd: appRoot,
-      stdio: "inherit",
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        console.log("[control-plane] Migrations complete.");
-        resolve();
-      } else {
-        console.error("[control-plane] Migrations failed; exiting.");
-        reject(new Error(`run-migrate.mjs exited with code ${code ?? "unknown"}`));
-      }
-    });
-  });
+  const href = pathToFileURL(scriptPath).href;
+  const mod = (await import(href)) as { runMigrations: (root: string) => Promise<void> };
+  await mod.runMigrations(appRoot);
 }
 
 validateEnv();
