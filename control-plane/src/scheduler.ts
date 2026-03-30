@@ -153,8 +153,9 @@ export async function createRun(db: DbClient, params: CreateRunParams): Promise<
     await db.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_entered')`, [runId]).catch(() => {});
   }
 
-  // Phase 5A: mirror run to graph_run (execution layer) for observability
-  mirrorRunToGraphRun(db, runId, params.planId).catch(() => {});
+  // Phase 5A: mirror run to graph_run (execution layer) for observability.
+  // Must await: callers pass a transaction PoolClient; overlapping queries + COMMIT triggers pg deprecation.
+  await mirrorRunToGraphRun(db, runId, params.planId).catch(() => {});
 
   // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
   if (process.env.DEBUG_ARTIFACTS_HYPOTHESES === "1") {
