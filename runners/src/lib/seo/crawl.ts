@@ -135,16 +135,18 @@ function extractInternalLinks(html: string, origin: string): string[] {
 
 /**
  * BFS link-following crawl: start from seed URLs, fetch each page, extract same-origin links, add to queue; stop at maxUrls or when queue is empty.
+ * Returns HTTP status for every URL we actually requested so the second pass can skip duplicate HEAD/GET when not fetching page details.
  */
 async function linkCrawlDiscover(
   seedUrls: string[],
   origin: string,
   maxUrls: number,
   crawlDelayMs: number,
-): Promise<Set<string>> {
+): Promise<{ discovered: Set<string>; statusByUrl: Map<string, number> }> {
   const pauseMs =
     crawlDelayMs <= 0 ? 0 : Math.min(crawlDelayMs, LINK_CRAWL_DELAY_CAP_MS);
   const discovered = new Set<string>(seedUrls.map((u) => normalizeUrl(u, origin)));
+  const statusByUrl = new Map<string, number>();
   const queue = [...discovered];
   let head = 0;
   while (head < queue.length && discovered.size < maxUrls) {
@@ -153,28 +155,30 @@ async function linkCrawlDiscover(
       const res = await axios.get(url, {
         timeout: 10000,
         maxRedirects: 3,
-        validateStatus: (s) => s === 200,
+        validateStatus: () => true,
         responseType: "text",
       });
-      if (typeof res.data !== "string") continue;
-      const links = extractInternalLinks(res.data, origin);
-      for (const link of links) {
-        if (discovered.size >= maxUrls) break;
-        try {
-          if (new URL(link).origin === origin && !discovered.has(link)) {
-            discovered.add(link);
-            queue.push(link);
+      statusByUrl.set(url, res.status);
+      if (res.status === 200 && typeof res.data === "string") {
+        const links = extractInternalLinks(res.data, origin);
+        for (const link of links) {
+          if (discovered.size >= maxUrls) break;
+          try {
+            if (new URL(link).origin === origin && !discovered.has(link)) {
+              discovered.add(link);
+              queue.push(link);
+            }
+          } catch {
+            // skip
           }
-        } catch {
-          // skip
         }
       }
     } catch {
-      // skip failed page
+      statusByUrl.set(url, 0);
     }
     if (pauseMs > 0) await new Promise((r) => setTimeout(r, pauseMs));
   }
-  return discovered;
+  return { discovered, statusByUrl };
 }
 
 /**
@@ -224,9 +228,13 @@ export async function crawlSite(options: CrawlOptions): Promise<{
   }
 
   let linkCrawlSet: Set<string> | null = null;
+  /** Status from link-phase GET; reused below to avoid a second HEAD/GET per URL when fetchPageDetails is false. */
+  let linkPhaseStatusByUrl: Map<string, number> | null = null;
   if (useLinkCrawl) {
     const seeds = allUrls.length > 0 ? [baseUrl, ...allUrls.slice(0, 30)] : [baseUrl];
-    linkCrawlSet = await linkCrawlDiscover(seeds, origin, maxUrls, crawlDelayMs);
+    const linkResult = await linkCrawlDiscover(seeds, origin, maxUrls, crawlDelayMs);
+    linkCrawlSet = linkResult.discovered;
+    linkPhaseStatusByUrl = linkResult.statusByUrl;
     for (const u of linkCrawlSet) {
       if (!sitemapUrlSet.has(u)) allUrls.push(u);
     }
@@ -300,6 +308,9 @@ export async function crawlSite(options: CrawlOptions): Promise<{
       if (i < uniqueUrls.length - 1 && crawlDelayMs > 0) {
         await new Promise((r) => setTimeout(r, crawlDelayMs));
       }
+    } else if (linkPhaseStatusByUrl?.has(url)) {
+      status = linkPhaseStatusByUrl.get(url) ?? 0;
+      statusCounts[String(status)] = (statusCounts[String(status)] ?? 0) + 1;
     } else {
       try {
         const res = await axios.head(url, { timeout: 8000, maxRedirects: 3, validateStatus: () => true });
