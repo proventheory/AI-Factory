@@ -227,6 +227,20 @@ async function postWpShopifyMigrationPost(path: string, body: Record<string, unk
   return parseWizardEnqueueResponse(text, res);
 }
 
+/** POST /v1/wp-shopify-migration/wizard_job; returns null if the deployed API has no route yet (404). */
+async function tryPostWizardJob(body: Record<string, unknown>): Promise<WpShopifyWizardEnqueueResponse | null> {
+  const res = await fetch(`${API}/v1/wp-shopify-migration/wizard_job`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (res.status === 404 || (res.status === 405 && text.includes("Cannot POST"))) {
+    return null;
+  }
+  return parseWizardEnqueueResponse(text, res);
+}
+
 async function waitForWizardArtifact(
   runId: string,
   artifactType: string,
@@ -240,15 +254,15 @@ async function waitForWizardArtifact(
   return meta;
 }
 
-/** Fire-and-forget: records wizard progress on the WP → Shopify initiative (artifact `wp_shopify_wizard_snapshot`). Does not poll. */
+/** Fire-and-forget: records wizard progress on the WP → Shopify initiative (artifact `wp_shopify_wizard_snapshot`). Does not poll. No-op if wizard_job route is missing (older API). */
 export async function wpShopifyWizardStateSnapshotEnqueue(params: {
   brand_id: string;
   wizard_step: number;
   summary: Record<string, unknown>;
   previous_step?: number;
   environment?: string;
-}): Promise<WpShopifyWizardEnqueueResponse> {
-  return postWpShopifyMigrationPost("/v1/wp-shopify-migration/wizard_job", {
+}): Promise<WpShopifyWizardEnqueueResponse | undefined> {
+  const enq = await tryPostWizardJob({
     kind: "wizard_state_snapshot",
     brand_id: params.brand_id,
     wizard_step: params.wizard_step,
@@ -256,6 +270,7 @@ export async function wpShopifyWizardStateSnapshotEnqueue(params: {
     ...(params.previous_step != null ? { previous_step: params.previous_step } : {}),
     ...(params.environment ? { environment: params.environment } : {}),
   });
+  return enq ?? undefined;
 }
 
 export async function getInitiatives(params?: { intent_type?: string; risk_level?: string; limit?: number }): Promise<{ items: InitiativeRow[] }> {
@@ -1224,7 +1239,7 @@ export type SeoGscReport = {
 };
 
 export async function seoGscReport(params: SeoGscReportParams, pollOpts?: WpShopifyPipelinePollOptions): Promise<SeoGscReport> {
-  const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/wizard_job", {
+  const enq = await tryPostWizardJob({
     kind: "seo_gsc_report",
     brand_id: params.brand_id,
     site_url: params.site_url,
@@ -1232,9 +1247,23 @@ export async function seoGscReport(params: SeoGscReportParams, pollOpts?: WpShop
     row_limit: params.row_limit ?? 500,
     ...(params.environment ? { environment: params.environment } : {}),
   });
-  pollOpts?.onRunEnqueued?.(enq.run_id);
-  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_gsc_report", pollOpts);
-  return meta as unknown as SeoGscReport;
+  if (enq) {
+    pollOpts?.onRunEnqueued?.(enq.run_id);
+    const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_gsc_report", pollOpts);
+    return meta as unknown as SeoGscReport;
+  }
+  const res = await fetch(`${API}/v1/seo/gsc_report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      site_url: params.site_url,
+      date_range: params.date_range ?? "last28days",
+      row_limit: params.row_limit ?? 500,
+      brand_id: params.brand_id,
+    }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 
 /** WP → Shopify migration wizard — Step 2: GA4 report. With brand_id uses pipeline (`wp_shopify_seo_ga4_report`); with property_id only, calls control plane directly (no initiative run). */
@@ -1258,16 +1287,18 @@ export type SeoGa4Report = {
 export async function seoGa4Report(params: SeoGa4ReportParams, pollOpts?: WpShopifyPipelinePollOptions): Promise<SeoGa4Report> {
   const brandId = params.brand_id?.trim();
   if (brandId) {
-    const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/wizard_job", {
+    const enq = await tryPostWizardJob({
       kind: "seo_ga4_report",
       brand_id: brandId,
       row_limit: params.row_limit ?? 500,
       ...(params.property_id?.trim() ? { property_id: params.property_id.trim() } : {}),
       ...(params.environment ? { environment: params.environment } : {}),
     });
-    pollOpts?.onRunEnqueued?.(enq.run_id);
-    const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_ga4_report", pollOpts);
-    return meta as unknown as SeoGa4Report;
+    if (enq) {
+      pollOpts?.onRunEnqueued?.(enq.run_id);
+      const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_ga4_report", pollOpts);
+      return meta as unknown as SeoGa4Report;
+    }
   }
   const res = await fetch(`${API}/v1/seo/ga4_report`, {
     method: "POST",
@@ -1285,26 +1316,60 @@ export type SeoKeywordVolumeResult = {
   error?: string;
 };
 
+const SEO_KEYWORD_VOLUME_CHUNK = 400;
+
 export async function seoKeywordVolume(
   params: SeoKeywordVolumeParams,
   pollOpts?: WpShopifyPipelinePollOptions,
 ): Promise<SeoKeywordVolumeResult> {
   const keywords = Array.isArray(params.keywords) ? params.keywords : [];
   if (keywords.length === 0) return { volumes: [] };
-  const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/wizard_job", {
+  const enq = await tryPostWizardJob({
     kind: "seo_keyword_volume",
     brand_id: params.brand_id,
     keywords,
     ...(params.environment ? { environment: params.environment } : {}),
   });
-  pollOpts?.onRunEnqueued?.(enq.run_id);
-  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_keyword_volume", pollOpts);
-  const volumes = meta.volumes as SeoKeywordVolumeResult["volumes"] | undefined;
-  const error = meta.error != null ? String(meta.error) : undefined;
-  return {
-    volumes: Array.isArray(volumes) ? volumes : [],
-    ...(error ? { error } : {}),
-  };
+  if (enq) {
+    pollOpts?.onRunEnqueued?.(enq.run_id);
+    const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_keyword_volume", pollOpts);
+    const volumes = meta.volumes as SeoKeywordVolumeResult["volumes"] | undefined;
+    const error = meta.error != null ? String(meta.error) : undefined;
+    return {
+      volumes: Array.isArray(volumes) ? volumes : [],
+      ...(error ? { error } : {}),
+    };
+  }
+  const merged: SeoKeywordVolumeResult["volumes"] = [];
+  const errors: string[] = [];
+  for (let i = 0; i < keywords.length; i += SEO_KEYWORD_VOLUME_CHUNK) {
+    const chunk = keywords.slice(i, i + SEO_KEYWORD_VOLUME_CHUNK);
+    const res = await fetch(`${API}/v1/seo/keyword_volume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keywords: chunk }),
+    });
+    const text = await res.text();
+    let data: SeoKeywordVolumeResult | { error?: string } | null = null;
+    try {
+      data = text ? (JSON.parse(text) as SeoKeywordVolumeResult) : null;
+    } catch {
+      if (!res.ok) errors.push(text.slice(0, 500) || `HTTP ${res.status}`);
+      else errors.push(text.slice(0, 500));
+      continue;
+    }
+    if (!res.ok) {
+      const errMsg =
+        data && typeof data === "object" && data.error != null ? String(data.error) : text.slice(0, 500) || `HTTP ${res.status}`;
+      errors.push(errMsg);
+      continue;
+    }
+    const okBody = data as SeoKeywordVolumeResult | null;
+    if (okBody?.volumes) merged.push(...okBody.volumes);
+    if (okBody?.error) errors.push(String(okBody.error));
+  }
+  const uniqueErrors = Array.from(new Set(errors.map((s) => s.trim()).filter(Boolean)));
+  return { volumes: merged, ...(uniqueErrors.length > 0 ? { error: uniqueErrors.join("; ") } : {}) };
 }
 
 /** WP → Shopify migration wizard — DataForSEO ranked keywords per URL (cached). Returns keywords each URL ranks for. */

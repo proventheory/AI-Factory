@@ -1,5 +1,11 @@
 # Build and run Control Plane from repo root (needed for control-plane → runners import).
-# Render: use dockerContext: ., dockerfilePath: ./Dockerfile.control-plane
+#
+# Render (required):
+#   - Dockerfile path: ./Dockerfile.control-plane
+#   - Docker build context: repo root (.), NOT control-plane/
+#   - Do NOT set Dashboard "Root Directory" to control-plane — that shrinks context and drops scripts/ + supabase/.
+#   - Leave "Start Command" empty (image CMD + in-process migrations in control-plane/src/index.ts).
+# Blueprint: see render.yaml → ai-factory-api-staging / ai-factory-api-prod.
 
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -20,6 +26,10 @@ RUN echo "Control-plane: esbuild..." && mkdir -p dist && NODE_OPTIONS="--max-old
   --outfile=dist/control-plane-bundle.cjs --sourcemap \
   --external:pg --external:express --external:cors --external:uuid --external:mjml --external:@supabase/supabase-js --external:googleapis --external:google-auth-library
 
+# Fail fast if this stage was built with wrong context (e.g. only control-plane/ folder).
+RUN test -f scripts/sql-migrations.manifest.json && test -f schemas/001_core_schema.sql \
+  || (echo "FATAL: Build context must be repo root — missing scripts/ or schemas/. See Dockerfile.control-plane header." && exit 1)
+
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
@@ -34,6 +44,9 @@ COPY --from=builder /app/supabase ./supabase
 # This file must exist in git; copy again from build context so a stale BuildKit cache on
 # `COPY --from=builder .../supabase` cannot ship an image without it (manifest lists this path).
 COPY supabase/migrations/20260325000000_enable_rls_all_public_tables.sql supabase/migrations/20260325000000_enable_rls_all_public_tables.sql
+# Runtime: bundle loads migrations from /app (parent of dist/). Abort deploy if assets missing.
+RUN test -f scripts/sql-migrations.manifest.json && test -d supabase/migrations && test -f schemas/001_core_schema.sql \
+  || (echo "FATAL: Final image missing migration assets — fix Docker build context (repo root)." && exit 1)
 EXPOSE 10000
 ENV PORT=10000
 # Do not run migrations before bind: Render's HTTP health check needs /health on PORT while migrations run.

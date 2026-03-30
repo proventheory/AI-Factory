@@ -1,6 +1,10 @@
-# Control Plane — must be built with repo root as context so migrations are included and run on every start.
-# Render: set dockerContext: . and dockerfilePath: control-plane/Dockerfile. Then migrations run on their own.
-# Build: from repo root run  docker build -f control-plane/Dockerfile .
+# Alternate Control Plane image (tsc build inside control-plane/). For Render staging/prod, prefer repo-root
+# **Dockerfile.control-plane** (see render.yaml) — esbuild bundle + in-process migrations after /health.
+#
+# If you use this file: dockerContext MUST still be repo root (.), never control-plane/ alone, so COPY scripts/ + supabase/ works.
+# Build: docker build -f control-plane/Dockerfile .
+#
+# Render default: dockerfilePath ./Dockerfile.control-plane, dockerContext .
 
 FROM node:20-alpine AS builder
 WORKDIR /app

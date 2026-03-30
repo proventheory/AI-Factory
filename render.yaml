@@ -11,7 +11,7 @@
 #
 # Self-heal (Control Plane): ENABLE_SELF_HEAL=true, RENDER_API_KEY, RENDER_STAGING_SERVICE_IDS (api, gateway, runner IDs), optionally VERCEL_TOKEN + VERCEL_PROJECT_IDS. See docs/OPERATIONS_RUNBOOK.md.
 #
-# Docker: All services use dockerContext: . (repo root). Control Plane: API listens first, then migrations (await listen so /health is reliable). If deploy fails on migrate, set SKIP_STARTUP_MIGRATIONS=true temporarily and run db:migrate from CI/local; optional DATABASE_URL_MIGRATE for direct Postgres DDL if pooler errors.
+# Docker: All services use dockerContext: . (repo root). Control Plane API: Dockerfile.control-plane; API binds first then in-process SQL migrations (SKIP_STARTUP_MIGRATIONS=true to skip). Optional DATABASE_URL_MIGRATE for DDL if pooler rejects statements.
 
 services:
   - type: web
@@ -43,9 +43,10 @@ services:
   - type: web
     name: ai-factory-api-staging
     runtime: docker
+    # Repo root only. Do NOT set Dashboard "Root Directory" to control-plane — Docker context would omit scripts/ + supabase/ and startup migrations would fail.
     dockerContext: .
     dockerfilePath: ./Dockerfile.control-plane
-    # Start Command: leave unset so image CMD runs migrate then API (self-heal)
+    # Leave Start Command and dockerCommand unset: image CMD runs the bundle; migrations run in-process after /health is up (control-plane/src/index.ts).
     branch: main
     envVars:
       - key: PORT
@@ -70,9 +71,9 @@ services:
   - type: web
     name: ai-factory-api-prod
     runtime: docker
+    # Same as staging: repo-root context only; never set Root Directory = control-plane in Dashboard.
     dockerContext: .
     dockerfilePath: ./Dockerfile.control-plane
-    # Start Command: leave unset so image CMD runs migrate then API (self-heal)
     branch: prod
     envVars:
       - key: PORT
