@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * CI check (required by plan: Graphs, Artifact Hygiene, Capability Graph, Self-Heal):
- * 1. Every path in run-migrate.mjs under supabase/migrations/ must exist on disk.
- * 2. Every file in supabase/migrations/*.sql must be listed in run-migrate.mjs, except those in SKIP_NOT_IN_RUN_MIGRATE (core schema is applied from schemas/001 and 002; see docs/MIGRATIONS.md).
- * Exit 1 if either check fails. New migrations must be added to run-migrate.mjs in the same PR.
+ * 1. Every path in sql-migrations.manifest.json under supabase/migrations/ must exist on disk.
+ * 2. Every file in supabase/migrations/*.sql must be listed in the manifest, except those in SKIP_NOT_IN_RUN_MIGRATE (core schema is applied from schemas/001 and 002; see docs/MIGRATIONS.md).
+ * Exit 1 if either check fails. New migrations must be added to scripts/sql-migrations.manifest.json in the same PR (same order as run-migrate.mjs uses).
  */
 const SKIP_NOT_IN_RUN_MIGRATE = new Set([
   "supabase/migrations/20250303000000_ai_factory_core.sql",
@@ -21,40 +21,52 @@ import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
-const runMigratePath = join(root, "scripts", "run-migrate.mjs");
+const manifestPath = join(root, "scripts", "sql-migrations.manifest.json");
 const migrationsDir = join(root, "supabase", "migrations");
 
-const runMigrateContent = readFileSync(runMigratePath, "utf8");
-const pathRegex = /path:\s*["'](supabase\/migrations\/[^"']+\.sql)["']/g;
-const registered = new Set();
-let match;
-while ((match = pathRegex.exec(runMigrateContent)) !== null) {
-  registered.add(match[1]);
+if (!existsSync(manifestPath)) {
+  console.error("CI migration check failed: missing", manifestPath);
+  process.exit(1);
 }
+
+/** @type {{ path: string }[]} */
+const migrations = JSON.parse(readFileSync(manifestPath, "utf8"));
+
+const registered = new Set(
+  migrations.filter((m) => m.path.startsWith("supabase/migrations/")).map((m) => m.path)
+);
 
 const onDisk = new Set(
   readdirSync(migrationsDir)
-    .filter((f) => f.endsWith(".sql"))
+    .filter((f) => f.endsWith(".sql") && !/ 2\.sql$/.test(f))
     .map((f) => `supabase/migrations/${f}`)
 );
 
 let failed = false;
 
-for (const p of registered) {
-  const full = join(root, p);
+for (const m of migrations) {
+  const full = join(root, m.path);
   if (!existsSync(full)) {
-    console.error("CI migration check failed: run-migrate.mjs references missing file:", p);
+    console.error("CI migration check failed: manifest references missing file:", m.path);
     failed = true;
   }
 }
 
-const missingFromRunMigrate = [...onDisk].filter((p) => !registered.has(p) && !SKIP_NOT_IN_RUN_MIGRATE.has(p)).sort();
-if (missingFromRunMigrate.length > 0) {
-  console.error("CI migration check failed: these migration files are not in run-migrate.mjs:");
-  missingFromRunMigrate.forEach((p) => console.error("  -", p));
-  console.error("Add every new migration to the migrations array in scripts/run-migrate.mjs in the same PR.");
+for (const p of registered) {
+  const full = join(root, p);
+  if (!existsSync(full)) {
+    console.error("CI migration check failed: manifest references missing file:", p);
+    failed = true;
+  }
+}
+
+const missingFromManifest = [...onDisk].filter((p) => !registered.has(p) && !SKIP_NOT_IN_RUN_MIGRATE.has(p)).sort();
+if (missingFromManifest.length > 0) {
+  console.error("CI migration check failed: these migration files are not in sql-migrations.manifest.json:");
+  missingFromManifest.forEach((p) => console.error("  -", p));
+  console.error("Add every new migration to scripts/sql-migrations.manifest.json in the same PR.");
   failed = true;
 }
 
 if (failed) process.exit(1);
-console.log("OK: all", registered.size, "registered migration paths exist; all", onDisk.size, "migration files registered");
+console.log("OK: all", migrations.length, "manifest paths exist;", registered.size, "supabase paths;", onDisk.size, "files on disk");

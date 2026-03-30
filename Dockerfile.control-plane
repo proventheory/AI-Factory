@@ -27,6 +27,7 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 # Migrations: run on every Control Plane startup so DB is up to date without manual steps
 COPY --from=builder /app/scripts/run-migrate.mjs ./scripts/
+COPY --from=builder /app/scripts/sql-migrations.manifest.json ./scripts/
 COPY --from=builder /app/schemas ./schemas
 COPY --from=builder /app/supabase ./supabase
 EXPOSE 10000

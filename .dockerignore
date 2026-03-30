@@ -14,6 +14,7 @@ evals
 scripts
 # Control-plane image needs run-migrate.mjs at runtime
 !scripts/run-migrate.mjs
+!scripts/sql-migrations.manifest.json
 *.test.ts
 *.spec.ts
 __tests__

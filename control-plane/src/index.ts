@@ -1,7 +1,7 @@
 import "dotenv/config";
 import * as Sentry from "@sentry/node";
 import path from "path";
-import { pathToFileURL } from "url";
+import { runSqlMigrations } from "./migrations/run-sql-migrations.js";
 
 /** Validate required env before migrations. Exits if DATABASE_URL missing; logs warnings for self-heal config. */
 function validateEnv(): void {
@@ -25,13 +25,9 @@ function getAppRoot(): string {
   return path.join(bundleDir, "..");
 }
 
-/** Run migrations in-process (no second Node) so Render starter-plan memory stays within limit; server already listening for /health. */
+/** Bundled SQL migrations (shared manifest with scripts/run-migrate.mjs). */
 async function runMigrationsOnStartup(): Promise<void> {
-  const appRoot = getAppRoot();
-  const scriptPath = path.join(appRoot, "scripts", "run-migrate.mjs");
-  const href = pathToFileURL(scriptPath).href;
-  const mod = (await import(href)) as { runMigrations: (root: string) => Promise<void> };
-  await mod.runMigrations(appRoot);
+  await runSqlMigrations(getAppRoot());
 }
 
 validateEnv();

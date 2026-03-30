@@ -34,7 +34,7 @@ export async function healthDb(_req: Request, res: Response): Promise<void> {
 export function healthMigrations(_req: Request, res: Response): void {
   res.json({
     status: "ok",
-    message: "Migrations run on Control Plane startup via run-migrate.mjs",
+    message: "Migrations run on Control Plane startup (scripts/sql-migrations.manifest.json)",
     note: "No migration registry table; check startup logs for apply status.",
   });
 }
