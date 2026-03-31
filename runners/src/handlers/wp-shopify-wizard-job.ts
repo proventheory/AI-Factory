@@ -32,6 +32,10 @@ function pdfProgressToWizardPayload(ev: PdfMigrationProgressEvent): Record<strin
   if (ev.event === "init") {
     return { phase: "pdfs", pdfs: { current: 0, total: ev.total }, force: true };
   }
+  if (ev.event === "item" && ev.step === "start") {
+    // So the UI moves while a single PDF is uploading / waiting on Shopify file URL (can be ~2min); complete-only looked “stuck”.
+    return { phase: "pdfs", pdfs: { current: ev.current, total: ev.total }, phase_detail: "uploading" };
+  }
   if (ev.event === "item" && ev.step === "complete") {
     return { phase: "pdfs", pdfs: { current: ev.current, total: ev.total }, force: true };
   }

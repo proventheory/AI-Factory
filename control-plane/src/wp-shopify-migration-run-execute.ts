@@ -294,7 +294,6 @@ export async function executeWizardMigrationRun(opts: {
         onProgress: opts.onBlogProgress,
       });
       const { summary, hint } = blogMigrationSummaryAndHint(result);
-      const hintMerged = [result.hint, hint].filter(Boolean).join(" ");
       by_entity.blogs = {
         summary,
         rows: result.rows,
@@ -302,7 +301,7 @@ export async function executeWizardMigrationRun(opts: {
         shopify_blog_id: result.shopify_blog_id,
         shopify_blog_handle: result.shopify_blog_handle,
         ...(result.wordpress_posts_source ? { wordpress_posts_source: result.wordpress_posts_source } : {}),
-        ...(hintMerged.trim() ? { hint: hintMerged.trim() } : {}),
+        ...(hint?.trim() ? { hint: hint.trim() } : {}),
       };
     } else if (e === "pdfs") {
       if (!opts.shopDomain || !opts.shopAccessToken) {

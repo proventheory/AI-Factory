@@ -240,14 +240,26 @@ function adminArticleUrl(shopDomain: string, blogId: number, articleId: number):
 
 export function blogMigrationSummaryAndHint(result: BlogMigrationResult): { summary: BlogMigrationResult["summary"]; hint?: string } {
   const { created, skipped, failed } = result.summary;
-  let hint: string | undefined;
+  const parts: string[] = [];
+  if (result.hint?.trim()) parts.push(result.hint.trim());
   if (failed > 0) {
-    hint = "Some posts failed—check row errors. Common causes: Shopify content scope, oversized HTML, or invalid handle.";
+    parts.push("Some posts failed—check row errors. Common causes: Shopify content scope, oversized HTML, or invalid handle.");
   }
   if (result.truncated) {
-    hint = (hint ? `${hint} ` : "") + "Batch limit reached; run again to import more (exclusions apply).";
+    parts.push("Batch limit reached; run again to import more (exclusions apply).");
   }
-  return { summary: { created, skipped, failed }, hint };
+  const bh = (result.shopify_blog_handle ?? "").trim();
+  parts.push(
+    bh
+      ? `Find articles in Shopify Admin → Content → Blog posts → open the “${bh}” blog (not the storefront theme editor).`
+      : "Find articles in Shopify Admin → Content → Blog posts and open the blog that received the import.",
+  );
+  if (result.wordpress_posts_source === "public_rest") {
+    parts.push("Only WordPress posts with status “published” were imported (no app password).");
+  } else {
+    parts.push("Drafts in WordPress import as unpublished Shopify articles until you publish them in Admin.");
+  }
+  return { summary: { created, skipped, failed }, hint: parts.join(" ") };
 }
 
 export async function migrateWordPressPostsToShopify(opts: {

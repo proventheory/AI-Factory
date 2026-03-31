@@ -11,6 +11,8 @@ const DEFAULT_DELAY_MS = 500;
 const DEFAULT_MAX_URLS = 2000;
 /** Link-following BFS hits many URLs; uncapped delay × max_urls can exceed an hour. Cap politeness pause during discovery only. */
 const LINK_CRAWL_DELAY_CAP_MS = 120;
+/** Without page-details mode we only need HTTP status; parallel HEAD/GET keeps large sitemap passes from taking 10–20+ minutes. */
+const STATUS_FETCH_CONCURRENCY = 10;
 
 /** Some hosts return 403 to axios’ default User-Agent; use an explicit crawler UA. */
 const CRAWL_HTTP_HEADERS = {
@@ -190,6 +192,30 @@ async function linkCrawlDiscover(
   return { discovered, statusByUrl };
 }
 
+async function fetchUrlHttpStatus(url: string): Promise<number> {
+  try {
+    const res = await axios.head(url, {
+      timeout: 8000,
+      maxRedirects: 3,
+      validateStatus: () => true,
+      headers: CRAWL_HTTP_HEADERS,
+    });
+    return res.status;
+  } catch {
+    try {
+      const res = await axios.get(url, {
+        timeout: 8000,
+        maxRedirects: 3,
+        validateStatus: () => true,
+        headers: CRAWL_HTTP_HEADERS,
+      });
+      return res.status;
+    } catch {
+      return 0;
+    }
+  }
+}
+
 /**
  * Crawl site: sitemap-first, collect URLs, optionally fetch each for status and basic metadata.
  */
@@ -261,6 +287,27 @@ export async function crawlSite(options: CrawlOptions): Promise<{
   const byType: Record<string, number> = {};
   const statusCounts: Record<string, number> = {};
 
+  /** Pre-compute status for fast path (no HTML parse): reuse link-phase GET status, parallel HEAD for the rest. */
+  let precomputedStatus: Map<string, number> | null = null;
+  if (!fetchPageDetails) {
+    precomputedStatus = new Map<string, number>();
+    const needHead: string[] = [];
+    for (const u of uniqueUrls) {
+      if (linkPhaseStatusByUrl?.has(u)) {
+        precomputedStatus.set(u, linkPhaseStatusByUrl.get(u) ?? 0);
+      } else {
+        needHead.push(u);
+      }
+    }
+    for (let i = 0; i < needHead.length; i += STATUS_FETCH_CONCURRENCY) {
+      const chunk = needHead.slice(i, i + STATUS_FETCH_CONCURRENCY);
+      const results = await Promise.all(chunk.map((u) => fetchUrlHttpStatus(u)));
+      for (let j = 0; j < chunk.length; j++) {
+        precomputedStatus.set(chunk[j], results[j]);
+      }
+    }
+  }
+
   for (let i = 0; i < uniqueUrls.length; i++) {
     const url = uniqueUrls[i];
     const path = getPath(url);
@@ -318,31 +365,8 @@ export async function crawlSite(options: CrawlOptions): Promise<{
       if (i < uniqueUrls.length - 1 && crawlDelayMs > 0) {
         await new Promise((r) => setTimeout(r, crawlDelayMs));
       }
-    } else if (linkPhaseStatusByUrl?.has(url)) {
-      status = linkPhaseStatusByUrl.get(url) ?? 0;
-      statusCounts[String(status)] = (statusCounts[String(status)] ?? 0) + 1;
     } else {
-      try {
-        const res = await axios.head(url, {
-          timeout: 8000,
-          maxRedirects: 3,
-          validateStatus: () => true,
-          headers: CRAWL_HTTP_HEADERS,
-        });
-        status = res.status;
-      } catch {
-        try {
-          const res = await axios.get(url, {
-            timeout: 8000,
-            maxRedirects: 3,
-            validateStatus: () => true,
-            headers: CRAWL_HTTP_HEADERS,
-          });
-          status = res.status;
-        } catch {
-          status = 0;
-        }
-      }
+      status = precomputedStatus!.get(url) ?? 0;
       statusCounts[String(status)] = (statusCounts[String(status)] ?? 0) + 1;
     }
 
