@@ -522,7 +522,7 @@ export async function handleWpShopifyWizardJob(
   const brandId = String(payload.brand_id ?? "").trim();
   if (!brandId) throw new Error("wizard job payload missing brand_id");
 
-  try {
+  const runWizardHandlerBody = async (): Promise<void> => {
     const kind = String(payload.kind ?? "");
 
     // source_crawl is executed via executeWpShopifySourceCrawlJob (no DB transaction across crawl — avoids idle-in-transaction timeouts).
@@ -642,16 +642,19 @@ export async function handleWpShopifyWizardJob(
     throw new Error(
       `Wizard job kind "${kind}" must run via detached pool entrypoint (migration_run / pdf_import / pdf_resolve) — check runner index dispatch.`,
     );
-  } finally {
-    try {
-      await stripWizardJobPayloadFromInitiative(client, initiativeId, params.planNodeId, params.runId);
-    } catch (stripErr) {
-      // Do not fail the job after a successful crawl/write: same-tx rollback would drop the artifact.
-      console.error(
-        "[wp_shopify_wizard_job] stripWizardJobPayloadFromInitiative failed (goal_metadata may retain this run key):",
-        stripErr instanceof Error ? stripErr.message : stripErr,
-      );
-    }
+  };
+
+  await runWizardHandlerBody();
+
+  // Strip only after success. Stripping in `finally` removed payload on every failure (e.g. mis-dispatched
+  // source_crawl or transient errors), so retries saw "No wizard job payload" and runs looked permanently broken.
+  try {
+    await stripWizardJobPayloadFromInitiative(client, initiativeId, params.planNodeId, params.runId);
+  } catch (stripErr) {
+    console.error(
+      "[wp_shopify_wizard_job] stripWizardJobPayloadFromInitiative failed (goal_metadata may retain this run key):",
+      stripErr instanceof Error ? stripErr.message : stripErr,
+    );
   }
 }
 

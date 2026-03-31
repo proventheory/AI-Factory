@@ -1463,7 +1463,7 @@ export async function wpShopifyMigrationCrawl(
   return meta as unknown as WpShopifyMigrationCrawlResult;
 }
 
-/** WP → Shopify migration wizard — Step 2: Google Search Console report (pipeline → `wp_shopify_seo_gsc_report`). */
+/** WP → Shopify migration wizard — Step 2: Google Search Console report via control plane (no pipeline run; avoids noisy failed runs when the UI already got data). */
 export type SeoGscReportParams = {
   brand_id: string;
   site_url: string;
@@ -1481,21 +1481,8 @@ export type SeoGscReport = {
   error?: string;
 };
 
-export async function seoGscReport(params: SeoGscReportParams, pollOpts?: WpShopifyPipelinePollOptions): Promise<SeoGscReport> {
-  const enq = await tryPostWizardJob({
-    kind: "seo_gsc_report",
-    brand_id: params.brand_id,
-    site_url: params.site_url,
-    date_range: params.date_range ?? "last28days",
-    row_limit: params.row_limit ?? 500,
-    ...(params.environment ? { environment: params.environment } : {}),
-  });
-  if (enq) {
-    pollOpts?.onRunEnqueued?.(enq.run_id);
-    const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_gsc_report", pollOpts);
-    return meta as unknown as SeoGscReport;
-  }
-  const res = await fetch(`${controlPlaneApiBase()}/v1/seo/gsc_report`, {
+export async function seoGscReport(params: SeoGscReportParams, _pollOpts?: WpShopifyPipelinePollOptions): Promise<SeoGscReport> {
+  const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/seo/gsc_report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1504,12 +1491,23 @@ export async function seoGscReport(params: SeoGscReportParams, pollOpts?: WpShop
       row_limit: params.row_limit ?? 500,
       brand_id: params.brand_id,
     }),
+    timeoutMs: 120_000,
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(text || `GSC report: invalid response (${res.status})`);
+  }
+  if (!res.ok) {
+    const err = (data as { error?: string })?.error;
+    throw new Error(err || text || `GSC report failed (${res.status})`);
+  }
+  return data as SeoGscReport;
 }
 
-/** WP → Shopify migration wizard — Step 2: GA4 report. With brand_id uses pipeline (`wp_shopify_seo_ga4_report`); with property_id only, calls control plane directly (no initiative run). */
+/** WP → Shopify migration wizard — Step 2: GA4 report. With brand_id: control plane only (no pipeline run). With property_id only: same direct API (no initiative). */
 export type SeoGa4ReportParams = { property_id?: string; row_limit?: number; brand_id?: string; environment?: string };
 export type SeoGa4Report = {
   property_id: string;
@@ -1527,29 +1525,25 @@ export type SeoGa4Report = {
   error?: string;
 };
 
-export async function seoGa4Report(params: SeoGa4ReportParams, pollOpts?: WpShopifyPipelinePollOptions): Promise<SeoGa4Report> {
-  const brandId = params.brand_id?.trim();
-  if (brandId) {
-    const enq = await tryPostWizardJob({
-      kind: "seo_ga4_report",
-      brand_id: brandId,
-      row_limit: params.row_limit ?? 500,
-      ...(params.property_id?.trim() ? { property_id: params.property_id.trim() } : {}),
-      ...(params.environment ? { environment: params.environment } : {}),
-    });
-    if (enq) {
-      pollOpts?.onRunEnqueued?.(enq.run_id);
-      const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_seo_ga4_report", pollOpts);
-      return meta as unknown as SeoGa4Report;
-    }
-  }
-  const res = await fetch(`${controlPlaneApiBase()}/v1/seo/ga4_report`, {
+export async function seoGa4Report(params: SeoGa4ReportParams, _pollOpts?: WpShopifyPipelinePollOptions): Promise<SeoGa4Report> {
+  const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/seo/ga4_report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
+    timeoutMs: 120_000,
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(text || `GA4 report: invalid response (${res.status})`);
+  }
+  if (!res.ok) {
+    const err = (data as { error?: string })?.error;
+    throw new Error(err || text || `GA4 report failed (${res.status})`);
+  }
+  return data as SeoGa4Report;
 }
 
 /** WP → Shopify migration wizard — Keyword Planner: monthly search volume (pipeline → `wp_shopify_seo_keyword_volume`). */
