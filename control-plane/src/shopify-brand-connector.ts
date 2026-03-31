@@ -7,10 +7,16 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
 import type { PoolClient } from "pg";
 
-/** 32-byte key from env (hex or raw). */
+/** 32-byte key from env (hex or raw). Matches Woo: either connector env, same secret if one key for both. */
 function getEncryptionKey(): Buffer {
-  const raw = process.env.SHOPIFY_CONNECTOR_ENCRYPTION_KEY;
-  if (!raw) throw new Error("SHOPIFY_CONNECTOR_ENCRYPTION_KEY is required to store client secrets");
+  const raw =
+    process.env.SHOPIFY_CONNECTOR_ENCRYPTION_KEY?.trim() ||
+    process.env.WOO_COMMERCE_CONNECTOR_ENCRYPTION_KEY?.trim();
+  if (!raw) {
+    throw new Error(
+      "SHOPIFY_CONNECTOR_ENCRYPTION_KEY (or WOO_COMMERCE_CONNECTOR_ENCRYPTION_KEY with the same secret) is required to encrypt or decrypt Shopify credentials for brands — set on the API and on job runners that read tokens.",
+    );
+  }
   if (raw.length === 64 && /^[0-9a-fA-F]+$/.test(raw)) return Buffer.from(raw, "hex");
   if (raw.length >= 32) return Buffer.from(raw.slice(0, 32), "utf8");
   return Buffer.from(scryptSync(raw, "shopify-brand-connector-salt", 32));
