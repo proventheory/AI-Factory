@@ -105,12 +105,18 @@ export interface IngestResult {
   message: string;
 }
 
+export type IngestRunLogsOneOffOptions = {
+  /** When true, extend the log window through "now" so long-running jobs still fetch recent Render lines (updated_at may lag). */
+  runStillActive?: boolean;
+};
+
 /**
  * One-off ingest: fetch Render runner logs for the run's time window and insert lines that mention this run_id.
  */
 export async function ingestRunLogsOneOff(
   runId: string,
-  runRow: { created_at: Date; updated_at: Date }
+  runRow: { created_at: Date; updated_at: Date },
+  options?: IngestRunLogsOneOffOptions
 ): Promise<IngestResult> {
   const apiKey = process.env.RENDER_API_KEY?.trim();
   if (!apiKey) return { ingested: 0, message: "RENDER_API_KEY not set" };
@@ -120,14 +126,16 @@ export async function ingestRunLogsOneOff(
 
   const start = new Date(runRow.created_at);
   start.setSeconds(start.getSeconds() - 10);
-  const end = new Date(runRow.updated_at);
+  const end = options?.runStillActive ? new Date() : new Date(runRow.updated_at);
   end.setSeconds(end.getSeconds() + 60);
   const startTime = start.toISOString();
   const endTime = end.toISOString();
 
+  const lineLimit = options?.runStillActive ? 300 : 200;
+
   let lines: { timestamp: string; message: string; level?: string }[];
   try {
-    lines = await fetchRenderLogs(apiKey, workerId, startTime, endTime, 200);
+    lines = await fetchRenderLogs(apiKey, workerId, startTime, endTime, lineLimit);
   } catch (e) {
     return { ingested: 0, message: `Render logs fetch failed: ${(e as Error).message}` };
   }

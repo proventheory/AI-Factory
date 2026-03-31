@@ -158,6 +158,7 @@ export default function RunDetailPage() {
   const [logEntriesTotal, setLogEntriesTotal] = useState(0);
   const [logsLoading, setLogsLoading] = useState(false);
   const [ingestBusy, setIngestBusy] = useState(false);
+  const [ingestMessage, setIngestMessage] = useState<string | null>(null);
   const [llmCalls, setLlmCalls] = useState<LlmCallRow[]>([]);
   const [auditItems, setAuditItems] = useState<AuditRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -206,9 +207,10 @@ export default function RunDetailPage() {
       .catch(() => setValidations([]));
   }, [id, activeTab]);
 
-  const fetchLogEntries = useCallback(() => {
+  const fetchLogEntries = useCallback((opts?: { silent?: boolean }) => {
     if (!id) return;
-    setLogsLoading(true);
+    const silent = opts?.silent === true;
+    if (!silent) setLogsLoading(true);
     fetch(`${controlPlaneApiBase()}/v1/runs/${id}/log_entries?limit=200&order=desc`)
       .then((r) => {
         if (r.status === 503) return r.json().then((j: { error?: string }) => { throw new Error(j.error ?? "Log mirror not enabled"); });
@@ -219,8 +221,15 @@ export default function RunDetailPage() {
         setLogEntries(d.items ?? []);
         setLogEntriesTotal(typeof d.total === "number" ? d.total : (d.items ?? []).length);
       })
-      .catch(() => { setLogEntries([]); setLogEntriesTotal(0); })
-      .finally(() => setLogsLoading(false));
+      .catch(() => {
+        if (!silent) {
+          setLogEntries([]);
+          setLogEntriesTotal(0);
+        }
+      })
+      .finally(() => {
+        if (!silent) setLogsLoading(false);
+      });
   }, [id]);
 
   useEffect(() => {
@@ -228,15 +237,46 @@ export default function RunDetailPage() {
     fetchLogEntries();
   }, [id, activeTab, fetchLogEntries]);
 
+  /** Live tail: poll DB-backed log entries; while run is active, periodically pull from Render into DB. */
+  useEffect(() => {
+    if (!id || activeTab !== "logs") return;
+    const status = String((data?.run as { status?: string } | undefined)?.status ?? "");
+    const runStillGoing = status === "running" || status === "queued";
+
+    const pollDb = setInterval(() => fetchLogEntries({ silent: true }), 5_000);
+
+    const pullRender = () => {
+      fetch(`${controlPlaneApiBase()}/v1/runs/${id}/ingest_logs`, { method: "POST" })
+        .then((r) => r.json().catch(() => ({})))
+        .then(() => fetchLogEntries({ silent: true }))
+        .catch(() => {});
+    };
+
+    let ingestIv: ReturnType<typeof setInterval> | undefined;
+    if (runStillGoing) {
+      pullRender();
+      ingestIv = setInterval(pullRender, 45_000);
+    }
+
+    return () => {
+      clearInterval(pollDb);
+      if (ingestIv) clearInterval(ingestIv);
+    };
+  }, [id, activeTab, data?.run, fetchLogEntries]);
+
   async function handleIngestLogs() {
     if (!id) return;
     setIngestBusy(true);
+    setIngestMessage(null);
     try {
       const r = await fetch(`${controlPlaneApiBase()}/v1/runs/${id}/ingest_logs`, { method: "POST" });
-      const j = await r.json().catch(() => ({}));
-      if (r.status === 503) throw new Error((j as { error?: string }).error ?? "Log mirror not enabled");
-      if (!r.ok) throw new Error((j as { error?: string }).error ?? "Ingest failed");
+      const j = (await r.json().catch(() => ({}))) as { error?: string; message?: string };
+      if (r.status === 503) throw new Error(j.error ?? "Log mirror not enabled");
+      if (!r.ok) throw new Error(j.error ?? "Ingest failed");
+      if (typeof j.message === "string") setIngestMessage(j.message);
       fetchLogEntries();
+    } catch (e) {
+      setIngestMessage(e instanceof Error ? e.message : String(e));
     } finally {
       setIngestBusy(false);
     }
@@ -598,14 +638,22 @@ export default function RunDetailPage() {
           <TabsContent value="logs" className="pt-4">
             <CardSection title="Run logs">
               <p className="text-sm text-slate-500 mb-2">
-                Runner (and optionally API) log lines for this run. If the run is recent and the list is empty, click <strong>Refresh logs</strong> to trigger a one-off ingest from Render.
+                Runner log lines mirrored into the database for this run (lines must include this run&apos;s id for Render ingest).{" "}
+                <strong>Live:</strong> this tab refetches entries every 5s. While status is <strong>running</strong> or <strong>queued</strong>, we also call Render ingest about every 45s (requires{" "}
+                <code className="bg-surface-sunken px-1 rounded text-xs">RENDER_API_KEY</code> on the Control Plane). For background ingest on all recent runs, set{" "}
+                <code className="bg-surface-sunken px-1 rounded text-xs">ENABLE_RENDER_LOG_INGEST=true</code> on the Control Plane.
               </p>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Button variant="secondary" size="sm" onClick={handleIngestLogs} disabled={ingestBusy || logsLoading}>
                   {ingestBusy ? "Ingesting…" : "Refresh logs"}
                 </Button>
                 {logEntriesTotal > 0 && <span className="text-sm text-slate-500">{logEntriesTotal} line(s)</span>}
               </div>
+              {ingestMessage && (
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-2" role="status">
+                  {ingestMessage}
+                </p>
+              )}
               {logsLoading ? (
                 <LoadingSkeleton className="h-[300px] w-full rounded-lg" />
               ) : logEntries.length === 0 ? (

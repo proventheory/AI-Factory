@@ -184,13 +184,16 @@ export async function getLogEntries(req: Request, res: Response): Promise<void> 
 export async function ingestLogs(req: Request, res: Response): Promise<void> {
   try {
     const runId = String(req.params.id ?? "");
-    const runRow = await pool.query("SELECT id, created_at, updated_at FROM runs WHERE id = $1", [runId]);
+    const runRow = await pool.query("SELECT id, created_at, updated_at, status FROM runs WHERE id = $1", [runId]);
     if (runRow.rows.length === 0) {
       res.status(404).json({ error: "Run not found" });
       return;
     }
+    const row = runRow.rows[0] as { created_at: Date; updated_at: Date; status?: string };
+    const st = String(row.status ?? "");
+    const runStillActive = st === "running" || st === "queued";
     const { ingestRunLogsOneOff } = await import("../../render-log-ingest.js");
-    const result = await ingestRunLogsOneOff(runId, runRow.rows[0] as { created_at: Date; updated_at: Date });
+    const result = await ingestRunLogsOneOff(runId, { created_at: row.created_at, updated_at: row.updated_at }, { runStillActive });
     res.status(200).json({ ok: true, ingested: result.ingested, message: result.message });
   } catch (e: unknown) {
     const err = e as { code?: string; message?: string };
