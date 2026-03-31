@@ -1906,6 +1906,8 @@ export type WpShopifyMigrationMigratePdfsParams = WpShopifyMigrationWooRestParam
   wp_username?: string;
   wp_application_password?: string;
   excluded_ids?: string[];
+  /** When set, import these WordPress media IDs in preview order (matches step-3 in-scope PDFs). */
+  wordpress_ids?: string[];
   create_redirects?: boolean;
   max_files?: number;
   /** Match recent Shopify Files by filename and skip fileCreate when found. */

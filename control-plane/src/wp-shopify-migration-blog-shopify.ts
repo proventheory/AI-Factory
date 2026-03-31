@@ -44,13 +44,14 @@ function shopHost(shopDomain: string): string {
   return shopDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "");
 }
 
-async function shopifyRestJson<T>(
+/** Low-level Admin REST call; includes Link header for cursor pagination (Shopify no longer accepts `page` on many resources). */
+async function shopifyAdminJson<T>(
   shopDomain: string,
   accessToken: string,
   method: string,
   path: string,
   body?: unknown,
-): Promise<{ ok: boolean; status: number; data: T | null; text: string }> {
+): Promise<{ ok: boolean; status: number; data: T | null; text: string; link: string | null }> {
   const shop = shopHost(shopDomain);
   const url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}${path.startsWith("/") ? path : `/${path}`}`;
   const res = await fetch(url, {
@@ -69,7 +70,37 @@ async function shopifyRestJson<T>(
   } catch {
     data = null;
   }
-  return { ok: res.ok, status: res.status, data, text };
+  return { ok: res.ok, status: res.status, data, text, link: res.headers.get("link") };
+}
+
+async function shopifyRestJson<T>(
+  shopDomain: string,
+  accessToken: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ ok: boolean; status: number; data: T | null; text: string }> {
+  const r = await shopifyAdminJson<T>(shopDomain, accessToken, method, path, body);
+  return { ok: r.ok, status: r.status, data: r.data, text: r.text };
+}
+
+/** Next path+query for GET pagination, from Shopify's Link: ...; rel="next" header. */
+function shopifyRestNextPathFromLink(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  for (const part of linkHeader.split(",")) {
+    const m = part.trim().match(/<([^>]+)>;\s*rel="next"/i) ?? part.trim().match(/<([^>]+)>;\s*rel=next(?:\s|,|$)/i);
+    if (!m) continue;
+    try {
+      const u = new URL(m[1]);
+      const marker = `/admin/api/${SHOPIFY_API_VERSION}`;
+      const idx = u.pathname.indexOf(marker);
+      if (idx < 0) continue;
+      return u.pathname.slice(idx + marker.length) + u.search;
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 type ShopifyBlogRow = { id: number; handle?: string };
@@ -125,14 +156,13 @@ async function findShopifyArticleIdByHandle(
 ): Promise<number | null> {
   const want = handle.trim().toLowerCase();
   if (!want) return null;
-  let page = 1;
-  const limit = 100;
-  for (; page <= 50; page++) {
-    const { ok, data, text, status } = await shopifyRestJson<{ articles?: { id: number; handle?: string }[] }>(
+  let path = `/blogs/${blogId}/articles.json?limit=100&fields=id,handle`;
+  for (let step = 0; step < 1000; step++) {
+    const { ok, data, text, status, link } = await shopifyAdminJson<{ articles?: { id: number; handle?: string }[] }>(
       shopDomain,
       accessToken,
       "GET",
-      `/blogs/${blogId}/articles.json?limit=${limit}&page=${page}&fields=id,handle`,
+      path,
     );
     if (!ok) {
       throw new Error(`Shopify list articles ${status}: ${text.slice(0, 200)}`);
@@ -141,7 +171,9 @@ async function findShopifyArticleIdByHandle(
     for (const a of list) {
       if (String(a.handle ?? "").trim().toLowerCase() === want) return a.id;
     }
-    if (list.length < limit) break;
+    const next = shopifyRestNextPathFromLink(link);
+    if (!next) return null;
+    path = next;
   }
   return null;
 }

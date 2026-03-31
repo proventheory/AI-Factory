@@ -266,7 +266,7 @@ export async function executeWpShopifyMigrationRunJob(
     }
 
     const maxRaw = Number(payload.max_files);
-    const maxPdfFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
+    const maxPdfFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 2000;
     const targetStoreUrl = typeof payload.target_store_url === "string" ? payload.target_store_url.trim() : "";
     const shopifyBlogHandle = typeof payload.shopify_blog_handle === "string" ? payload.shopify_blog_handle.trim() : "";
 
@@ -383,7 +383,10 @@ export async function executeWpShopifyPdfImportJob(pool: Pool, context: JobConte
       Array.isArray(payload.excluded_ids) ? (payload.excluded_ids as unknown[]).map((x) => String(x)) : [],
     );
     const maxRaw = Number(payload.max_files);
-    const maxFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
+    const maxFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 2000;
+    const wpIds = Array.isArray(payload.wordpress_ids)
+      ? (payload.wordpress_ids as unknown[]).map((x) => String(x).trim()).filter(Boolean)
+      : [];
     const createRedirects = payload.create_redirects !== false;
     const result = await migrateWordPressPdfsToShopify({
       wpOrigin: server,
@@ -394,6 +397,7 @@ export async function executeWpShopifyPdfImportJob(pool: Pool, context: JobConte
       maxFiles,
       createRedirects,
       skipIfExistsInShopify: payload.skip_if_exists_in_shopify === true,
+      ...(wpIds.length ? { wordpressIdsInOrder: wpIds } : {}),
       onProgress: (ev) => {
         const pl = pdfProgressToWizardPayload(ev);
         if (pl) void reportWizardProgress(pl);

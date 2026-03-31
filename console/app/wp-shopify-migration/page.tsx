@@ -1522,7 +1522,7 @@ export default function WpShopifyMigrationWizardPage() {
           brand_id: brandId,
           entities: Array.from(migrationEntities),
           excluded_ids_by_entity: migrationExcludedIds,
-          max_files: 500,
+          max_files: 2000,
           create_redirects: pdfImportCreateRedirects,
           skip_if_exists_in_shopify: pdfImportSkipIfExists,
           environment: pipelineEnvironment,
@@ -1623,15 +1623,42 @@ export default function WpShopifyMigrationWizardPage() {
     setPdfImportProgress(null);
     setPdfActivePipelineRunId(null);
     try {
+      setPdfImportProgress({ current: 0, total: 1, phase: "Loading PDF IDs from WordPress (step 3 preview)…" });
+      const excluded = new Set(migrationExcludedIds.pdfs ?? []);
+      const pdfIdsForImport: string[] = [];
+      const perPage = 100;
+      const maxPages = 25;
+      let p = 1;
+      for (;;) {
+        const r = await api.wpShopifyMigrationPreviewItems({
+          ...wooApiBase(),
+          brand_id: brandId,
+          entity: "pdfs",
+          page: p,
+          per_page: perPage,
+          environment: pipelineEnvironment,
+          ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+            ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+            : {}),
+        });
+        for (const it of r.items) {
+          if (!excluded.has(it.id)) pdfIdsForImport.push(it.id);
+        }
+        const totalPages = Math.max(1, Math.ceil(r.total / r.per_page));
+        if (p >= totalPages || p >= maxPages) break;
+        p += 1;
+      }
       setPdfImportProgress({ current: 0, total: 1, phase: "Enqueueing pipeline job…" });
       const result = await api.wpShopifyMigrationMigratePdfs(
         {
           ...wooApiBase(),
           brand_id: brandId,
           excluded_ids: migrationExcludedIds.pdfs ?? [],
+          max_files: 2000,
           create_redirects: pdfImportCreateRedirects,
           skip_if_exists_in_shopify: pdfImportSkipIfExists,
           environment: pipelineEnvironment,
+          ...(pdfIdsForImport.length > 0 ? { wordpress_ids: pdfIdsForImport } : {}),
           ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
             ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
             : {}),
@@ -2595,6 +2622,17 @@ export default function WpShopifyMigrationWizardPage() {
                         </Button>
                       )}
                     </div>
+                    {pdfImportFetchUrlsTargetCount === 0 &&
+                    !pdfImportLoading &&
+                    !pdfResolveLoading &&
+                    shopifyCredentialsOk &&
+                    wooCredentialsOk && (
+                      <p className="mt-2 text-body-small text-fg-muted">
+                        <strong className="text-fg">Fetch URLs</strong> is disabled: there are no PDF rows without a URL in the table and no
+                        step-3 dry-run PDF count in this session. Re-run the dry run in step 3, or run an import so rows appear, then try
+                        again.
+                      </p>
+                    )}
                     {pdfImportError && (
                       <p className="mt-2 text-body-small text-state-danger">{pdfImportError}</p>
                     )}
@@ -2605,7 +2643,8 @@ export default function WpShopifyMigrationWizardPage() {
                     )}
                     {pdfImportResult?.summary && (
                       <p className="mt-1 text-body-small text-fg-muted">
-                        Last run summary: <strong className="text-fg">{pdfImportResult.summary.failed}</strong> failed
+                        Last run summary: <strong className="text-fg">{pdfImportResult.summary.uploaded ?? 0}</strong> with Shopify file
+                        URL, <strong className="text-fg">{pdfImportResult.summary.failed}</strong> failed
                         {pdfImportResult.summary.warnings != null && pdfImportResult.summary.warnings > 0 ? (
                           <>
                             , <strong className="text-fg">{pdfImportResult.summary.warnings}</strong> with warnings
@@ -2617,7 +2656,9 @@ export default function WpShopifyMigrationWizardPage() {
                           </>
                         ) : (
                           "."
-                        )}
+                        )}{" "}
+                        Compare <strong className="text-fg">In scope</strong> vs <strong className="text-fg">Shopify URL</strong> above if counts
+                        do not match.
                       </p>
                     )}
                     {pdfImportResult?.hint && <p className="mt-1 text-body-small text-fg-muted">{pdfImportResult.hint}</p>}

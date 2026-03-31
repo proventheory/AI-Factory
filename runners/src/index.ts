@@ -117,8 +117,9 @@ async function pollAndExecute(): Promise<void> {
   if (activeJobs >= config.maxConcurrency) return;
 
   let claimed: Awaited<ReturnType<typeof claimJob>> = null;
-  const client = await pool.connect();
+  let client: pg.PoolClient | undefined;
   try {
+    client = await withSessionPoolerRetry("poll claim", () => pool.connect());
     await client.query("BEGIN");
     claimed = await claimJob(client, config.workerId);
     // #region agent log (one-off debug: set DEBUG_ARTIFACTS_HYPOTHESES=1, see docs/DEBUG_ARTIFACTS_HYPOTHESES.md)
@@ -136,11 +137,11 @@ async function pollAndExecute(): Promise<void> {
     }
     await client.query("COMMIT");
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    await client?.query("ROLLBACK").catch(() => {});
     console.error("[runner] Poll error:", err);
     return;
   } finally {
-    client.release();
+    client?.release();
   }
 
   // From here we no longer hold the claim connection, so the pool can serve other polls and jobs
@@ -520,33 +521,39 @@ async function main(): Promise<void> {
   setInterval(async () => {
     if (evolutionBusy) return;
     evolutionBusy = true;
-    const client = await pool.connect();
+    let client: pg.PoolClient | undefined;
     try {
-      await client.query("BEGIN");
-      const claimed = await claimExperimentRun(client, config.workerId);
-      if (!claimed) {
-        await client.query("ROLLBACK");
-        return;
-      }
-      await client.query("COMMIT");
+      client = await pool.connect();
       try {
         await client.query("BEGIN");
-        await runEvolutionReplay(client, { experiment_run_id: claimed.id });
+        const claimed = await claimExperimentRun(client, config.workerId);
+        if (!claimed) {
+          await client.query("ROLLBACK");
+          return;
+        }
         await client.query("COMMIT");
-        console.log("[runner] Evolution replay completed", { experiment_run_id: claimed.id });
+        try {
+          await client.query("BEGIN");
+          await runEvolutionReplay(client, { experiment_run_id: claimed.id });
+          await client.query("COMMIT");
+          console.log("[runner] Evolution replay completed", { experiment_run_id: claimed.id });
+        } catch (err) {
+          await client.query("ROLLBACK").catch(() => {});
+          await pool.query(
+            `UPDATE experiment_runs SET status = 'failed', ended_at = now(), notes = $1 WHERE id = $2`,
+            [String((err as Error).message).slice(0, 1000), claimed.id]
+          );
+          console.error("[runner] Evolution replay failed:", err);
+        }
       } catch (err) {
         await client.query("ROLLBACK").catch(() => {});
-        await pool.query(
-          `UPDATE experiment_runs SET status = 'failed', ended_at = now(), notes = $1 WHERE id = $2`,
-          [String((err as Error).message).slice(0, 1000), claimed.id]
-        );
-        console.error("[runner] Evolution replay failed:", err);
+        console.error("[runner] Evolution claim error:", err);
+      } finally {
+        client.release();
       }
     } catch (err) {
-      await client.query("ROLLBACK").catch(() => {});
-      console.error("[runner] Evolution claim error:", err);
+      console.error("[runner] Evolution poll DB error (connect or release):", err);
     } finally {
-      client.release();
       evolutionBusy = false;
     }
   }, EVOLUTION_POLL_INTERVAL_MS);

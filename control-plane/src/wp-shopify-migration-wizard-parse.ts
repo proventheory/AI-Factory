@@ -109,7 +109,7 @@ export function parseWizardJobPayload(body: Record<string, unknown>): WpShopifyW
         }
       }
       const maxRaw = Number(body.max_files);
-      const max_files = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
+      const max_files = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 2000;
       const out: WpShopifyWizardJobPayload = {
         kind,
         brand_id,
@@ -181,7 +181,11 @@ export function parseWizardJobPayload(body: Record<string, unknown>): WpShopifyW
     }
     case "pdf_import": {
       const maxRaw = Number(body.max_files);
-      const max_files = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
+      const max_files = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 2000;
+      const wordpress_ids = Array.isArray(body.wordpress_ids) ? body.wordpress_ids.map((x) => String(x)) : undefined;
+      if (wordpress_ids && wordpress_ids.length > 2000) {
+        throw new Error("At most 2000 wordpress_ids for pdf_import");
+      }
       const out: WpShopifyWizardJobPayload = {
         kind,
         brand_id,
@@ -189,6 +193,7 @@ export function parseWizardJobPayload(body: Record<string, unknown>): WpShopifyW
         create_redirects: body.create_redirects !== false,
         skip_if_exists_in_shopify: body.skip_if_exists_in_shopify === true,
         max_files,
+        ...(wordpress_ids?.length ? { wordpress_ids } : {}),
       };
       if (body.wp_username != null && String(body.wp_username).trim() && body.wp_application_password != null && String(body.wp_application_password).trim()) {
         out.wp_username = String(body.wp_username).trim();

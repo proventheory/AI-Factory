@@ -299,7 +299,7 @@ export function pdfMigrationSummaryAndHint(result: PdfMigrationResult): {
   return {
     summary: { uploaded, failed, warnings, truncated: result.truncated },
     hint:
-      "Ensure the Shopify custom app includes the write_files scope. Shopify may return file status UPLOADED before the CDN URL exists; the server waits (polls) until the URL is ready. Use “Fetch URLs from Shopify” (no upload) for rows that uploaded but had no URL yet, or enable skip-if-exists before import to link existing Shopify files without fileCreate. For automatic URL redirects from old paths, add online store navigation redirect permissions (e.g. write_online_store_navigation). You can import redirect_csv in Shopify Admin if redirects were not created via API. If this run was truncated, open PDFs → Details and exclude WordPress media IDs that already uploaded, then run again.",
+      "When the console sends wordpress_ids (step-3 PDF preview), the runner imports that exact ordered list so row counts align with in-scope attachments (still capped at max_files, default 2000). Uploaded in summary = rows with a Shopify file URL. If counts still differ, check reconciliation cards, Truncated, exclusions, or re-run after a worker restart. Ensure the Shopify custom app includes the write_files scope. Shopify may return file status UPLOADED before the CDN URL exists; the server waits (polls) until the URL is ready. Use “Fetch URLs from Shopify” (no upload) for rows that uploaded but had no URL yet, or enable skip-if-exists before import to link existing Shopify files without fileCreate. For automatic URL redirects from old paths, add online store navigation redirect permissions (e.g. write_online_store_navigation). You can import redirect_csv in Shopify Admin if redirects were not created via API. If this run was truncated, open PDFs → Details and exclude WordPress media IDs that already uploaded, then run again.",
   };
 }
 
@@ -723,6 +723,7 @@ async function fetchPdfBuffer(sourceUrl: string, wpAuthHeader: string | null): P
 
 /**
  * Upload selected PDFs from WordPress media library to Shopify Files; optionally add URL redirects on the Shopify store.
+ * When `wordpressIdsInOrder` is set, only those attachment IDs are processed in that order (same list as step-3 PDF preview / in-scope).
  */
 export async function migrateWordPressPdfsToShopify(opts: {
   wpOrigin: string;
@@ -735,6 +736,8 @@ export async function migrateWordPressPdfsToShopify(opts: {
   /** If true, index recent Shopify Files and skip upload when a matching PDF already exists. */
   skipIfExistsInShopify?: boolean;
   onProgress?: (e: PdfMigrationProgressEvent) => void;
+  /** WordPress media IDs to import (after exclusions), in preview order — matches dry-run in-scope PDFs. */
+  wordpressIdsInOrder?: string[];
 }): Promise<PdfMigrationResult> {
   const {
     wpOrigin,
@@ -746,13 +749,313 @@ export async function migrateWordPressPdfsToShopify(opts: {
     createRedirects,
     skipIfExistsInShopify = false,
     onProgress,
+    wordpressIdsInOrder,
   } = opts;
-  const perPage = 50;
-  let page = 1;
-  let totalPages = 1;
+
   const rows: PdfMigrationRowResult[] = [];
   const csvLines: string[] = ["Redirect from,Redirect to"];
   let truncated = false;
+
+  const shopifyPdfIndex = skipIfExistsInShopify
+    ? await buildShopifyPdfBasenameIndex(shopDomain, accessToken, 100)
+    : null;
+
+  async function ingestWordPressPdfAttachment(
+    raw: WpMediaRow,
+    processed: number,
+    progressTotal: number,
+  ): Promise<void> {
+    const id = String(raw.id);
+    const sourceUrl = typeof raw.source_url === "string" ? raw.source_url : "";
+    const titleRendered =
+      typeof raw.title?.rendered === "string"
+        ? raw.title.rendered.replace(/<[^>]+>/g, "").trim()
+        : "";
+    const slug = typeof raw.slug === "string" ? raw.slug : "";
+    const title = titleRendered || slug || `attachment-${id}`;
+
+    if (!sourceUrl) {
+      rows.push({ wordpress_id: id, title, source_url: "", error: "Missing source_url from WordPress" });
+      onProgress?.({
+        event: "item",
+        current: processed,
+        total: progressTotal,
+        wordpress_id: id,
+        title,
+        step: "complete",
+        error: "Missing source_url from WordPress",
+      });
+      return;
+    }
+
+    const filename = basenameFromSourceUrl(sourceUrl, slug || title || id);
+
+    onProgress?.({
+      event: "item",
+      current: processed,
+      total: progressTotal,
+      wordpress_id: id,
+      title,
+      step: "start",
+    });
+
+    try {
+      if (shopifyPdfIndex) {
+        const hit = lookupShopifyPdfInIndex(shopifyPdfIndex, filename);
+        if (hit) {
+          try {
+            const shopifyUrl = await resolveUrlFromIndexEntry(shopDomain, accessToken, hit);
+            const redirectPath = redirectPathFromWordPressUrl(sourceUrl);
+            let redirectCreated = false;
+            if (createRedirects && redirectPath) {
+              try {
+                await createShopifyUrlRedirect(shopDomain, accessToken, redirectPath, shopifyUrl);
+                redirectCreated = true;
+              } catch (re) {
+                rows.push({
+                  wordpress_id: id,
+                  title,
+                  source_url: sourceUrl,
+                  shopify_file_url: shopifyUrl,
+                  redirect_path: redirectPath,
+                  redirect_created: false,
+                  note: "Matched existing Shopify file (no upload)",
+                  error: `URL linked; redirect failed: ${(re as Error).message}`,
+                });
+                csvLines.push(`"${redirectPath.replace(/"/g, '""')}","${shopifyUrl.replace(/"/g, '""')}"`);
+                onProgress?.({
+                  event: "item",
+                  current: processed,
+                  total: progressTotal,
+                  wordpress_id: id,
+                  title,
+                  step: "complete",
+                  shopify_file_url: shopifyUrl,
+                  error: `URL linked; redirect failed: ${(re as Error).message}`,
+                });
+                return;
+              }
+            }
+            if (createRedirects && redirectPath) {
+              csvLines.push(`"${redirectPath.replace(/"/g, '""')}","${shopifyUrl.replace(/"/g, '""')}"`);
+            }
+            rows.push({
+              wordpress_id: id,
+              title,
+              source_url: sourceUrl,
+              shopify_file_url: shopifyUrl,
+              redirect_path: redirectPath ?? undefined,
+              redirect_created: redirectCreated,
+              note: "Matched existing Shopify file (no upload)",
+            });
+            onProgress?.({
+              event: "item",
+              current: processed,
+              total: progressTotal,
+              wordpress_id: id,
+              title,
+              step: "complete",
+              shopify_file_url: shopifyUrl,
+            });
+            return;
+          } catch {
+            /* no usable URL yet — fall through to upload */
+          }
+        }
+      }
+      const buffer = await fetchPdfBuffer(sourceUrl, wpAuthHeader);
+      if (buffer.length > 50 * 1024 * 1024) {
+        rows.push({
+          wordpress_id: id,
+          title,
+          source_url: sourceUrl,
+          error: "File larger than 50MB (skipped)",
+        });
+        onProgress?.({
+          event: "item",
+          current: processed,
+          total: progressTotal,
+          wordpress_id: id,
+          title,
+          step: "complete",
+          error: "File larger than 50MB (skipped)",
+        });
+        return;
+      }
+      const shopifyUrl = await stagedUploadAndCreateFile(shopDomain, accessToken, buffer, filename);
+      const redirectPath = redirectPathFromWordPressUrl(sourceUrl);
+      let redirectCreated = false;
+      if (createRedirects && redirectPath) {
+        try {
+          await createShopifyUrlRedirect(shopDomain, accessToken, redirectPath, shopifyUrl);
+          redirectCreated = true;
+        } catch (re) {
+          rows.push({
+            wordpress_id: id,
+            title,
+            source_url: sourceUrl,
+            shopify_file_url: shopifyUrl,
+            redirect_path: redirectPath,
+            redirect_created: false,
+            error: `Uploaded; redirect failed: ${(re as Error).message}`,
+          });
+          csvLines.push(`"${redirectPath.replace(/"/g, '""')}","${shopifyUrl.replace(/"/g, '""')}"`);
+          onProgress?.({
+            event: "item",
+            current: processed,
+            total: progressTotal,
+            wordpress_id: id,
+            title,
+            step: "complete",
+            shopify_file_url: shopifyUrl,
+            error: `Uploaded; redirect failed: ${(re as Error).message}`,
+          });
+          return;
+        }
+      }
+      if (createRedirects && redirectPath) {
+        csvLines.push(`"${redirectPath.replace(/"/g, '""')}","${shopifyUrl.replace(/"/g, '""')}"`);
+      }
+      rows.push({
+        wordpress_id: id,
+        title,
+        source_url: sourceUrl,
+        shopify_file_url: shopifyUrl,
+        redirect_path: redirectPath ?? undefined,
+        redirect_created: redirectCreated,
+      });
+      onProgress?.({
+        event: "item",
+        current: processed,
+        total: progressTotal,
+        wordpress_id: id,
+        title,
+        step: "complete",
+        shopify_file_url: shopifyUrl,
+      });
+    } catch (e) {
+      const msg = (e as Error).message;
+      rows.push({
+        wordpress_id: id,
+        title,
+        source_url: sourceUrl,
+        error: msg,
+      });
+      onProgress?.({
+        event: "item",
+        current: processed,
+        total: progressTotal,
+        wordpress_id: id,
+        title,
+        step: "complete",
+        error: msg,
+      });
+    }
+  }
+
+  if (wordpressIdsInOrder?.length) {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const x of wordpressIdsInOrder) {
+      const s = String(x).trim();
+      if (!s || seen.has(s)) continue;
+      seen.add(s);
+      if (excludedIds.has(s)) continue;
+      ordered.push(s);
+    }
+    const limit = Math.min(2000, maxFiles);
+    const capped = ordered.slice(0, limit);
+    truncated = ordered.length > capped.length;
+    const progressTotal = Math.max(1, capped.length);
+    onProgress?.({
+      event: "init",
+      total: progressTotal,
+      pdf_total_in_wordpress: capped.length,
+      max_files: limit,
+    });
+    let processed = 0;
+    for (const idStr of capped) {
+      processed += 1;
+      const idNum = parseInt(idStr, 10);
+      if (!Number.isFinite(idNum)) {
+        rows.push({ wordpress_id: idStr, title: "", source_url: "", error: "Invalid WordPress media ID" });
+        onProgress?.({
+          event: "item",
+          current: processed,
+          total: progressTotal,
+          wordpress_id: idStr,
+          title: "",
+          step: "complete",
+          error: "Invalid WordPress media ID",
+        });
+        continue;
+      }
+      let raw: WpMediaRow | null;
+      try {
+        raw = await wpFetchMediaById(wpOrigin, wpAuthHeader, idNum);
+      } catch (e) {
+        const msg = (e as Error).message;
+        rows.push({ wordpress_id: idStr, title: "", source_url: "", error: msg });
+        onProgress?.({
+          event: "item",
+          current: processed,
+          total: progressTotal,
+          wordpress_id: idStr,
+          title: "",
+          step: "complete",
+          error: msg,
+        });
+        continue;
+      }
+      if (!raw) {
+        rows.push({ wordpress_id: idStr, title: "", source_url: "", error: "WordPress media not found" });
+        onProgress?.({
+          event: "item",
+          current: processed,
+          total: progressTotal,
+          wordpress_id: idStr,
+          title: "",
+          step: "complete",
+          error: "WordPress media not found",
+        });
+        continue;
+      }
+      const mime = raw.mime_type || "";
+      if (mime && !mime.includes("pdf")) {
+        const t =
+          (typeof raw.title?.rendered === "string" ? raw.title.rendered.replace(/<[^>]+>/g, "").trim() : "") ||
+          (typeof raw.slug === "string" ? raw.slug : "") ||
+          `attachment-${idStr}`;
+        const su = typeof raw.source_url === "string" ? raw.source_url : "";
+        rows.push({
+          wordpress_id: idStr,
+          title: t,
+          source_url: su,
+          error: "WordPress attachment is not application/pdf",
+        });
+        onProgress?.({
+          event: "item",
+          current: processed,
+          total: progressTotal,
+          wordpress_id: idStr,
+          title: t,
+          step: "complete",
+          error: "WordPress attachment is not application/pdf",
+        });
+        continue;
+      }
+      await ingestWordPressPdfAttachment(raw, processed, progressTotal);
+    }
+    return {
+      rows,
+      redirect_csv: csvLines.join("\n"),
+      truncated,
+    };
+  }
+
+  const perPage = 50;
+  let page = 1;
+  let totalPages = 1;
   let processed = 0;
 
   const { total: pdfTotalInWordpress } = await wpFetchPdfMediaPage(wpOrigin, wpAuthHeader, 1, 1);
@@ -763,10 +1066,6 @@ export async function migrateWordPressPdfsToShopify(opts: {
     pdf_total_in_wordpress: pdfTotalInWordpress,
     max_files: maxFiles,
   });
-
-  const shopifyPdfIndex = skipIfExistsInShopify
-    ? await buildShopifyPdfBasenameIndex(shopDomain, accessToken, 100)
-    : null;
 
   outer: while (page <= totalPages) {
     const { rows: batch, totalPages: tp } = await wpFetchPdfMediaPageWithRetry(wpOrigin, wpAuthHeader, page, perPage);
@@ -779,192 +1078,7 @@ export async function migrateWordPressPdfsToShopify(opts: {
         break outer;
       }
       processed += 1;
-
-      const sourceUrl = typeof raw.source_url === "string" ? raw.source_url : "";
-      const titleRendered =
-        typeof raw.title?.rendered === "string"
-          ? raw.title.rendered.replace(/<[^>]+>/g, "").trim()
-          : "";
-      const slug = typeof raw.slug === "string" ? raw.slug : "";
-      const title = titleRendered || slug || `attachment-${id}`;
-
-      if (!sourceUrl) {
-        rows.push({ wordpress_id: id, title, source_url: "", error: "Missing source_url from WordPress" });
-        onProgress?.({
-          event: "item",
-          current: processed,
-          total: progressTotal,
-          wordpress_id: id,
-          title,
-          step: "complete",
-          error: "Missing source_url from WordPress",
-        });
-        continue;
-      }
-
-      const filename = basenameFromSourceUrl(sourceUrl, slug || title || id);
-
-      onProgress?.({
-        event: "item",
-        current: processed,
-        total: progressTotal,
-        wordpress_id: id,
-        title,
-        step: "start",
-      });
-
-      try {
-        if (shopifyPdfIndex) {
-          const hit = lookupShopifyPdfInIndex(shopifyPdfIndex, filename);
-          if (hit) {
-            try {
-              const shopifyUrl = await resolveUrlFromIndexEntry(shopDomain, accessToken, hit);
-              const redirectPath = redirectPathFromWordPressUrl(sourceUrl);
-              let redirectCreated = false;
-              if (createRedirects && redirectPath) {
-                try {
-                  await createShopifyUrlRedirect(shopDomain, accessToken, redirectPath, shopifyUrl);
-                  redirectCreated = true;
-                } catch (re) {
-                  rows.push({
-                    wordpress_id: id,
-                    title,
-                    source_url: sourceUrl,
-                    shopify_file_url: shopifyUrl,
-                    redirect_path: redirectPath,
-                    redirect_created: false,
-                    note: "Matched existing Shopify file (no upload)",
-                    error: `URL linked; redirect failed: ${(re as Error).message}`,
-                  });
-                  csvLines.push(`"${redirectPath.replace(/"/g, '""')}","${shopifyUrl.replace(/"/g, '""')}"`);
-                  onProgress?.({
-                    event: "item",
-                    current: processed,
-                    total: progressTotal,
-                    wordpress_id: id,
-                    title,
-                    step: "complete",
-                    shopify_file_url: shopifyUrl,
-                    error: `URL linked; redirect failed: ${(re as Error).message}`,
-                  });
-                  continue;
-                }
-              }
-              if (createRedirects && redirectPath) {
-                csvLines.push(`"${redirectPath.replace(/"/g, '""')}","${shopifyUrl.replace(/"/g, '""')}"`);
-              }
-              rows.push({
-                wordpress_id: id,
-                title,
-                source_url: sourceUrl,
-                shopify_file_url: shopifyUrl,
-                redirect_path: redirectPath ?? undefined,
-                redirect_created: redirectCreated,
-                note: "Matched existing Shopify file (no upload)",
-              });
-              onProgress?.({
-                event: "item",
-                current: processed,
-                total: progressTotal,
-                wordpress_id: id,
-                title,
-                step: "complete",
-                shopify_file_url: shopifyUrl,
-              });
-              continue;
-            } catch {
-              /* no usable URL yet — fall through to upload */
-            }
-          }
-        }
-        const buffer = await fetchPdfBuffer(sourceUrl, wpAuthHeader);
-        if (buffer.length > 50 * 1024 * 1024) {
-          rows.push({
-            wordpress_id: id,
-            title,
-            source_url: sourceUrl,
-            error: "File larger than 50MB (skipped)",
-          });
-          onProgress?.({
-            event: "item",
-            current: processed,
-            total: progressTotal,
-            wordpress_id: id,
-            title,
-            step: "complete",
-            error: "File larger than 50MB (skipped)",
-          });
-          continue;
-        }
-        const shopifyUrl = await stagedUploadAndCreateFile(shopDomain, accessToken, buffer, filename);
-        const redirectPath = redirectPathFromWordPressUrl(sourceUrl);
-        let redirectCreated = false;
-        if (createRedirects && redirectPath) {
-          try {
-            await createShopifyUrlRedirect(shopDomain, accessToken, redirectPath, shopifyUrl);
-            redirectCreated = true;
-          } catch (re) {
-            rows.push({
-              wordpress_id: id,
-              title,
-              source_url: sourceUrl,
-              shopify_file_url: shopifyUrl,
-              redirect_path: redirectPath,
-              redirect_created: false,
-              error: `Uploaded; redirect failed: ${(re as Error).message}`,
-            });
-            csvLines.push(`"${redirectPath.replace(/"/g, '""')}","${shopifyUrl.replace(/"/g, '""')}"`);
-            onProgress?.({
-              event: "item",
-              current: processed,
-              total: progressTotal,
-              wordpress_id: id,
-              title,
-              step: "complete",
-              shopify_file_url: shopifyUrl,
-              error: `Uploaded; redirect failed: ${(re as Error).message}`,
-            });
-            continue;
-          }
-        }
-        if (createRedirects && redirectPath) {
-          csvLines.push(`"${redirectPath.replace(/"/g, '""')}","${shopifyUrl.replace(/"/g, '""')}"`);
-        }
-        rows.push({
-          wordpress_id: id,
-          title,
-          source_url: sourceUrl,
-          shopify_file_url: shopifyUrl,
-          redirect_path: redirectPath ?? undefined,
-          redirect_created: redirectCreated,
-        });
-        onProgress?.({
-          event: "item",
-          current: processed,
-          total: progressTotal,
-          wordpress_id: id,
-          title,
-          step: "complete",
-          shopify_file_url: shopifyUrl,
-        });
-      } catch (e) {
-        const msg = (e as Error).message;
-        rows.push({
-          wordpress_id: id,
-          title,
-          source_url: sourceUrl,
-          error: msg,
-        });
-        onProgress?.({
-          event: "item",
-          current: processed,
-          total: progressTotal,
-          wordpress_id: id,
-          title,
-          step: "complete",
-          error: msg,
-        });
-      }
+      await ingestWordPressPdfAttachment(raw, processed, progressTotal);
     }
     page += 1;
   }
