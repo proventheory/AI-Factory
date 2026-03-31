@@ -37,7 +37,7 @@ const registered = new Set(
 
 const onDisk = new Set(
   readdirSync(migrationsDir)
-    .filter((f) => f.endsWith(".sql") && !/ 2\.sql$/.test(f))
+    .filter((f) => f.endsWith(".sql") && !/ [23]\.sql$/.test(f))
     .map((f) => `supabase/migrations/${f}`)
 );
 

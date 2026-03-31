@@ -529,5 +529,13 @@
       "42710"
     ],
     "skipMessage": "enum value already exists"
+  },
+  {
+    "path": "supabase/migrations/20260331190000_run_status_partial.sql",
+    "name": "run_status_partial",
+    "skipIfErrorCodes": [
+      "42710"
+    ],
+    "skipMessage": "enum value or function already applied"
   }
 ]
