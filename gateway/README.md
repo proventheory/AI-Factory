@@ -43,8 +43,11 @@ Response caching is enabled for `fast/chat` by default. Requires `REDIS_URL` in 
 | `OPENAI_API_KEY` | Yes | OpenAI API key |
 | `ANTHROPIC_API_KEY` | No | Anthropic API key (for claude models in MAX tier) |
 | `REDIS_URL` | No | Redis URL for response caching (Phase 3) |
-| `LANGFUSE_SECRET_KEY` | No | Langfuse secret for trace callbacks |
+| `LANGFUSE_SECRET_KEY` | No | Langfuse secret (only if you add Langfuse callbacks to `config.yaml`) |
 | `LANGFUSE_PUBLIC_KEY` | No | Langfuse public key |
+| `LANGFUSE_HOST` | No | e.g. `https://cloud.langfuse.com` — required if callbacks enabled; wrong host → gateway **startup** `httpx.ConnectError` |
+
+Default `config.yaml` does **not** register Langfuse callbacks so the gateway starts without a Langfuse dependency. Re-enable the `success_callback` / `failure_callback` lines in `config.yaml` after `LANGFUSE_HOST` and keys are set and reachable from Render.
 
 ## Docs
 

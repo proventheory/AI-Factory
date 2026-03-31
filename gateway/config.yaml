@@ -46,8 +46,13 @@ router_settings:
 #   cache_params: { type: redis, host: ..., ttl: 3600, namespace: ai-factory }
 cache: false
 
+# Langfuse callbacks are NOT enabled here by default: LiteLLM may call Langfuse during startup;
+# a bad or unreachable LANGFUSE_HOST (or missing cloud URL) causes httpx.ConnectError and exit 3.
+# When Langfuse is up, set env LANGFUSE_HOST (e.g. https://cloud.langfuse.com), LANGFUSE_PUBLIC_KEY,
+# LANGFUSE_SECRET_KEY on the gateway service and add:
+#   litellm_settings:
+#     success_callback: ["langfuse"]
+#     failure_callback: ["langfuse"]
 litellm_settings:
-  success_callback: ["langfuse"]
-  failure_callback: ["langfuse"]
   cache_params:
     supported_call_types: ["completion", "acompletion"]
