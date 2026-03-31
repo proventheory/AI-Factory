@@ -57,6 +57,20 @@ import {
   type WpShopifyWizardJobPayload,
 } from "../../../control-plane/src/wp-shopify-migration-pipeline.js";
 
+export async function peekWpShopifyWizardPayload(
+  pool: Pool,
+  initiativeId: string,
+  runId: string,
+  planNodeId: string,
+): Promise<WpShopifyWizardJobPayload> {
+  const c = await pool.connect();
+  try {
+    return await loadPayload(c, initiativeId, runId, planNodeId);
+  } finally {
+    c.release();
+  }
+}
+
 function shopifyPrefetchedFromPayload(payload: WpShopifyWizardJobPayload): { shop_domain: string; access_token: string } | null {
   const tok =
     typeof payload._prefetched_shopify_access_token === "string" ? payload._prefetched_shopify_access_token.trim() : "";
@@ -658,20 +672,15 @@ export async function handleWpShopifyWizardJob(
   }
 }
 
-/** Peek job kind without requiring an open transaction (used by runner index before choosing crawl path). */
+/** Peek job kind (thin wrapper over peekWpShopifyWizardPayload). */
 export async function peekWpShopifyWizardKind(
   pool: Pool,
   initiativeId: string,
   runId: string,
   planNodeId: string,
 ): Promise<string> {
-  const c = await pool.connect();
-  try {
-    const p = await loadPayload(c, initiativeId, runId, planNodeId);
-    return String(p.kind ?? "");
-  } finally {
-    c.release();
-  }
+  const p = await peekWpShopifyWizardPayload(pool, initiativeId, runId, planNodeId);
+  return String(p.kind ?? "");
 }
 
 /**

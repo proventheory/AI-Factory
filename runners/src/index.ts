@@ -25,7 +25,7 @@ import { runDeployFailureScanTriggerOnly } from "../../control-plane/src/deploy-
 import { normalizeErrorSignature } from "./error-signature.js";
 import { recordSecretAccessByName } from "./secret-access.js";
 import {
-  peekWpShopifyWizardKind,
+  peekWpShopifyWizardPayload,
   executeWpShopifySourceCrawlJob,
   executeWpShopifyMigrationRunJob,
   executeWpShopifyPdfImportJob,
@@ -213,8 +213,46 @@ async function pollAndExecute(): Promise<void> {
         if (jobContext.job_type === "wp_shopify_wizard_job") {
           const initiativeId = jobContext.initiative_id;
           if (!initiativeId) throw new Error("initiative_id required for wp_shopify_wizard_job");
-          const wizKind = await peekWpShopifyWizardKind(pool, initiativeId, jobRun.run_id, jobRun.plan_node_id);
-          if (wizKind === "source_crawl") {
+          const wizPayload = await peekWpShopifyWizardPayload(pool, initiativeId, jobRun.run_id, jobRun.plan_node_id);
+          const rawKind = String(wizPayload.kind ?? "").trim();
+          const su = String(wizPayload.source_url ?? "").trim();
+          const gscSite = String((wizPayload as Record<string, unknown>).site_url ?? "").trim();
+          const inferredSourceCrawl =
+            rawKind === "source_crawl" ||
+            (rawKind === "" && /^https?:\/\//i.test(su) && !gscSite);
+
+          // #region agent log (staging: visible on GET /v1/runs/:id → job_events; local: debug ingest)
+          void pool
+            .query(
+              `INSERT INTO job_events (job_run_id, event_type, payload_json) VALUES ($1::uuid, 'wizard_progress', $2::jsonb)`,
+              [
+                jobRun.id,
+                JSON.stringify({
+                  phase: "runner_dispatch_debug",
+                  sessionId: "a63a04",
+                  hypothesisId: "H-dispatch",
+                  rawKind,
+                  inferredSourceCrawl,
+                  plan_node_id: jobRun.plan_node_id,
+                }),
+              ],
+            )
+            .catch(() => {});
+          fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a63a04" },
+            body: JSON.stringify({
+              sessionId: "a63a04",
+              location: "runners/src/index.ts:wp_shopify_dispatch",
+              message: "wizard dispatch",
+              data: { rawKind, inferredSourceCrawl, runId: jobRun.run_id },
+              timestamp: Date.now(),
+              hypothesisId: "H-dispatch",
+            }),
+          }).catch(() => {});
+          // #endregion
+
+          if (inferredSourceCrawl) {
             await executeWpShopifySourceCrawlJob(pool, jobContext, jobParams);
             const lc = await pool.connect();
             try {
@@ -244,11 +282,11 @@ async function pollAndExecute(): Promise<void> {
                 }),
               }).catch(() => {});
             }
-          } else if (wizKind === "migration_run_placeholder") {
+          } else if (rawKind === "migration_run_placeholder") {
             await executeWpShopifyMigrationRunJob(pool, jobContext, jobParams);
-          } else if (wizKind === "pdf_import") {
+          } else if (rawKind === "pdf_import") {
             await executeWpShopifyPdfImportJob(pool, jobContext, jobParams);
-          } else if (wizKind === "pdf_resolve") {
+          } else if (rawKind === "pdf_resolve") {
             await executeWpShopifyPdfResolveJob(pool, jobContext, jobParams);
           } else {
             // Short DB sections only: holding one pool slot across long HTTP starves heartbeats + parallel jobs → lease_expired.

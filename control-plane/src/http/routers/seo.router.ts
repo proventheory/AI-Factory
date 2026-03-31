@@ -16,6 +16,7 @@ import {
 import {
   wpShopifyMigrationSyncGoalMetadata,
   wpShopifyMigrationCrawl,
+  wpShopifyMigrationCrawlExecute,
   wpShopifyMigrationDryRun,
   wpShopifyMigrationPreviewItems,
   wpShopifyMigrationRun,
@@ -29,6 +30,7 @@ const router = Router();
 router.post("/v1/sitemap/products", sitemapProducts);
 router.post("/v1/wp-shopify-migration/sync_goal_metadata", wpShopifyMigrationSyncGoalMetadata);
 router.post("/v1/wp-shopify-migration/crawl", wpShopifyMigrationCrawl);
+router.post("/v1/wp-shopify-migration/crawl_execute", wpShopifyMigrationCrawlExecute);
 router.post("/v1/wp-shopify-migration/dry_run", wpShopifyMigrationDryRun);
 router.post("/v1/wp-shopify-migration/preview_items", wpShopifyMigrationPreviewItems);
 router.post("/v1/wp-shopify-migration/run", wpShopifyMigrationRun);

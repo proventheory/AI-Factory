@@ -1442,25 +1442,52 @@ export async function wpShopifyMigrationCrawl(
   pollOpts?: WpShopifyPipelinePollOptions,
 ): Promise<WpShopifyMigrationCrawlResult> {
   const { brand_id, environment, ...rest } = params;
-  const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/crawl", {
+  const linkCrawl = Boolean(rest.use_link_crawl);
+  const body = {
     brand_id,
     source_url: rest.source_url,
     use_link_crawl: rest.use_link_crawl,
     max_urls: rest.max_urls,
     crawl_delay_ms: rest.crawl_delay_ms,
     fetch_page_details: rest.fetch_page_details,
-    ...(environment ? { environment } : {}),
-  });
-  pollOpts?.onRunEnqueued?.(enq.run_id);
-  const linkCrawl = Boolean(rest.use_link_crawl);
-  const poll: WpShopifyPipelinePollOptions = {
-    intervalMs: pollOpts?.intervalMs ?? 2000,
-    maxWaitMs: pollOpts?.maxWaitMs ?? (linkCrawl ? 90 * 60_000 : 20 * 60_000),
-    onStatus: pollOpts?.onStatus,
-    onWizardProgress: pollOpts?.onWizardProgress,
   };
-  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_source_crawl", poll);
-  return meta as unknown as WpShopifyMigrationCrawlResult;
+
+  pollOpts?.onStatus?.(linkCrawl ? "Running crawl on API (direct, long timeout)…" : "Running crawl on API (direct)…");
+  try {
+    const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/wp-shopify-migration/crawl_execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      timeoutMs: linkCrawl ? 95 * 60_000 : 30 * 60_000,
+    });
+    const text = await res.text();
+    let data: unknown;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(text || `Crawl API invalid JSON (${res.status})`);
+    }
+    if (!res.ok) {
+      const err = (data as { error?: string })?.error;
+      throw new Error(err || text || `crawl_execute failed (${res.status})`);
+    }
+    return data as WpShopifyMigrationCrawlResult;
+  } catch (directErr) {
+    pollOpts?.onStatus?.("Direct crawl failed or timed out — falling back to pipeline run…");
+    const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/crawl", {
+      ...body,
+      ...(environment ? { environment } : {}),
+    });
+    pollOpts?.onRunEnqueued?.(enq.run_id);
+    const poll: WpShopifyPipelinePollOptions = {
+      intervalMs: pollOpts?.intervalMs ?? 2000,
+      maxWaitMs: pollOpts?.maxWaitMs ?? (linkCrawl ? 90 * 60_000 : 20 * 60_000),
+      onStatus: pollOpts?.onStatus,
+      onWizardProgress: pollOpts?.onWizardProgress,
+    };
+    const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_source_crawl", poll);
+    return meta as unknown as WpShopifyMigrationCrawlResult;
+  }
 }
 
 /** WP → Shopify migration wizard — Step 2: Google Search Console report via control plane (no pipeline run; avoids noisy failed runs when the UI already got data). */

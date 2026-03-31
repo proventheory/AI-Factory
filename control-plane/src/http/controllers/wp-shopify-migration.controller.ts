@@ -11,6 +11,60 @@ import {
   syncWpShopifyInitiativeGoalMetadataFromUrls,
 } from "../../wp-shopify-migration-pipeline.js";
 import { parseWizardJobPayload } from "../../wp-shopify-migration-wizard-parse.js";
+import { runMigrationCrawl } from "../../wp-shopify-migration-crawl.js";
+
+/** POST body: same shape as /crawl — runs the HTTP crawl inside the control plane and returns the crawl JSON (no runner). Use when pipeline jobs fail or time out; may hit HTTP timeouts on very large link crawls. */
+export async function wpShopifyMigrationCrawlExecute(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const brandId = String(body.brand_id ?? "").trim();
+    if (!brandId) {
+      res.status(400).json({ error: "brand_id is required" });
+      return;
+    }
+    const source_url = String(body.source_url ?? "").trim();
+    if (!source_url || !/^https?:\/\//i.test(source_url)) {
+      res.status(400).json({ error: "source_url is required and must be http(s)" });
+      return;
+    }
+    const use_link_crawl = Boolean(body.use_link_crawl);
+    const max_urls = Math.min(5000, Math.max(1, Number(body.max_urls) || 2000));
+    const crawl_delay_ms = Number.isFinite(Number(body.crawl_delay_ms)) ? Math.max(0, Number(body.crawl_delay_ms)) : 500;
+    const fetch_page_details = Boolean(body.fetch_page_details);
+
+    // #region agent log
+    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a63a04" },
+      body: JSON.stringify({
+        sessionId: "a63a04",
+        location: "wp-shopify-migration.controller.ts:crawl_execute",
+        message: "crawl_execute start",
+        data: { use_link_crawl, max_urls, source_host: source_url.replace(/^https?:\/\//i, "").split("/")[0] },
+        timestamp: Date.now(),
+        hypothesisId: "H-crawl-api",
+      }),
+    }).catch(() => {});
+    // #endregion
+
+    const result = await runMigrationCrawl({
+      source_url,
+      use_link_crawl,
+      max_urls,
+      crawl_delay_ms,
+      fetch_page_details,
+    });
+
+    await syncWpShopifyInitiativeGoalMetadataFromUrls({
+      brandId,
+      source_url: result.source_url,
+    }).catch(() => {});
+
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
 
 /** POST body: brand_id + optional URL fields. Updates initiative goal_metadata only (no pipeline run). */
 export async function wpShopifyMigrationSyncGoalMetadata(req: Request, res: Response): Promise<void> {
