@@ -273,8 +273,15 @@ export async function migrateWordPressPostsToShopify(opts: {
   excludedIds: Set<string>;
   maxPosts: number;
   skipIfExistsInShopify: boolean;
-  /** Fires as rows are recorded; total = min(maxPosts, WordPress X-WP-Total) when the header is present. */
-  onProgress?: (p: { current: number; total: number; wordpress_id?: string }) => void;
+  /** Fires as rows are recorded; total = min(maxPosts, WordPress X-WP-Total) when the header is present. current = rows processed (created, skipped, or failed). */
+  onProgress?: (p: {
+    current: number;
+    total: number;
+    wordpress_id?: string;
+    created: number;
+    skipped: number;
+    failed: number;
+  }) => void;
 }): Promise<BlogMigrationResult> {
   const rows: BlogMigrationRow[] = [];
   let created = 0;
@@ -309,7 +316,7 @@ export async function migrateWordPressPostsToShopify(opts: {
     if (!progressTotalReady) {
       progressTotalReady = true;
       progressTotal = wpTotal > 0 ? Math.min(maxPosts, wpTotal) : maxPosts;
-      opts.onProgress?.({ current: 0, total: progressTotal });
+      opts.onProgress?.({ current: 0, total: progressTotal, created, skipped, failed });
     }
     if (ids.length === 0) break;
 
@@ -423,7 +430,7 @@ export async function migrateWordPressPostsToShopify(opts: {
         rows.push(row);
         failed++;
       } finally {
-        opts.onProgress?.({ current: rows.length, total: progressTotal, wordpress_id: id });
+        opts.onProgress?.({ current: rows.length, total: progressTotal, wordpress_id: id, created, skipped, failed });
       }
     }
 

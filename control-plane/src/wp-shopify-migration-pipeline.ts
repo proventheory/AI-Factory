@@ -16,6 +16,78 @@ import { getShopifyAccessTokenForBrand, getShopifyShopForBrand } from "./shopify
 
 export const WP_SHOPIFY_WIZARD_JOB_TYPE = "wp_shopify_wizard_job" as const;
 
+/**
+ * SEO DAG jobs (seo_source_inventory, seo_target_inventory, …) read URLs from initiatives.goal_metadata.
+ * The wizard historically stored URLs only on per-run payloads and artifacts, so a compiled wp_shopify_migration
+ * plan could start with empty goal_metadata → four root jobs fail the same way. Merge any known URLs whenever
+ * we enqueue wizard work so template runs and snapshots stay aligned with the console.
+ */
+export async function mergeSeoGoalMetadataFromWizardPayload(
+  client: pg.PoolClient,
+  initiativeId: string,
+  brandId: string,
+  payload: WpShopifyWizardJobPayload,
+): Promise<void> {
+  const p = payload as Record<string, unknown>;
+  const patch: Record<string, unknown> = {};
+
+  const su = String(p.source_url ?? "").trim();
+  if (su && /^https?:\/\//i.test(su)) patch.source_url = su.replace(/\/$/, "");
+
+  const gscDirect = String(p.gsc_site_url ?? "").trim();
+  if (gscDirect && /^https?:\/\//i.test(gscDirect)) patch.gsc_site_url = gscDirect.replace(/\/$/, "");
+
+  const site = String(p.site_url ?? "").trim();
+  if (site && /^https?:\/\//i.test(site)) patch.gsc_site_url = site.replace(/\/$/, "");
+
+  const ts = String(p.target_store_url ?? "").trim();
+  if (ts && /^https?:\/\//i.test(ts)) patch.target_url = ts.replace(/\/$/, "");
+
+  const ga4 = String(p.property_id ?? "").trim();
+  if (ga4) patch.ga4_property_id = ga4;
+
+  const woo = String(p.woo_server ?? "").trim();
+  if (woo && /^https?:\/\//i.test(woo)) {
+    const normalized = woo.replace(/\/$/, "");
+    if (!patch.source_url) patch.source_url = normalized;
+  }
+
+  if (!patch.target_url && brandId) {
+    try {
+      const sm = await getShopifyShopForBrand(client, brandId);
+      const dom = sm?.shop_domain?.trim();
+      if (dom) {
+        const host = dom.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+        patch.target_url = `https://${host}`;
+      }
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  if (!patch.ga4_property_id && brandId) {
+    try {
+      const r = await client.query<{ ga4_property_id: string | null }>(
+        "SELECT ga4_property_id FROM brand_google_credentials WHERE brand_profile_id = $1 LIMIT 1",
+        [brandId],
+      );
+      const g = r.rows[0]?.ga4_property_id?.trim();
+      if (g) patch.ga4_property_id = g;
+    } catch {
+      /* table/column may be absent in older DBs */
+    }
+  }
+
+  if (Object.keys(patch).length === 0) return;
+
+  await client.query(
+    `UPDATE initiatives
+     SET goal_metadata = coalesce(goal_metadata, '{}'::jsonb) || $2::jsonb
+     WHERE id = $1`,
+    [initiativeId, JSON.stringify(patch)],
+  );
+}
+
 /** Runner often has no Woo encryption key; hydrate from DB here (same pattern as _prefetched_google_access_token). */
 const WOO_HYDRATE_KINDS = new Set([
   "dry_run",
@@ -221,6 +293,7 @@ export async function enqueueWpShopifyWizardMigrationRun(opts: {
         let jobPayload: WpShopifyWizardJobPayload = opts.payload;
         jobPayload = await hydrateWooCredentialsInWizardPayload(client, opts.brandId, jobPayload);
         jobPayload = await hydrateShopifyCredentialsInWizardPayload(client, opts.brandId, jobPayload);
+        await mergeSeoGoalMetadataFromWizardPayload(client, initiativeId, opts.brandId, jobPayload);
 
         const baseJson = JSON.stringify(jobPayload);
         const payloadRest: WpShopifyWizardJobPayload = {
@@ -339,6 +412,7 @@ export async function enqueueWpShopifyWizardJob(opts: {
 
         jobPayload = await hydrateWooCredentialsInWizardPayload(client, opts.brandId, jobPayload);
         jobPayload = await hydrateShopifyCredentialsInWizardPayload(client, opts.brandId, jobPayload);
+        await mergeSeoGoalMetadataFromWizardPayload(client, initiativeId, opts.brandId, jobPayload);
 
         const nodeKey = `wiz_${uuid()}`;
         const { planId, nodeIds } = await compilePlanFromDraft(

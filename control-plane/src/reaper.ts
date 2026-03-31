@@ -2,8 +2,10 @@ import { v4 as uuid } from "uuid";
 import type pg from "pg";
 import { computeRunTerminalStatusFromNodeProgress } from "./scheduler.js";
 
-/** Heartbeats run every 30s; allow headroom when the pool is busy or jobs are I/O-heavy (PDF/blog migration). */
-const STALE_THRESHOLD_MS = 8 * 60_000; // 8 minutes
+/** Heartbeats run every 30s; allow headroom when the pool is busy or jobs are I/O-heavy (PDF/blog migration, link crawl). */
+const STALE_THRESHOLD_MS = Number.isFinite(Number(process.env.REAPER_STALE_HEARTBEAT_MS))
+  ? Math.max(5 * 60_000, Number(process.env.REAPER_STALE_HEARTBEAT_MS))
+  : 20 * 60_000; // default 20 minutes (was 8m — too aggressive under Supabase pooler + parallel jobs)
 
 /**
  * Lease Reaper (Section 12C.9 A6):

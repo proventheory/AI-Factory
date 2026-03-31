@@ -187,7 +187,7 @@ export async function getRunArtifacts(runId: string): Promise<{ items: ArtifactR
   return res.json();
 }
 
-const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "rolled_back"]);
+const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "rolled_back", "partial"]);
 
 /** Combine latest wizard_progress from each job_run (parallel migration: blogs job + PDFs job). */
 function mergeWizardProgressPayloads(payloads: Record<string, unknown>[]): Record<string, unknown> {
@@ -201,6 +201,7 @@ function mergeWizardProgressPayloads(payloads: Record<string, unknown>[]): Recor
     if (pl.blogs != null) out.blogs = pl.blogs;
     if (pl.pdfs != null) out.pdfs = pl.pdfs;
     if (pl.blog_tags != null) out.blog_tags = pl.blog_tags;
+    if (pl.crawl != null) out.crawl = pl.crawl;
     if (pl.phase != null) out.phase = pl.phase;
     if (pl.migration_branch != null) out.migration_branch = pl.migration_branch;
   }
@@ -228,7 +229,7 @@ export type WpShopifyPipelinePollOptions = {
   onWizardProgress?: (payload: Record<string, unknown>) => void;
 };
 
-/** Poll GET /v1/runs/:id/status until succeeded, failed, or rolled_back (default timeout 45 minutes). */
+/** Poll GET /v1/runs/:id/status until succeeded, partial, failed, or rolled_back (default timeout 45 minutes). */
 export async function pollRunUntilTerminal(
   runId: string,
   opts?: {
@@ -345,14 +346,14 @@ async function waitForWizardMigrationRunMerged(
   pollOpts?: WpShopifyPipelinePollOptions,
 ): Promise<Record<string, unknown>> {
   const { status } = await pollRunUntilTerminal(runId, pollOpts);
-  if (status !== "succeeded") await throwWpShopifyRunFailed(runId, status);
+  if (status !== "succeeded" && status !== "partial") await throwWpShopifyRunFailed(runId, status);
   const { items } = await getRunArtifacts(runId);
   const metas = items
     .filter((x) => x.artifact_type === "wp_shopify_migration_run")
     .map((x) => x.metadata_json)
     .filter((m): m is Record<string, unknown> => m != null && typeof m === "object" && !Array.isArray(m));
   if (metas.length === 0) {
-    throw new Error("Pipeline succeeded but artifact wp_shopify_migration_run was not found.");
+    throw new Error("Run finished but artifact wp_shopify_migration_run was not found.");
   }
   return mergeWpShopifyMigrationRunArtifacts(metas);
 }
@@ -447,10 +448,10 @@ async function waitForWizardArtifact(
   pollOpts?: WpShopifyPipelinePollOptions,
 ): Promise<Record<string, unknown>> {
   const { status } = await pollRunUntilTerminal(runId, pollOpts);
-  if (status !== "succeeded") await throwWpShopifyRunFailed(runId, status);
+  if (status !== "succeeded" && status !== "partial") await throwWpShopifyRunFailed(runId, status);
   const { items } = await getRunArtifacts(runId);
   const meta = wpShopifyArtifactMeta(items, artifactType);
-  if (!meta) throw new Error(`Pipeline succeeded but artifact ${artifactType} was not found.`);
+  if (!meta) throw new Error(`Run finished but artifact ${artifactType} was not found.`);
   return meta;
 }
 
@@ -461,6 +462,11 @@ export async function wpShopifyWizardStateSnapshotEnqueue(params: {
   summary: Record<string, unknown>;
   previous_step?: number;
   environment?: string;
+  /** Synced into initiative goal_metadata so SEO template jobs (source/target inventory, GSC/GA) see the same URLs as the wizard. */
+  source_url?: string;
+  target_store_url?: string;
+  gsc_site_url?: string;
+  ga4_property_id?: string;
 }): Promise<WpShopifyWizardEnqueueResponse | undefined> {
   const enq = await tryPostWizardJob({
     kind: "wizard_state_snapshot",
@@ -469,6 +475,10 @@ export async function wpShopifyWizardStateSnapshotEnqueue(params: {
     summary: params.summary,
     ...(params.previous_step != null ? { previous_step: params.previous_step } : {}),
     ...(params.environment ? { environment: params.environment } : {}),
+    ...(params.source_url?.trim() ? { source_url: params.source_url.trim() } : {}),
+    ...(params.target_store_url?.trim() ? { target_store_url: params.target_store_url.trim() } : {}),
+    ...(params.gsc_site_url?.trim() ? { gsc_site_url: params.gsc_site_url.trim() } : {}),
+    ...(params.ga4_property_id?.trim() ? { ga4_property_id: params.ga4_property_id.trim() } : {}),
   });
   return enq ?? undefined;
 }
@@ -1419,8 +1429,9 @@ export async function wpShopifyMigrationCrawl(
   const linkCrawl = Boolean(rest.use_link_crawl);
   const poll: WpShopifyPipelinePollOptions = {
     intervalMs: pollOpts?.intervalMs ?? 2000,
-    maxWaitMs: pollOpts?.maxWaitMs ?? (linkCrawl ? 55 * 60_000 : 20 * 60_000),
+    maxWaitMs: pollOpts?.maxWaitMs ?? (linkCrawl ? 90 * 60_000 : 20 * 60_000),
     onStatus: pollOpts?.onStatus,
+    onWizardProgress: pollOpts?.onWizardProgress,
   };
   const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_source_crawl", poll);
   return meta as unknown as WpShopifyMigrationCrawlResult;

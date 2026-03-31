@@ -9,6 +9,7 @@ export interface MigrationCrawlOptions {
   max_urls?: number;
   crawl_delay_ms?: number;
   fetch_page_details?: boolean;
+  onProgress?: (p: { current: number; total: number; phase: string }) => void;
 }
 
 export interface MigrationCrawlResult {
@@ -35,6 +36,7 @@ export async function runMigrationCrawl(options: MigrationCrawlOptions): Promise
     max_urls = 2000,
     crawl_delay_ms = 500,
     fetch_page_details = false,
+    onProgress,
   } = options;
   const baseUrl = source_url.replace(/\/$/, "") || "https://example.com";
   const result = await crawlSite({
@@ -44,6 +46,7 @@ export async function runMigrationCrawl(options: MigrationCrawlOptions): Promise
     useSitemapsFirst: true,
     useLinkCrawl: use_link_crawl,
     fetchPageDetails: fetch_page_details,
+    onProgress,
   });
   return {
     source_url: baseUrl,

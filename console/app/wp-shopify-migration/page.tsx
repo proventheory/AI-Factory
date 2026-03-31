@@ -946,6 +946,10 @@ export default function WpShopifyMigrationWizardPage() {
             has_ga4: Boolean(ga4Result),
             source_url_preview: (sourceUrl || "").trim().slice(0, 240),
           },
+          ...(sourceUrl.trim() ? { source_url: sourceUrl.trim() } : {}),
+          ...(targetBaseUrl.trim() ? { target_store_url: targetBaseUrl.trim() } : {}),
+          ...(gscSiteUrl.trim() ? { gsc_site_url: gscSiteUrl.trim() } : {}),
+          ...(ga4PropertyId.trim() ? { ga4_property_id: ga4PropertyId.trim() } : {}),
         })
         .catch(() => {
           /* non-blocking */
@@ -965,6 +969,9 @@ export default function WpShopifyMigrationWizardPage() {
     gscResult,
     ga4Result,
     sourceUrl,
+    targetBaseUrl,
+    gscSiteUrl,
+    ga4PropertyId,
     pipelineEnvironment,
   ]);
 
@@ -1301,6 +1308,13 @@ export default function WpShopifyMigrationWizardPage() {
             const short = s.length > 48 ? `${s.slice(0, 45)}…` : s;
             setCrawlPollHint(`Run status: ${short}`);
           },
+          onWizardProgress: (pl) => {
+            const cr = pl.crawl as { current?: number; total?: number; detail?: string } | undefined;
+            if (cr && typeof cr.current === "number" && typeof cr.total === "number") {
+              const det = typeof cr.detail === "string" && cr.detail.trim() ? `${cr.detail.trim()}: ` : "";
+              setCrawlPollHint(`${det}${cr.current}/${cr.total} URLs`);
+            }
+          },
         },
       );
       setCrawlResult(result);
@@ -1510,12 +1524,26 @@ export default function WpShopifyMigrationWizardPage() {
           onWizardProgress: (pl) => {
             const banner =
               typeof pl.phase_banner === "string" && pl.phase_banner.trim() ? pl.phase_banner.trim() : "";
-            const blogs = pl.blogs as { current?: number; total?: number } | undefined;
+            const blogs = pl.blogs as {
+              current?: number;
+              total?: number;
+              created?: number;
+              skipped?: number;
+              failed?: number;
+            } | undefined;
             const pdfs = pl.pdfs as { current?: number; total?: number } | undefined;
             const blogTags = pl.blog_tags as { current?: number; total?: number } | undefined;
             const bits: string[] = [];
             if (blogs && typeof blogs.current === "number" && typeof blogs.total === "number") {
-              bits.push(`Blog posts ${blogs.current}/${blogs.total}`);
+              const hasCounts =
+                typeof blogs.created === "number" &&
+                typeof blogs.skipped === "number" &&
+                typeof blogs.failed === "number";
+              bits.push(
+                hasCounts
+                  ? `Blog posts ${blogs.current}/${blogs.total} processed — created ${blogs.created}, skipped ${blogs.skipped}, failed ${blogs.failed}`
+                  : `Blog posts ${blogs.current}/${blogs.total}`,
+              );
             }
             if (pdfs && typeof pdfs.current === "number" && typeof pdfs.total === "number") {
               bits.push(`PDFs ${pdfs.current}/${pdfs.total}`);
@@ -2676,7 +2704,7 @@ export default function WpShopifyMigrationWizardPage() {
                   </div>
                 )}
                 <p className="mt-2 max-w-3xl text-body-small text-fg-muted">
-                  <strong>Run migration</strong>: <strong>PDFs</strong> → Shopify Files. <strong>Blog posts</strong> → Shopify articles via Admin API (needs Shopify; up to <strong>500</strong> per run as a safety cap—progress uses your real WordPress totals, e.g. 56/56). <strong>Where to look:</strong> Shopify Admin → <strong>Content</strong> → <strong>Blog posts</strong>, then open the blog that received imports (often the first/lowest-ID blog if you did not set a handle—stores with multiple blogs are easy to check in the wrong place). WooCommerce keys alone do <strong>not</strong> read WordPress posts—that is <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/posts</code>. Without a WP application password we import <strong>published</strong> posts only; drafts stay invisible on the storefront until you publish in Shopify. <strong>Blog tags</strong> → redirect CSV. App scopes: <code className="rounded bg-fg-muted/15 px-1">read_content</code> + <code className="rounded bg-fg-muted/15 px-1">write_content</code>. PDFs upload sequentially; the progress bar can sit on one number for up to ~2 minutes while Shopify finishes a large file or CDN URL—check Pipeline Runs if it never advances.
+                  <strong>Run migration</strong>: <strong>PDFs</strong> → Shopify Files. <strong>Blog posts</strong> → Shopify articles via Admin API (needs Shopify; up to <strong>500</strong> per run as a safety cap—the live counter is <strong>posts processed</strong> vs WordPress total (e.g. 56/56), not “56 created”; check created/skipped/failed in the status line and in the result table). <strong>Where to look:</strong> Shopify Admin → <strong>Content</strong> → <strong>Blog posts</strong>, then open the blog that received imports (often the first/lowest-ID blog if you did not set a handle—stores with multiple blogs are easy to check in the wrong place). WooCommerce keys alone do <strong>not</strong> read WordPress posts—that is <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/posts</code>. Without a WP application password we import <strong>published</strong> posts only; drafts stay invisible on the storefront until you publish in Shopify. <strong>Blog tags</strong> → redirect CSV. App scopes: <code className="rounded bg-fg-muted/15 px-1">read_content</code> + <code className="rounded bg-fg-muted/15 px-1">write_content</code>. PDFs upload sequentially; the progress bar can sit on one number for up to ~2 minutes while Shopify finishes a large file or CDN URL—check Pipeline Runs if it never advances.
                 </p>
 
                 {(migrationRunLoading || migrationPipelineRunId) && (

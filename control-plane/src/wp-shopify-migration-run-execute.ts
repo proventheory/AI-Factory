@@ -254,7 +254,14 @@ export async function executeWizardMigrationRun(opts: {
   createRedirects: boolean;
   skipIfExistsInShopify: boolean;
   onPdfProgress?: (e: PdfMigrationProgressEvent) => void;
-  onBlogProgress?: (p: { current: number; total: number; wordpress_id?: string }) => void;
+  onBlogProgress?: (p: {
+    current: number;
+    total: number;
+    wordpress_id?: string;
+    created: number;
+    skipped: number;
+    failed: number;
+  }) => void;
   /** Phase banners (customers/products/…) and coarse blog_tags progress; same shape as job_events wizard_progress. */
   onWizardProgress?: (payload: Record<string, unknown>) => void | Promise<void>;
 }): Promise<Record<string, unknown>> {

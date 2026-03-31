@@ -50,6 +50,8 @@ export interface CrawlOptions {
   /** When true, discover URLs by following same-origin links from seed URLs (homepage + sitemap). Captures pages not listed in sitemap (e.g. some WordPress pages). */
   useLinkCrawl?: boolean;
   fetchPageDetails?: boolean;
+  /** Coarse progress for long crawls (discovery + parallel status checks). */
+  onProgress?: (p: { current: number; total: number; phase: string }) => void;
 }
 
 /**
@@ -231,6 +233,7 @@ export async function crawlSite(options: CrawlOptions): Promise<{
     useSitemapsFirst = true,
     useLinkCrawl = false,
     fetchPageDetails = false,
+    onProgress,
   } = options;
 
   const origin = new URL(baseUrl).origin;
@@ -283,6 +286,8 @@ export async function crawlSite(options: CrawlOptions): Promise<{
     crawl_mode = "crawl";
   }
 
+  onProgress?.({ current: 0, total: uniqueUrls.length, phase: "discovery_done" });
+
   const records: SeoUrlRecord[] = [];
   const byType: Record<string, number> = {};
   const statusCounts: Record<string, number> = {};
@@ -299,12 +304,16 @@ export async function crawlSite(options: CrawlOptions): Promise<{
         needHead.push(u);
       }
     }
+    if (needHead.length === 0) {
+      onProgress?.({ current: precomputedStatus.size, total: uniqueUrls.length, phase: "status_checks" });
+    }
     for (let i = 0; i < needHead.length; i += STATUS_FETCH_CONCURRENCY) {
       const chunk = needHead.slice(i, i + STATUS_FETCH_CONCURRENCY);
       const results = await Promise.all(chunk.map((u) => fetchUrlHttpStatus(u)));
       for (let j = 0; j < chunk.length; j++) {
         precomputedStatus.set(chunk[j], results[j]);
       }
+      onProgress?.({ current: precomputedStatus.size, total: uniqueUrls.length, phase: "status_checks" });
     }
   }
 
@@ -368,6 +377,10 @@ export async function crawlSite(options: CrawlOptions): Promise<{
     } else {
       status = precomputedStatus!.get(url) ?? 0;
       statusCounts[String(status)] = (statusCounts[String(status)] ?? 0) + 1;
+    }
+
+    if (fetchPageDetails) {
+      onProgress?.({ current: i + 1, total: uniqueUrls.length, phase: "page_details" });
     }
 
     byType[type] = (byType[type] ?? 0) + 1;

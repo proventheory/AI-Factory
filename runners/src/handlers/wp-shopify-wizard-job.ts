@@ -12,7 +12,7 @@ function createWizardProgressReporter(pool: Pool | undefined, jobRunId: string |
     const force = payload.force === true;
     const now = Date.now();
     const hasNumericProgress =
-      payload.blogs != null || payload.pdfs != null || payload.blog_tags != null;
+      payload.blogs != null || payload.pdfs != null || payload.blog_tags != null || payload.crawl != null;
     const minGapMs = hasNumericProgress ? 750 : 2000;
     if (!force && now - lastWrite < minGapMs) return;
     lastWrite = now;
@@ -276,7 +276,13 @@ export async function executeWpShopifyMigrationRunJob(
       onBlogProgress: (p) => {
         void reportWizardProgress({
           phase: "blogs",
-          blogs: { current: p.current, total: p.total },
+          blogs: {
+            current: p.current,
+            total: p.total,
+            created: p.created,
+            skipped: p.skipped,
+            failed: p.failed,
+          },
           force: true,
         });
       },
@@ -688,6 +694,8 @@ export async function executeWpShopifySourceCrawlJob(
   const brandId = String(payload.brand_id ?? "").trim();
   if (!brandId) throw new Error("wizard job payload missing brand_id");
 
+  const reportWizardProgress = createWizardProgressReporter(pool, params.jobRunId);
+
   const source_url = String(payload.source_url ?? "").trim();
   const result = await runMigrationCrawl({
     source_url,
@@ -695,6 +703,13 @@ export async function executeWpShopifySourceCrawlJob(
     max_urls: Math.min(5000, Math.max(1, Number(payload.max_urls) || 2000)),
     crawl_delay_ms: Number.isFinite(Number(payload.crawl_delay_ms)) ? Math.max(0, Number(payload.crawl_delay_ms)) : 500,
     fetch_page_details: Boolean(payload.fetch_page_details),
+    onProgress: (p) => {
+      void reportWizardProgress({
+        phase: "crawl",
+        crawl: { current: p.current, total: p.total, detail: p.phase },
+        force: p.current <= 1 || p.phase === "discovery_done" || p.current >= p.total,
+      });
+    },
   });
 
   const w = await pool.connect();

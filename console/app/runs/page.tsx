@@ -200,7 +200,9 @@ function RunsPageContent() {
         <details className="mb-4 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-body-small text-text-muted">
           <summary className="cursor-pointer font-medium text-text-primary">Common Top errors and what to do</summary>
           <ul className="mt-2 list-inside list-disc space-y-1 text-body-small">
-            <li><strong>lease_expired</strong> — Worker stopped or lost heartbeat. Ensure the Runner (Render worker) is Running and check its logs.</li>
+            <li>
+              <strong>lease_expired</strong> — The control plane reaped a stale job claim (heartbeat too old). Ensure the Runner is running; use a direct Postgres URL or higher <code className="rounded bg-fg-muted/15 px-1">DATABASE_POOL_MAX</code> if the worker uses the Supabase session pooler. Default stale threshold is ~20 minutes (<code className="rounded bg-fg-muted/15 px-1">REAPER_STALE_HEARTBEAT_MS</code> on the API).
+            </li>
             <li><strong>LLM_GATEWAY_URL is not set</strong> — Set <code>LLM_GATEWAY_URL</code> or <code>OPENAI_API_KEY</code> on the Render worker (e.g. ai-factory-runner-staging). Or set <code>LLM_GATEWAY_URL</code> on the Control Plane and use self-heal to sync to the worker.</li>
             <li><strong>LLM gateway error 404</strong> — Check <code>LLM_GATEWAY_URL</code> on the worker and that the gateway is up (<code>/health</code>).</li>
             <li><strong>current transaction is aborted</strong> — Redeploy Control Plane (and Runner) from <code>main</code> so savepoint fixes are live. Old runs will still show this until you start new runs.</li>

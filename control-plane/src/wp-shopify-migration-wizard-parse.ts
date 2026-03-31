@@ -159,6 +159,15 @@ export function parseWizardJobPayload(body: Record<string, unknown>): WpShopifyW
       if (body.state_json !== undefined) {
         out.state_json = body.state_json;
       }
+      const b = body as Record<string, unknown>;
+      const suSnap = String(b.source_url ?? "").trim();
+      if (suSnap && /^https?:\/\//i.test(suSnap)) (out as Record<string, unknown>).source_url = suSnap;
+      const tuSnap = String(b.target_store_url ?? "").trim();
+      if (tuSnap && /^https?:\/\//i.test(tuSnap)) (out as Record<string, unknown>).target_store_url = tuSnap;
+      const gscSnap = String(b.gsc_site_url ?? "").trim();
+      if (gscSnap && /^https?:\/\//i.test(gscSnap)) (out as Record<string, unknown>).gsc_site_url = gscSnap;
+      const ga4Snap = String(b.ga4_property_id ?? "").trim();
+      if (ga4Snap) (out as Record<string, unknown>).ga4_property_id = ga4Snap;
       return out;
     }
     case "dry_run": {
