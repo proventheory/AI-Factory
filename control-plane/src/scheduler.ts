@@ -276,6 +276,32 @@ export async function completeApprovalAndAdvance(
 }
 
 /**
+ * Derive terminal run status from plan node_progress (after all job_runs are terminal).
+ * Used when a failure path closes the run but another branch may have succeeded (parallel roots).
+ */
+export async function computeRunTerminalStatusFromNodeProgress(
+  db: DbClient,
+  runId: string,
+): Promise<"succeeded" | "failed" | "partial"> {
+  const result = await db.query<{ total: string; succeeded: string; failed: string }>(
+    `SELECT
+       count(*)::text AS total,
+       count(*) FILTER (WHERE status = 'succeeded')::text AS succeeded,
+       count(*) FILTER (WHERE status = 'failed')::text AS failed
+     FROM node_progress WHERE run_id = $1`,
+    [runId],
+  );
+  const row = result.rows[0];
+  const total = Number(row?.total ?? 0);
+  const succeeded = Number(row?.succeeded ?? 0);
+  const failed = Number(row?.failed ?? 0);
+  if (total === 0) return "failed";
+  if (succeeded === total) return "succeeded";
+  if (succeeded > 0 && failed > 0) return "partial";
+  return "failed";
+}
+
+/**
  * Check if all nodes in the run have succeeded; if so, mark the run succeeded.
  */
 export async function checkRunCompletion(db: DbClient, runId: string): Promise<boolean> {
@@ -317,17 +343,21 @@ export async function markRunFailedIfNoPendingJobs(db: DbClient, runId: string):
     [runId],
   );
   if (Number(pending.rows[0]?.c ?? 0) > 0) return;
-  await db.query(
-    `UPDATE runs SET status = 'failed', ended_at = now() WHERE id = $1 AND status = 'running'`,
-    [runId],
+  const nextStatus = await computeRunTerminalStatusFromNodeProgress(db, runId);
+  const updated = await db.query<{ id: string }>(
+    `UPDATE runs SET status = $2::run_status, ended_at = now() WHERE id = $1 AND status = 'running' RETURNING id`,
+    [runId, nextStatus],
   );
+  if (!updated.rowCount) return;
   await db.query(
     `INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`,
     [runId],
   ).catch(() => {});
+  const eventType =
+    nextStatus === "succeeded" ? "succeeded" : nextStatus === "partial" ? "partial" : "failed";
   await db.query(
-    `INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`,
-    [runId],
+    `INSERT INTO run_events (run_id, event_type) VALUES ($1, $2::run_event_type)`,
+    [runId, eventType],
   ).catch(() => {});
 }
 

@@ -1,5 +1,6 @@
 import { v4 as uuid } from "uuid";
 import type pg from "pg";
+import { computeRunTerminalStatusFromNodeProgress } from "./scheduler.js";
 
 /** Heartbeats run every 30s; allow headroom when the pool is busy or jobs are I/O-heavy (PDF/blog migration). */
 const STALE_THRESHOLD_MS = 8 * 60_000; // 8 minutes
@@ -182,7 +183,9 @@ export async function reconcileRunStatuses(pool: pg.Pool): Promise<number> {
  * Reconcile runs stuck in "running" when there are no pending job_runs (all are succeeded or failed).
  * E.g. after lease_expired the job_runs are failed but the run was never marked failed/succeeded.
  */
-export async function reconcileRunningRunsWithNoPendingJobs(pool: pg.Pool): Promise<{ succeeded: number; failed: number }> {
+export async function reconcileRunningRunsWithNoPendingJobs(
+  pool: pg.Pool,
+): Promise<{ succeeded: number; failed: number; partial: number }> {
   const runs = await pool.query<{ id: string }>(
     `SELECT r.id
      FROM runs r
@@ -193,39 +196,26 @@ export async function reconcileRunningRunsWithNoPendingJobs(pool: pg.Pool): Prom
   );
   let succeeded = 0;
   let failed = 0;
+  let partial = 0;
   for (const row of runs.rows) {
-    const counts = await pool.query<{ succeeded: string; failed: string }>(
-      `SELECT
-         count(*) FILTER (WHERE status = 'succeeded')::text AS succeeded,
-         count(*) FILTER (WHERE status = 'failed')::text AS failed
-       FROM job_runs WHERE run_id = $1`,
-      [row.id],
+    const nextStatus = await computeRunTerminalStatusFromNodeProgress(pool, row.id);
+    const r = await pool.query(
+      `UPDATE runs SET status = $2::run_status, ended_at = now() WHERE id = $1 AND status = 'running' RETURNING id`,
+      [row.id, nextStatus],
     );
-    const s = Number(counts.rows[0]?.succeeded ?? 0);
-    const f = Number(counts.rows[0]?.failed ?? 0);
-    if (s > 0 && f === 0) {
-      const r = await pool.query(
-        `UPDATE runs SET status = 'succeeded', ended_at = now() WHERE id = $1 AND status = 'running' RETURNING id`,
-        [row.id],
-      );
-      if (r.rowCount && r.rowCount > 0) {
-        await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`, [row.id]).catch(() => {});
-        await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'succeeded')`, [row.id]).catch(() => {});
-        succeeded++;
-      }
-    } else {
-      const r = await pool.query(
-        `UPDATE runs SET status = 'failed', ended_at = now() WHERE id = $1 AND status = 'running' RETURNING id`,
-        [row.id],
-      );
-      if (r.rowCount && r.rowCount > 0) {
-        await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`, [row.id]).catch(() => {});
-        await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'failed')`, [row.id]).catch(() => {});
-        failed++;
-      }
-    }
+    if (!r.rowCount) continue;
+    await pool.query(`INSERT INTO run_events (run_id, event_type) VALUES ($1, 'stage_exited')`, [row.id]).catch(() => {});
+    const eventType =
+      nextStatus === "succeeded" ? "succeeded" : nextStatus === "partial" ? "partial" : "failed";
+    await pool.query(
+      `INSERT INTO run_events (run_id, event_type) VALUES ($1, $2::run_event_type)`,
+      [row.id, eventType],
+    ).catch(() => {});
+    if (nextStatus === "succeeded") succeeded++;
+    else if (nextStatus === "partial") partial++;
+    else failed++;
   }
-  return { succeeded, failed };
+  return { succeeded, failed, partial };
 }
 
 /** Threshold: if a run is still "running" and all job_runs are "queued" (never started) for this long, mark run + jobs failed. */

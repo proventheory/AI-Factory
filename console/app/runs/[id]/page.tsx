@@ -31,6 +31,13 @@ type RunDetail = {
   job_events?: Record<string, unknown>[];
 };
 
+function pipelineRunStatusVariant(status: string): "success" | "warning" | "error" | "neutral" {
+  if (status === "succeeded") return "success";
+  if (status === "failed") return "error";
+  if (status === "partial") return "warning";
+  return "neutral";
+}
+
 type ToolCallRow = { id: string; job_run_id: string; capability: string; operation_key: string; status: string; started_at: string | null };
 type ArtifactRow = { id: string; artifact_type: string; artifact_class: string; uri: string; created_at: string };
 type ValidationRow = { id: string; validator_type: string; status: string; job_run_id: string | null; created_at: string };
@@ -503,7 +510,13 @@ export default function RunDetailPage() {
                 <dl className="text-sm space-y-1">
                   <dt className="text-slate-500">Environment</dt><dd>{String(run.environment)}</dd>
                   <dt className="text-slate-500">Cohort</dt><dd>{String(run.cohort ?? "—")}</dd>
-                  <dt className="text-slate-500">Status</dt><dd><Badge variant={String(run.status) === "succeeded" ? "success" : String(run.status) === "failed" ? "error" : "neutral"}>{String(run.status)}</Badge></dd>
+                  <dt className="text-slate-500">Status</dt>
+                  <dd className="space-y-1">
+                    <Badge variant={pipelineRunStatusVariant(String(run.status))}>{String(run.status)}</Badge>
+                    {String(run.status) === "partial" && (
+                      <p className="text-xs text-slate-500">Some plan nodes succeeded and others failed (e.g. parallel migration branches). Check job runs and artifacts for what completed.</p>
+                    )}
+                  </dd>
                   <dt className="text-slate-500">Started</dt><dd>{run.started_at ? new Date(String(run.started_at)).toLocaleString() : "—"}</dd>
                   <dt className="text-slate-500">Ended</dt><dd>{run.ended_at ? new Date(String(run.ended_at)).toLocaleString() : "—"}</dd>
                 </dl>

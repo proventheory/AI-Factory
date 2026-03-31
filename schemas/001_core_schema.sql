@@ -9,7 +9,7 @@ BEGIN;
 -- ============================================================
 
 CREATE TYPE run_status AS ENUM (
-  'queued', 'running', 'succeeded', 'failed', 'rolled_back'
+  'queued', 'running', 'succeeded', 'failed', 'rolled_back', 'partial'
 );
 
 CREATE TYPE job_run_status AS ENUM (
@@ -50,7 +50,7 @@ CREATE TYPE node_outcome_status AS ENUM (
 
 CREATE TYPE run_event_type AS ENUM (
   'queued', 'started', 'stage_entered', 'stage_exited',
-  'succeeded', 'failed', 'rolled_back'
+  'succeeded', 'failed', 'rolled_back', 'partial'
 );
 
 CREATE TYPE job_event_type AS ENUM (

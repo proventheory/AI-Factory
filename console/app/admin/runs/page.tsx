@@ -13,7 +13,9 @@ export default function AdminRunsListPage() {
 
   const columns: Column<{ id: string; status: string; environment: string; started_at: string | null; finished_at?: string | null }>[] = [
     { key: "id", header: "ID", render: (row) => <Link href={`/admin/runs/${row.id}`} className="font-mono text-caption-small text-brand-600 hover:underline">{String(row.id).slice(0, 8)}…</Link> },
-    { key: "status", header: "Status", render: (row) => <Badge variant={row.status === "succeeded" ? "success" : row.status === "failed" ? "error" : "neutral"}>{row.status}</Badge> },
+    { key: "status", header: "Status", render: (row) => (
+      <Badge variant={row.status === "succeeded" ? "success" : row.status === "failed" ? "error" : row.status === "partial" ? "warning" : "neutral"}>{row.status}</Badge>
+    ) },
     { key: "environment", header: "Environment" },
     { key: "started_at", header: "Started", render: (row) => row.started_at ? new Date(row.started_at).toLocaleString() : "—" },
     { key: "finished_at", header: "Finished", render: (row) => row.finished_at ? new Date(row.finished_at).toLocaleString() : "—" },

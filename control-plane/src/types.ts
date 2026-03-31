@@ -1,4 +1,4 @@
-export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "rolled_back";
+export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "partial" | "rolled_back";
 export type JobRunStatus = "queued" | "running" | "succeeded" | "failed";
 export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed";
 export type Environment = "sandbox" | "staging" | "prod";

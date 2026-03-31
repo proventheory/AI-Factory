@@ -65,8 +65,10 @@ async function startReaperLoop(): Promise<void> {
     const reconciled = await reconcileRunStatuses(pool);
     if (reconciled > 0) console.log(`[reaper] Startup: reconciled ${reconciled} run(s) to succeeded`);
     const noPending = await reconcileRunningRunsWithNoPendingJobs(pool);
-    if (noPending.succeeded > 0 || noPending.failed > 0) {
-      console.log(`[reaper] Startup: reconciled ${noPending.succeeded} run(s) to succeeded, ${noPending.failed} to failed (no pending jobs)`);
+    if (noPending.succeeded > 0 || noPending.failed > 0 || noPending.partial > 0) {
+      console.log(
+        `[reaper] Startup: reconciled ${noPending.succeeded} run(s) to succeeded, ${noPending.partial} partial, ${noPending.failed} failed (no pending jobs)`,
+      );
     }
     const staleQueued = await reconcileRunningRunsWithStaleQueuedJobs(pool);
     if (staleQueued > 0) {
@@ -84,8 +86,10 @@ async function startReaperLoop(): Promise<void> {
       const reconciled = await reconcileRunStatuses(pool);
       if (reconciled > 0) console.log(`[reaper] Reconciled ${reconciled} run(s) to succeeded`);
       const noPending = await reconcileRunningRunsWithNoPendingJobs(pool);
-      if (noPending.succeeded > 0 || noPending.failed > 0) {
-        console.log(`[reaper] Reconciled runs with no pending jobs: ${noPending.succeeded} succeeded, ${noPending.failed} failed`);
+      if (noPending.succeeded > 0 || noPending.failed > 0 || noPending.partial > 0) {
+        console.log(
+          `[reaper] Reconciled runs with no pending jobs: ${noPending.succeeded} succeeded, ${noPending.partial} partial, ${noPending.failed} failed`,
+        );
       }
       const staleQueued = await reconcileRunningRunsWithStaleQueuedJobs(pool);
       if (staleQueued > 0) {

@@ -28,6 +28,7 @@ type RunRow = {
 function statusVariant(status: string): "success" | "warning" | "error" | "neutral" {
   if (status === "succeeded") return "success";
   if (status === "failed") return "error";
+  if (status === "partial") return "warning";
   if (status === "running" || status === "queued") return "warning";
   return "neutral";
 }

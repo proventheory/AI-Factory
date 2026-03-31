@@ -17,8 +17,9 @@ BEGIN
 
   IF NOT (
     (OLD.status = 'queued'   AND NEW.status IN ('running', 'failed'))
-    OR (OLD.status = 'running' AND NEW.status IN ('succeeded', 'failed', 'rolled_back'))
+    OR (OLD.status = 'running' AND NEW.status IN ('succeeded', 'failed', 'rolled_back', 'partial'))
     OR (OLD.status = 'failed'  AND NEW.status = 'rolled_back')
+    OR (OLD.status = 'partial' AND NEW.status = 'rolled_back')
   ) THEN
     RAISE EXCEPTION 'Invalid run status transition: % -> %', OLD.status, NEW.status;
   END IF;

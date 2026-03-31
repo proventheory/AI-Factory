@@ -56,7 +56,8 @@ export default function AdminRunShowPage() {
     );
   }
 
-  const statusVariant = data.status === "succeeded" ? "success" : data.status === "failed" ? "error" : "neutral";
+  const statusVariant =
+    data.status === "succeeded" ? "success" : data.status === "failed" ? "error" : data.status === "partial" ? "warning" : "neutral";
 
   const jobRunColumns: Column<JobRunRow>[] = [
     { key: "plan_node_id", header: "Node", render: (row) => <span className="font-mono text-caption-small">{(row as Record<string, unknown>).node_key as string ?? row.plan_node_id?.slice(0, 8)}</span> },
