@@ -20,6 +20,7 @@
     "test:pipeline-v2-api": "node scripts/test-pipeline-v2-api.mjs",
     "test:dev-kernel-api": "node scripts/test-dev-kernel-api.mjs",
     "test:taxonomy-catalog-api": "node scripts/test-taxonomy-catalog-api.mjs",
+    "smoke:wp-shopify-migration": "node scripts/wp-shopify-migration-pipeline-smoke.mjs",
     "verify:taxonomy-db": "node --env-file=.env scripts/verify-taxonomy-db.mjs",
     "verify:migrations": "node scripts/verify-migrations-registered.mjs",
     "verify:migration-names": "node scripts/validate-migration-names.mjs",

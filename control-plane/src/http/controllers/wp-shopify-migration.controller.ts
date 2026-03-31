@@ -5,7 +5,7 @@
 import type { Request, Response } from "express";
 import { withTransaction } from "../../db.js";
 import { hasShopifyCredentialsForBrand } from "../../shopify-brand-connector.js";
-import { enqueueWpShopifyWizardJob } from "../../wp-shopify-migration-pipeline.js";
+import { enqueueWpShopifyWizardJob, enqueueWpShopifyWizardMigrationRun } from "../../wp-shopify-migration-pipeline.js";
 import { parseWizardJobPayload } from "../../wp-shopify-migration-wizard-parse.js";
 
 /** WP → Shopify migration wizard — Step 1: enqueue source crawl (`wp_shopify_wizard_job` → artifact `wp_shopify_source_crawl`). Requires brand_id. */
@@ -105,11 +105,12 @@ export async function wpShopifyMigrationRun(req: Request, res: Response): Promis
     const env = body.environment;
     const environment = env === "staging" || env === "prod" ? env : "sandbox";
     const payload = parseWizardJobPayload({ ...body, kind: "migration_run_placeholder" });
-    const out = await enqueueWpShopifyWizardJob({ brandId: payload.brand_id, environment, payload });
+    const out = await enqueueWpShopifyWizardMigrationRun({ brandId: payload.brand_id, environment, payload });
     res.json({
       ...out,
-      message:
-        "Migration run queued. Poll GET /v1/runs/:run_id; artifact wp_shopify_migration_run contains per-entity results and any pending ETL notes.",
+      message: out.parallel_migration_jobs
+        ? "Migration queued as two parallel jobs (content vs PDFs) when runners are available. Poll GET /v1/runs/:run_id; artifacts wp_shopify_migration_run merge per entity."
+        : "Migration run queued. Poll GET /v1/runs/:run_id; artifact wp_shopify_migration_run contains per-entity results and any pending ETL notes.",
     });
   } catch (e) {
     const msg = String((e as Error).message);

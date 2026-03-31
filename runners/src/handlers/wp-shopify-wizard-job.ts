@@ -11,7 +11,10 @@ function createWizardProgressReporter(pool: Pool | undefined, jobRunId: string |
     if (!pool || !jobRunId?.trim()) return;
     const force = payload.force === true;
     const now = Date.now();
-    if (!force && now - lastWrite < 2000) return;
+    const hasNumericProgress =
+      payload.blogs != null || payload.pdfs != null || payload.blog_tags != null;
+    const minGapMs = hasNumericProgress ? 750 : 2000;
+    if (!force && now - lastWrite < minGapMs) return;
     lastWrite = now;
     const { force: _f, ...rest } = payload;
     try {
@@ -30,7 +33,7 @@ function pdfProgressToWizardPayload(ev: PdfMigrationProgressEvent): Record<strin
     return { phase: "pdfs", pdfs: { current: 0, total: ev.total }, force: true };
   }
   if (ev.event === "item" && ev.step === "complete") {
-    return { phase: "pdfs", pdfs: { current: ev.current, total: ev.total } };
+    return { phase: "pdfs", pdfs: { current: ev.current, total: ev.total }, force: true };
   }
   return null;
 }
@@ -73,6 +76,7 @@ async function loadPayload(
   client: pg.PoolClient,
   initiativeId: string,
   runId: string,
+  planNodeId: string,
 ): Promise<WpShopifyWizardJobPayload> {
   const r = await client.query<{ goal_metadata: unknown }>(
     "SELECT goal_metadata FROM initiatives WHERE id = $1",
@@ -86,9 +90,17 @@ async function loadPayload(
   if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) {
     throw new Error("wp_shopify_pipeline_jobs missing on initiative");
   }
-  const payload = (jobs as Record<string, unknown>)[runId];
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error(`No wizard job payload for run_id=${runId}`);
+  const j = jobs as Record<string, unknown>;
+  const byNode = j[planNodeId];
+  const byRun = j[runId];
+  const payload =
+    byNode && typeof byNode === "object" && !Array.isArray(byNode)
+      ? byNode
+      : byRun && typeof byRun === "object" && !Array.isArray(byRun)
+        ? byRun
+        : null;
+  if (!payload) {
+    throw new Error(`No wizard job payload for run_id=${runId} plan_node_id=${planNodeId}`);
   }
   return payload as WpShopifyWizardJobPayload;
 }
@@ -139,6 +151,353 @@ async function insertDataArtifact(
   );
 }
 
+type WizardJobParams = { runId: string; jobRunId: string; planNodeId: string };
+
+/**
+ * Long-running migration: do not hold a pool connection during HTTP (blogs/PDFs). Otherwise heartbeats + parallel jobs exhaust the pool → lease_expired mid-import.
+ */
+export async function executeWpShopifyMigrationRunJob(
+  pool: Pool,
+  context: JobContext,
+  params: WizardJobParams,
+): Promise<void> {
+  const initiativeId = context.initiative_id;
+  if (!initiativeId) throw new Error("wp_shopify_wizard_job requires initiative_id");
+
+  const reportWizardProgress = createWizardProgressReporter(pool, params.jobRunId);
+
+  const read = await pool.connect();
+  let payload: WpShopifyWizardJobPayload;
+  try {
+    payload = await loadPayload(read, initiativeId, params.runId, params.planNodeId);
+  } finally {
+    read.release();
+  }
+
+  const brandId = String(payload.brand_id ?? "").trim();
+  if (!brandId) throw new Error("wizard job payload missing brand_id");
+
+  try {
+    const branch = typeof payload._migration_parallel_branch === "string" ? payload._migration_parallel_branch.trim() : "";
+    if (branch) {
+      void reportWizardProgress({
+        migration_branch: branch,
+        phase_banner:
+          branch === "pdfs"
+            ? "PDF branch (parallel runner): Shopify Files…"
+            : "Content branch (parallel runner): blogs / tags / ETL notes…",
+        force: true,
+      });
+    }
+
+    const wConn = await pool.connect();
+    let server: string;
+    let key: string;
+    let secret: string;
+    try {
+      const w = await resolveWooFromPayload(wConn, brandId, payload);
+      server = w.server;
+      key = w.key;
+      secret = w.secret;
+    } finally {
+      wConn.release();
+    }
+    const wpUser = String(payload.wp_username ?? "").trim();
+    const wpPass = String(payload.wp_application_password ?? "").trim();
+    const wpAuth = wpUser && wpPass ? wpBasicAuthHeader(wpUser, wpPass) : null;
+
+    const entitiesRaw = Array.isArray(payload.entities) ? (payload.entities as unknown[]) : [];
+    const entities = [...new Set(entitiesRaw.map((e) => String(e).trim()).filter(Boolean))];
+    if (entities.length === 0) throw new Error("migration_run requires at least one selected entity");
+
+    const excludedRaw =
+      payload.excluded_ids_by_entity && typeof payload.excluded_ids_by_entity === "object" && !Array.isArray(payload.excluded_ids_by_entity)
+        ? (payload.excluded_ids_by_entity as Record<string, unknown>)
+        : {};
+    const excludedByEntity: Record<string, Set<string>> = {};
+    for (const [k, v] of Object.entries(excludedRaw)) {
+      excludedByEntity[k] = new Set(Array.isArray(v) ? v.map((x) => String(x)) : []);
+    }
+
+    const needsShopifyPdfs = entities.includes("pdfs");
+    const wantsTagRedirects = entities.includes("blog_tags");
+    const needsShopifyBlogs = entities.includes("blogs");
+    let shopDomain: string | null = null;
+    let shopAccessToken: string | null = null;
+    if (needsShopifyPdfs || wantsTagRedirects || needsShopifyBlogs) {
+      const pre = shopifyPrefetchedFromPayload(payload);
+      if (pre) {
+        shopDomain = pre.shop_domain;
+        shopAccessToken = pre.access_token;
+      } else {
+        const sConn = await pool.connect();
+        try {
+          const sm = await getShopifyShopForBrand(sConn, brandId);
+          const tp = await getShopifyAccessTokenForBrand(sConn, brandId);
+          if (needsShopifyPdfs || needsShopifyBlogs) {
+            if (!sm || !tp?.access_token) {
+              throw new Error("Shopify must be connected for PDF or blog post import (Brands → Edit brand → Shopify).");
+            }
+          }
+          shopDomain = sm?.shop_domain ?? null;
+          shopAccessToken = tp?.access_token ?? null;
+        } finally {
+          sConn.release();
+        }
+      }
+    }
+
+    const maxRaw = Number(payload.max_files);
+    const maxPdfFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
+    const targetStoreUrl = typeof payload.target_store_url === "string" ? payload.target_store_url.trim() : "";
+    const shopifyBlogHandle = typeof payload.shopify_blog_handle === "string" ? payload.shopify_blog_handle.trim() : "";
+
+    const artifact = await executeWizardMigrationRun({
+      server,
+      wpAuthHeader: wpAuth,
+      shopDomain,
+      shopAccessToken,
+      targetStoreUrl: targetStoreUrl || null,
+      shopifyBlogHandle: shopifyBlogHandle || null,
+      entities,
+      excludedByEntity,
+      maxPdfFiles,
+      maxBlogPosts: maxPdfFiles,
+      createRedirects: payload.create_redirects !== false,
+      skipIfExistsInShopify: payload.skip_if_exists_in_shopify === true,
+      onPdfProgress: (ev) => {
+        const pl = pdfProgressToWizardPayload(ev);
+        if (pl) void reportWizardProgress(pl);
+      },
+      onBlogProgress: (p) => {
+        void reportWizardProgress({
+          phase: "blogs",
+          blogs: { current: p.current, total: p.total },
+          force: true,
+        });
+      },
+      onWizardProgress: (pl) => {
+        void reportWizardProgress(pl);
+      },
+    });
+
+    const ins = await pool.connect();
+    try {
+      await insertDataArtifact(ins, params, "wp_shopify_migration_run", artifact);
+    } finally {
+      ins.release();
+    }
+  } finally {
+    const stripC = await pool.connect();
+    try {
+      await stripWizardJobPayloadFromInitiative(stripC, initiativeId, params.planNodeId, params.runId);
+    } catch (stripErr) {
+      console.error(
+        "[wp_shopify_wizard_job] stripWizardJobPayloadFromInitiative failed (goal_metadata may retain this run key):",
+        stripErr instanceof Error ? stripErr.message : stripErr,
+      );
+    } finally {
+      stripC.release();
+    }
+  }
+}
+
+export async function executeWpShopifyPdfImportJob(pool: Pool, context: JobContext, params: WizardJobParams): Promise<void> {
+  const initiativeId = context.initiative_id;
+  if (!initiativeId) throw new Error("wp_shopify_wizard_job requires initiative_id");
+  const reportWizardProgress = createWizardProgressReporter(pool, params.jobRunId);
+
+  const read = await pool.connect();
+  let payload: WpShopifyWizardJobPayload;
+  try {
+    payload = await loadPayload(read, initiativeId, params.runId, params.planNodeId);
+  } finally {
+    read.release();
+  }
+  const brandId = String(payload.brand_id ?? "").trim();
+  if (!brandId) throw new Error("wizard job payload missing brand_id");
+
+  try {
+    const wConn = await pool.connect();
+    let server: string;
+    let key: string;
+    let secret: string;
+    try {
+      const w = await resolveWooFromPayload(wConn, brandId, payload);
+      server = w.server;
+      key = w.key;
+      secret = w.secret;
+    } finally {
+      wConn.release();
+    }
+    const wpUser = String(payload.wp_username ?? "").trim();
+    const wpPass = String(payload.wp_application_password ?? "").trim();
+    const wpAuth = wpUser && wpPass ? wpBasicAuthHeader(wpUser, wpPass) : null;
+
+    const preShop = shopifyPrefetchedFromPayload(payload);
+    let shopDomainPdf: string;
+    let shopAccessTokenPdf: string;
+    if (preShop) {
+      shopDomainPdf = preShop.shop_domain;
+      shopAccessTokenPdf = preShop.access_token;
+    } else {
+      const sConn = await pool.connect();
+      try {
+        const shopMeta = await getShopifyShopForBrand(sConn, brandId);
+        const tokenPack = await getShopifyAccessTokenForBrand(sConn, brandId);
+        if (!shopMeta || !tokenPack?.access_token) {
+          throw new Error("Could not obtain Shopify access token for this brand");
+        }
+        shopDomainPdf = shopMeta.shop_domain;
+        shopAccessTokenPdf = tokenPack.access_token;
+      } finally {
+        sConn.release();
+      }
+    }
+
+    const excludedIds = new Set(
+      Array.isArray(payload.excluded_ids) ? (payload.excluded_ids as unknown[]).map((x) => String(x)) : [],
+    );
+    const maxRaw = Number(payload.max_files);
+    const maxFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
+    const createRedirects = payload.create_redirects !== false;
+    const result = await migrateWordPressPdfsToShopify({
+      wpOrigin: server,
+      wpAuthHeader: wpAuth,
+      shopDomain: shopDomainPdf,
+      accessToken: shopAccessTokenPdf,
+      excludedIds,
+      maxFiles,
+      createRedirects,
+      skipIfExistsInShopify: payload.skip_if_exists_in_shopify === true,
+      onProgress: (ev) => {
+        const pl = pdfProgressToWizardPayload(ev);
+        if (pl) void reportWizardProgress(pl);
+      },
+    });
+    const { summary, hint } = pdfMigrationSummaryAndHint(result);
+
+    const ins = await pool.connect();
+    try {
+      await insertDataArtifact(ins, params, "wp_shopify_pdf_import", {
+        rows: result.rows,
+        redirect_csv: result.redirect_csv,
+        truncated: result.truncated,
+        summary,
+        hint,
+      });
+    } finally {
+      ins.release();
+    }
+  } finally {
+    const stripC = await pool.connect();
+    try {
+      await stripWizardJobPayloadFromInitiative(stripC, initiativeId, params.planNodeId, params.runId);
+    } catch (stripErr) {
+      console.error(
+        "[wp_shopify_wizard_job] stripWizardJobPayloadFromInitiative failed (goal_metadata may retain this run key):",
+        stripErr instanceof Error ? stripErr.message : stripErr,
+      );
+    } finally {
+      stripC.release();
+    }
+  }
+}
+
+export async function executeWpShopifyPdfResolveJob(pool: Pool, context: JobContext, params: WizardJobParams): Promise<void> {
+  const initiativeId = context.initiative_id;
+  if (!initiativeId) throw new Error("wp_shopify_wizard_job requires initiative_id");
+
+  const read = await pool.connect();
+  let payload: WpShopifyWizardJobPayload;
+  try {
+    payload = await loadPayload(read, initiativeId, params.runId, params.planNodeId);
+  } finally {
+    read.release();
+  }
+  const brandId = String(payload.brand_id ?? "").trim();
+  if (!brandId) throw new Error("wizard job payload missing brand_id");
+
+  try {
+    const wConn = await pool.connect();
+    let server: string;
+    let key: string;
+    let secret: string;
+    try {
+      const w = await resolveWooFromPayload(wConn, brandId, payload);
+      server = w.server;
+      key = w.key;
+      secret = w.secret;
+    } finally {
+      wConn.release();
+    }
+    const wpUser = String(payload.wp_username ?? "").trim();
+    const wpPass = String(payload.wp_application_password ?? "").trim();
+    const wpAuth = wpUser && wpPass ? wpBasicAuthHeader(wpUser, wpPass) : null;
+
+    const preShop = shopifyPrefetchedFromPayload(payload);
+    let shopDomainPdf: string;
+    let shopAccessTokenPdf: string;
+    if (preShop) {
+      shopDomainPdf = preShop.shop_domain;
+      shopAccessTokenPdf = preShop.access_token;
+    } else {
+      const sConn = await pool.connect();
+      try {
+        const shopMeta = await getShopifyShopForBrand(sConn, brandId);
+        const tokenPack = await getShopifyAccessTokenForBrand(sConn, brandId);
+        if (!shopMeta || !tokenPack?.access_token) {
+          throw new Error("Could not obtain Shopify access token for this brand");
+        }
+        shopDomainPdf = shopMeta.shop_domain;
+        shopAccessTokenPdf = tokenPack.access_token;
+      } finally {
+        sConn.release();
+      }
+    }
+
+    const wordpressIds = Array.isArray(payload.wordpress_ids)
+      ? (payload.wordpress_ids as unknown[]).map((x) => String(x))
+      : [];
+    if (wordpressIds.length === 0) throw new Error("pdf_resolve requires wordpress_ids");
+    const createRedirects = payload.create_redirects !== false;
+    const result = await resolveWordPressPdfUrlsFromShopify({
+      wpOrigin: server,
+      wpAuthHeader: wpAuth,
+      shopDomain: shopDomainPdf,
+      accessToken: shopAccessTokenPdf,
+      wordpressIds,
+      createRedirects,
+    });
+    const { summary, hint } = pdfMigrationSummaryAndHint(result);
+
+    const ins = await pool.connect();
+    try {
+      await insertDataArtifact(ins, params, "wp_shopify_pdf_resolve", {
+        rows: result.rows,
+        redirect_csv: result.redirect_csv,
+        truncated: result.truncated,
+        summary,
+        hint,
+      });
+    } finally {
+      ins.release();
+    }
+  } finally {
+    const stripC = await pool.connect();
+    try {
+      await stripWizardJobPayloadFromInitiative(stripC, initiativeId, params.planNodeId, params.runId);
+    } catch (stripErr) {
+      console.error(
+        "[wp_shopify_wizard_job] stripWizardJobPayloadFromInitiative failed (goal_metadata may retain this run key):",
+        stripErr instanceof Error ? stripErr.message : stripErr,
+      );
+    } finally {
+      stripC.release();
+    }
+  }
+}
+
 export async function handleWpShopifyWizardJob(
   client: pg.PoolClient,
   context: JobContext,
@@ -149,7 +508,7 @@ export async function handleWpShopifyWizardJob(
 
   const reportWizardProgress = createWizardProgressReporter(params.dbPool, params.jobRunId);
 
-  const payload = await loadPayload(client, initiativeId, params.runId);
+  const payload = await loadPayload(client, initiativeId, params.runId, params.planNodeId);
   const brandId = String(payload.brand_id ?? "").trim();
   if (!brandId) throw new Error("wizard job payload missing brand_id");
 
@@ -270,153 +629,12 @@ export async function handleWpShopifyWizardJob(
       return;
     }
 
-    if (kind === "migration_run_placeholder") {
-      const entitiesRaw = Array.isArray(payload.entities) ? (payload.entities as unknown[]) : [];
-      const entities = [...new Set(entitiesRaw.map((e) => String(e).trim()).filter(Boolean))];
-      if (entities.length === 0) throw new Error("migration_run requires at least one selected entity");
-
-      const excludedRaw =
-        payload.excluded_ids_by_entity && typeof payload.excluded_ids_by_entity === "object" && !Array.isArray(payload.excluded_ids_by_entity)
-          ? (payload.excluded_ids_by_entity as Record<string, unknown>)
-          : {};
-      const excludedByEntity: Record<string, Set<string>> = {};
-      for (const [k, v] of Object.entries(excludedRaw)) {
-        excludedByEntity[k] = new Set(Array.isArray(v) ? v.map((x) => String(x)) : []);
-      }
-
-      const needsShopifyPdfs = entities.includes("pdfs");
-      const wantsTagRedirects = entities.includes("blog_tags");
-      const needsShopifyBlogs = entities.includes("blogs");
-      let shopDomain: string | null = null;
-      let shopAccessToken: string | null = null;
-      if (needsShopifyPdfs || wantsTagRedirects || needsShopifyBlogs) {
-        const pre = shopifyPrefetchedFromPayload(payload);
-        if (pre) {
-          shopDomain = pre.shop_domain;
-          shopAccessToken = pre.access_token;
-        } else {
-          const sm = await getShopifyShopForBrand(client, brandId);
-          const tp = await getShopifyAccessTokenForBrand(client, brandId);
-          if (needsShopifyPdfs || needsShopifyBlogs) {
-            if (!sm || !tp?.access_token) {
-              throw new Error("Shopify must be connected for PDF or blog post import (Brands → Edit brand → Shopify).");
-            }
-          }
-          shopDomain = sm?.shop_domain ?? null;
-          shopAccessToken = tp?.access_token ?? null;
-        }
-      }
-
-      const maxRaw = Number(payload.max_files);
-      const maxPdfFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
-      const targetStoreUrl = typeof payload.target_store_url === "string" ? payload.target_store_url.trim() : "";
-      const shopifyBlogHandle = typeof payload.shopify_blog_handle === "string" ? payload.shopify_blog_handle.trim() : "";
-      const artifact = await executeWizardMigrationRun({
-        server,
-        wpAuthHeader: wpAuth,
-        shopDomain,
-        shopAccessToken,
-        targetStoreUrl: targetStoreUrl || null,
-        shopifyBlogHandle: shopifyBlogHandle || null,
-        entities,
-        excludedByEntity,
-        maxPdfFiles,
-        maxBlogPosts: maxPdfFiles,
-        createRedirects: payload.create_redirects !== false,
-        skipIfExistsInShopify: payload.skip_if_exists_in_shopify === true,
-        onPdfProgress: (ev) => {
-          const pl = pdfProgressToWizardPayload(ev);
-          if (pl) void reportWizardProgress(pl);
-        },
-        onBlogProgress: (p) => {
-          void reportWizardProgress({
-            phase: "blogs",
-            blogs: { current: p.current, total: p.total },
-            force: p.current === 0,
-          });
-        },
-      });
-      await insertDataArtifact(client, params, "wp_shopify_migration_run", artifact);
-      return;
-    }
-
-    const preShop = shopifyPrefetchedFromPayload(payload);
-    let shopDomainPdf: string;
-    let shopAccessTokenPdf: string;
-    if (preShop) {
-      shopDomainPdf = preShop.shop_domain;
-      shopAccessTokenPdf = preShop.access_token;
-    } else {
-      const shopMeta = await getShopifyShopForBrand(client, brandId);
-      const tokenPack = await getShopifyAccessTokenForBrand(client, brandId);
-      if (!shopMeta || !tokenPack?.access_token) {
-        throw new Error("Could not obtain Shopify access token for this brand");
-      }
-      shopDomainPdf = shopMeta.shop_domain;
-      shopAccessTokenPdf = tokenPack.access_token;
-    }
-
-    if (kind === "pdf_import") {
-      const excludedIds = new Set(
-        Array.isArray(payload.excluded_ids) ? (payload.excluded_ids as unknown[]).map((x) => String(x)) : [],
-      );
-      const maxRaw = Number(payload.max_files);
-      const maxFiles = Number.isFinite(maxRaw) ? Math.min(2000, Math.max(1, maxRaw)) : 500;
-      const createRedirects = payload.create_redirects !== false;
-      const result = await migrateWordPressPdfsToShopify({
-        wpOrigin: server,
-        wpAuthHeader: wpAuth,
-        shopDomain: shopDomainPdf,
-        accessToken: shopAccessTokenPdf,
-        excludedIds,
-        maxFiles,
-        createRedirects,
-        skipIfExistsInShopify: payload.skip_if_exists_in_shopify === true,
-        onProgress: (ev) => {
-          const pl = pdfProgressToWizardPayload(ev);
-          if (pl) void reportWizardProgress(pl);
-        },
-      });
-      const { summary, hint } = pdfMigrationSummaryAndHint(result);
-      await insertDataArtifact(client, params, "wp_shopify_pdf_import", {
-        rows: result.rows,
-        redirect_csv: result.redirect_csv,
-        truncated: result.truncated,
-        summary,
-        hint,
-      });
-      return;
-    }
-
-    if (kind === "pdf_resolve") {
-      const wordpressIds = Array.isArray(payload.wordpress_ids)
-        ? (payload.wordpress_ids as unknown[]).map((x) => String(x))
-        : [];
-      if (wordpressIds.length === 0) throw new Error("pdf_resolve requires wordpress_ids");
-      const createRedirects = payload.create_redirects !== false;
-      const result = await resolveWordPressPdfUrlsFromShopify({
-        wpOrigin: server,
-        wpAuthHeader: wpAuth,
-        shopDomain: shopDomainPdf,
-        accessToken: shopAccessTokenPdf,
-        wordpressIds,
-        createRedirects,
-      });
-      const { summary, hint } = pdfMigrationSummaryAndHint(result);
-      await insertDataArtifact(client, params, "wp_shopify_pdf_resolve", {
-        rows: result.rows,
-        redirect_csv: result.redirect_csv,
-        truncated: result.truncated,
-        summary,
-        hint,
-      });
-      return;
-    }
-
-    throw new Error(`Unknown wizard job kind: ${kind}`);
+    throw new Error(
+      `Wizard job kind "${kind}" must run via detached pool entrypoint (migration_run / pdf_import / pdf_resolve) — check runner index dispatch.`,
+    );
   } finally {
     try {
-      await stripWizardJobPayloadFromInitiative(client, initiativeId, params.runId);
+      await stripWizardJobPayloadFromInitiative(client, initiativeId, params.planNodeId, params.runId);
     } catch (stripErr) {
       // Do not fail the job after a successful crawl/write: same-tx rollback would drop the artifact.
       console.error(
@@ -428,10 +646,15 @@ export async function handleWpShopifyWizardJob(
 }
 
 /** Peek job kind without requiring an open transaction (used by runner index before choosing crawl path). */
-export async function peekWpShopifyWizardKind(pool: Pool, initiativeId: string, runId: string): Promise<string> {
+export async function peekWpShopifyWizardKind(
+  pool: Pool,
+  initiativeId: string,
+  runId: string,
+  planNodeId: string,
+): Promise<string> {
   const c = await pool.connect();
   try {
-    const p = await loadPayload(c, initiativeId, runId);
+    const p = await loadPayload(c, initiativeId, runId, planNodeId);
     return String(p.kind ?? "");
   } finally {
     c.release();
@@ -453,7 +676,7 @@ export async function executeWpShopifySourceCrawlJob(
   const read = await pool.connect();
   let payload: WpShopifyWizardJobPayload;
   try {
-    payload = await loadPayload(read, initiativeId, params.runId);
+    payload = await loadPayload(read, initiativeId, params.runId, params.planNodeId);
   } finally {
     read.release();
   }
@@ -488,7 +711,7 @@ export async function executeWpShopifySourceCrawlJob(
     const s = await pool.connect();
     try {
       await s.query("BEGIN");
-      await stripWizardJobPayloadFromInitiative(s, initiativeId, params.runId);
+      await stripWizardJobPayloadFromInitiative(s, initiativeId, params.planNodeId, params.runId);
       await s.query("COMMIT");
     } catch (stripErr) {
       await s.query("ROLLBACK").catch(() => {});

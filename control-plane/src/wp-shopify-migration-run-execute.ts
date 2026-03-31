@@ -22,6 +22,32 @@ const ETL_PENDING = new Set([
 
 const MAX_TAGS_IN_ARTIFACT = 2500;
 
+const ENTITY_LABEL: Record<string, string> = {
+  blogs: "Blog posts",
+  blog_tags: "Blog tags",
+  pdfs: "PDFs",
+  products: "Products",
+  categories: "Categories",
+  customers: "Customers",
+  redirects: "Redirects",
+  discounts: "Discounts",
+  pages: "Pages",
+};
+
+function entityBannerLine(entityId: string, kind: "start_supported" | "pending_etl" | "unsupported"): string {
+  const label = ENTITY_LABEL[entityId] ?? entityId;
+  if (kind === "start_supported") {
+    if (entityId === "blogs") return `${label}: importing…`;
+    if (entityId === "pdfs") return `${label}: uploading…`;
+    if (entityId === "blog_tags") return `${label}: building redirect CSV…`;
+    return `${label}…`;
+  }
+  if (kind === "pending_etl") {
+    return `${label}: not auto-imported here — use Matrixify or export`;
+  }
+  return `${label}: skipped`;
+}
+
 /** Prefer blogs / tag export before heavy PDF uploads so a lease issue mid-PDF still leaves posts imported. */
 function sortEntitiesForMigrationOrder(entities: string[]): string[] {
   const priority = ["blogs", "blog_tags", "pdfs"];
@@ -229,12 +255,28 @@ export async function executeWizardMigrationRun(opts: {
   skipIfExistsInShopify: boolean;
   onPdfProgress?: (e: PdfMigrationProgressEvent) => void;
   onBlogProgress?: (p: { current: number; total: number; wordpress_id?: string }) => void;
+  /** Phase banners (customers/products/…) and coarse blog_tags progress; same shape as job_events wizard_progress. */
+  onWizardProgress?: (payload: Record<string, unknown>) => void | Promise<void>;
 }): Promise<Record<string, unknown>> {
   const by_entity: Record<string, unknown> = {};
   const unsupported: string[] = [];
   const uniq = sortEntitiesForMigrationOrder([...new Set(opts.entities.map((x) => String(x).trim()).filter(Boolean))]);
+  const report = opts.onWizardProgress;
 
   for (const e of uniq) {
+    if (ETL_PENDING.has(e)) {
+      void report?.({ phase_banner: entityBannerLine(e, "pending_etl"), entity_phase: e, entity_status: "pending_etl", force: true });
+      unsupported.push(e);
+      continue;
+    }
+    if (e !== "blogs" && e !== "pdfs" && e !== "blog_tags") {
+      void report?.({ phase_banner: entityBannerLine(e, "unsupported"), entity_phase: e, entity_status: "unsupported", force: true });
+      unsupported.push(e);
+      continue;
+    }
+
+    void report?.({ phase_banner: entityBannerLine(e, "start_supported"), entity_phase: e, entity_status: "running", force: true });
+
     if (e === "blogs") {
       if (!opts.shopDomain || !opts.shopAccessToken) {
         throw new Error("Shopify must be connected to import blog posts (Brands → Edit brand → Shopify).");
@@ -292,6 +334,7 @@ export async function executeWizardMigrationRun(opts: {
       const filtered = tags.filter((t) => !excluded.has(t.id));
       const listTruncated = filtered.length > MAX_TAGS_IN_ARTIFACT;
       const forArtifact = filtered.slice(0, MAX_TAGS_IN_ARTIFACT);
+      void report?.({ blog_tags: { current: 0, total: forArtifact.length }, force: true });
       const wordpress_tags = forArtifact.map((t) => ({
         id: t.id,
         name: t.name,
@@ -322,7 +365,9 @@ export async function executeWizardMigrationRun(opts: {
 
       const csvLines = ["Redirect from,Redirect to,Status"];
       let tagUrlRows = 0;
-      for (const t of forArtifact) {
+      const tagProgressEvery = 40;
+      for (let ti = 0; ti < forArtifact.length; ti++) {
+        const t = forArtifact[ti];
         const u = t.link?.trim();
         if (!u) continue;
         const tagHandle = tagHandleForRedirect(t);
@@ -333,6 +378,9 @@ export async function executeWizardMigrationRun(opts: {
         const toCell = to ? `"${to.replace(/"/g, '""')}"` : '""';
         csvLines.push(`"${u.replace(/"/g, '""')}",${toCell},301`);
         tagUrlRows++;
+        if (ti % tagProgressEvery === 0 || ti === forArtifact.length - 1) {
+          void report?.({ blog_tags: { current: ti + 1, total: forArtifact.length } });
+        }
       }
 
       const baseNote =
@@ -352,10 +400,6 @@ export async function executeWizardMigrationRun(opts: {
         ...(suggestionMetaNote ? { tag_redirect_hint: suggestionMetaNote } : {}),
         note,
       };
-    } else if (ETL_PENDING.has(e)) {
-      unsupported.push(e);
-    } else {
-      unsupported.push(e);
     }
   }
 

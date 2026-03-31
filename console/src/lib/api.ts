@@ -189,12 +189,33 @@ export async function getRunArtifacts(runId: string): Promise<{ items: ArtifactR
 
 const TERMINAL_RUN_STATUSES = new Set(["succeeded", "failed", "rolled_back"]);
 
+/** Combine latest wizard_progress from each job_run (parallel migration: blogs job + PDFs job). */
+function mergeWizardProgressPayloads(payloads: Record<string, unknown>[]): Record<string, unknown> {
+  if (payloads.length === 0) return {};
+  if (payloads.length === 1) return { ...payloads[0] };
+  const out: Record<string, unknown> = {};
+  const banners: string[] = [];
+  for (const pl of payloads) {
+    const b = pl.phase_banner;
+    if (typeof b === "string" && b.trim()) banners.push(b.trim());
+    if (pl.blogs != null) out.blogs = pl.blogs;
+    if (pl.pdfs != null) out.pdfs = pl.pdfs;
+    if (pl.blog_tags != null) out.blog_tags = pl.blog_tags;
+    if (pl.phase != null) out.phase = pl.phase;
+    if (pl.migration_branch != null) out.migration_branch = pl.migration_branch;
+  }
+  if (banners.length > 0) out.phase_banner = banners.join(" · ");
+  return out;
+}
+
 /** Response from enqueue-only WP → Shopify wizard endpoints (dry run, PDF import, PDF resolve). */
 export type WpShopifyWizardEnqueueResponse = {
   run_id: string;
   plan_id: string;
   initiative_id: string;
   message?: string;
+  /** True when migration_run queued blogs/tags/ETL and PDFs as two parallel root jobs. */
+  parallel_migration_jobs?: boolean;
 };
 
 export type WpShopifyPipelinePollOptions = {
@@ -233,13 +254,34 @@ export async function pollRunUntilTerminal(
         if (!res.ok) throw new Error(await res.text());
         const data = (await res.json()) as {
           run?: { status?: string };
-          job_events?: Array<{ event_type?: string; payload_json?: unknown }>;
+          job_events?: Array<{
+            event_type?: string;
+            payload_json?: unknown;
+            job_run_id?: string;
+            created_at?: string;
+          }>;
         };
         const status = data.run?.status ?? "unknown";
         opts?.onStatus?.(status);
-        const wpEv = (data.job_events ?? []).find((e) => e.event_type === "wizard_progress");
-        if (wpEv?.payload_json && typeof wpEv.payload_json === "object" && !Array.isArray(wpEv.payload_json)) {
-          opts?.onWizardProgress?.(wpEv.payload_json as Record<string, unknown>);
+        const wizRows = (data.job_events ?? []).filter((e) => e.event_type === "wizard_progress");
+        const latestByJob = new Map<string, { created_at?: string; payload_json?: unknown }>();
+        for (const e of wizRows) {
+          const jid = String(e.job_run_id ?? "");
+          if (!jid) continue;
+          const prev = latestByJob.get(jid);
+          const t = e.created_at ? Date.parse(e.created_at) : 0;
+          const pt = prev?.created_at ? Date.parse(prev.created_at) : -1;
+          if (!prev || t >= pt) {
+            latestByJob.set(jid, { created_at: e.created_at, payload_json: e.payload_json });
+          }
+        }
+        const merged = mergeWizardProgressPayloads(
+          [...latestByJob.values()]
+            .map((x) => x.payload_json)
+            .filter((p): p is Record<string, unknown> => p != null && typeof p === "object" && !Array.isArray(p)),
+        );
+        if (Object.keys(merged).length > 0) {
+          opts?.onWizardProgress?.(merged);
         }
         if (TERMINAL_RUN_STATUSES.has(status)) return { status };
       } else {
@@ -262,6 +304,57 @@ function wpShopifyArtifactMeta(items: ArtifactRow[], artifactType: string): Reco
   const a = items.find((x) => x.artifact_type === artifactType);
   const m = a?.metadata_json;
   return m && typeof m === "object" && !Array.isArray(m) ? (m as Record<string, unknown>) : null;
+}
+
+/** When migration runs as two parallel jobs, two `wp_shopify_migration_run` artifacts are produced — merge by_entity for the UI. */
+function mergeWpShopifyMigrationRunArtifacts(metas: Record<string, unknown>[]): Record<string, unknown> {
+  if (metas.length === 0) {
+    throw new Error("mergeWpShopifyMigrationRunArtifacts: no artifacts");
+  }
+  if (metas.length === 1) return metas[0];
+  const by_entity: Record<string, unknown> = {};
+  const messages: string[] = [];
+  const entities = new Set<string>();
+  const unsupported = new Set<string>();
+  for (const m of metas) {
+    if (typeof m.message === "string" && m.message.trim()) messages.push(m.message.trim());
+    const be = m.by_entity;
+    if (be && typeof be === "object" && !Array.isArray(be)) {
+      for (const [k, v] of Object.entries(be as Record<string, unknown>)) {
+        by_entity[k] = v;
+      }
+    }
+    if (Array.isArray(m.entities)) {
+      for (const e of m.entities) entities.add(String(e));
+    }
+    if (Array.isArray(m.unsupported)) {
+      for (const u of m.unsupported) unsupported.add(String(u));
+    }
+  }
+  return {
+    message: messages.join(" "),
+    entities: [...entities],
+    unsupported: [...unsupported],
+    by_entity,
+    generated_at: new Date().toISOString(),
+  };
+}
+
+async function waitForWizardMigrationRunMerged(
+  runId: string,
+  pollOpts?: WpShopifyPipelinePollOptions,
+): Promise<Record<string, unknown>> {
+  const { status } = await pollRunUntilTerminal(runId, pollOpts);
+  if (status !== "succeeded") await throwWpShopifyRunFailed(runId, status);
+  const { items } = await getRunArtifacts(runId);
+  const metas = items
+    .filter((x) => x.artifact_type === "wp_shopify_migration_run")
+    .map((x) => x.metadata_json)
+    .filter((m): m is Record<string, unknown> => m != null && typeof m === "object" && !Array.isArray(m));
+  if (metas.length === 0) {
+    throw new Error("Pipeline succeeded but artifact wp_shopify_migration_run was not found.");
+  }
+  return mergeWpShopifyMigrationRunArtifacts(metas);
 }
 
 async function throwWpShopifyRunFailed(runId: string, status: string): Promise<never> {
@@ -1631,6 +1724,8 @@ export type WpShopifyBlogMigrationRow = {
 
 export type WpShopifyMigrationRunResult = {
   run_id: string;
+  /** Set when API queued blogs/tags/ETL and PDFs as two parallel root jobs (two runners can work at once). */
+  parallel_migration_jobs?: boolean;
   message?: string;
   entities?: string[];
   unsupported?: string[];
@@ -1672,7 +1767,7 @@ export async function wpShopifyMigrationRun(
     ...(params.environment ? { environment: params.environment } : {}),
   });
   pollOpts?.onRunEnqueued?.(enq.run_id);
-  const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_migration_run", pollOpts);
+  const meta = await waitForWizardMigrationRunMerged(enq.run_id, pollOpts);
   const byEntity = meta.by_entity && typeof meta.by_entity === "object" && !Array.isArray(meta.by_entity) ? (meta.by_entity as Record<string, unknown>) : undefined;
   const blogBlock = byEntity?.blog_tags && typeof byEntity.blog_tags === "object" && !Array.isArray(byEntity.blog_tags) ? (byEntity.blog_tags as Record<string, unknown>) : undefined;
   const blogCsv = typeof blogBlock?.redirect_csv === "string" ? blogBlock.redirect_csv : undefined;
@@ -1703,6 +1798,7 @@ export async function wpShopifyMigrationRun(
       : undefined;
   return {
     run_id: enq.run_id,
+    ...(enq.parallel_migration_jobs === true ? { parallel_migration_jobs: true as const } : {}),
     message: typeof meta.message === "string" ? meta.message : undefined,
     entities: Array.isArray(meta.entities) ? (meta.entities as string[]) : undefined,
     unsupported: Array.isArray(meta.unsupported) ? (meta.unsupported as string[]) : undefined,

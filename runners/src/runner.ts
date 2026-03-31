@@ -3,7 +3,9 @@ import type pg from "pg";
 import type { JobRun, JobClaim } from "../../control-plane/src/types.js";
 
 /** Initial lease and extension window on each heartbeat. Reaper treats lease as stale when lease_expires_at < now() OR heartbeat is old — must extend expiry on heartbeat or long jobs (e.g. WP crawl) die at 10m. */
-const LEASE_DURATION_MS = 15 * 60_000; // 15 minutes (refreshed every heartbeat while running)
+const LEASE_DURATION_MS = Number.isFinite(Number(process.env.RUNNER_LEASE_DURATION_MS))
+  ? Math.max(5 * 60_000, Number(process.env.RUNNER_LEASE_DURATION_MS))
+  : 30 * 60_000; // default 30m (blog/PDF migrations); override with RUNNER_LEASE_DURATION_MS
 const HEARTBEAT_INTERVAL_MS = 30_000;   // 30 seconds
 
 export interface RunnerConfig {

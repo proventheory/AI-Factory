@@ -554,6 +554,8 @@ export default function WpShopifyMigrationWizardPage() {
   /** Pipeline run id while “Run migration” is polling (link to /runs/:id). */
   const [migrationPipelineRunId, setMigrationPipelineRunId] = useState<string | null>(null);
   const [migrationRunPollHint, setMigrationRunPollHint] = useState("");
+  /** Filled from wizard_progress job_events so the bar matches Blog posts / PDFs / Blog tags counts (not the batch cap). */
+  const [migrationRunProgress, setMigrationRunProgress] = useState<{ current: number; total: number } | null>(null);
   const [pdfImportLoading, setPdfImportLoading] = useState(false);
   const [pdfImportError, setPdfImportError] = useState<string | null>(null);
   const [pdfImportResult, setPdfImportResult] = useState<WpShopifyMigrationMigratePdfsResult | null>(null);
@@ -1477,6 +1479,7 @@ export default function WpShopifyMigrationWizardPage() {
     setMigrationRunResult(null);
     setMigrationPipelineRunId(null);
     setMigrationRunPollHint("");
+    setMigrationRunProgress(null);
     try {
       const result = await api.wpShopifyMigrationRun(
         {
@@ -1505,8 +1508,11 @@ export default function WpShopifyMigrationWizardPage() {
             else setMigrationRunPollHint(`Status: ${st}`);
           },
           onWizardProgress: (pl) => {
+            const banner =
+              typeof pl.phase_banner === "string" && pl.phase_banner.trim() ? pl.phase_banner.trim() : "";
             const blogs = pl.blogs as { current?: number; total?: number } | undefined;
             const pdfs = pl.pdfs as { current?: number; total?: number } | undefined;
+            const blogTags = pl.blog_tags as { current?: number; total?: number } | undefined;
             const bits: string[] = [];
             if (blogs && typeof blogs.current === "number" && typeof blogs.total === "number") {
               bits.push(`Blog posts ${blogs.current}/${blogs.total}`);
@@ -1514,7 +1520,26 @@ export default function WpShopifyMigrationWizardPage() {
             if (pdfs && typeof pdfs.current === "number" && typeof pdfs.total === "number") {
               bits.push(`PDFs ${pdfs.current}/${pdfs.total}`);
             }
-            if (bits.length) setMigrationRunPollHint(bits.join(" · "));
+            if (blogTags && typeof blogTags.current === "number" && typeof blogTags.total === "number") {
+              bits.push(`Blog tags ${blogTags.current}/${blogTags.total}`);
+            }
+            const suffix = bits.join(" · ");
+            if (banner && suffix) setMigrationRunPollHint(`${banner} · ${suffix}`);
+            else if (suffix) setMigrationRunPollHint(suffix);
+            else if (banner) setMigrationRunPollHint(banner);
+
+            if (pdfs && typeof pdfs.current === "number" && typeof pdfs.total === "number" && pdfs.total > 0) {
+              setMigrationRunProgress({ current: pdfs.current, total: pdfs.total });
+            } else if (blogs && typeof blogs.current === "number" && typeof blogs.total === "number" && blogs.total > 0) {
+              setMigrationRunProgress({ current: blogs.current, total: blogs.total });
+            } else if (
+              blogTags &&
+              typeof blogTags.current === "number" &&
+              typeof blogTags.total === "number" &&
+              blogTags.total > 0
+            ) {
+              setMigrationRunProgress({ current: blogTags.current, total: blogTags.total });
+            }
           },
         },
       );
@@ -1524,6 +1549,7 @@ export default function WpShopifyMigrationWizardPage() {
     } finally {
       setMigrationRunLoading(false);
       setMigrationRunPollHint("");
+      setMigrationRunProgress(null);
     }
   };
 
@@ -2650,7 +2676,7 @@ export default function WpShopifyMigrationWizardPage() {
                   </div>
                 )}
                 <p className="mt-2 max-w-3xl text-body-small text-fg-muted">
-                  <strong>Run migration</strong>: <strong>PDFs</strong> → Shopify Files. <strong>Blog posts</strong> → Shopify articles via Admin API (needs Shopify; <strong>max 500</strong> per run). WooCommerce keys alone do <strong>not</strong> read WordPress posts—that is <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/posts</code>, like Matrixify using exports or public data. Without a WP application password we import <strong>published</strong> posts only from public REST; add username + app password under Blog posts → Details for drafts and <code className="rounded bg-fg-muted/15 px-1">context=edit</code> HTML. <strong>Blog tags</strong> → redirect CSV. Shopify app: <code className="rounded bg-fg-muted/15 px-1">read_content</code> + <code className="rounded bg-fg-muted/15 px-1">write_content</code>.
+                  <strong>Run migration</strong>: <strong>PDFs</strong> → Shopify Files. <strong>Blog posts</strong> → Shopify articles via Admin API (needs Shopify; up to <strong>500</strong> per run as a safety cap—progress uses your real WordPress totals, e.g. 56/56). WooCommerce keys alone do <strong>not</strong> read WordPress posts—that is <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/posts</code>, like Matrixify using exports or public data. Without a WP application password we import <strong>published</strong> posts only from public REST; add username + app password under Blog posts → Details for drafts and <code className="rounded bg-fg-muted/15 px-1">context=edit</code> HTML. <strong>Blog tags</strong> → redirect CSV. Shopify app: <code className="rounded bg-fg-muted/15 px-1">read_content</code> + <code className="rounded bg-fg-muted/15 px-1">write_content</code>. Large PDFs upload one at a time and can take many minutes total—refreshing Shopify Files is normal while the bar moves.
                 </p>
 
                 {(migrationRunLoading || migrationPipelineRunId) && (
@@ -2670,8 +2696,35 @@ export default function WpShopifyMigrationWizardPage() {
                     {migrationRunPollHint ? <p className="text-body-small text-fg-muted">{migrationRunPollHint}</p> : null}
                     {migrationRunLoading ? (
                       <div className="space-y-1">
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-fg-muted/25">
-                          <div className="h-full w-2/5 animate-pulse rounded-full bg-primary" />
+                        <div
+                          className="h-2 w-full overflow-hidden rounded-full bg-fg-muted/25"
+                          role="progressbar"
+                          aria-valuemin={0}
+                          aria-valuemax={migrationRunProgress && migrationRunProgress.total > 0 ? migrationRunProgress.total : 100}
+                          aria-valuenow={
+                            migrationRunProgress && migrationRunProgress.total > 0
+                              ? migrationRunProgress.current
+                              : undefined
+                          }
+                          aria-label={
+                            migrationRunProgress && migrationRunProgress.total > 0
+                              ? `Import progress ${migrationRunProgress.current} of ${migrationRunProgress.total}`
+                              : "Import in progress"
+                          }
+                        >
+                          {migrationRunProgress && migrationRunProgress.total > 0 ? (
+                            <div
+                              className="h-full min-w-[4px] rounded-full bg-primary transition-[width] duration-500 ease-out"
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.max(0, (100 * migrationRunProgress.current) / migrationRunProgress.total),
+                                )}%`,
+                              }}
+                            />
+                          ) : (
+                            <div className="h-full w-1/3 max-w-[40%] animate-pulse rounded-full bg-primary" />
+                          )}
                         </div>
                         <p className="text-xs text-fg-muted">Import runs on the pipeline runner; keep this tab open until it finishes.</p>
                       </div>
@@ -2751,6 +2804,15 @@ export default function WpShopifyMigrationWizardPage() {
                     {migrationRunResult.run_id
                       ? `Recorded on initiative. Run: /runs/${migrationRunResult.run_id}. ${migrationRunResult.message ?? ""}`.trim()
                       : migrationRunResult.message ?? "Migration run completed."}
+                    {migrationRunResult.parallel_migration_jobs && migrationRunResult.run_id ? (
+                      <p className="mt-2 text-body-small text-fg-muted">
+                        This migration was queued as <strong>two parallel jobs</strong> (content branch vs PDF branch) so different runners can execute them at the same time. Open{" "}
+                        <Link href={`/runs/${migrationRunResult.run_id}`} className="text-link font-medium hover:underline">
+                          the run
+                        </Link>{" "}
+                        to see both job rows and per-job events. You can refresh Shopify Admin while the run is in progress to confirm files and articles appearing.
+                      </p>
+                    ) : null}
                     {(migrationRunResult.blog_tag_redirect_csv_rows ?? 0) > 0 && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         <Button variant="secondary" size="sm" type="button" onClick={mergeBlogTagRedirectsIntoMap}>

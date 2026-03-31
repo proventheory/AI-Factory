@@ -261,7 +261,7 @@ export async function migrateWordPressPostsToShopify(opts: {
   excludedIds: Set<string>;
   maxPosts: number;
   skipIfExistsInShopify: boolean;
-  /** Fires after each non-excluded post is processed (rows.length / maxPosts). */
+  /** Fires as rows are recorded; total = min(maxPosts, WordPress X-WP-Total) when the header is present. */
   onProgress?: (p: { current: number; total: number; wordpress_id?: string }) => void;
 }): Promise<BlogMigrationResult> {
   const rows: BlogMigrationRow[] = [];
@@ -288,10 +288,17 @@ export async function migrateWordPressPostsToShopify(opts: {
   const perPage = 50;
   let page = 1;
   const maxPosts = Math.min(2000, Math.max(1, opts.maxPosts));
-  opts.onProgress?.({ current: 0, total: maxPosts });
+  /** Denominator for UI: WordPress total for this query, capped by batch limit (not raw max_files). */
+  let progressTotal = maxPosts;
+  let progressTotalReady = false;
 
   outer: while (rows.length < maxPosts) {
-    const { ids } = await wpListPostIdsPage(opts.wpOrigin, opts.wpAuthHeader, page, perPage);
+    const { ids, total: wpTotal } = await wpListPostIdsPage(opts.wpOrigin, opts.wpAuthHeader, page, perPage);
+    if (!progressTotalReady) {
+      progressTotalReady = true;
+      progressTotal = wpTotal > 0 ? Math.min(maxPosts, wpTotal) : maxPosts;
+      opts.onProgress?.({ current: 0, total: progressTotal });
+    }
     if (ids.length === 0) break;
 
     for (const id of ids) {
@@ -404,7 +411,7 @@ export async function migrateWordPressPostsToShopify(opts: {
         rows.push(row);
         failed++;
       } finally {
-        opts.onProgress?.({ current: rows.length, total: maxPosts, wordpress_id: id });
+        opts.onProgress?.({ current: rows.length, total: progressTotal, wordpress_id: id });
       }
     }
 

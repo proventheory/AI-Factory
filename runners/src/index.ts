@@ -27,6 +27,9 @@ import { recordSecretAccessByName } from "./secret-access.js";
 import {
   peekWpShopifyWizardKind,
   executeWpShopifySourceCrawlJob,
+  executeWpShopifyMigrationRunJob,
+  executeWpShopifyPdfImportJob,
+  executeWpShopifyPdfResolveJob,
 } from "./handlers/wp-shopify-wizard-job.js";
 import { claimExperimentRun } from "./evolution-claim.js";
 import { runEvolutionReplay } from "./handlers/evolution-replay.js";
@@ -42,17 +45,46 @@ if (!databaseUrl?.trim()) {
   process.exit(1);
 }
 // Log DB hint (host/port only) so you can compare with Control Plane GET /health/db — artifacts must be in the same DB.
+function isSupabaseSessionPooler5432(connectionString: string): boolean {
+  try {
+    const u = new URL(connectionString);
+    return u.hostname.includes("pooler.supabase.com") && (u.port === "" || u.port === "5432");
+  } catch {
+    return false;
+  }
+}
+
 try {
   const u = new URL(databaseUrl);
   console.log("[runner] DATABASE_URL hint (verify same as Control Plane): host=" + u.hostname + " port=" + (u.port || "5432"));
 } catch {
   console.log("[runner] DATABASE_URL hint: (could not parse URL)");
 }
-const poolSize = Math.max(1, Math.min(20, Number(process.env.DATABASE_POOL_MAX) || 3));
+
+const sessionPooler = isSupabaseSessionPooler5432(databaseUrl);
+const poolMaxEnv = process.env.DATABASE_POOL_MAX?.trim();
+const defaultPoolMax = sessionPooler ? 2 : 3;
+let poolSize: number;
+if (poolMaxEnv) {
+  const n = Number(poolMaxEnv);
+  poolSize = Number.isFinite(n) && n >= 1 ? Math.min(20, Math.floor(n)) : defaultPoolMax;
+} else {
+  poolSize = defaultPoolMax;
+}
+poolSize = Math.max(1, poolSize);
+
+if (sessionPooler && !poolMaxEnv) {
+  console.warn(
+    "[runner] Supabase Session pooler (pooler.*:5432) shares a small server-side connection cap with every service using this URL. Defaulting DATABASE_POOL_MAX=2. If you see MaxClientsInSessionMode, set DATABASE_URL to the direct host db.<project>.supabase.co (same DB), or set DATABASE_POOL_MAX=1, and reduce pool size on the Control Plane.",
+  );
+}
+
 const pool = new pg.Pool({
   connectionString: databaseUrl,
   max: poolSize,
   idleTimeoutMillis: 30_000,
+  /** Session pooler slots are scarce; wait so a slot freed by another process can be picked up without an immediate fatal. */
+  ...(sessionPooler ? { connectionTimeoutMillis: 90_000 } : {}),
 });
 
 const rawMaxConc = Number(process.env.MAX_CONCURRENCY ?? "5");
@@ -181,7 +213,7 @@ async function pollAndExecute(): Promise<void> {
         if (jobContext.job_type === "wp_shopify_wizard_job") {
           const initiativeId = jobContext.initiative_id;
           if (!initiativeId) throw new Error("initiative_id required for wp_shopify_wizard_job");
-          const wizKind = await peekWpShopifyWizardKind(pool, initiativeId, jobRun.run_id);
+          const wizKind = await peekWpShopifyWizardKind(pool, initiativeId, jobRun.run_id, jobRun.plan_node_id);
           if (wizKind === "source_crawl") {
             await executeWpShopifySourceCrawlJob(pool, jobContext, jobParams);
             const lc = await pool.connect();
@@ -212,9 +244,14 @@ async function pollAndExecute(): Promise<void> {
                 }),
               }).catch(() => {});
             }
+          } else if (wizKind === "migration_run_placeholder") {
+            await executeWpShopifyMigrationRunJob(pool, jobContext, jobParams);
+          } else if (wizKind === "pdf_import") {
+            await executeWpShopifyPdfImportJob(pool, jobContext, jobParams);
+          } else if (wizKind === "pdf_resolve") {
+            await executeWpShopifyPdfResolveJob(pool, jobContext, jobParams);
           } else {
-            // Do not wrap wp_shopify_wizard_job in a long-lived transaction: PDF/blog work does minutes of HTTP
-            // while idle-in-transaction would pin a pool connection and starve heartbeats → lease_expired reaper.
+            // Short DB sections only: holding one pool slot across long HTTP starves heartbeats + parallel jobs → lease_expired.
             const wizParams = { ...jobParams, dbPool: pool };
             const c = await pool.connect();
             try {
@@ -364,6 +401,33 @@ async function pollAndExecute(): Promise<void> {
   }
 }
 
+function isSessionPoolerSaturationError(err: unknown): boolean {
+  const m = err instanceof Error ? err.message : String(err);
+  return m.includes("MaxClientsInSessionMode") || m.includes("max clients reached");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Supavisor session mode rejects new clients when the shared pool is full (control plane + other runners compete for the same cap). */
+async function withSessionPoolerRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const maxAttempts = 18;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!isSessionPoolerSaturationError(e) || i === maxAttempts - 1) throw e;
+      const waitMs = Math.min(45_000, 2500 * 2 ** i);
+      console.warn(
+        `[runner] ${label}: session pooler saturated (${(e as Error).message.slice(0, 140)}). Retry ${i + 1}/${maxAttempts - 1} in ${Math.round(waitMs / 1000)}s. Prefer direct db.*.supabase.co for DATABASE_URL on this worker.`,
+      );
+      await sleep(waitMs);
+    }
+  }
+  throw new Error(`${label}: session pooler retries exhausted`);
+}
+
 /** Start a minimal HTTP server for GET /health when PORT is set (e.g. Render web service check / MCP). */
 function startHealthServer(): void {
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 0;
@@ -392,13 +456,20 @@ async function main(): Promise<void> {
   console.log(`[runner] Starting worker ${config.workerId} (v${config.runnerVersion})`);
   // Start health server first so Render/Docker health checks pass before DB work
   startHealthServer();
-  await registerWorker(pool, config);
+  await withSessionPoolerRetry("registerWorker", () => registerWorker(pool, config));
   setInterval(() => {
-    registerWorker(pool, config).catch((err) =>
-      console.warn("[runner] Worker registry heartbeat error:", (err as Error).message)
-    );
+    registerWorker(pool, config).catch((err) => {
+      const msg = (err as Error).message;
+      if (isSessionPoolerSaturationError(err)) {
+        console.warn("[runner] Worker registry heartbeat skipped (session pooler full):", msg.slice(0, 160));
+        return;
+      }
+      console.warn("[runner] Worker registry heartbeat error:", msg);
+    });
   }, WORKER_REGISTRY_HEARTBEAT_MS);
-  const q = await pool.query("SELECT count(*)::int AS c FROM job_runs WHERE status = 'queued'");
+  const q = await withSessionPoolerRetry("queued job check", () =>
+    pool.query("SELECT count(*)::int AS c FROM job_runs WHERE status = 'queued'"),
+  );
   console.log(`[runner] DB check: ${q.rows[0]?.c ?? 0} queued job(s) visible`);
   setInterval(async () => {
     try {

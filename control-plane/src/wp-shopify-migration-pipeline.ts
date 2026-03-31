@@ -124,9 +124,14 @@ async function ensureWizardInitiative(client: pg.PoolClient, brandId: string): P
   return ins.rows[0].id as string;
 }
 
+/**
+ * Store under both run id (legacy / debugging) and plan node id so the runner can load and strip by plan_node_id.
+ * Parallel migration runs omit run id and only use per-node keys.
+ */
 function attachPayloadToInitiative(
   existing: unknown,
   runId: string,
+  planNodeId: string,
   payload: WpShopifyWizardJobPayload,
 ): Record<string, unknown> {
   const gm =
@@ -137,7 +142,151 @@ function attachPayloadToInitiative(
       ? { ...(jobsRaw as Record<string, unknown>) }
       : {};
   jobs[runId] = payload;
+  jobs[planNodeId] = payload;
   return { ...gm, wp_shopify_pipeline_jobs: jobs };
+}
+
+/** Store payload under plan node id so parallel root jobs on one run each get their own slice (e.g. blogs vs PDFs). */
+function attachPayloadToInitiativeByPlanNode(
+  existing: unknown,
+  planNodeId: string,
+  payload: WpShopifyWizardJobPayload,
+): Record<string, unknown> {
+  const gm =
+    existing && typeof existing === "object" && !Array.isArray(existing) ? (existing as Record<string, unknown>) : {};
+  const jobsRaw = gm.wp_shopify_pipeline_jobs;
+  const jobs =
+    jobsRaw && typeof jobsRaw === "object" && !Array.isArray(jobsRaw)
+      ? { ...(jobsRaw as Record<string, unknown>) }
+      : {};
+  jobs[planNodeId] = payload;
+  return { ...gm, wp_shopify_pipeline_jobs: jobs };
+}
+
+/** When both PDFs and other entities are selected, run two queued jobs (two runners can claim in parallel). */
+export function splitWpShopifyMigrationEntitiesForParallelRun(entities: unknown): {
+  split: boolean;
+  withoutPdf: string[];
+} {
+  const list = Array.isArray(entities) ? entities.map((e) => String(e).trim()).filter(Boolean) : [];
+  const uniq = [...new Set(list)];
+  const hasPdf = uniq.includes("pdfs");
+  const withoutPdf = uniq.filter((e) => e !== "pdfs");
+  return { split: hasPdf && withoutPdf.length > 0, withoutPdf };
+}
+
+/**
+ * Enqueue migration_run only. If the user selected PDFs plus any other entity, compiles two root plan nodes
+ * (content branch vs PDF branch) so different runners can execute concurrently.
+ */
+export async function enqueueWpShopifyWizardMigrationRun(opts: {
+  brandId: string;
+  payload: WpShopifyWizardJobPayload;
+  environment?: "sandbox" | "staging" | "prod";
+  llmSource?: "gateway" | "openai_direct";
+}): Promise<{ run_id: string; plan_id: string; initiative_id: string; parallel_migration_jobs: boolean }> {
+  if (opts.payload.kind !== "migration_run_placeholder") {
+    throw new Error("enqueueWpShopifyWizardMigrationRun: expected kind migration_run_placeholder");
+  }
+  const { split, withoutPdf } = splitWpShopifyMigrationEntitiesForParallelRun(opts.payload.entities);
+  if (!split) {
+    const base = await enqueueWpShopifyWizardJob(opts);
+    return { ...base, parallel_migration_jobs: false };
+  }
+
+  const environment = opts.environment ?? "sandbox";
+  const llmSource = opts.llmSource === "openai_direct" ? "openai_direct" : "gateway";
+
+  let releaseId: string;
+  try {
+    const route = await routeRun(pool, environment);
+    releaseId = route.releaseId;
+  } catch (routeErr) {
+    const msg = (routeErr as Error).message;
+    if (!msg.includes("No promoted release")) throw routeErr;
+    const ins = await pool.query(
+      `INSERT INTO releases (id, status, percent_rollout, policy_version) VALUES ($1, 'promoted', 100, 'latest') RETURNING id`,
+      [uuid()],
+    );
+    releaseId = (ins.rows[0] as { id: string }).id;
+  }
+
+  const maxAttempts = 4;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await withTransaction(async (client) => {
+        const initiativeId = await ensureWizardInitiative(client, opts.brandId);
+        await client.query("SELECT id FROM initiatives WHERE id = $1 FOR UPDATE", [initiativeId]);
+
+        let jobPayload: WpShopifyWizardJobPayload = opts.payload;
+        jobPayload = await hydrateWooCredentialsInWizardPayload(client, opts.brandId, jobPayload);
+        jobPayload = await hydrateShopifyCredentialsInWizardPayload(client, opts.brandId, jobPayload);
+
+        const baseJson = JSON.stringify(jobPayload);
+        const payloadRest: WpShopifyWizardJobPayload = {
+          ...(JSON.parse(baseJson) as WpShopifyWizardJobPayload),
+          entities: withoutPdf,
+          _migration_parallel_branch: "without_pdfs",
+        };
+        const payloadPdf: WpShopifyWizardJobPayload = {
+          ...(JSON.parse(baseJson) as WpShopifyWizardJobPayload),
+          entities: ["pdfs"],
+          _migration_parallel_branch: "pdfs",
+        };
+
+        const nodeKeyRest = `wiz_mig_${uuid()}`;
+        const nodeKeyPdf = `wiz_mig_${uuid()}`;
+        const { planId, nodeIds } = await compilePlanFromDraft(
+          client,
+          initiativeId,
+          {
+            nodes: [
+              { node_key: nodeKeyRest, job_type: WP_SHOPIFY_WIZARD_JOB_TYPE, agent_role: "engineer" },
+              { node_key: nodeKeyPdf, job_type: WP_SHOPIFY_WIZARD_JOB_TYPE, agent_role: "engineer" },
+            ],
+            edges: [],
+          },
+          { force: true },
+        );
+        const planNodeRest = nodeIds.get(nodeKeyRest);
+        const planNodePdf = nodeIds.get(nodeKeyPdf);
+        if (!planNodeRest || !planNodePdf) throw new Error("Plan compile did not return both node ids");
+
+        const runId = await createRun(client, {
+          planId,
+          releaseId,
+          policyVersion: "latest",
+          environment,
+          cohort: "control",
+          rootIdempotencyKey: `wp-shopify-migration-parallel:${planNodeRest}:${planNodePdf}:${uuid()}`,
+          llmSource,
+        });
+
+        const metaR = await client.query("SELECT goal_metadata FROM initiatives WHERE id = $1", [initiativeId]);
+        let nextMeta = attachPayloadToInitiativeByPlanNode(metaR.rows[0]?.goal_metadata, planNodeRest, payloadRest);
+        nextMeta = attachPayloadToInitiativeByPlanNode(nextMeta, planNodePdf, payloadPdf);
+        await client.query("UPDATE initiatives SET goal_metadata = $2::jsonb WHERE id = $1", [
+          initiativeId,
+          JSON.stringify(nextMeta),
+        ]);
+
+        return {
+          run_id: runId,
+          plan_id: planId,
+          initiative_id: initiativeId,
+          parallel_migration_jobs: true,
+        };
+      });
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === "40P01" && attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, 80 * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error("enqueueWpShopifyWizardMigrationRun: exhausted deadlock retries");
 }
 
 export async function enqueueWpShopifyWizardJob(opts: {
@@ -215,7 +364,7 @@ export async function enqueueWpShopifyWizardJob(opts: {
         });
 
         const metaR = await client.query("SELECT goal_metadata FROM initiatives WHERE id = $1", [initiativeId]);
-        const nextMeta = attachPayloadToInitiative(metaR.rows[0]?.goal_metadata, runId, jobPayload);
+        const nextMeta = attachPayloadToInitiative(metaR.rows[0]?.goal_metadata, runId, planNodeId, jobPayload);
         await client.query("UPDATE initiatives SET goal_metadata = $2::jsonb WHERE id = $1", [
           initiativeId,
           JSON.stringify(nextMeta),
@@ -235,25 +384,33 @@ export async function enqueueWpShopifyWizardJob(opts: {
   throw new Error("enqueueWpShopifyWizardJob: exhausted deadlock retries");
 }
 
+/**
+ * Remove this job’s payload from goal_metadata. Prefer plan_node_id (matches attachPayloadToInitiative dual-key and parallel runs).
+ * When old data only had run_id, pass runId as fallbackKey so it is cleared too.
+ */
 export async function stripWizardJobPayloadFromInitiative(
   client: pg.PoolClient,
   initiativeId: string,
-  runId: string,
+  planNodeId: string,
+  fallbackRunId?: string,
 ): Promise<void> {
-  // Single atomic UPDATE avoids SELECT ... FOR UPDATE after holding job_run/artifact locks (runner),
-  // which could deadlock with enqueueWpShopifyWizardJob (plans/runs then initiative).
   await client.query(
     `UPDATE initiatives
      SET goal_metadata = CASE
        WHEN goal_metadata IS NULL OR jsonb_typeof(goal_metadata->'wp_shopify_pipeline_jobs') <> 'object'
          THEN goal_metadata
-       ELSE jsonb_set(
+         ELSE jsonb_set(
          goal_metadata,
          '{wp_shopify_pipeline_jobs}',
-         (goal_metadata->'wp_shopify_pipeline_jobs') - $2::text
+         CASE
+           WHEN $3::text IS NOT NULL AND btrim($3::text) <> '' THEN
+             (goal_metadata->'wp_shopify_pipeline_jobs') - $2::text - btrim($3::text)
+           ELSE
+             (goal_metadata->'wp_shopify_pipeline_jobs') - $2::text
+         END
        )
      END
      WHERE id = $1`,
-    [initiativeId, runId],
+    [initiativeId, planNodeId, fallbackRunId ?? null],
   );
 }

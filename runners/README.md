@@ -13,6 +13,7 @@ Runners do **not** have their own `npm install`; they use the **root workspace**
 ## Environment
 
 - **DATABASE_URL** (required): Same Supabase/Postgres as the Control Plane. Used to claim jobs and read/write artifacts.
+- **Supabase:** The default **Session pooler** URL (`*.pooler.supabase.com:5432`) enforces a small shared connection cap. If the runner logs `MaxClientsInSessionMode`, use the **direct** connection string (`db.<project>.ref.supabase.co:5432`) for the runner and/or Control Plane, or set **`DATABASE_POOL_MAX=1`**. Port **6543** is the transaction pooler (different tradeoffs). The runner defaults to a smaller pool when it detects the session pooler host.
 - **CONTROL_PLANE_URL**: Base URL of the Control Plane (default `http://localhost:3001`). Used for deploy-failure scan trigger and optional callbacks.
 - **LLM_GATEWAY_URL** or **OPENAI_API_KEY**: For handlers that call LLMs.
 
