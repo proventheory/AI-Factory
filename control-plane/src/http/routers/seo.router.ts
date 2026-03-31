@@ -14,6 +14,7 @@ import {
   brandProfilesGoogleGa4PropertyPatch,
 } from "../controllers/seo.controller.js";
 import {
+  wpShopifyMigrationSyncGoalMetadata,
   wpShopifyMigrationCrawl,
   wpShopifyMigrationDryRun,
   wpShopifyMigrationPreviewItems,
@@ -26,6 +27,7 @@ import {
 const router = Router();
 
 router.post("/v1/sitemap/products", sitemapProducts);
+router.post("/v1/wp-shopify-migration/sync_goal_metadata", wpShopifyMigrationSyncGoalMetadata);
 router.post("/v1/wp-shopify-migration/crawl", wpShopifyMigrationCrawl);
 router.post("/v1/wp-shopify-migration/dry_run", wpShopifyMigrationDryRun);
 router.post("/v1/wp-shopify-migration/preview_items", wpShopifyMigrationPreviewItems);

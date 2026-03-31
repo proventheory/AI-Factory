@@ -43,7 +43,7 @@ export async function mergeSeoGoalMetadataFromWizardPayload(
   const ts = String(p.target_store_url ?? "").trim();
   if (ts && /^https?:\/\//i.test(ts)) patch.target_url = ts.replace(/\/$/, "");
 
-  const ga4 = String(p.property_id ?? "").trim();
+  const ga4 = String(p.property_id ?? p.ga4_property_id ?? "").trim();
   if (ga4) patch.ga4_property_id = ga4;
 
   const woo = String(p.woo_server ?? "").trim();
@@ -86,6 +86,37 @@ export async function mergeSeoGoalMetadataFromWizardPayload(
      WHERE id = $1`,
     [initiativeId, JSON.stringify(patch)],
   );
+}
+
+/**
+ * Update initiative goal_metadata URLs for SEO/template alignment **without** creating a pipeline run.
+ * The debounced wizard UI was enqueueing wizard_state_snapshot on every field change → dozens of runs,
+ * starving the runner so crawls stayed "running" and snapshots failed in bursts.
+ */
+export async function syncWpShopifyInitiativeGoalMetadataFromUrls(opts: {
+  brandId: string;
+  source_url?: string;
+  target_store_url?: string;
+  gsc_site_url?: string;
+  ga4_property_id?: string;
+}): Promise<{ initiative_id: string }> {
+  return withTransaction(async (client) => {
+    const initiativeId = await ensureWizardInitiative(client, opts.brandId);
+    await client.query("SELECT id FROM initiatives WHERE id = $1 FOR UPDATE", [initiativeId]);
+    const payload: WpShopifyWizardJobPayload = {
+      kind: "wizard_state_snapshot",
+      brand_id: opts.brandId,
+      wizard_step: 1,
+      summary: {},
+    };
+    const o = payload as Record<string, unknown>;
+    if (opts.source_url?.trim()) o.source_url = opts.source_url.trim();
+    if (opts.target_store_url?.trim()) o.target_store_url = opts.target_store_url.trim();
+    if (opts.gsc_site_url?.trim()) o.gsc_site_url = opts.gsc_site_url.trim();
+    if (opts.ga4_property_id?.trim()) o.ga4_property_id = opts.ga4_property_id.trim();
+    await mergeSeoGoalMetadataFromWizardPayload(client, initiativeId, opts.brandId, payload);
+    return { initiative_id: initiativeId };
+  });
 }
 
 /** Runner often has no Woo encryption key; hydrate from DB here (same pattern as _prefetched_google_access_token). */

@@ -1394,6 +1394,32 @@ export type WpShopifyMigrationCrawlParams = {
   environment?: string;
 };
 
+/** Updates initiative goal_metadata only — does not create a pipeline run (avoids snapshot job spam). */
+export async function wpShopifyMigrationSyncGoalMetadata(params: {
+  brand_id: string;
+  environment?: string;
+  source_url?: string;
+  target_store_url?: string;
+  gsc_site_url?: string;
+  ga4_property_id?: string;
+}): Promise<{ ok: boolean; initiative_id?: string }> {
+  const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/wp-shopify-migration/sync_goal_metadata`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      brand_id: params.brand_id,
+      ...(params.environment ? { environment: params.environment } : {}),
+      ...(params.source_url?.trim() ? { source_url: params.source_url.trim() } : {}),
+      ...(params.target_store_url?.trim() ? { target_store_url: params.target_store_url.trim() } : {}),
+      ...(params.gsc_site_url?.trim() ? { gsc_site_url: params.gsc_site_url.trim() } : {}),
+      ...(params.ga4_property_id?.trim() ? { ga4_property_id: params.ga4_property_id.trim() } : {}),
+    }),
+    timeoutMs: 30_000,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ ok: boolean; initiative_id?: string }>;
+}
+
 export type WpShopifyMigrationCrawlResult = {
   source_url: string;
   urls: Array<{

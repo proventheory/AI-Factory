@@ -924,13 +924,42 @@ export default function WpShopifyMigrationWizardPage() {
     };
   }, [brandId]);
 
-  // Record wizard progress on the WP → Shopify initiative (debounced; compact summary only).
-  const snapshotDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Push URL fields to initiative goal_metadata without enqueueing wizard_state_snapshot (snapshot jobs were flooding the runner and starving crawls). */
+  const urlSyncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!brandId) return;
-    if (snapshotDebounceRef.current) clearTimeout(snapshotDebounceRef.current);
-    snapshotDebounceRef.current = setTimeout(() => {
-      snapshotDebounceRef.current = null;
+    if (urlSyncDebounceRef.current) clearTimeout(urlSyncDebounceRef.current);
+    urlSyncDebounceRef.current = setTimeout(() => {
+      urlSyncDebounceRef.current = null;
+      void api
+        .wpShopifyMigrationSyncGoalMetadata({
+          brand_id: brandId,
+          environment: pipelineEnvironment,
+          ...(sourceUrl.trim() ? { source_url: sourceUrl.trim() } : {}),
+          ...(targetBaseUrl.trim() ? { target_store_url: targetBaseUrl.trim() } : {}),
+          ...(gscSiteUrl.trim() ? { gsc_site_url: gscSiteUrl.trim() } : {}),
+          ...(ga4PropertyId.trim() ? { ga4_property_id: ga4PropertyId.trim() } : {}),
+        })
+        .catch(() => {
+          /* non-blocking */
+        });
+    }, 1600);
+    return () => {
+      if (urlSyncDebounceRef.current) clearTimeout(urlSyncDebounceRef.current);
+    };
+  }, [brandId, sourceUrl, targetBaseUrl, gscSiteUrl, ga4PropertyId, pipelineEnvironment]);
+
+  /** Artifact snapshot only when the user changes wizard step (not on every summary tick). */
+  const prevStepForSnapshotRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!brandId) return;
+    if (prevStepForSnapshotRef.current === null) {
+      prevStepForSnapshotRef.current = step;
+      return;
+    }
+    if (prevStepForSnapshotRef.current === step) return;
+    prevStepForSnapshotRef.current = step;
+    const tid = setTimeout(() => {
       void api
         .wpShopifyWizardStateSnapshotEnqueue({
           brand_id: brandId,
@@ -946,21 +975,16 @@ export default function WpShopifyMigrationWizardPage() {
             has_ga4: Boolean(ga4Result),
             source_url_preview: (sourceUrl || "").trim().slice(0, 240),
           },
-          ...(sourceUrl.trim() ? { source_url: sourceUrl.trim() } : {}),
-          ...(targetBaseUrl.trim() ? { target_store_url: targetBaseUrl.trim() } : {}),
-          ...(gscSiteUrl.trim() ? { gsc_site_url: gscSiteUrl.trim() } : {}),
-          ...(ga4PropertyId.trim() ? { ga4_property_id: ga4PropertyId.trim() } : {}),
         })
         .catch(() => {
           /* non-blocking */
         });
-    }, 1600);
-    return () => {
-      if (snapshotDebounceRef.current) clearTimeout(snapshotDebounceRef.current);
-    };
+    }, 600);
+    return () => clearTimeout(tid);
   }, [
     brandId,
     step,
+    pipelineEnvironment,
     keywordRows.length,
     pagePlan.length,
     redirectMap.length,
@@ -969,10 +993,6 @@ export default function WpShopifyMigrationWizardPage() {
     gscResult,
     ga4Result,
     sourceUrl,
-    targetBaseUrl,
-    gscSiteUrl,
-    ga4PropertyId,
-    pipelineEnvironment,
   ]);
 
   // When entering step 2, sync GSC site URL from crawl source so Fetch GSC uses same URL as crawl (required for keywords to match)

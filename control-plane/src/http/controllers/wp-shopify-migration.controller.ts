@@ -5,8 +5,38 @@
 import type { Request, Response } from "express";
 import { withTransaction } from "../../db.js";
 import { hasShopifyCredentialsForBrand } from "../../shopify-brand-connector.js";
-import { enqueueWpShopifyWizardJob, enqueueWpShopifyWizardMigrationRun } from "../../wp-shopify-migration-pipeline.js";
+import {
+  enqueueWpShopifyWizardJob,
+  enqueueWpShopifyWizardMigrationRun,
+  syncWpShopifyInitiativeGoalMetadataFromUrls,
+} from "../../wp-shopify-migration-pipeline.js";
 import { parseWizardJobPayload } from "../../wp-shopify-migration-wizard-parse.js";
+
+/** POST body: brand_id + optional URL fields. Updates initiative goal_metadata only (no pipeline run). */
+export async function wpShopifyMigrationSyncGoalMetadata(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const brandId = String(body.brand_id ?? "").trim();
+    if (!brandId) {
+      res.status(400).json({ error: "brand_id is required" });
+      return;
+    }
+    const out = await syncWpShopifyInitiativeGoalMetadataFromUrls({
+      brandId,
+      ...(typeof body.source_url === "string" && body.source_url.trim() ? { source_url: body.source_url.trim() } : {}),
+      ...(typeof body.target_store_url === "string" && body.target_store_url.trim()
+        ? { target_store_url: body.target_store_url.trim() }
+        : {}),
+      ...(typeof body.gsc_site_url === "string" && body.gsc_site_url.trim() ? { gsc_site_url: body.gsc_site_url.trim() } : {}),
+      ...(typeof body.ga4_property_id === "string" && body.ga4_property_id.trim()
+        ? { ga4_property_id: body.ga4_property_id.trim() }
+        : {}),
+    });
+    res.json({ ok: true, initiative_id: out.initiative_id });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
 
 /** WP → Shopify migration wizard — Step 1: enqueue source crawl (`wp_shopify_wizard_job` → artifact `wp_shopify_source_crawl`). Requires brand_id. */
 export async function wpShopifyMigrationCrawl(req: Request, res: Response): Promise<void> {
