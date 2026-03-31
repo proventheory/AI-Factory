@@ -217,19 +217,44 @@ export async function completeJobFailure(
 /**
  * Start the heartbeat loop for a claimed job.
  * Returns a function to stop the loop.
+ *
+ * Important: do not stop the loop on transient DB errors (pool saturation, timeouts). A single
+ * failed heartbeat used to clear the interval; the reaper then sees stale heartbeat_at (~8m) and
+ * marks the job lease_expired while the worker is still uploading PDFs — partial imports with "failed" runs.
  */
 export function startHeartbeatLoop(
   pool: pg.Pool,
   jobRunId: string,
   workerId: string,
 ): () => void {
-  const interval = setInterval(async () => {
-    try {
-      const ok = await heartbeat(pool, jobRunId, workerId);
-      if (!ok) clearInterval(interval);
-    } catch {
-      clearInterval(interval);
-    }
+  let tickInFlight = false;
+  const interval = setInterval(() => {
+    if (tickInFlight) return;
+    tickInFlight = true;
+    void (async () => {
+      try {
+        let ok: boolean | null = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          try {
+            ok = await heartbeat(pool, jobRunId, workerId);
+            break;
+          } catch (e) {
+            if (attempt === 4) {
+              console.warn(
+                `[runner] heartbeat failed after 5 attempts for job_run ${jobRunId} (will retry on next tick):`,
+                e instanceof Error ? e.message : e,
+              );
+              ok = null;
+            } else {
+              await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+            }
+          }
+        }
+        if (ok === false) clearInterval(interval);
+      } finally {
+        tickInFlight = false;
+      }
+    })();
   }, HEARTBEAT_INTERVAL_MS);
 
   return () => clearInterval(interval);

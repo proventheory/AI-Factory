@@ -340,6 +340,38 @@ export async function wpFetchPdfMediaPage(
   return { rows: Array.isArray(rows) ? rows : [], total, totalPages };
 }
 
+function isTransientWpFetchError(err: unknown): boolean {
+  const m = err instanceof Error ? err.message : String(err);
+  return (
+    /WordPress media (500|502|503|504|429)/.test(m) ||
+    /ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed|network|socket/i.test(m) ||
+    /timeout/i.test(m)
+  );
+}
+
+/** Same as wpFetchPdfMediaPage but retries transient WP / network failures so long PDF imports do not abort mid-pagination. */
+export async function wpFetchPdfMediaPageWithRetry(
+  wpOrigin: string,
+  wpAuthHeader: string | null,
+  page: number,
+  perPage: number,
+  options?: { maxAttempts?: number },
+): Promise<{ rows: WpMediaRow[]; total: number; totalPages: number }> {
+  const maxAttempts = Math.max(1, Math.min(12, options?.maxAttempts ?? 8));
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await wpFetchPdfMediaPage(wpOrigin, wpAuthHeader, page, perPage);
+    } catch (e) {
+      lastErr = e;
+      if (!isTransientWpFetchError(e) || attempt === maxAttempts) throw e;
+      const waitMs = Math.min(45_000, 2000 * 2 ** (attempt - 1));
+      await sleepMs(waitMs);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 type ShopifyPdfIndexEntry = { id: string; url: string | null; fileStatus: string | null };
 
 function indexKeysForGenericFile(url: string | null, alt: string | null): string[] {
@@ -737,7 +769,7 @@ export async function migrateWordPressPdfsToShopify(opts: {
     : null;
 
   outer: while (page <= totalPages) {
-    const { rows: batch, totalPages: tp } = await wpFetchPdfMediaPage(wpOrigin, wpAuthHeader, page, perPage);
+    const { rows: batch, totalPages: tp } = await wpFetchPdfMediaPageWithRetry(wpOrigin, wpAuthHeader, page, perPage);
     totalPages = tp;
     for (const raw of batch) {
       const id = String(raw.id);
