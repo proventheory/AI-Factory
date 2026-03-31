@@ -1302,6 +1302,7 @@ export default function WpShopifyMigrationWizardPage() {
   }, [step, crawlResult?.urls, ga4Result?.pages, sourceUrl]);
 
   const runCrawl = async () => {
+    if (crawlLoading) return;
     if (!brandId.trim()) {
       setCrawlError("Select a brand in step 1 so the crawl is recorded on your WP → Shopify initiative.");
       return;
@@ -2016,7 +2017,7 @@ export default function WpShopifyMigrationWizardPage() {
                 )}
                 {crawlLoading && (
                   <p className="text-body-small text-fg-muted">
-                    Fetching sitemaps and discovering URLs from <strong>{sourceUrl}</strong>. Sitemap-only is usually under a minute. <strong>Link-following</strong> fetches pages to find internal links (bounded delay per page), then the runner checks HTTP status for each unique URL in parallel—large <strong>Max URLs</strong> values can still take several minutes. If status stays <strong>running</strong> for a very long time, open <strong>Pipeline Runs</strong>, find this run, and confirm <strong>ai-factory-runner-staging</strong> is live and the job is not <code className="rounded bg-fg-muted/15 px-1">lease_expired</code>.
+                    Fetching sitemaps and discovering URLs from <strong>{sourceUrl}</strong>. Sitemap-only is usually under a minute. <strong>Link-following</strong> can take several minutes. This step primarily uses the <strong>Control Plane crawl API</strong> (see status above)—a successful table below means the crawl worked. <strong>Pipeline Runs</strong> may still list <strong>failed</strong> jobs from runner fallback, retries, or full SEO audit runs on the same initiative; those do not cancel a good result here. If a pipeline crawl was queued and stalls, confirm <strong>ai-factory-runner-staging</strong> is live and the job is not <code className="rounded bg-fg-muted/15 px-1">lease_expired</code>.
                   </p>
                 )}
               </div>

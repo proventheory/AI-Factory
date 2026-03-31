@@ -1477,21 +1477,32 @@ export async function wpShopifyMigrationCrawl(
     }
     if (!res.ok) {
       const err = (data as { error?: string })?.error;
-      throw new Error(err || text || `crawl_execute failed (${res.status})`);
+      const ex = new Error(err || text || `crawl_execute failed (${res.status})`) as Error & { httpStatus?: number };
+      ex.httpStatus = res.status;
+      throw ex;
     }
     return data as WpShopifyMigrationCrawlResult;
   } catch (directErr) {
     const msg = String(directErr instanceof Error ? directErr.message : directErr);
+    const httpStatus = (directErr as Error & { httpStatus?: number }).httpStatus;
     const poolSaturated =
       /MaxClientsInSessionMode|max clients reached|Session mode|too many clients|53300/i.test(msg);
     const clientAborted = isAbortError(directErr);
+    // Vercel / CDN / proxy often returns 502–504 while Render may still be crawling; pipeline fallback only adds failed runs.
+    const gatewayOrProxy =
+      (typeof httpStatus === "number" && httpStatus >= 502 && httpStatus <= 504) ||
+      /Gateway Time-out|Bad Gateway|FUNCTION_INVOCATION_TIMEOUT|invocation failed|timeout waiting|upstream connect|ECONNRESET/i.test(
+        msg,
+      );
     // Pool-saturated errors: pipeline crawl uses the same DB pool → more failed runs, not a fix.
     // Client abort (browser/proxy timeout): the API may still be crawling; enqueuing a second job duplicates work.
-    if (poolSaturated || clientAborted) {
+    if (poolSaturated || clientAborted || gatewayOrProxy) {
       pollOpts?.onStatus?.(
         poolSaturated
           ? "Crawl API hit a database connection limit — not queueing a pipeline run (would make it worse). Lower DATABASE_POOL_MAX / use direct Postgres URL on Control Plane, then retry."
-          : "Request timed out — not auto-queueing a pipeline crawl (avoids duplicate runs). Wait and use Refetch, or raise the client timeout.",
+          : gatewayOrProxy
+            ? "Proxy or gateway closed the long crawl request — not queueing a pipeline run (avoids duplicate failed runs). Wait and use Refetch; crawl may still complete on the Control Plane."
+            : "Request timed out — not auto-queueing a pipeline crawl (avoids duplicate runs). Wait and use Refetch, or raise the client timeout.",
       );
       throw directErr instanceof Error ? directErr : new Error(msg);
     }
