@@ -1659,6 +1659,9 @@ export async function wpShopifyMigrationRun(
   const blogsBlock = byEntity?.blogs && typeof byEntity.blogs === "object" && !Array.isArray(byEntity.blogs) ? (byEntity.blogs as Record<string, unknown>) : undefined;
   const blogRows = Array.isArray(blogsBlock?.rows) ? (blogsBlock!.rows as WpShopifyBlogMigrationRow[]) : undefined;
   const blogSummary = blogsBlock?.summary && typeof blogsBlock.summary === "object" && !Array.isArray(blogsBlock.summary) ? (blogsBlock.summary as { created?: number; skipped?: number; failed?: number }) : undefined;
+  const rawWpSource = blogsBlock?.wordpress_posts_source;
+  const wordpressPostsSource: "application_password" | "public_rest" | undefined =
+    rawWpSource === "application_password" || rawWpSource === "public_rest" ? rawWpSource : undefined;
   const blogMigration =
     blogRows && blogSummary
       ? {
@@ -1671,9 +1674,7 @@ export async function wpShopifyMigrationRun(
           ...(blogsBlock?.truncated === true ? { truncated: true } : {}),
           ...(typeof blogsBlock?.shopify_blog_handle === "string" ? { shopify_blog_handle: blogsBlock.shopify_blog_handle } : {}),
           ...(typeof blogsBlock?.hint === "string" ? { hint: blogsBlock.hint } : {}),
-          ...(blogsBlock?.wordpress_posts_source === "application_password" || blogsBlock?.wordpress_posts_source === "public_rest"
-            ? { wordpress_posts_source: blogsBlock.wordpress_posts_source }
-            : {}),
+          ...(wordpressPostsSource ? { wordpress_posts_source: wordpressPostsSource } : {}),
         }
       : undefined;
   return {
