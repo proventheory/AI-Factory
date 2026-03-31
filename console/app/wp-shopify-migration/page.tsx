@@ -2017,7 +2017,7 @@ export default function WpShopifyMigrationWizardPage() {
                 )}
                 {crawlLoading && (
                   <p className="text-body-small text-fg-muted">
-                    Fetching sitemaps and discovering URLs from <strong>{sourceUrl}</strong>. Sitemap-only is usually under a minute. <strong>Link-following</strong> can take several minutes. This step primarily uses the <strong>Control Plane crawl API</strong> (see status above)—a successful table below means the crawl worked. <strong>Pipeline Runs</strong> may still list <strong>failed</strong> jobs from runner fallback, retries, or full SEO audit runs on the same initiative; those do not cancel a good result here. If a pipeline crawl was queued and stalls, confirm <strong>ai-factory-runner-staging</strong> is live and the job is not <code className="rounded bg-fg-muted/15 px-1">lease_expired</code>.
+                    Fetching sitemaps and discovering URLs from <strong>{sourceUrl}</strong>. Sitemap-only is usually under a minute; <strong>link-following</strong> can take many minutes. This step uses only the <strong>Control Plane</strong> (<code className="rounded bg-fg-muted/15 px-1 text-caption-small">crawl_execute</code>)—it does not queue a runner crawl. If this hangs, your Vercel proxy may be timing out: raise <code className="rounded bg-fg-muted/15 px-1 text-caption-small">maxDuration</code> on the console route or call the Control Plane directly with CORS. Separate <strong>Pipeline Runs</strong> (e.g. Plans → Start, or snapshots) are unrelated to this table.
                   </p>
                 )}
               </div>

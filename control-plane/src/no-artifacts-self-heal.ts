@@ -91,11 +91,22 @@ async function isNoArtifactsRemediationEligible(runId: string): Promise<boolean>
   if (!selfHeal || !hasKey) return false;
   if (noArtifactsRemediatedRunIds.has(runId)) return false;
 
-  const run = await pool.query<{ status: string }>(
-    "SELECT status FROM runs WHERE id = $1",
-    [runId]
+  const run = await pool.query<{ status: string; intent_type: string | null }>(
+    `SELECT r.status, i.intent_type
+     FROM runs r
+     LEFT JOIN plans p ON p.id = r.plan_id
+     LEFT JOIN initiatives i ON i.id = p.initiative_id
+     WHERE r.id = $1`,
+    [runId],
   );
   if (run.rows.length === 0) return false;
+  const intent = run.rows[0].intent_type ?? "";
+  if (
+    run.rows[0].status === "failed" &&
+    (intent === "wp_shopify_migration" || intent === "seo_migration_audit")
+  ) {
+    return false;
+  }
   if (!TERMINAL_STATUSES.includes(run.rows[0].status as (typeof TERMINAL_STATUSES)[number])) return false;
 
   const jobCount = await pool.query<{ c: number }>(

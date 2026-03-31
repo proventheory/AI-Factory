@@ -10,6 +10,8 @@ import { NextResponse } from "next/server";
  * When a matching rewrite exists, Next applies it first and this route is not used.
  */
 export const dynamic = "force-dynamic";
+/** Long POSTs (e.g. crawl_execute). Vercel clamps by plan (300s typical Pro cap; Hobby ~10s — use direct CP URL + CORS if needed). */
+export const maxDuration = 300;
 
 const HOP_BY_HOP = new Set(
   ["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade", "host"].map((s) =>

@@ -1449,7 +1449,7 @@ export async function wpShopifyMigrationCrawl(
   params: WpShopifyMigrationCrawlParams,
   pollOpts?: WpShopifyPipelinePollOptions,
 ): Promise<WpShopifyMigrationCrawlResult> {
-  const { brand_id, environment, ...rest } = params;
+  const { brand_id, ...rest } = params;
   const linkCrawl = Boolean(rest.use_link_crawl);
   const body = {
     brand_id,
@@ -1506,20 +1506,10 @@ export async function wpShopifyMigrationCrawl(
       );
       throw directErr instanceof Error ? directErr : new Error(msg);
     }
-    pollOpts?.onStatus?.("Direct crawl failed — trying pipeline run (runner)…");
-    const enq = await postWpShopifyMigrationPost("/v1/wp-shopify-migration/crawl", {
-      ...body,
-      ...(environment ? { environment } : {}),
-    });
-    pollOpts?.onRunEnqueued?.(enq.run_id);
-    const poll: WpShopifyPipelinePollOptions = {
-      intervalMs: pollOpts?.intervalMs ?? 2000,
-      maxWaitMs: pollOpts?.maxWaitMs ?? (linkCrawl ? 90 * 60_000 : 20 * 60_000),
-      onStatus: pollOpts?.onStatus,
-      onWizardProgress: pollOpts?.onWizardProgress,
-    };
-    const meta = await waitForWizardArtifact(enq.run_id, "wp_shopify_source_crawl", poll);
-    return meta as unknown as WpShopifyMigrationCrawlResult;
+    // Runner fallback removed: POST /crawl created many failed Pipeline Runs (same initiative) and confused operators.
+    // Step 1 is API-only; fix crawl_execute / proxy max duration / DB pool instead.
+    pollOpts?.onStatus?.("Crawl API request failed (no runner fallback).");
+    throw directErr instanceof Error ? directErr : new Error(msg);
   }
 }
 
