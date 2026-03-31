@@ -21,6 +21,8 @@ export type BlogMigrationResult = {
   summary: { created: number; skipped: number; failed: number };
   /** Multi-blog hint or resolver note */
   hint?: string;
+  /** First hard failure message (helps operators without opening full row JSON). */
+  sample_error?: string;
   truncated: boolean;
   shopify_blog_id?: number;
   shopify_blog_handle?: string;
@@ -30,6 +32,12 @@ export type BlogMigrationResult = {
 
 function stripRendered(html: string): string {
   return html.replace(/<[^>]+>/g, "").trim();
+}
+
+/** Shopify article author is a short string; very long WP display names can be rejected. */
+function sanitizeAuthorForShopify(name: string, maxLen = 255): string {
+  const t = name.trim() || "WordPress";
+  return t.length <= maxLen ? t : `${t.slice(0, maxLen - 1)}…`;
 }
 
 function shopHost(shopDomain: string): string {
@@ -243,7 +251,12 @@ export function blogMigrationSummaryAndHint(result: BlogMigrationResult): { summ
   const parts: string[] = [];
   if (result.hint?.trim()) parts.push(result.hint.trim());
   if (failed > 0) {
-    parts.push("Some posts failed—check row errors. Common causes: Shopify content scope, oversized HTML, or invalid handle.");
+    parts.push("Some posts failed—open migration artifact rows[].error or Pipeline run → job_events.");
+    if (result.sample_error?.trim()) {
+      parts.push(`Example error: ${result.sample_error.trim().slice(0, 280)}`);
+    } else {
+      parts.push("Common causes: missing write_content scope, featured image URL blocked by Shopify, oversized HTML, or invalid handle.");
+    }
   }
   if (result.truncated) {
     parts.push("Batch limit reached; run again to import more (exclusions apply).");
@@ -290,6 +303,7 @@ export async function migrateWordPressPostsToShopify(opts: {
   let truncated = false;
   let hitRowLimit = false;
   let hintExtra = "";
+  let sampleError: string | undefined;
 
   const { blogId, handle: blogHandle, note: blogNote } = await resolveShopifyBlogIdForPosts(
     opts.shopDomain,
@@ -346,7 +360,7 @@ export async function migrateWordPressPostsToShopify(opts: {
             : bodyHtml.slice(0, 500);
         const published = post.status === "publish";
         const tags = tagsFromEmbedded(post);
-        const author = authorFromEmbedded(post);
+        const author = sanitizeAuthorForShopify(authorFromEmbedded(post));
         const img = featuredSrc(post);
         row.title = title;
         row.slug = slug || undefined;
@@ -384,7 +398,7 @@ export async function migrateWordPressPostsToShopify(opts: {
           articlePayload.image = { src: img };
         }
 
-        const { ok, data, text, status } = await shopifyRestJson<{ article?: { id: number; handle?: string }; errors?: string }>(
+        let { ok, data, text, status } = await shopifyRestJson<{ article?: { id: number; handle?: string }; errors?: string }>(
           opts.shopDomain,
           opts.accessToken,
           "POST",
@@ -392,10 +406,36 @@ export async function migrateWordPressPostsToShopify(opts: {
           { article: articlePayload },
         );
 
+        // Shopify often rejects creates when it cannot fetch the WP featured image (hotlink, HTTP-only, or timeout).
+        if (!ok && img && articlePayload.image) {
+          const errProbe = (data as { errors?: unknown })?.errors
+            ? JSON.stringify((data as { errors: unknown }).errors)
+            : text;
+          const payloadNoImg = { ...articlePayload };
+          delete payloadNoImg.image;
+          const second = await shopifyRestJson<{ article?: { id: number; handle?: string }; errors?: string }>(
+            opts.shopDomain,
+            opts.accessToken,
+            "POST",
+            `/blogs/${blogId}/articles.json`,
+            { article: payloadNoImg },
+          );
+          if (second.ok) {
+            ok = true;
+            data = second.data;
+            text = second.text;
+            status = second.status;
+            row.note = "Imported without featured image (Shopify could not use WordPress image URL—re-upload image in Admin if needed).";
+          } else if (!sampleError) {
+            sampleError = `Shopify ${status}: ${errProbe.slice(0, 220)}`;
+          }
+        }
+
         if (!ok) {
           const errMsg = (data as { errors?: unknown })?.errors
             ? JSON.stringify((data as { errors: unknown }).errors).slice(0, 400)
             : text.slice(0, 400);
+          if (!sampleError) sampleError = `Shopify ${status}: ${errMsg.slice(0, 220)}`;
           if (opts.skipIfExistsInShopify && /handle|taken|already|duplicate/i.test(errMsg)) {
             const existingId = await findShopifyArticleIdByHandle(opts.shopDomain, opts.accessToken, blogId, slug);
             if (existingId != null) {
@@ -448,5 +488,6 @@ export async function migrateWordPressPostsToShopify(opts: {
     shopify_blog_handle: blogHandle,
     wordpress_posts_source: wpSource,
     ...(hintExtra ? { hint: hintExtra } : {}),
+    ...(sampleError ? { sample_error: sampleError } : {}),
   };
 }

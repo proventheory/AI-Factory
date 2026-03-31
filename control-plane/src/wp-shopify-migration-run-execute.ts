@@ -308,6 +308,7 @@ export async function executeWizardMigrationRun(opts: {
         shopify_blog_id: result.shopify_blog_id,
         shopify_blog_handle: result.shopify_blog_handle,
         ...(result.wordpress_posts_source ? { wordpress_posts_source: result.wordpress_posts_source } : {}),
+        ...(result.sample_error?.trim() ? { sample_error: result.sample_error.trim() } : {}),
         ...(hint?.trim() ? { hint: hint.trim() } : {}),
       };
     } else if (e === "pdfs") {
