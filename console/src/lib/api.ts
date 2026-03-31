@@ -203,16 +203,24 @@ export type WpShopifyPipelinePollOptions = {
   onStatus?: (status: string) => void;
   /** Fires as soon as the control plane returns `run_id` (before polling completes). */
   onRunEnqueued?: (runId: string) => void;
+  /** When set, polling uses GET /v1/runs/:id (includes latest `wizard_progress` job_events). */
+  onWizardProgress?: (payload: Record<string, unknown>) => void;
 };
 
 /** Poll GET /v1/runs/:id/status until succeeded, failed, or rolled_back (default timeout 45 minutes). */
 export async function pollRunUntilTerminal(
   runId: string,
-  opts?: { intervalMs?: number; maxWaitMs?: number; onStatus?: (status: string) => void },
+  opts?: {
+    intervalMs?: number;
+    maxWaitMs?: number;
+    onStatus?: (status: string) => void;
+    onWizardProgress?: (payload: Record<string, unknown>) => void;
+  },
 ): Promise<{ status: string }> {
   const intervalMs = opts?.intervalMs ?? 1500;
   const maxWaitMs = opts?.maxWaitMs ?? 45 * 60_000;
   const start = Date.now();
+  const useDetail = Boolean(opts?.onWizardProgress);
   for (;;) {
     if (Date.now() - start > maxWaitMs) {
       throw new Error(
@@ -220,9 +228,25 @@ export async function pollRunUntilTerminal(
       );
     }
     try {
-      const { status } = await getRunStatus(runId);
-      opts?.onStatus?.(status);
-      if (TERMINAL_RUN_STATUSES.has(status)) return { status };
+      if (useDetail) {
+        const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/runs/${runId}`, { timeoutMs: 30_000 });
+        if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as {
+          run?: { status?: string };
+          job_events?: Array<{ event_type?: string; payload_json?: unknown }>;
+        };
+        const status = data.run?.status ?? "unknown";
+        opts?.onStatus?.(status);
+        const wpEv = (data.job_events ?? []).find((e) => e.event_type === "wizard_progress");
+        if (wpEv?.payload_json && typeof wpEv.payload_json === "object" && !Array.isArray(wpEv.payload_json)) {
+          opts?.onWizardProgress?.(wpEv.payload_json as Record<string, unknown>);
+        }
+        if (TERMINAL_RUN_STATUSES.has(status)) return { status };
+      } else {
+        const { status } = await getRunStatus(runId);
+        opts?.onStatus?.(status);
+        if (TERMINAL_RUN_STATUSES.has(status)) return { status };
+      }
     } catch (e) {
       if (isAbortError(e)) {
         opts?.onStatus?.("API poll timed out (retrying…)");

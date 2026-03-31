@@ -84,7 +84,7 @@ export async function getById(req: Request, res: Response): Promise<void> {
       pool.query("SELECT * FROM artifacts WHERE run_id = $1 ORDER BY created_at", [runId]).then((r) => r.rows),
       pool.query("SELECT * FROM run_events WHERE run_id = $1 ORDER BY created_at", [runId]).then((r) => r.rows),
       pool.query("SELECT rel.runner_image_digest, rel.workplane_bundle_version, rel.policy_version AS release_policy_version FROM runs r JOIN releases rel ON rel.id = r.release_id WHERE r.id = $1", [runId]).then((r) => r.rows[0] ?? null),
-      pool.query("SELECT je.* FROM job_events je JOIN job_runs jr ON jr.id = je.job_run_id WHERE jr.run_id = $1 ORDER BY je.created_at DESC LIMIT 50", [runId]).then((r) => r.rows),
+      pool.query("SELECT je.* FROM job_events je JOIN job_runs jr ON jr.id = je.job_run_id WHERE jr.run_id = $1 ORDER BY je.created_at DESC LIMIT 120", [runId]).then((r) => r.rows),
     ]);
     if (!run) {
       res.status(404).json({ error: "Run not found" });

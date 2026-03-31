@@ -2,7 +2,11 @@
  * Wizard "Run migration" — entity-aware execution (PDFs + audit paths; honest status for the rest).
  */
 
-import { migrateWordPressPdfsToShopify, pdfMigrationSummaryAndHint } from "./wp-shopify-migration-pdf-shopify.js";
+import {
+  migrateWordPressPdfsToShopify,
+  pdfMigrationSummaryAndHint,
+  type PdfMigrationProgressEvent,
+} from "./wp-shopify-migration-pdf-shopify.js";
 import { migrateWordPressPostsToShopify, blogMigrationSummaryAndHint } from "./wp-shopify-migration-blog-shopify.js";
 
 const SHOPIFY_REST_VERSION = "2024-10";
@@ -17,6 +21,21 @@ const ETL_PENDING = new Set([
 ]);
 
 const MAX_TAGS_IN_ARTIFACT = 2500;
+
+/** Prefer blogs / tag export before heavy PDF uploads so a lease issue mid-PDF still leaves posts imported. */
+function sortEntitiesForMigrationOrder(entities: string[]): string[] {
+  const priority = ["blogs", "blog_tags", "pdfs"];
+  const want = new Set(entities.map((x) => String(x).trim()).filter(Boolean));
+  const out: string[] = [];
+  for (const p of priority) {
+    if (want.has(p)) out.push(p);
+  }
+  for (const e of entities) {
+    const t = String(e).trim();
+    if (t && !priority.includes(t)) out.push(t);
+  }
+  return out;
+}
 
 export type WpTagBrief = { id: string; name: string; slug?: string; link?: string };
 
@@ -208,10 +227,12 @@ export async function executeWizardMigrationRun(opts: {
   maxBlogPosts: number;
   createRedirects: boolean;
   skipIfExistsInShopify: boolean;
+  onPdfProgress?: (e: PdfMigrationProgressEvent) => void;
+  onBlogProgress?: (p: { current: number; total: number; wordpress_id?: string }) => void;
 }): Promise<Record<string, unknown>> {
   const by_entity: Record<string, unknown> = {};
   const unsupported: string[] = [];
-  const uniq = [...new Set(opts.entities.map((x) => String(x).trim()).filter(Boolean))];
+  const uniq = sortEntitiesForMigrationOrder([...new Set(opts.entities.map((x) => String(x).trim()).filter(Boolean))]);
 
   for (const e of uniq) {
     if (e === "blogs") {
@@ -228,6 +249,7 @@ export async function executeWizardMigrationRun(opts: {
         excludedIds: excluded,
         maxPosts: opts.maxBlogPosts,
         skipIfExistsInShopify: opts.skipIfExistsInShopify,
+        onProgress: opts.onBlogProgress,
       });
       const { summary, hint } = blogMigrationSummaryAndHint(result);
       const hintMerged = [result.hint, hint].filter(Boolean).join(" ");
@@ -254,6 +276,7 @@ export async function executeWizardMigrationRun(opts: {
         maxFiles: opts.maxPdfFiles,
         createRedirects: opts.createRedirects,
         skipIfExistsInShopify: opts.skipIfExistsInShopify,
+        onProgress: opts.onPdfProgress,
       });
       const { summary, hint } = pdfMigrationSummaryAndHint(result);
       by_entity.pdfs = {

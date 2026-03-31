@@ -1,7 +1,8 @@
 import { v4 as uuid } from "uuid";
 import type pg from "pg";
 
-const STALE_THRESHOLD_MS = 2 * 60_000; // 2 minutes
+/** Heartbeats run every 30s; allow headroom when the pool is busy or jobs are I/O-heavy (PDF/blog migration). */
+const STALE_THRESHOLD_MS = 8 * 60_000; // 8 minutes
 
 /**
  * Lease Reaper (Section 12C.9 A6):

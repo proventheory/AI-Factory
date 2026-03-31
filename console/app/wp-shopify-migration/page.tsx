@@ -1504,6 +1504,18 @@ export default function WpShopifyMigrationWizardPage() {
             else if (st === "queued") setMigrationRunPollHint("Queued…");
             else setMigrationRunPollHint(`Status: ${st}`);
           },
+          onWizardProgress: (pl) => {
+            const blogs = pl.blogs as { current?: number; total?: number } | undefined;
+            const pdfs = pl.pdfs as { current?: number; total?: number } | undefined;
+            const bits: string[] = [];
+            if (blogs && typeof blogs.current === "number" && typeof blogs.total === "number") {
+              bits.push(`Blog posts ${blogs.current}/${blogs.total}`);
+            }
+            if (pdfs && typeof pdfs.current === "number" && typeof pdfs.total === "number") {
+              bits.push(`PDFs ${pdfs.current}/${pdfs.total}`);
+            }
+            if (bits.length) setMigrationRunPollHint(bits.join(" · "));
+          },
         },
       );
       setMigrationRunResult(result);
@@ -1555,7 +1567,21 @@ export default function WpShopifyMigrationWizardPage() {
             setPdfImportProgress({ current: 0, total: 1, phase: "Runner executing…" });
           },
           onStatus: (status) => {
-            setPdfImportProgress({ current: 0, total: 1, phase: `Run status: ${status}` });
+            setPdfImportProgress((prev) => ({
+              current: prev?.current ?? 0,
+              total: prev?.total ?? 1,
+              phase: `Run status: ${status}`,
+            }));
+          },
+          onWizardProgress: (pl) => {
+            const pdfs = pl.pdfs as { current?: number; total?: number } | undefined;
+            if (pdfs && typeof pdfs.current === "number" && typeof pdfs.total === "number") {
+              setPdfImportProgress({
+                current: pdfs.current,
+                total: pdfs.total,
+                phase: `PDFs ${pdfs.current} / ${pdfs.total}`,
+              });
+            }
           },
         },
       );

@@ -55,7 +55,8 @@ CREATE TYPE run_event_type AS ENUM (
 
 CREATE TYPE job_event_type AS ENUM (
   'attempt_started', 'attempt_succeeded', 'attempt_failed',
-  'hypothesis_generated', 'patch_applied', 'escalated_model', 'halted'
+  'hypothesis_generated', 'patch_applied', 'escalated_model', 'halted',
+  'wizard_progress'
 );
 
 CREATE TYPE artifact_class AS ENUM (

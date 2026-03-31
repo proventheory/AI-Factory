@@ -4,11 +4,42 @@
 
 import type pg from "pg";
 import type { Pool } from "pg";
+
+function createWizardProgressReporter(pool: Pool | undefined, jobRunId: string | undefined) {
+  let lastWrite = 0;
+  return async (payload: Record<string, unknown>) => {
+    if (!pool || !jobRunId?.trim()) return;
+    const force = payload.force === true;
+    const now = Date.now();
+    if (!force && now - lastWrite < 2000) return;
+    lastWrite = now;
+    const { force: _f, ...rest } = payload;
+    try {
+      await pool.query(
+        `INSERT INTO job_events (job_run_id, event_type, payload_json) VALUES ($1::uuid, 'wizard_progress', $2::jsonb)`,
+        [jobRunId, JSON.stringify(rest)],
+      );
+    } catch (e) {
+      console.warn("[wp_shopify_wizard_job] wizard_progress insert:", (e as Error).message);
+    }
+  };
+}
+
+function pdfProgressToWizardPayload(ev: PdfMigrationProgressEvent): Record<string, unknown> | null {
+  if (ev.event === "init") {
+    return { phase: "pdfs", pdfs: { current: 0, total: ev.total }, force: true };
+  }
+  if (ev.event === "item" && ev.step === "complete") {
+    return { phase: "pdfs", pdfs: { current: ev.current, total: ev.total } };
+  }
+  return null;
+}
 import type { JobContext } from "../job-context.js";
 import {
   migrateWordPressPdfsToShopify,
   resolveWordPressPdfUrlsFromShopify,
   pdfMigrationSummaryAndHint,
+  type PdfMigrationProgressEvent,
 } from "../../../control-plane/src/wp-shopify-migration-pdf-shopify.js";
 import { executeWpShopifyMigrationDryRun } from "../../../control-plane/src/wp-shopify-migration-dry-run-execute.js";
 import { runMigrationCrawl } from "../../../control-plane/src/wp-shopify-migration-crawl.js";
@@ -111,10 +142,12 @@ async function insertDataArtifact(
 export async function handleWpShopifyWizardJob(
   client: pg.PoolClient,
   context: JobContext,
-  params: { runId: string; jobRunId: string; planNodeId: string },
+  params: { runId: string; jobRunId: string; planNodeId: string; dbPool?: Pool },
 ): Promise<void> {
   const initiativeId = context.initiative_id;
   if (!initiativeId) throw new Error("wp_shopify_wizard_job requires initiative_id");
+
+  const reportWizardProgress = createWizardProgressReporter(params.dbPool, params.jobRunId);
 
   const payload = await loadPayload(client, initiativeId, params.runId);
   const brandId = String(payload.brand_id ?? "").trim();
@@ -291,6 +324,17 @@ export async function handleWpShopifyWizardJob(
         maxBlogPosts: maxPdfFiles,
         createRedirects: payload.create_redirects !== false,
         skipIfExistsInShopify: payload.skip_if_exists_in_shopify === true,
+        onPdfProgress: (ev) => {
+          const pl = pdfProgressToWizardPayload(ev);
+          if (pl) void reportWizardProgress(pl);
+        },
+        onBlogProgress: (p) => {
+          void reportWizardProgress({
+            phase: "blogs",
+            blogs: { current: p.current, total: p.total },
+            force: p.current === 0,
+          });
+        },
       });
       await insertDataArtifact(client, params, "wp_shopify_migration_run", artifact);
       return;
@@ -328,6 +372,10 @@ export async function handleWpShopifyWizardJob(
         maxFiles,
         createRedirects,
         skipIfExistsInShopify: payload.skip_if_exists_in_shopify === true,
+        onProgress: (ev) => {
+          const pl = pdfProgressToWizardPayload(ev);
+          if (pl) void reportWizardProgress(pl);
+        },
       });
       const { summary, hint } = pdfMigrationSummaryAndHint(result);
       await insertDataArtifact(client, params, "wp_shopify_pdf_import", {

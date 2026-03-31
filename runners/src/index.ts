@@ -55,12 +55,20 @@ const pool = new pg.Pool({
   idleTimeoutMillis: 30_000,
 });
 
+const rawMaxConc = Number(process.env.MAX_CONCURRENCY ?? "5");
+/** Leave at least one pool slot for heartbeats / polls when jobs hold connections. */
+const maxConcurrency = Math.min(Math.max(1, rawMaxConc), Math.max(1, poolSize - 1));
 const config = {
   workerId: process.env.WORKER_ID ?? `worker-${process.pid}`,
   runnerVersion: process.env.RUNNER_VERSION ?? "0.1.0",
   environment: process.env.ENVIRONMENT ?? "sandbox",
-  maxConcurrency: Number(process.env.MAX_CONCURRENCY ?? "5"),
+  maxConcurrency,
 };
+if (maxConcurrency < rawMaxConc) {
+  console.warn(
+    `[runner] MAX_CONCURRENCY capped to ${maxConcurrency} (DATABASE_POOL_MAX=${poolSize}); raise DATABASE_POOL_MAX to run more jobs in parallel.`,
+  );
+}
 
 if (process.env.LLM_GATEWAY_URL?.trim()) {
   console.log("[runner] LLM_GATEWAY_URL is set — using gateway for LLM calls.");
@@ -205,17 +213,23 @@ async function pollAndExecute(): Promise<void> {
               }).catch(() => {});
             }
           } else {
-            const txClient = await pool.connect();
+            // Do not wrap wp_shopify_wizard_job in a long-lived transaction: PDF/blog work does minutes of HTTP
+            // while idle-in-transaction would pin a pool connection and starve heartbeats → lease_expired reaper.
+            const wizParams = { ...jobParams, dbPool: pool };
+            const c = await pool.connect();
             try {
-              await txClient.query("BEGIN");
-              await handler(txClient, jobContext, jobParams);
-              await txClient.query("COMMIT");
-              const countResult = await txClient.query<{ c: number }>(
+              await handler(c, jobContext, wizParams);
+            } finally {
+              c.release();
+            }
+            const lc = await pool.connect();
+            try {
+              const countResult = await lc.query<{ c: number }>(
                 "SELECT count(*)::int AS c FROM public.artifacts WHERE run_id = $1",
                 [jobRun.run_id],
               );
               const artifactCount = countResult.rows[0]?.c ?? 0;
-              console.log("[runner] handler transaction committed (artifacts persisted)", {
+              console.log("[runner] wp_shopify wizard handler finished (no outer transaction)", {
                 run_id: jobRun.run_id,
                 job_type: jobContext.job_type,
                 artifact_count: artifactCount,
@@ -234,11 +248,8 @@ async function pollAndExecute(): Promise<void> {
                   }),
                 }).catch(() => {});
               }
-            } catch (err) {
-              await txClient.query("ROLLBACK").catch(() => {});
-              throw err;
             } finally {
-              txClient.release();
+              lc.release();
             }
           }
         } else {

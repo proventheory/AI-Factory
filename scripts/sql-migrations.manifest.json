@@ -521,5 +521,13 @@
   {
     "path": "supabase/migrations/20260331150000_initiative_intent_wp_shopify_migration.sql",
     "name": "initiative_intent_wp_shopify_migration"
+  },
+  {
+    "path": "supabase/migrations/20260331180000_job_event_wizard_progress.sql",
+    "name": "job_event_wizard_progress",
+    "skipIfErrorCodes": [
+      "42710"
+    ],
+    "skipMessage": "enum value already exists"
   }
 ]
