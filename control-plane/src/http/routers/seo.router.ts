@@ -12,6 +12,8 @@ import {
   brandProfilesGoogleCredentialsDelete,
   brandProfilesGoogleGa4Properties,
   brandProfilesGoogleGa4PropertyPatch,
+} from "../controllers/seo.controller.js";
+import {
   wpShopifyMigrationCrawl,
   wpShopifyMigrationDryRun,
   wpShopifyMigrationPreviewItems,
@@ -19,7 +21,7 @@ import {
   wpShopifyMigrationMigratePdfs,
   wpShopifyMigrationResolvePdfUrls,
   wpShopifyMigrationWizardJob,
-} from "../controllers/seo.controller.js";
+} from "../controllers/wp-shopify-migration.controller.js";
 
 const router = Router();
 
