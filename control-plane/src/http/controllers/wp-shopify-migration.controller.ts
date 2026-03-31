@@ -55,12 +55,13 @@ export async function wpShopifyMigrationCrawlExecute(req: Request, res: Response
       fetch_page_details,
     });
 
-    await syncWpShopifyInitiativeGoalMetadataFromUrls({
+    // Respond before touching the pool again: after a long crawl, awaiting sync here competed
+    // with runner/reaper for scarce Supabase Session pooler slots → MaxClientsInSessionMode.
+    res.json(result);
+    void syncWpShopifyInitiativeGoalMetadataFromUrls({
       brandId,
       source_url: result.source_url,
     }).catch(() => {});
-
-    res.json(result);
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }
