@@ -18,6 +18,15 @@ import {
   stripWizardJobPayloadFromInitiative,
   type WpShopifyWizardJobPayload,
 } from "../../../control-plane/src/wp-shopify-migration-pipeline.js";
+
+function shopifyPrefetchedFromPayload(payload: WpShopifyWizardJobPayload): { shop_domain: string; access_token: string } | null {
+  const tok =
+    typeof payload._prefetched_shopify_access_token === "string" ? payload._prefetched_shopify_access_token.trim() : "";
+  const dom =
+    typeof payload._prefetched_shopify_shop_domain === "string" ? payload._prefetched_shopify_shop_domain.trim() : "";
+  if (!tok || !dom) return null;
+  return { shop_domain: dom, access_token: tok };
+}
 import { getWooCommerceCredentialsForBrand } from "../../../control-plane/src/woocommerce-brand-connector.js";
 import {
   getShopifyShopForBrand,
@@ -248,15 +257,21 @@ export async function handleWpShopifyWizardJob(
       let shopDomain: string | null = null;
       let shopAccessToken: string | null = null;
       if (needsShopifyPdfs || wantsTagRedirects || needsShopifyBlogs) {
-        const sm = await getShopifyShopForBrand(client, brandId);
-        const tp = await getShopifyAccessTokenForBrand(client, brandId);
-        if (needsShopifyPdfs || needsShopifyBlogs) {
-          if (!sm || !tp?.access_token) {
-            throw new Error("Shopify must be connected for PDF or blog post import (Brands → Edit brand → Shopify).");
+        const pre = shopifyPrefetchedFromPayload(payload);
+        if (pre) {
+          shopDomain = pre.shop_domain;
+          shopAccessToken = pre.access_token;
+        } else {
+          const sm = await getShopifyShopForBrand(client, brandId);
+          const tp = await getShopifyAccessTokenForBrand(client, brandId);
+          if (needsShopifyPdfs || needsShopifyBlogs) {
+            if (!sm || !tp?.access_token) {
+              throw new Error("Shopify must be connected for PDF or blog post import (Brands → Edit brand → Shopify).");
+            }
           }
+          shopDomain = sm?.shop_domain ?? null;
+          shopAccessToken = tp?.access_token ?? null;
         }
-        shopDomain = sm?.shop_domain ?? null;
-        shopAccessToken = tp?.access_token ?? null;
       }
 
       const maxRaw = Number(payload.max_files);
@@ -281,10 +296,20 @@ export async function handleWpShopifyWizardJob(
       return;
     }
 
-    const shopMeta = await getShopifyShopForBrand(client, brandId);
-    const tokenPack = await getShopifyAccessTokenForBrand(client, brandId);
-    if (!shopMeta || !tokenPack?.access_token) {
-      throw new Error("Could not obtain Shopify access token for this brand");
+    const preShop = shopifyPrefetchedFromPayload(payload);
+    let shopDomainPdf: string;
+    let shopAccessTokenPdf: string;
+    if (preShop) {
+      shopDomainPdf = preShop.shop_domain;
+      shopAccessTokenPdf = preShop.access_token;
+    } else {
+      const shopMeta = await getShopifyShopForBrand(client, brandId);
+      const tokenPack = await getShopifyAccessTokenForBrand(client, brandId);
+      if (!shopMeta || !tokenPack?.access_token) {
+        throw new Error("Could not obtain Shopify access token for this brand");
+      }
+      shopDomainPdf = shopMeta.shop_domain;
+      shopAccessTokenPdf = tokenPack.access_token;
     }
 
     if (kind === "pdf_import") {
@@ -297,8 +322,8 @@ export async function handleWpShopifyWizardJob(
       const result = await migrateWordPressPdfsToShopify({
         wpOrigin: server,
         wpAuthHeader: wpAuth,
-        shopDomain: shopMeta.shop_domain,
-        accessToken: tokenPack.access_token,
+        shopDomain: shopDomainPdf,
+        accessToken: shopAccessTokenPdf,
         excludedIds,
         maxFiles,
         createRedirects,
@@ -324,8 +349,8 @@ export async function handleWpShopifyWizardJob(
       const result = await resolveWordPressPdfUrlsFromShopify({
         wpOrigin: server,
         wpAuthHeader: wpAuth,
-        shopDomain: shopMeta.shop_domain,
-        accessToken: tokenPack.access_token,
+        shopDomain: shopDomainPdf,
+        accessToken: shopAccessTokenPdf,
         wordpressIds,
         createRedirects,
       });

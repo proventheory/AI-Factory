@@ -12,6 +12,7 @@ import { routeRun } from "./release-manager.js";
 import { WP_SHOPIFY_MIGRATION_INTENT } from "./lib/intent-type.js";
 import { getAccessTokenForInitiative } from "./seo-google-oauth.js";
 import { getWooCommerceCredentialsForBrand } from "./woocommerce-brand-connector.js";
+import { getShopifyAccessTokenForBrand, getShopifyShopForBrand } from "./shopify-brand-connector.js";
 
 export const WP_SHOPIFY_WIZARD_JOB_TYPE = "wp_shopify_wizard_job" as const;
 
@@ -23,6 +24,40 @@ const WOO_HYDRATE_KINDS = new Set([
   "pdf_import",
   "pdf_resolve",
 ]);
+
+function wizardPayloadNeedsShopifyPrefetch(payload: WpShopifyWizardJobPayload): boolean {
+  if (payload.kind === "pdf_import" || payload.kind === "pdf_resolve") return true;
+  if (payload.kind === "migration_run_placeholder") {
+    const raw = Array.isArray(payload.entities) ? payload.entities : [];
+    const entities = raw.map((e) => String(e).trim()).filter(Boolean);
+    return entities.some((e) => e === "pdfs" || e === "blog_tags" || e === "blogs");
+  }
+  return false;
+}
+
+/**
+ * Runner often has no SHOPIFY_CONNECTOR_ENCRYPTION_KEY; decrypt on the API at enqueue time (same idea as Woo hydrate).
+ * Stripped with the rest of wp_shopify_pipeline_jobs[run_id] after the job finishes.
+ */
+async function hydrateShopifyCredentialsInWizardPayload(
+  client: pg.PoolClient,
+  brandId: string,
+  payload: WpShopifyWizardJobPayload,
+): Promise<WpShopifyWizardJobPayload> {
+  if (!wizardPayloadNeedsShopifyPrefetch(payload)) return payload;
+  const sm = await getShopifyShopForBrand(client, brandId);
+  const tp = await getShopifyAccessTokenForBrand(client, brandId);
+  if (!sm?.shop_domain?.trim() || !tp?.access_token?.trim()) {
+    throw new Error(
+      "Shopify is not connected for this brand, or the Admin API token could not be loaded. In the console: Brands → Edit brand → Shopify. On the Control Plane API, set SHOPIFY_CONNECTOR_ENCRYPTION_KEY (or WOO_COMMERCE_CONNECTOR_ENCRYPTION_KEY with the same secret) so stored tokens can be decrypted.",
+    );
+  }
+  return {
+    ...payload,
+    _prefetched_shopify_access_token: tp.access_token,
+    _prefetched_shopify_shop_domain: sm.shop_domain,
+  };
+}
 
 async function hydrateWooCredentialsInWizardPayload(
   client: pg.PoolClient,
@@ -68,6 +103,9 @@ export type WpShopifyWizardJobPayload = Record<string, unknown> & {
   /** Set only by the control plane at enqueue time; runner uses this so it does not call back for OAuth. */
   _prefetched_google_access_token?: string;
   _prefetched_google_expires_in?: number;
+  /** Decrypted on the API at enqueue; avoids requiring SHOPIFY_CONNECTOR_ENCRYPTION_KEY on the runner for PDF/blog/tag steps. */
+  _prefetched_shopify_access_token?: string;
+  _prefetched_shopify_shop_domain?: string;
 };
 
 async function ensureWizardInitiative(client: pg.PoolClient, brandId: string): Promise<string> {
@@ -151,6 +189,7 @@ export async function enqueueWpShopifyWizardJob(opts: {
         }
 
         jobPayload = await hydrateWooCredentialsInWizardPayload(client, opts.brandId, jobPayload);
+        jobPayload = await hydrateShopifyCredentialsInWizardPayload(client, opts.brandId, jobPayload);
 
         const nodeKey = `wiz_${uuid()}`;
         const { planId, nodeIds } = await compilePlanFromDraft(
