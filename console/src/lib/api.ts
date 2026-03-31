@@ -47,9 +47,17 @@ export function controlPlaneSupportsShopifyAdminToken(health: ControlPlaneHealth
 export function formatApiError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes("ENETUNREACH") || msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
-    return "Cannot reach the Control Plane API. On Vercel, set NEXT_PUBLIC_CONTROL_PLANE_API to your Render API URL (https, no trailing slash) at build time so rewrites can proxy /api/control-plane → the API. For local dev, run the control plane and keep the default http://localhost:3001 or match it in .env.local.";
+    return "Cannot reach the Control Plane API. On Vercel, set NEXT_PUBLIC_CONTROL_PLANE_API or CONTROL_PLANE_PROXY_URL to your Control Plane HTTPS origin (no trailing slash) and redeploy. The console proxies the browser via /api/control-plane (build-time rewrite or runtime route). For local dev, run the control plane and keep the default http://localhost:3001 or match it in .env.local.";
   }
-  if (msg.includes("404") || msg.includes("Not Found")) return "The requested resource was not found.";
+  if (msg.includes("Control Plane proxy is not configured") || msg.includes("proxy is not configured")) {
+    return msg;
+  }
+  if (msg.includes("404") || msg.includes("Not Found")) {
+    if (/crawl_execute|\/v1\/runs|\/v1\/wp-shopify/i.test(msg)) {
+      return `${msg} If this is a deployed console, confirm NEXT_PUBLIC_CONTROL_PLANE_API or CONTROL_PLANE_PROXY_URL is set and the Control Plane build includes the route you are calling (e.g. POST /v1/wp-shopify-migration/crawl_execute).`;
+    }
+    return "The requested resource was not found.";
+  }
   if (msg.includes("Database schema not applied") || (msg.includes("relation ") && msg.includes(" does not exist"))) {
     return "Control Plane database schema is missing. Run migrations against the same DB the API uses (see docs/runbooks/console-db-relation-does-not-exist.md).";
   }
