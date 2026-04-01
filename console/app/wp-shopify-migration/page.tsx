@@ -29,6 +29,7 @@ import type {
   WpShopifyMigrationPdfRow,
   WpShopifyMigrationWooRestParams,
   WpShopifyMigrationRunResult,
+  WpShopifyBlogMigrationRow,
 } from "@/lib/api";
 import { formatApiError } from "@/lib/api";
 import { WP_SHOPIFY_MIGRATION_INTENT } from "@/config/intent-types";
@@ -183,6 +184,135 @@ function mergeRedirectImports(
   return Array.from(byKey.values());
 }
 
+function normalizedShopifyStoreBase(targetBaseUrl: string): string | null {
+  const t = targetBaseUrl.trim();
+  if (!t) return null;
+  return t.startsWith("http") ? t.replace(/\/$/, "") : `https://${t.replace(/^\/+/, "").replace(/\/$/, "")}`;
+}
+
+/** One row per blog post that has a storefront destination; keys merge with redirect map via pathname like CSV import. */
+function buildBlogRedirectMergeRows(
+  blogRows: WpShopifyBlogMigrationRow[],
+  blogHandle: string,
+  storeBase: string,
+): RedirectRow[] {
+  const incoming: RedirectRow[] = [];
+  const h = blogHandle.trim();
+  if (!h) return incoming;
+  for (const br of blogRows) {
+    const wu = br.wordpress_url?.trim();
+    const slug = br.slug?.trim();
+    if (!wu || !slug || !br.shopify_article_id?.trim()) continue;
+    const dest = `${storeBase}/blogs/${encodeURIComponent(h)}/${encodeURIComponent(slug)}`;
+    incoming.push({ old_url: wu, new_url: dest, status: "301" });
+  }
+  return incoming;
+}
+
+function buildPdfRedirectMergeRows(pdfRows: WpShopifyMigrationPdfRow[]): RedirectRow[] {
+  const incoming: RedirectRow[] = [];
+  for (const pr of pdfRows) {
+    const su = pr.source_url?.trim();
+    const cdn = pr.shopify_file_url?.trim();
+    if (!su || !cdn) continue;
+    incoming.push({ old_url: su, new_url: cdn, status: "301" });
+  }
+  return incoming;
+}
+
+/** Woo REST preview page size when building redirects (fewer round trips than step-3 table pages). */
+const WOO_REDIRECT_PREVIEW_PER_PAGE = 100;
+
+/** Prefer Woo slug; else last path segment from permalink. */
+function wooHandleForShopifyProductOrCollection(item: MigrationPreviewItem): string | null {
+  const slug = item.slug?.trim().toLowerCase().replace(/\.html?$/i, "");
+  if (slug) return slug;
+  const u = item.url?.trim();
+  if (!u) return null;
+  try {
+    const url = new URL(u);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const last = parts[parts.length - 1]?.replace(/\.html?$/i, "").toLowerCase();
+    return last || null;
+  } catch {
+    return null;
+  }
+}
+
+function buildProductRedirectMergeRowsFromWooPreview(items: MigrationPreviewItem[], storeBase: string): RedirectRow[] {
+  const incoming: RedirectRow[] = [];
+  for (const it of items) {
+    const oldU = it.url?.trim();
+    const handle = wooHandleForShopifyProductOrCollection(it);
+    if (!oldU || !handle) continue;
+    incoming.push({
+      old_url: oldU.split("#")[0],
+      new_url: `${storeBase}/products/${encodeURIComponent(handle)}`,
+      status: "301",
+    });
+  }
+  return incoming;
+}
+
+function buildCollectionRedirectMergeRowsFromWooPreview(items: MigrationPreviewItem[], storeBase: string): RedirectRow[] {
+  const incoming: RedirectRow[] = [];
+  for (const it of items) {
+    const oldU = it.url?.trim();
+    const handle = wooHandleForShopifyProductOrCollection(it);
+    if (!oldU || !handle) continue;
+    incoming.push({
+      old_url: oldU.split("#")[0],
+      new_url: `${storeBase}/collections/${encodeURIComponent(handle)}`,
+      status: "301",
+    });
+  }
+  return incoming;
+}
+
+function effectiveCrawlRowType(row: { type: string; path: string }): string {
+  const t = (row.type || "").trim().toLowerCase();
+  if (t && t !== "page") return t;
+  return inferTypeFromPath(row.path || "/");
+}
+
+/** Map crawl URLs classified as product vs category/collection to Shopify storefront paths (handle = last segment). */
+function buildProductCollectionRedirectRowsFromCrawl(
+  crawl: WpShopifyMigrationCrawlResult | null,
+  sourceUrlForOrigin: string,
+  storeBase: string,
+  kind: "product" | "collection",
+): RedirectRow[] {
+  if (!crawl?.urls?.length) return [];
+  let sourceOrigin: string;
+  try {
+    const raw = sourceUrlForOrigin.trim();
+    sourceOrigin = new URL(raw.startsWith("http") ? raw : `https://${raw}`).origin;
+  } catch {
+    return [];
+  }
+  const incoming: RedirectRow[] = [];
+  for (const row of crawl.urls) {
+    const eff = effectiveCrawlRowType(row);
+    if (kind === "product" && eff !== "product") continue;
+    if (kind === "collection" && eff !== "category" && eff !== "collection") continue;
+    const rawUrl = row.url || row.normalized_url;
+    if (!rawUrl?.trim() || !isSameOrigin(rawUrl, sourceOrigin)) continue;
+    let pathname: string;
+    try {
+      pathname = new URL(rawUrl).pathname;
+    } catch {
+      pathname = row.path || "/";
+    }
+    const parts = pathname.split("/").filter(Boolean);
+    const last = parts[parts.length - 1]?.replace(/\.html?$/i, "").toLowerCase();
+    if (!last) continue;
+    const destPath =
+      kind === "product" ? `/products/${encodeURIComponent(last)}` : `/collections/${encodeURIComponent(last)}`;
+    incoming.push({ old_url: rawUrl.split("#")[0], new_url: `${storeBase}${destPath}`, status: "301" });
+  }
+  return incoming;
+}
+
 function escapeCsvField(val: string): string {
   if (/[",\r\n]/.test(val)) return `"${val.replace(/"/g, '""')}"`;
   return val;
@@ -219,6 +349,46 @@ type PdfImportBrowserCache = {
   truncated?: boolean;
   redirect_csv: string;
 };
+
+/** Last migration artifact slice (blog rows, tag redirect CSV) per brand — survives refresh; not in the main wizard JSON (quota). */
+type MigrationRunBrowserCache = {
+  v: 1;
+  savedAt: string;
+  run_id: string;
+  message?: string;
+  parallel_migration_jobs?: boolean;
+  blog_migration?: NonNullable<WpShopifyMigrationRunResult["blog_migration"]>;
+  blog_tag_redirect_csv?: string;
+  blog_tag_redirect_csv_rows?: number;
+};
+
+function migrationRunCacheStorageKey(brandId: string): string {
+  return `ai-factory.wpShopifyMigrationRun.v1:${brandId.trim()}`;
+}
+
+function migrationRunResultFromCache(o: MigrationRunBrowserCache): WpShopifyMigrationRunResult {
+  return {
+    run_id: o.run_id,
+    message: o.message,
+    parallel_migration_jobs: o.parallel_migration_jobs,
+    blog_migration: o.blog_migration,
+    blog_tag_redirect_csv: o.blog_tag_redirect_csv,
+    blog_tag_redirect_csv_rows: o.blog_tag_redirect_csv_rows,
+  };
+}
+
+function migrationRunResultToCache(r: WpShopifyMigrationRunResult): MigrationRunBrowserCache {
+  return {
+    v: 1,
+    savedAt: new Date().toISOString(),
+    run_id: r.run_id,
+    message: r.message,
+    parallel_migration_jobs: r.parallel_migration_jobs,
+    blog_migration: r.blog_migration,
+    blog_tag_redirect_csv: r.blog_tag_redirect_csv,
+    blog_tag_redirect_csv_rows: r.blog_tag_redirect_csv_rows,
+  };
+}
 
 /** Merge "Redirect from,Redirect to" CSV bodies (dedupe lines). */
 function mergeShopifyPdfRedirectCsv(a: string, b: string): string {
@@ -582,6 +752,8 @@ export default function WpShopifyMigrationWizardPage() {
   const [expandedKeywordRowKeys, setExpandedKeywordRowKeys] = useState<Set<string>>(() => new Set());
   const [ga4ScQueriesExpanded, setGa4ScQueriesExpanded] = useState(false);
   const [redirectCsvImportError, setRedirectCsvImportError] = useState<string | null>(null);
+  const [redirectMergeHint, setRedirectMergeHint] = useState<string | null>(null);
+  const [redirectWooCatalogLoading, setRedirectWooCatalogLoading] = useState<null | "products" | "categories">(null);
   const redirectCsvInputRef = useRef<HTMLInputElement>(null);
   const redirectCsvImportModeRef = useRef<"merge" | "replace">("merge");
   const [targetBaseUrl, setTargetBaseUrl] = useState(""); // New site base URL for steps 5–6
@@ -696,6 +868,40 @@ export default function WpShopifyMigrationWizardPage() {
       /* quota */
     }
   }, [brandId, wooServer, pdfImportResult, migrationDryRunResult?.counts?.pdfs]);
+
+  /** Restore last migration summary (blog table + tag redirect CSV) per brand so step 6 fetch/map works after refresh. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const b = brandId.trim();
+    if (!b) return;
+    try {
+      const raw = localStorage.getItem(migrationRunCacheStorageKey(b));
+      if (!raw) {
+        setMigrationRunResult(null);
+        return;
+      }
+      const o = JSON.parse(raw) as MigrationRunBrowserCache;
+      if (o.v !== 1) {
+        setMigrationRunResult(null);
+        return;
+      }
+      setMigrationRunResult(migrationRunResultFromCache({ ...o, run_id: typeof o.run_id === "string" ? o.run_id : "" }));
+    } catch {
+      setMigrationRunResult(null);
+    }
+  }, [brandId]);
+
+  /** Persist migration artifact slice when a run finishes (or updates); skipping when null keeps the previous snapshot on disk during a new run until success. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const b = brandId.trim();
+    if (!b || !migrationRunResult) return;
+    try {
+      localStorage.setItem(migrationRunCacheStorageKey(b), JSON.stringify(migrationRunResultToCache(migrationRunResult)));
+    } catch {
+      /* quota */
+    }
+  }, [brandId, migrationRunResult]);
 
   const hasRestoredSessionRef = useRef(false);
   const skipNextPersistRef = useRef(false);
@@ -837,6 +1043,9 @@ export default function WpShopifyMigrationWizardPage() {
     setLaunchChecklist({ redirectsImplemented: false, pagesCreated: false, metadataSet: false, internalLinksInPlace: false, fourOhFoursHandled: false });
     setLaunchAcked(false);
     setMigrationTagBlogHandle("");
+    setMigrationRunResult(null);
+    setMigrationDryRunResult(null);
+    setMigrationRunError(null);
     setBrandId(newBrandId);
   }, [brandId]);
 
@@ -1511,7 +1720,6 @@ export default function WpShopifyMigrationWizardPage() {
     }
     setMigrationRunLoading(true);
     setMigrationRunError(null);
-    setMigrationRunResult(null);
     setMigrationPipelineRunId(null);
     setMigrationRunPollHint("");
     setMigrationRunProgress(null);
@@ -1857,19 +2065,190 @@ export default function WpShopifyMigrationWizardPage() {
     URL.revokeObjectURL(url);
   };
 
-  const mergeBlogTagRedirectsIntoMap = useCallback(() => {
+  const mergeTagArchiveUrlsIntoRedirectMap = useCallback(() => {
+    setRedirectMergeHint(null);
+    setRedirectCsvImportError(null);
     const csv = migrationRunResult?.blog_tag_redirect_csv?.trim();
-    if (!csv) return;
+    if (!csv) {
+      setRedirectMergeHint(
+        "No tag redirect data. Run migration with “Blog tags” in step 3 (or reload—last run for this brand is restored from this browser).",
+      );
+      return;
+    }
     const incoming = parseRedirectCsvToRows(csv);
-    if (incoming.length === 0) return;
+    if (incoming.length === 0) {
+      setRedirectMergeHint("Tag redirect CSV had no parseable rows.");
+      return;
+    }
     const base = sourceUrl.trim() || targetBaseUrl.trim();
     if (!base) {
-      window.alert("Set your WordPress source URL in step 1 (or target base later) so redirect rows merge with the right path keys.");
+      setRedirectMergeHint("Set WordPress source URL (step 1) or target base URL so old URLs match redirect rows.");
       return;
     }
     const safe = base.startsWith("http") ? base : `https://${base.replace(/^\/+/, "")}`;
     setRedirectMap((prev) => mergeRedirectImports(prev, incoming, safe));
+    setRedirectMergeHint(
+      `Updated ${incoming.length} redirect row(s) from tag archive mappings (WordPress tag URL → Shopify /blogs/…/tagged/…).`,
+    );
   }, [migrationRunResult?.blog_tag_redirect_csv, sourceUrl, targetBaseUrl]);
+
+  const mergeBlogStorefrontUrlsIntoRedirectMap = useCallback(() => {
+    setRedirectMergeHint(null);
+    setRedirectCsvImportError(null);
+    const storeBase = normalizedShopifyStoreBase(targetBaseUrl);
+    const blog = migrationRunResult?.blog_migration;
+    if (!storeBase) {
+      setRedirectMergeHint("Set the target Shopify store URL (step 1 / “New site base URL”) so public blog URLs can be built.");
+      return;
+    }
+    if (!blog?.rows?.length) {
+      setRedirectMergeHint(
+        "No blog migration data. Run with “Blog posts” in step 3, or reload this page—last run for this brand is saved in this browser.",
+      );
+      return;
+    }
+    const handle = (blog.shopify_blog_handle ?? "").trim() || migrationTagBlogHandle.trim();
+    if (!handle) {
+      setRedirectMergeHint("No Shopify blog handle. Set it in step 3 or re-run migration so the result includes the handle.");
+      return;
+    }
+    const incoming = buildBlogRedirectMergeRows(blog.rows, handle, storeBase);
+    if (incoming.length === 0) {
+      setRedirectMergeHint("No blog rows with wordpress_url, slug, and a Shopify article id to map.");
+      return;
+    }
+    const siteBase = sourceUrl.trim() || storeBase;
+    const siteNorm = siteBase.startsWith("http") ? siteBase : `https://${siteBase.replace(/^\/+/, "")}`;
+    setRedirectMap((prev) => mergeRedirectImports(prev, incoming, siteNorm));
+    setRedirectMergeHint(`Updated ${incoming.length} redirect row(s) where the old URL matched a migrated post (new URL = storefront /blogs/…).`);
+  }, [targetBaseUrl, migrationRunResult?.blog_migration, migrationTagBlogHandle, sourceUrl]);
+
+  const mergePdfCdnUrlsIntoRedirectMap = useCallback(() => {
+    setRedirectMergeHint(null);
+    setRedirectCsvImportError(null);
+    const rows = pdfImportResult?.rows ?? [];
+    if (!rows.length) {
+      setRedirectMergeHint(
+        "No PDF import table. Use “Import PDFs to Shopify” in step 3, or reload—last import for this brand/Woo URL is restored from this browser.",
+      );
+      return;
+    }
+    const incoming = buildPdfRedirectMergeRows(rows);
+    if (incoming.length === 0) {
+      setRedirectMergeHint("No rows with both WordPress source_url and Shopify CDN shopify_file_url. Fetch URLs from Shopify for the PDF table if needed.");
+      return;
+    }
+    const raw = sourceUrl.trim() || targetBaseUrl.trim() || "https://example.com";
+    const siteNorm = raw.startsWith("http") ? raw : `https://${raw.replace(/^\/+/, "")}`;
+    setRedirectMap((prev) => mergeRedirectImports(prev, incoming, siteNorm));
+    setRedirectMergeHint(`Updated ${incoming.length} redirect row(s) where the old URL matched an imported PDF (new URL = Shopify CDN).`);
+  }, [pdfImportResult?.rows, sourceUrl, targetBaseUrl]);
+
+  const fetchWooPreviewAllPagesForRedirects = useCallback(
+    async (entity: "products" | "categories"): Promise<MigrationPreviewItem[]> => {
+      const b = brandId.trim();
+      if (!b) throw new Error("Select a brand in step 1.");
+      const perPage = WOO_REDIRECT_PREVIEW_PER_PAGE;
+      const first = await api.wpShopifyMigrationPreviewItems({
+        ...wooApiBase(),
+        brand_id: b,
+        entity,
+        page: 1,
+        per_page: perPage,
+        environment: pipelineEnvironment,
+      });
+      const out = [...first.items];
+      const total = first.total || 0;
+      const totalPages = Math.max(1, Math.ceil(total / perPage));
+      for (let p = 2; p <= totalPages; p++) {
+        const r = await api.wpShopifyMigrationPreviewItems({
+          ...wooApiBase(),
+          brand_id: b,
+          entity,
+          page: p,
+          per_page: perPage,
+          environment: pipelineEnvironment,
+        });
+        out.push(...r.items);
+      }
+      return out;
+    },
+    [brandId, wooApiBase, pipelineEnvironment],
+  );
+
+  const mergeProductUrlsIntoRedirectMap = useCallback(async () => {
+    setRedirectMergeHint(null);
+    setRedirectCsvImportError(null);
+    const storeBase = normalizedShopifyStoreBase(targetBaseUrl);
+    if (!storeBase) {
+      setRedirectMergeHint("Set the target Shopify store URL (step 1 / “New site base URL”).");
+      return;
+    }
+    if (!wooCredentialsOk || !brandId.trim()) {
+      setRedirectMergeHint("Select a brand and connect WooCommerce (step 3) to load product permalinks from the REST API.");
+      return;
+    }
+    setRedirectWooCatalogLoading("products");
+    try {
+      const items = await fetchWooPreviewAllPagesForRedirects("products");
+      const fromWoo = buildProductRedirectMergeRowsFromWooPreview(items, storeBase);
+      const fromCrawl = buildProductCollectionRedirectRowsFromCrawl(crawlResult, sourceUrl, storeBase, "product");
+      const incoming = [...fromWoo, ...fromCrawl];
+      if (incoming.length === 0) {
+        setRedirectMergeHint(
+          "No product permalinks from Woo (run step 3 dry run and ensure Products preview loads) and no step 1 crawl URLs classified as product. Nothing to merge.",
+        );
+        return;
+      }
+      const raw = sourceUrl.trim() || targetBaseUrl.trim() || storeBase;
+      const siteNorm = raw.startsWith("http") ? raw : `https://${raw.replace(/^\/+/, "")}`;
+      setRedirectMap((prev) => mergeRedirectImports(prev, incoming, siteNorm));
+      setRedirectMergeHint(
+        `Updated ${incoming.length} row(s): ${fromWoo.length} from Woo products, ${fromCrawl.length} from crawl. New URL = /products/{handle}; works best when Shopify handles match Woo slugs (before or after import).`,
+      );
+    } catch (e) {
+      setRedirectMergeHint(formatApiError(e));
+    } finally {
+      setRedirectWooCatalogLoading(null);
+    }
+  }, [targetBaseUrl, wooCredentialsOk, brandId, fetchWooPreviewAllPagesForRedirects, crawlResult, sourceUrl]);
+
+  const mergeCategoryUrlsIntoRedirectMap = useCallback(async () => {
+    setRedirectMergeHint(null);
+    setRedirectCsvImportError(null);
+    const storeBase = normalizedShopifyStoreBase(targetBaseUrl);
+    if (!storeBase) {
+      setRedirectMergeHint("Set the target Shopify store URL (step 1 / “New site base URL”).");
+      return;
+    }
+    if (!wooCredentialsOk || !brandId.trim()) {
+      setRedirectMergeHint("Select a brand and connect WooCommerce (step 3) to load category permalinks from the REST API.");
+      return;
+    }
+    setRedirectWooCatalogLoading("categories");
+    try {
+      const items = await fetchWooPreviewAllPagesForRedirects("categories");
+      const fromWoo = buildCollectionRedirectMergeRowsFromWooPreview(items, storeBase);
+      const fromCrawl = buildProductCollectionRedirectRowsFromCrawl(crawlResult, sourceUrl, storeBase, "collection");
+      const incoming = [...fromWoo, ...fromCrawl];
+      if (incoming.length === 0) {
+        setRedirectMergeHint(
+          "No category URLs from Woo and no step 1 crawl URLs classified as category or collection. Nothing to merge.",
+        );
+        return;
+      }
+      const raw = sourceUrl.trim() || targetBaseUrl.trim() || storeBase;
+      const siteNorm = raw.startsWith("http") ? raw : `https://${raw.replace(/^\/+/, "")}`;
+      setRedirectMap((prev) => mergeRedirectImports(prev, incoming, siteNorm));
+      setRedirectMergeHint(
+        `Updated ${incoming.length} row(s): ${fromWoo.length} from Woo categories, ${fromCrawl.length} from crawl. New URL = /collections/{handle} (Woo product categories → Shopify collections).`,
+      );
+    } catch (e) {
+      setRedirectMergeHint(formatApiError(e));
+    } finally {
+      setRedirectWooCatalogLoading(null);
+    }
+  }, [targetBaseUrl, wooCredentialsOk, brandId, fetchWooPreviewAllPagesForRedirects, crawlResult, sourceUrl]);
 
   const downloadBlogTagRedirectCsv = () => {
     const csv = migrationRunResult?.blog_tag_redirect_csv;
@@ -2903,16 +3282,25 @@ export default function WpShopifyMigrationWizardPage() {
                         to see both job rows and per-job events. You can refresh Shopify Admin while the run is in progress to confirm files and articles appearing.
                       </p>
                     ) : null}
-                    {(migrationRunResult.blog_tag_redirect_csv_rows ?? 0) > 0 && (
+                    {((migrationRunResult.blog_tag_redirect_csv_rows ?? 0) > 0 || Boolean(migrationRunResult.blog_tag_redirect_csv?.trim())) && (
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <Button variant="secondary" size="sm" type="button" onClick={mergeBlogTagRedirectsIntoMap}>
-                          Merge {migrationRunResult.blog_tag_redirect_csv_rows} tag archive URL(s) into redirect map
+                        <Button variant="secondary" size="sm" type="button" onClick={mergeTagArchiveUrlsIntoRedirectMap}>
+                          {migrationRunResult.blog_tag_redirect_csv_rows != null && migrationRunResult.blog_tag_redirect_csv_rows > 0
+                            ? `Merge ${migrationRunResult.blog_tag_redirect_csv_rows} tag archive URL(s) into redirect map`
+                            : "Merge tag archive URL(s) into redirect map"}
                         </Button>
                         <Button variant="secondary" size="sm" type="button" onClick={downloadBlogTagRedirectCsv}>
                           Download tag redirect CSV
                         </Button>
                       </div>
                     )}
+                    {redirectMergeHint ? (
+                      <p
+                        className={`mt-2 text-body-small ${redirectMergeHint.startsWith("Updated ") ? "text-state-success" : "text-state-warning"}`}
+                      >
+                        {redirectMergeHint}
+                      </p>
+                    ) : null}
                   </div>
                 )}
               </CardContent>
@@ -3211,6 +3599,13 @@ export default function WpShopifyMigrationWizardPage() {
                 <p className="text-body-small text-fg-muted mb-3">
                   <strong>Import CSV (merge)</strong> updates rows when the <strong>pathname</strong> matches (e.g. crawl rows as full URLs and Shopify PDF export as <code className="rounded bg-fg-muted/15 px-1">/wp-content/…</code> are treated as the same old URL). New paths in the file are appended.
                 </p>
+                <p className="text-body-small text-fg-muted mb-3">
+                  <strong>Fetch blog / PDF / Map tag URLs</strong> use the last step 3 migration and PDF import saved in this browser for the selected brand (same as after a successful run—reload the page and they still work).
+                </p>
+                <p className="text-body-small text-fg-muted mb-3">
+                  <strong>Fetch product / category URLs</strong> load all WooCommerce permalinks from the API (paginated) and set New URL to <code className="rounded bg-fg-muted/15 px-1">/products/{"{slug}"}</code> or{" "}
+                  <code className="rounded bg-fg-muted/15 px-1">/collections/{"{slug}"}</code> on your target store. Matching step 1 crawl URLs (product / category / collection) are included. Works before or after Shopify import when handles follow Woo slugs—edit rows if not.
+                </p>
                 <input
                   ref={redirectCsvInputRef}
                   type="file"
@@ -3240,9 +3635,66 @@ export default function WpShopifyMigrationWizardPage() {
                   <Button type="button" variant="secondary" size="sm" onClick={() => triggerRedirectCsvImport("replace")}>
                     Import CSV (replace all)
                   </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!migrationRunResult?.blog_migration?.rows?.length}
+                    title="Fill New URL from step 3 blog migration: storefront /blogs/{handle}/{slug} where old URL matches wordpress_url."
+                    onClick={mergeBlogStorefrontUrlsIntoRedirectMap}
+                  >
+                    Fetch blog URLs
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!pdfImportResult?.rows?.length}
+                    title="Fill New URL from step 3 PDF import: Shopify CDN shopify_file_url where old URL matches source_url."
+                    onClick={mergePdfCdnUrlsIntoRedirectMap}
+                  >
+                    Fetch PDF URLs
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!migrationRunResult?.blog_tag_redirect_csv?.trim()}
+                    title="Fill New URL from step 3 “Blog tags” export: WordPress tag archive → Shopify /blogs/{handle}/tagged/{slug}."
+                    onClick={mergeTagArchiveUrlsIntoRedirectMap}
+                  >
+                    Map tag URLs
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!wooCredentialsOk || !brandId.trim() || redirectWooCatalogLoading !== null}
+                    title="Paginate Woo products REST + crawl URLs typed product → target /products/{handle} (handle = Woo slug)."
+                    onClick={() => void mergeProductUrlsIntoRedirectMap()}
+                  >
+                    {redirectWooCatalogLoading === "products" ? "Loading products…" : "Fetch product URLs"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!wooCredentialsOk || !brandId.trim() || redirectWooCatalogLoading !== null}
+                    title="Paginate Woo categories REST + crawl URLs typed category/collection → target /collections/{handle}."
+                    onClick={() => void mergeCategoryUrlsIntoRedirectMap()}
+                  >
+                    {redirectWooCatalogLoading === "categories" ? "Loading categories…" : "Fetch category URLs"}
+                  </Button>
                 </div>
                 {redirectCsvImportError && (
                   <p className="mb-3 text-body-small text-state-danger">{redirectCsvImportError}</p>
+                )}
+                {redirectMergeHint && (
+                  <p
+                    className={`mb-3 text-body-small ${redirectMergeHint.startsWith("Updated ") ? "text-state-success" : "text-state-warning"}`}
+                  >
+                    {redirectMergeHint}
+                  </p>
                 )}
                 {redirectMap.length === 0 && !(crawlResult?.urls?.length || ga4Result?.pages?.length) && (
                   <p className="text-body-small text-fg-muted">Run the crawl in step 1 and/or fetch GA4 in step 2 to seed the redirect map (union of all URLs, no duplicates).</p>
