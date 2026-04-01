@@ -949,8 +949,9 @@ export default function WpShopifyMigrationWizardPage() {
     null | "products" | "categories" | "blogs" | "pdfs" | "tags"
   >(null);
   /** When set, product/category fetch keeps rows only if Woo slug matches a handle already on Shopify (read-only Admin list). */
-  const [redirectProductsOnlyExistingShopify, setRedirectProductsOnlyExistingShopify] = useState(false);
-  const [redirectCategoriesOnlyExistingShopify, setRedirectCategoriesOnlyExistingShopify] = useState(false);
+  /** Default true: only add rows whose handle exists on Shopify (Admin API). Unchecking guesses from Woo/crawl and will 404 for mismatched handles. */
+  const [redirectProductsOnlyExistingShopify, setRedirectProductsOnlyExistingShopify] = useState(true);
+  const [redirectCategoriesOnlyExistingShopify, setRedirectCategoriesOnlyExistingShopify] = useState(true);
   const redirectCsvInputRef = useRef<HTMLInputElement>(null);
   const redirectCsvImportModeRef = useRef<"merge" | "replace">("merge");
   const [targetBaseUrl, setTargetBaseUrl] = useState(""); // New site base URL for steps 5–6
@@ -2596,7 +2597,7 @@ export default function WpShopifyMigrationWizardPage() {
     }
     if (redirectProductsOnlyExistingShopify && !brandShopify?.connected) {
       setRedirectMergeHint(
-        "Connect Shopify for this brand, or uncheck “Only if product exists in Shopify” — we need Admin API access to list product handles.",
+        "Connect Shopify for this brand (Brands → Edit → Shopify) so we can list real product handles—or turn off “Verify product handles against Shopify” below if you accept unverified Woo slugs (often 404 on the storefront).",
       );
       return;
     }
@@ -2635,8 +2636,8 @@ export default function WpShopifyMigrationWizardPage() {
       setRedirectMap((prev) => mergeRedirectImports(prev, incoming, siteNorm));
       setRedirectMergeHint(
         redirectProductsOnlyExistingShopify && shopifyHandleCount != null
-          ? `Updated ${incoming.length} product redirect row(s): kept only handles that exist on Shopify (${shopifyHandleCount} product handle(s) built). Before filter: ${fromWoo.length} from Woo, ${fromCrawl.length} from crawl. New URLs use ${storeOrigin}/products/…`
-          : `Updated ${incoming.length} row(s): ${fromWoo.length} from Woo products, ${fromCrawl.length} from crawl. New URL = ${storeOrigin}/products/{handle} (Shopify also accepts path-only /products/… for same-store redirects).`,
+          ? `Updated ${incoming.length} product redirect row(s): kept only handles that exist on Shopify (${shopifyHandleCount} product handle(s) loaded). Before filter: ${fromWoo.length} from Woo, ${fromCrawl.length} from crawl. New URLs use ${storeOrigin}/products/…`
+          : `Updated ${incoming.length} row(s): ${fromWoo.length} from Woo products, ${fromCrawl.length} from crawl. Warning: verification was off — New URLs were not checked against Shopify; wrong slugs will 404. New URL pattern ${storeOrigin}/products/{woo-slug}.`,
       );
     } catch (e) {
       setRedirectMergeHint(formatApiError(e));
@@ -2670,7 +2671,7 @@ export default function WpShopifyMigrationWizardPage() {
     }
     if (redirectCategoriesOnlyExistingShopify && !brandShopify?.connected) {
       setRedirectMergeHint(
-        "Connect Shopify for this brand, or uncheck “Only if collection exists in Shopify” — we need Admin API access to list collection handles.",
+        "Connect Shopify for this brand so we can list real collection handles—or turn off “Verify collection handles against Shopify” below if you accept unverified Woo category slugs (often 404).",
       );
       return;
     }
@@ -2710,7 +2711,7 @@ export default function WpShopifyMigrationWizardPage() {
       setRedirectMergeHint(
         redirectCategoriesOnlyExistingShopify && shopifyHandleCount != null
           ? `Updated ${incoming.length} collection redirect row(s): kept only handles that exist on Shopify (${shopifyHandleCount} collection handle(s) loaded, custom + smart). Before filter: ${fromWoo.length} from Woo, ${fromCrawl.length} from crawl. New URLs use ${storeOrigin}/collections/…`
-          : `Updated ${incoming.length} row(s): ${fromWoo.length} from Woo categories, ${fromCrawl.length} from crawl. New URL = ${storeOrigin}/collections/{handle} (Shopify same-store redirects also accept path-only /collections/…).`,
+          : `Updated ${incoming.length} row(s): ${fromWoo.length} from Woo categories, ${fromCrawl.length} from crawl. Warning: verification was off — New URLs were not checked against Shopify; Woo “categories” are not necessarily Shopify collections and many will 404. Pattern ${storeOrigin}/collections/{woo-slug}.`,
       );
     } catch (e) {
       setRedirectMergeHint(formatApiError(e));
@@ -4088,10 +4089,10 @@ export default function WpShopifyMigrationWizardPage() {
                   <strong>Fetch blog / PDF / Map tag</strong> use live WordPress (posts + tags) like PDFs use Shopify Files when needed. If you did not run blog migration again, <strong>connect Shopify</strong> and we <strong>list blogs from Admin</strong> to pick <code className="rounded bg-fg-muted/15 px-1">/blogs/{"{handle}"}/…</code> automatically (oldest blog by id when there are several—override in step 3).
                 </p>
                 <p className="text-body-small text-fg-muted mb-3">
-                  <strong>Fetch product / category URLs</strong> load all WooCommerce permalinks from the API (paginated) and set New URL to a full storefront URL <code className="rounded bg-fg-muted/15 px-1">https://your-store.myshopify.com/products/{"{slug}"}</code> (or <code className="rounded bg-fg-muted/15 px-1">/collections/…</code> as path under that origin). Matching step 1 crawl URLs (product / category / collection) are included. Optional checkboxes below ask Shopify (read-only) for existing handles so you only add redirect rows for items already on the store. Shopify’s URL redirects also accept path-only targets like <code className="rounded bg-fg-muted/15 px-1">/collections/foo</code> on the same shop—we emit full URLs here for clarity and CSV portability. Handles must match Woo slugs unless you edit rows.
+                  <strong>Fetch product / category URLs</strong> load Woo permalinks (and matching crawl URLs). By default we <strong>verify every destination</strong> against your connected Shopify store (Admin API, read-only): only handles that <strong>already exist</strong> as products or collections become New URLs. That avoids shipping redirects to <code className="rounded bg-fg-muted/15 px-1">/collections/blog</code> or <code className="rounded bg-fg-muted/15 px-1">/products/foo</code> when Shopify has no such handle. Uncheck verification only if you intentionally want raw Woo slugs without a guarantee they resolve.
                 </p>
                 <p className="text-body-small text-fg-muted mb-3">
-                  <strong>This step does not import</strong> products or collections into Shopify; it only updates the redirect table in your browser. Avoiding “double import” in step 3 is still a separate concern (Matrixify / migration scope)—here we only align redirects with URLs that already exist.
+                  <strong>This step does not import</strong> products or collections into Shopify; it only updates the redirect table in your browser. Existing rows are not auto-corrected when you change verification—edit or remove bad New URLs, or re-fetch products/categories with verification on. Step 3 “double import” is separate from this redirect list.
                 </p>
                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                   <label className="flex cursor-pointer items-center gap-2 text-body-small text-fg-muted">
@@ -4100,7 +4101,7 @@ export default function WpShopifyMigrationWizardPage() {
                       onChange={(e) => setRedirectProductsOnlyExistingShopify(e.target.checked)}
                       className="shrink-0"
                     />
-                    Only add product rows if that handle already exists in Shopify
+                    Verify product handles against Shopify (recommended — skips URLs that would 404)
                   </label>
                   <label className="flex cursor-pointer items-center gap-2 text-body-small text-fg-muted">
                     <Checkbox
@@ -4108,9 +4109,14 @@ export default function WpShopifyMigrationWizardPage() {
                       onChange={(e) => setRedirectCategoriesOnlyExistingShopify(e.target.checked)}
                       className="shrink-0"
                     />
-                    Only add category rows if that collection handle already exists in Shopify
+                    Verify collection handles against Shopify (recommended — Woo categories ≠ collections)
                   </label>
                 </div>
+                {(!redirectProductsOnlyExistingShopify || !redirectCategoriesOnlyExistingShopify) && (
+                  <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 px-3 py-2 text-body-small text-fg-default">
+                    <strong>Unverified mode:</strong> One or both checks above are off. New URLs are built only from WooCommerce slugs and crawl paths—<strong>not</strong> checked against your Shopify catalog. Expect 404s until handles match exactly (e.g. a Woo “blog” category is not a Shopify collection unless you created one with that handle).
+                  </div>
+                )}
                 <input
                   ref={redirectCsvInputRef}
                   type="file"
@@ -4200,7 +4206,7 @@ export default function WpShopifyMigrationWizardPage() {
                       redirectAutoFetchLoading !== null ||
                       (redirectProductsOnlyExistingShopify && !brandShopify?.connected)
                     }
-                    title="Paginate Woo products REST + crawl URLs typed product → target /products/{handle} (handle = Woo slug). With the checkbox, rows are kept only when that handle exists on Shopify."
+                    title="Default: lists Shopify product handles via Admin API and only keeps rows that match. Uncheck verification to guess from Woo slugs (404 risk)."
                     onClick={() => void mergeProductUrlsIntoRedirectMap()}
                   >
                     {redirectAutoFetchLoading === "products" ? "Loading products…" : "Fetch product URLs"}
@@ -4215,7 +4221,7 @@ export default function WpShopifyMigrationWizardPage() {
                       redirectAutoFetchLoading !== null ||
                       (redirectCategoriesOnlyExistingShopify && !brandShopify?.connected)
                     }
-                    title="Paginate Woo categories REST + crawl URLs typed category/collection → target /collections/{handle}. With the checkbox, rows are kept only when that collection handle exists on Shopify (custom + smart)."
+                    title="Default: lists Shopify collection handles (custom + smart) and only keeps matches. Uncheck to guess from Woo category slugs (404 risk)."
                     onClick={() => void mergeCategoryUrlsIntoRedirectMap()}
                   >
                     {redirectAutoFetchLoading === "categories" ? "Loading categories…" : "Fetch category URLs"}
