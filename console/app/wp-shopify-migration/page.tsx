@@ -154,6 +154,47 @@ function redirectNewUrlStrength(url: string): number {
   return 2;
 }
 
+/** 301/302/consolidate rows are expected to have a real “New URL” unless operator fills consolidate elsewhere. */
+function redirectRowExpectsForwardTarget(r: RedirectRow): boolean {
+  const s = r.status;
+  return s === "301" || s === "302" || s === "consolidate";
+}
+
+function redirectRowHasUsableNewUrl(r: RedirectRow): boolean {
+  return redirectNewUrlStrength(r.new_url) >= 2;
+}
+
+function summarizeRedirectDestinationCoverage(rows: RedirectRow[]): {
+  total: number;
+  expectsForward: number;
+  withDestination: number;
+  missingOrPlaceholder: number;
+  drop: number;
+} {
+  let drop = 0;
+  let expectsForward = 0;
+  let withDestination = 0;
+  let missingOrPlaceholder = 0;
+  for (const r of rows) {
+    if (!(r.old_url || "").trim()) continue;
+    if (r.status === "drop") {
+      drop += 1;
+      continue;
+    }
+    if (!redirectRowExpectsForwardTarget(r)) continue;
+    expectsForward += 1;
+    if (redirectRowHasUsableNewUrl(r)) withDestination += 1;
+    else missingOrPlaceholder += 1;
+  }
+  return {
+    total: rows.filter((r) => (r.old_url || "").trim()).length,
+    expectsForward,
+    withDestination,
+    missingOrPlaceholder,
+    drop,
+  };
+}
+
 /** Prefer real destinations over empty / UI placeholders; on tie prefer incoming. */
 function pickStrongerNewUrl(prev: string, incoming: string): string {
   const a = (prev || "").trim();
@@ -2753,6 +2794,11 @@ export default function WpShopifyMigrationWizardPage() {
     [pdfImportResult?.rows],
   );
 
+  const redirectDestinationSummary = useMemo(
+    () => summarizeRedirectDestinationCoverage(redirectMap),
+    [redirectMap],
+  );
+
   /** Enable Fetch when the import table has gaps, or when dry run says there are PDFs (IDs loaded from WordPress preview). */
   const pdfDryRunEffectiveForFetch = migrationEffectiveCount("pdfs", migrationDryRunResult?.counts?.pdfs);
   const pdfImportFetchUrlsTargetCount =
@@ -4289,7 +4335,37 @@ export default function WpShopifyMigrationWizardPage() {
                         </tbody>
                       </table>
                     </div>
-                    <p className="mt-2 text-body-small text-fg-muted">Showing all {redirectMap.length} redirects. In step 7 you can validate destinations.</p>
+                    <p className="mt-2 text-body-small text-fg-muted">
+                      Showing all{" "}
+                      <span className="tabular-nums font-medium text-fg-default">{redirectDestinationSummary.total}</span> rows.
+                      {redirectDestinationSummary.expectsForward > 0 ? (
+                        <>
+                          {" "}
+                          <span className="tabular-nums font-medium text-fg-default">{redirectDestinationSummary.withDestination}</span>
+                          <span className="text-fg-muted"> / </span>
+                          <span className="tabular-nums">{redirectDestinationSummary.expectsForward}</span> forward redirects (301/302/consolidate)
+                          have a real <strong>New URL</strong>
+                          {redirectDestinationSummary.missingOrPlaceholder > 0 ? (
+                            <span className="text-state-warning">
+                              {" "}
+                              — <span className="tabular-nums font-medium">{redirectDestinationSummary.missingOrPlaceholder}</span> still empty or
+                              placeholder
+                            </span>
+                          ) : (
+                            <span className="text-state-success"> — all filled</span>
+                          )}
+                        </>
+                      ) : redirectDestinationSummary.total > 0 ? (
+                        <> All rows are non-forward (e.g. drop).</>
+                      ) : null}
+                      {redirectDestinationSummary.drop > 0 ? (
+                        <>
+                          {" "}
+                          · <span className="tabular-nums">{redirectDestinationSummary.drop}</span> <code className="rounded bg-fg-muted/15 px-1">drop</code>
+                        </>
+                      ) : null}
+                      . Step 7: validate destinations.
+                    </p>
                   </>
                 )}
               </CardContent>
@@ -4349,7 +4425,42 @@ export default function WpShopifyMigrationWizardPage() {
                     </table>
                   </div>
                 )}
-                <p className="mt-2 text-body-small text-fg-muted">Resolve any issues before launch. Step 9 will show a checklist.</p>
+                {redirectMap.length > 0 && (
+                  <p className="mt-2 text-body-small text-fg-muted">
+                    <span className="tabular-nums font-medium text-fg-default">{redirectDestinationSummary.total}</span> rows total.
+                    {redirectDestinationSummary.expectsForward > 0 ? (
+                      <>
+                        {" "}
+                        <span className="tabular-nums font-medium text-fg-default">{redirectDestinationSummary.withDestination}</span>
+                        <span className="text-fg-muted"> / </span>
+                        <span className="tabular-nums">{redirectDestinationSummary.expectsForward}</span> forward rows have a usable{" "}
+                        <strong>New URL</strong>
+                        {redirectDestinationSummary.missingOrPlaceholder > 0 ? (
+                          <span className="text-state-warning">
+                            {" "}
+                            (<span className="tabular-nums font-medium">{redirectDestinationSummary.missingOrPlaceholder}</span> missing or
+                            placeholder)
+                          </span>
+                        ) : (
+                          <span className="text-state-success"> (all filled)</span>
+                        )}
+                      </>
+                    ) : (
+                      <> No 301/302/consolidate rows in this map.</>
+                    )}
+                    {redirectDestinationSummary.drop > 0 ? (
+                      <>
+                        {" "}
+                        · <span className="tabular-nums">{redirectDestinationSummary.drop}</span>{" "}
+                        <code className="rounded bg-fg-muted/15 px-1">drop</code>
+                      </>
+                    ) : null}
+                    . Resolve issues before launch; step 9 checklist follows.
+                  </p>
+                )}
+                {redirectMap.length === 0 && (
+                  <p className="mt-2 text-body-small text-fg-muted">Resolve any issues before launch. Step 9 will show a checklist.</p>
+                )}
               </CardContent>
             </Card>
           </Stack>
