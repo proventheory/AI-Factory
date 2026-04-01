@@ -190,6 +190,23 @@ function normalizedShopifyStoreBase(targetBaseUrl: string): string | null {
   return t.startsWith("http") ? t.replace(/\/$/, "") : `https://${t.replace(/^\/+/, "").replace(/\/$/, "")}`;
 }
 
+/**
+ * Public origin for redirect “New URL” targets: prefers step 5 / step 1 “New site base URL”,
+ * then the brand’s connected Shopify shop domain (e.g. store.myshopify.com).
+ */
+function storefrontBaseForRedirects(targetBaseUrl: string, shopDomain: string | undefined | null): string | null {
+  const explicit = normalizedShopifyStoreBase(targetBaseUrl);
+  if (explicit) return explicit;
+  const raw = (shopDomain ?? "").trim();
+  if (!raw) return null;
+  const host = raw.replace(/^https?:\/\//i, "").split("/")[0]?.trim().toLowerCase();
+  if (!host) return null;
+  return `https://${host}`;
+}
+
+const storefrontBaseMissingHint =
+  "Set “New site base URL” in step 5 (or step 1), or connect Shopify for this brand — we use the shop domain (e.g. your-store.myshopify.com) when the field is empty. Custom domains: paste your live storefront URL in that field.";
+
 /** One row per blog post that has a storefront destination; keys merge with redirect map via pathname like CSV import. */
 function buildBlogRedirectMergeRows(
   blogRows: WpShopifyBlogMigrationRow[],
@@ -2181,11 +2198,11 @@ export default function WpShopifyMigrationWizardPage() {
       );
       return;
     }
-    const storeBase = normalizedShopifyStoreBase(targetBaseUrl);
+    const storeBase = storefrontBaseForRedirects(targetBaseUrl, brandShopify?.shop_domain);
     const handle =
       (migrationRunResult?.blog_migration?.shopify_blog_handle ?? "").trim() || migrationTagBlogHandle.trim();
     if (!storeBase) {
-      setRedirectMergeHint("Set the target Shopify store URL so tag destinations can be built, or run “Blog tags” migration once for a CSV.");
+      setRedirectMergeHint(`${storefrontBaseMissingHint} Or run “Blog tags” migration once for a CSV.`);
       return;
     }
     if (!handle) {
@@ -2226,14 +2243,15 @@ export default function WpShopifyMigrationWizardPage() {
     wooCredentialsOk,
     brandId,
     fetchWooPreviewAllPages,
+    brandShopify?.shop_domain,
   ]);
 
   const mergeBlogStorefrontUrlsIntoRedirectMap = useCallback(async () => {
     setRedirectMergeHint(null);
     setRedirectCsvImportError(null);
-    const storeBase = normalizedShopifyStoreBase(targetBaseUrl);
+    const storeBase = storefrontBaseForRedirects(targetBaseUrl, brandShopify?.shop_domain);
     if (!storeBase) {
-      setRedirectMergeHint("Set the target Shopify store URL (step 1 / “New site base URL”) so public blog URLs can be built.");
+      setRedirectMergeHint(storefrontBaseMissingHint);
       return;
     }
     const handle =
@@ -2282,6 +2300,7 @@ export default function WpShopifyMigrationWizardPage() {
     wooCredentialsOk,
     brandId,
     fetchWooPreviewAllPages,
+    brandShopify?.shop_domain,
   ]);
 
   const collectPdfWordpressIdsForRedirectResolve = useCallback(async (): Promise<string[]> => {
@@ -2393,9 +2412,9 @@ export default function WpShopifyMigrationWizardPage() {
   const mergeProductUrlsIntoRedirectMap = useCallback(async () => {
     setRedirectMergeHint(null);
     setRedirectCsvImportError(null);
-    const storeBase = normalizedShopifyStoreBase(targetBaseUrl);
+    const storeBase = storefrontBaseForRedirects(targetBaseUrl, brandShopify?.shop_domain);
     if (!storeBase) {
-      setRedirectMergeHint("Set the target Shopify store URL (step 1 / “New site base URL”).");
+      setRedirectMergeHint(storefrontBaseMissingHint);
       return;
     }
     if (!wooCredentialsOk || !brandId.trim()) {
@@ -2425,14 +2444,14 @@ export default function WpShopifyMigrationWizardPage() {
     } finally {
       setRedirectAutoFetchLoading(null);
     }
-  }, [targetBaseUrl, wooCredentialsOk, brandId, fetchWooPreviewAllPages, crawlResult, sourceUrl]);
+  }, [targetBaseUrl, wooCredentialsOk, brandId, fetchWooPreviewAllPages, crawlResult, sourceUrl, brandShopify?.shop_domain]);
 
   const mergeCategoryUrlsIntoRedirectMap = useCallback(async () => {
     setRedirectMergeHint(null);
     setRedirectCsvImportError(null);
-    const storeBase = normalizedShopifyStoreBase(targetBaseUrl);
+    const storeBase = storefrontBaseForRedirects(targetBaseUrl, brandShopify?.shop_domain);
     if (!storeBase) {
-      setRedirectMergeHint("Set the target Shopify store URL (step 1 / “New site base URL”).");
+      setRedirectMergeHint(storefrontBaseMissingHint);
       return;
     }
     if (!wooCredentialsOk || !brandId.trim()) {
@@ -2462,7 +2481,7 @@ export default function WpShopifyMigrationWizardPage() {
     } finally {
       setRedirectAutoFetchLoading(null);
     }
-  }, [targetBaseUrl, wooCredentialsOk, brandId, fetchWooPreviewAllPages, crawlResult, sourceUrl]);
+  }, [targetBaseUrl, wooCredentialsOk, brandId, fetchWooPreviewAllPages, crawlResult, sourceUrl, brandShopify?.shop_domain]);
 
   const downloadBlogTagRedirectCsv = () => {
     const csv = migrationRunResult?.blog_tag_redirect_csv;
@@ -2478,6 +2497,11 @@ export default function WpShopifyMigrationWizardPage() {
 
   const pdfImportMissingUrlCount = useMemo(
     () => (pdfImportResult?.rows ?? []).filter((r) => !r.shopify_file_url?.trim()).length,
+    [pdfImportResult?.rows],
+  );
+  /** PDF redirect merge can run from cached table rows alone (no Woo call) when CDN URLs exist. */
+  const canMergePdfRedirectsFromTableOnly = useMemo(
+    () => (pdfImportResult?.rows ?? []).some((r) => r.source_url?.trim() && r.shopify_file_url?.trim()),
     [pdfImportResult?.rows],
   );
 
@@ -3863,7 +3887,11 @@ export default function WpShopifyMigrationWizardPage() {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    disabled={!wooCredentialsOk || !brandId.trim() || redirectAutoFetchLoading !== null}
+                    disabled={
+                      redirectAutoFetchLoading !== null ||
+                      (!canMergePdfRedirectsFromTableOnly &&
+                        (!wooCredentialsOk || !brandId.trim() || !brandShopify?.connected))
+                    }
                     title="Uses PDF table CDN URLs when present; otherwise lists WP PDF media IDs and resolves URLs from Shopify Files (no re-upload)."
                     onClick={() => void mergePdfCdnUrlsIntoRedirectMap()}
                   >
@@ -3900,6 +3928,19 @@ export default function WpShopifyMigrationWizardPage() {
                     {redirectAutoFetchLoading === "categories" ? "Loading categories…" : "Fetch category URLs"}
                   </Button>
                 </div>
+                {(!wooCredentialsOk || !brandId.trim()) && (
+                  <p className="mb-3 text-body-small text-state-warning">
+                    <strong>Blog, tag, product, and category</strong> fetch buttons need a <strong>selected brand</strong> (step 1) and{" "}
+                    <strong>WooCommerce connected</strong> for that brand (Brands → Edit → WooCommerce).{" "}
+                    <strong>Fetch PDF URLs</strong> stays enabled if the step 3 PDF table already has Shopify CDN URLs for rows.
+                  </p>
+                )}
+                {!storefrontBaseForRedirects(targetBaseUrl, brandShopify?.shop_domain) && brandId.trim() && (
+                  <p className="mb-3 text-body-small text-fg-muted">
+                    Tip: fill <strong>New site base URL</strong> in step 5 with your live storefront (custom domain). If it’s empty but Shopify is connected, we fall back to the shop domain (often{" "}
+                    <code className="rounded bg-fg-muted/15 px-1">*.myshopify.com</code>).
+                  </p>
+                )}
                 {redirectCsvImportError && (
                   <p className="mb-3 text-body-small text-state-danger">{redirectCsvImportError}</p>
                 )}
