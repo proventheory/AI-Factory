@@ -947,6 +947,8 @@ export default function WpShopifyMigrationWizardPage() {
   const [migrationEntities, setMigrationEntities] = useState<Set<string>>(new Set(["products", "categories", "redirects"]));
   const [migrationDryRunLoading, setMigrationDryRunLoading] = useState(false);
   const [migrationDryRunError, setMigrationDryRunError] = useState<string | null>(null);
+  /** After a successful dry run: Shopify handle overlap vs Woo preview (auto-uncheck when safe). */
+  const [migrationShopifyOverlapHint, setMigrationShopifyOverlapHint] = useState<string | null>(null);
   const [migrationDryRunResult, setMigrationDryRunResult] = useState<{
     counts: Record<string, number>;
     run_id: string;
@@ -1854,37 +1856,6 @@ export default function WpShopifyMigrationWizardPage() {
     }
   };
 
-  const runMigrationDryRun = async () => {
-    if (!wooCredentialsOk) {
-      setMigrationDryRunError("Connect WooCommerce for this brand under Brands → Edit brand → WooCommerce.");
-      return;
-    }
-    setMigrationDryRunLoading(true);
-    setMigrationDryRunError(null);
-    setMigrationDryRunResult(null);
-    try {
-      const result = await api.wpShopifyMigrationDryRun({
-        ...wooApiBase(),
-        entities: Array.from(migrationEntities),
-        environment: pipelineEnvironment,
-        ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
-          ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
-          : {}),
-      });
-      setMigrationDryRunResult(result);
-      setMigrationExcludedIds({});
-      setMigrationPreviewRows({});
-      setMigrationPreviewMeta({});
-      setMigrationPreviewPageByEntity({});
-      setMigrationPreviewErrorByEntity({});
-      setMigrationExpandedEntity(null);
-    } catch (e) {
-      setMigrationDryRunError(formatApiError(e));
-    } finally {
-      setMigrationDryRunLoading(false);
-    }
-  };
-
   const fetchMigrationPreview = useCallback(
     async (entity: string, page: number) => {
       if (!wooCredentialsOk) return;
@@ -2341,6 +2312,162 @@ export default function WpShopifyMigrationWizardPage() {
     },
     [brandId, wooApiBase, pipelineEnvironment, wpPreviewUser, wpPreviewAppPassword],
   );
+
+  const runMigrationDryRun = async () => {
+    if (!wooCredentialsOk) {
+      setMigrationDryRunError("Connect WooCommerce for this brand under Brands → Edit brand → WooCommerce.");
+      return;
+    }
+    const entitiesAtDryRun = new Set(migrationEntities);
+    setMigrationDryRunLoading(true);
+    setMigrationDryRunError(null);
+    setMigrationShopifyOverlapHint(null);
+    setMigrationDryRunResult(null);
+    try {
+      const result = await api.wpShopifyMigrationDryRun({
+        ...wooApiBase(),
+        entities: Array.from(migrationEntities),
+        environment: pipelineEnvironment,
+        ...(wpPreviewUser.trim() && wpPreviewAppPassword.trim()
+          ? { wp_username: wpPreviewUser.trim(), wp_application_password: wpPreviewAppPassword.trim() }
+          : {}),
+      });
+      setMigrationDryRunResult(result);
+      setMigrationExcludedIds({});
+      setMigrationPreviewRows({});
+      setMigrationPreviewMeta({});
+      setMigrationPreviewPageByEntity({});
+      setMigrationPreviewErrorByEntity({});
+      setMigrationExpandedEntity(null);
+
+      const bid = brandId.trim();
+      const wantsOverlap =
+        entitiesAtDryRun.has("products") || entitiesAtDryRun.has("categories");
+      if (!wantsOverlap) {
+        /* nothing */
+      } else if (!bid) {
+        setMigrationShopifyOverlapHint(
+          "Select a brand in step 1 to compare Woo preview handles with Shopify after a dry run (auto-uncheck Products/Categories when every preview row already exists on the store).",
+        );
+      } else if (!brandShopify?.connected) {
+        setMigrationShopifyOverlapHint(
+          "Connect Shopify for this brand to auto-uncheck Products and Categories when every previewed Woo row already exists on Shopify (same handle check as redirect verification in step 6).",
+        );
+      } else {
+        try {
+          const hints: string[] = [];
+          const toUncheck: string[] = [];
+
+          if (entitiesAtDryRun.has("products")) {
+            const [items, shopifyRes] = await Promise.all([
+              fetchWooPreviewAllPages("products"),
+              api.wpShopifyMigrationShopifyHandles({
+                brand_id: bid,
+                entity: "products",
+                environment: pipelineEnvironment,
+              }),
+            ]);
+            const allowed = new Set(shopifyRes.handles.map((h) => h.toLowerCase()));
+            const withSlug = items
+              .map((it) => ({ h: wooHandleForShopifyProductOrCollection(it) }))
+              .filter((x): x is { h: string } => Boolean(x.h));
+            const noSlugCount = items.length - withSlug.length;
+            const matched = withSlug.filter((x) => allowed.has(x.h)).length;
+            const allDerivedMatch = withSlug.length > 0 && matched === withSlug.length;
+            const fullCoverage = items.length > 0 && withSlug.length === items.length;
+
+            if (items.length === 0) {
+              hints.push("Products: Woo preview returned no rows (Shopify overlap skipped).");
+            } else if (withSlug.length === 0) {
+              hints.push("Products: no slug/URL handle could be derived from preview rows — auto-uncheck skipped.");
+            } else if (allDerivedMatch && fullCoverage) {
+              toUncheck.push("products");
+              hints.push(
+                `Products: all ${items.length} previewed item(s) match a Shopify product handle — Products was unchecked to avoid duplicate imports.`,
+              );
+            } else if (allDerivedMatch && noSlugCount > 0) {
+              hints.push(
+                `Products: all ${withSlug.length} derived handle(s) exist on Shopify, but ${noSlugCount} preview row(s) had no slug — Products left checked.`,
+              );
+            } else if (matched > 0 && matched < withSlug.length) {
+              hints.push(
+                `Products: ${matched}/${withSlug.length} previewed handle(s) already exist on Shopify. Leave Products checked to migrate new items only, or use Details to exclude rows.`,
+              );
+              if (noSlugCount > 0) {
+                hints.push(`${noSlugCount} row(s) had no slug and were not compared.`);
+              }
+            } else if (noSlugCount > 0 && !fullCoverage) {
+              hints.push(
+                `${noSlugCount} product preview row(s) had no slug — overlap counts use only rows with a derivable handle.`,
+              );
+            }
+          }
+
+          if (entitiesAtDryRun.has("categories")) {
+            const [items, shopifyRes] = await Promise.all([
+              fetchWooPreviewAllPages("categories"),
+              api.wpShopifyMigrationShopifyHandles({
+                brand_id: bid,
+                entity: "collections",
+                environment: pipelineEnvironment,
+              }),
+            ]);
+            const allowed = new Set(shopifyRes.handles.map((h) => h.toLowerCase()));
+            const withSlug = items
+              .map((it) => ({ h: wooHandleForShopifyProductOrCollection(it) }))
+              .filter((x): x is { h: string } => Boolean(x.h));
+            const noSlugCount = items.length - withSlug.length;
+            const matched = withSlug.filter((x) => allowed.has(x.h)).length;
+            const allDerivedMatch = withSlug.length > 0 && matched === withSlug.length;
+            const fullCoverage = items.length > 0 && withSlug.length === items.length;
+
+            if (items.length === 0) {
+              hints.push("Categories: Woo preview returned no rows (Shopify overlap skipped).");
+            } else if (withSlug.length === 0) {
+              hints.push("Categories: no slug/URL handle could be derived from preview rows — auto-uncheck skipped.");
+            } else if (allDerivedMatch && fullCoverage) {
+              toUncheck.push("categories");
+              hints.push(
+                `Categories (→ collections): all ${items.length} previewed item(s) match a Shopify collection handle — Categories was unchecked to avoid duplicate imports.`,
+              );
+            } else if (allDerivedMatch && noSlugCount > 0) {
+              hints.push(
+                `Categories: all ${withSlug.length} derived handle(s) exist on Shopify, but ${noSlugCount} preview row(s) had no slug — Categories left checked.`,
+              );
+            } else if (matched > 0 && matched < withSlug.length) {
+              hints.push(
+                `Categories: ${matched}/${withSlug.length} previewed handle(s) already exist on Shopify as collections. Leave Categories checked to migrate new ones only, or use Details to exclude rows.`,
+              );
+              if (noSlugCount > 0) {
+                hints.push(`${noSlugCount} row(s) had no slug and were not compared.`);
+              }
+            } else if (noSlugCount > 0 && !fullCoverage) {
+              hints.push(
+                `${noSlugCount} category preview row(s) had no slug — overlap counts use only rows with a derivable handle.`,
+              );
+            }
+          }
+
+          if (toUncheck.length > 0) {
+            setMigrationEntities((prev) => {
+              const n = new Set(prev);
+              for (const id of toUncheck) n.delete(id);
+              return n;
+            });
+          }
+          setMigrationShopifyOverlapHint(hints.length > 0 ? hints.join(" ") : null);
+        } catch (overlapErr) {
+          setMigrationShopifyOverlapHint(
+            `Shopify/Woo overlap check after dry run failed: ${formatApiError(overlapErr)}`,
+          );
+        }
+      }
+    } catch (e) {
+      setMigrationDryRunError(formatApiError(e));
+    } finally {
+      setMigrationDryRunLoading(false);
+    }
+  };
 
   /** Blog handle for /blogs/{handle}/… — migration artifact, step-3 field, or Shopify Admin blog list (no re-run). */
   const resolveBlogHandleForRedirectFetch = useCallback(
@@ -3215,7 +3342,7 @@ export default function WpShopifyMigrationWizardPage() {
                 {/* Sheets: entity cards (Matrixify-style) */}
                 <p className="text-body-small font-medium text-fg-muted mb-1">Sheets</p>
                 <p className="text-body-small text-fg-muted mb-2">
-                  Click <strong>Details</strong> on any sheet to expand a paginated list. Uncheck <strong>Include</strong> on rows you do not want counted or migrated (exclusions apply to PDF import; other entity runs still use full sheets until ETL is wired).
+                  Click <strong>Details</strong> on any sheet to expand a paginated list. Uncheck <strong>Include</strong> on rows you do not want counted or migrated (exclusions apply to PDF import; other entity runs still use full sheets until ETL is wired). After a successful dry run, if Shopify is connected, we compare Woo preview handles to your store: when <strong>every</strong> product or category row has a handle and all match Shopify, that sheet is unchecked so you do not re-import duplicates; partial overlap shows a hint only.
                 </p>
                 <div className="space-y-2">
                   {MIGRATION_ENTITIES.map((e) => {
@@ -3653,7 +3780,15 @@ export default function WpShopifyMigrationWizardPage() {
                       migrationRunLoading ||
                       migrationEntities.size === 0 ||
                       !wooCredentialsOk ||
-                      ((migrationEntities.has("pdfs") || migrationEntities.has("blogs")) && !shopifyCredentialsOk)
+                      (!shopifyCredentialsOk &&
+                        (migrationEntities.has("pdfs") ||
+                          migrationEntities.has("blogs") ||
+                          migrationEntities.has("products") ||
+                          migrationEntities.has("categories") ||
+                          migrationEntities.has("customers") ||
+                          migrationEntities.has("redirects") ||
+                          migrationEntities.has("discounts") ||
+                          migrationEntities.has("pages")))
                     }
                   >
                     {migrationRunLoading ? "Migrating…" : "Run migration"}
@@ -3677,7 +3812,7 @@ export default function WpShopifyMigrationWizardPage() {
                   </div>
                 )}
                 <p className="mt-2 max-w-3xl text-body-small text-fg-muted">
-                  <strong>Run migration</strong>: <strong>PDFs</strong> → Shopify Files. <strong>Blog posts</strong> → Shopify articles via Admin API (needs Shopify; up to <strong>500</strong> per run as a safety cap—the live counter is <strong>posts processed</strong> vs WordPress total (e.g. 56/56), not “56 created”; check created/skipped/failed in the status line and in the result table). <strong>Where to look:</strong> Shopify Admin → <strong>Content</strong> → <strong>Blog posts</strong>, then open the blog that received imports (often the first/lowest-ID blog if you did not set a handle—stores with multiple blogs are easy to check in the wrong place). WooCommerce keys alone do <strong>not</strong> read WordPress posts—that is <code className="rounded bg-fg-muted/15 px-1">/wp-json/wp/v2/posts</code>. Without a WP application password we import <strong>published</strong> posts only; drafts stay invisible on the storefront until you publish in Shopify. <strong>Blog tags</strong> → redirect CSV. App scopes: <code className="rounded bg-fg-muted/15 px-1">read_content</code> + <code className="rounded bg-fg-muted/15 px-1">write_content</code>. PDFs upload sequentially; the progress bar can sit on one number for up to ~2 minutes while Shopify finishes a large file or CDN URL—check Pipeline Runs if it never advances.
+                  <strong>Run migration</strong> pushes selected sheets to Shopify via the pipeline runner: <strong>products</strong> (Woo → catalog), <strong>categories</strong> → custom collections, <strong>customers</strong>, <strong>redirects</strong> (Woo permalinks → Online Store redirects; set <strong>step 5</strong> target URL for destinations), <strong>discounts</strong> (simple percent / fixed_cart / fixed_product coupons → price rules + codes), <strong>pages</strong> (WP → Online Store pages), <strong>PDFs</strong> → Files, <strong>Blog posts</strong> → articles, <strong>Blog tags</strong> → redirect CSV. Shopify must be connected with Admin scopes for <strong>products</strong>, <strong>content</strong> (pages/blog), <strong>customers</strong>, <strong>discounts</strong>, and <strong>Online Store navigation</strong> (redirects) as needed. Each entity run is capped by the same batch limit as blog/PDF imports (from <strong>max_files</strong>, default 2000)—run again to continue. Variable products map Woo variations to Shopify options; grouped/external products are skipped with a row error. <strong>Blog posts</strong>: without a WP application password, only <strong>published</strong> posts import. PDFs upload sequentially; check Pipeline Runs if progress stalls.
                 </p>
 
                 {(migrationRunLoading || migrationPipelineRunId) && (
@@ -3795,6 +3930,20 @@ export default function WpShopifyMigrationWizardPage() {
                     {migrationDryRunError}
                   </div>
                 )}
+                {migrationShopifyOverlapHint && (
+                  <div
+                    className={`mt-3 rounded-lg border px-3 py-2 text-body-small ${
+                      migrationShopifyOverlapHint.includes("was unchecked")
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-fg-default"
+                        : migrationShopifyOverlapHint.includes("failed:")
+                          ? "border-state-warning bg-amber-500/10 text-fg-default"
+                          : "border-border bg-fg-muted/5 text-fg-muted"
+                    }`}
+                  >
+                    <span className="font-medium text-fg">After dry run — Shopify overlap: </span>
+                    {migrationShopifyOverlapHint}
+                  </div>
+                )}
                 {migrationRunError && (
                   <div className="mt-3 rounded-lg border border-state-dangerMuted bg-state-dangerMuted/30 px-3 py-2 text-body-small text-state-danger">
                     {migrationRunError}
@@ -3805,6 +3954,16 @@ export default function WpShopifyMigrationWizardPage() {
                     {migrationRunResult.run_id
                       ? `Recorded on initiative. Run: /runs/${migrationRunResult.run_id}. ${migrationRunResult.message ?? ""}`.trim()
                       : migrationRunResult.message ?? "Migration run completed."}
+                    {Array.isArray(migrationRunResult.unsupported) && migrationRunResult.unsupported.length > 0 ? (
+                      <div className="mt-3 rounded-md border border-amber-500/45 bg-amber-500/10 px-3 py-2 text-body-small">
+                        <p className="font-medium text-fg">Unknown entity keys (skipped):</p>
+                        <ul className="mt-1 list-disc pl-5 text-fg-muted">
+                          {migrationRunResult.unsupported.map((id) => (
+                            <li key={id}>{MIGRATION_ENTITIES.find((e) => e.id === id)?.label ?? id}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                     {migrationRunResult.parallel_migration_jobs && migrationRunResult.run_id ? (
                       <p className="mt-2 text-body-small text-fg-muted">
                         This migration was queued as <strong>two parallel jobs</strong> (content branch vs PDF branch) so different runners can execute them at the same time. Open{" "}

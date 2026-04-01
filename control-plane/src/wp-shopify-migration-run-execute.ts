@@ -8,19 +8,39 @@ import {
   type PdfMigrationProgressEvent,
 } from "./wp-shopify-migration-pdf-shopify.js";
 import { migrateWordPressPostsToShopify, blogMigrationSummaryAndHint } from "./wp-shopify-migration-blog-shopify.js";
+import {
+  migrateWooProductsToShopify,
+  migrateWooCategoriesToShopify,
+  migrateWooCustomersToShopify,
+  migrateWooPermalinkRedirectsToShopify,
+  migrateWooCouponsToShopify,
+  migrateWordPressPagesToShopify,
+} from "./wp-shopify-migration-woo-etl-shopify.js";
 
 const SHOPIFY_REST_VERSION = "2024-10";
 
-const ETL_PENDING = new Set([
+const MAX_TAGS_IN_ARTIFACT = 2500;
+
+type WizardEtlProgressPayload = {
+  current: number;
+  total: number;
+  source_id?: string;
+  created: number;
+  skipped: number;
+  failed: number;
+};
+
+const SUPPORTED_MIGRATION_ENTITIES = new Set([
   "products",
   "categories",
   "customers",
   "redirects",
   "discounts",
   "pages",
+  "blogs",
+  "blog_tags",
+  "pdfs",
 ]);
-
-const MAX_TAGS_IN_ARTIFACT = 2500;
 
 const ENTITY_LABEL: Record<string, string> = {
   blogs: "Blog posts",
@@ -34,23 +54,39 @@ const ENTITY_LABEL: Record<string, string> = {
   pages: "Pages",
 };
 
-function entityBannerLine(entityId: string, kind: "start_supported" | "pending_etl" | "unsupported"): string {
+function entityBannerLine(entityId: string, kind: "start_supported" | "unsupported"): string {
   const label = ENTITY_LABEL[entityId] ?? entityId;
   if (kind === "start_supported") {
     if (entityId === "blogs") return `${label}: importing…`;
     if (entityId === "pdfs") return `${label}: uploading…`;
     if (entityId === "blog_tags") return `${label}: building redirect CSV…`;
+    if (entityId === "products") return `${label}: importing to Shopify…`;
+    if (entityId === "categories") return `${label}: creating collections…`;
+    if (entityId === "customers") return `${label}: importing customers…`;
+    if (entityId === "redirects") return `${label}: creating URL redirects…`;
+    if (entityId === "discounts") return `${label}: creating discount codes…`;
+    if (entityId === "pages") return `${label}: importing pages…`;
     return `${label}…`;
-  }
-  if (kind === "pending_etl") {
-    return `${label}: not auto-imported here — use Matrixify or export`;
   }
   return `${label}: skipped`;
 }
 
-/** Prefer blogs / tag export before heavy PDF uploads so a lease issue mid-PDF still leaves posts imported. */
+/**
+ * Order: content + catalog before heavy PDFs; categories before products so collections exist first
+ * (product→collection collects are not wired yet, but operators expect collections early).
+ */
 function sortEntitiesForMigrationOrder(entities: string[]): string[] {
-  const priority = ["blogs", "blog_tags", "pdfs"];
+  const priority = [
+    "blogs",
+    "blog_tags",
+    "pages",
+    "categories",
+    "products",
+    "customers",
+    "redirects",
+    "discounts",
+    "pdfs",
+  ];
   const want = new Set(entities.map((x) => String(x).trim()).filter(Boolean));
   const out: string[] = [];
   for (const p of priority) {
@@ -220,25 +256,51 @@ export function buildMigrationRunUserMessage(byEntity: Record<string, unknown>, 
       `Blog tags: saved ${tags.count} WordPress tag(s) on this run for your records.${tags.list_truncated ? " (artifact truncates the tag list at 2500 rows.)" : ""}${csvHint} ${tags.note ?? ""}`.trim(),
     );
   }
-  if (unsupported.length > 0) {
-    const label: Record<string, string> = {
-      pages: "static pages",
-      products: "products",
-      categories: "collections/categories",
-      customers: "customers",
-      redirects: "redirect rules",
-      discounts: "discounts",
-    };
-    const names = unsupported.map((id) => label[id] ?? id);
+
+  const etlLine = (
+    label: string,
+    b: { summary?: { created?: number; skipped?: number; failed?: number }; truncated?: boolean; hint?: string } | undefined,
+  ): void => {
+    if (!b?.summary || typeof b.summary !== "object") return;
+    const s = b.summary;
     parts.push(
-      `No Shopify import ran for: ${names.join(", ")}. Supported today: PDFs → Shopify Files, WordPress posts → Shopify blog articles (when “blogs” is selected), and WordPress tag export for redirects. Use Matrixify or exports for other entities.`,
+      `${label}: created ${s.created ?? 0}, skipped ${s.skipped ?? 0}, failed ${s.failed ?? 0}.${b.truncated ? " (batch limit—run again.)" : ""}${b.hint ? ` ${b.hint}` : ""}`.trim(),
     );
+  };
+
+  etlLine("Products", byEntity.products as { summary?: { created?: number; skipped?: number; failed?: number }; truncated?: boolean; hint?: string });
+  etlLine(
+    "Categories",
+    byEntity.categories as { summary?: { created?: number; skipped?: number; failed?: number }; truncated?: boolean; hint?: string },
+  );
+  etlLine(
+    "Customers",
+    byEntity.customers as { summary?: { created?: number; skipped?: number; failed?: number }; truncated?: boolean; hint?: string },
+  );
+  etlLine(
+    "Redirects",
+    byEntity.redirects as { summary?: { created?: number; skipped?: number; failed?: number }; truncated?: boolean; hint?: string },
+  );
+  etlLine(
+    "Discounts",
+    byEntity.discounts as { summary?: { created?: number; skipped?: number; failed?: number }; truncated?: boolean; hint?: string },
+  );
+  etlLine(
+    "Pages",
+    byEntity.pages as { summary?: { created?: number; skipped?: number; failed?: number }; truncated?: boolean; hint?: string },
+  );
+
+  if (unsupported.length > 0) {
+    parts.push(`Skipped unknown entity keys: ${unsupported.join(", ")}.`);
   }
   return parts.join(" ").trim() || "Migration run finished.";
 }
 
 export async function executeWizardMigrationRun(opts: {
   server: string;
+  /** WooCommerce REST consumer key (with server, used for /wc/v3 catalog + coupons). */
+  wooConsumerKey: string;
+  wooConsumerSecret: string;
   wpAuthHeader: string | null;
   shopDomain: string | null;
   shopAccessToken: string | null;
@@ -265,21 +327,35 @@ export async function executeWizardMigrationRun(opts: {
   /** Phase banners (customers/products/…) and coarse blog_tags progress; same shape as job_events wizard_progress. */
   onWizardProgress?: (payload: Record<string, unknown>) => void | Promise<void>;
 }): Promise<Record<string, unknown>> {
+  if (!opts.wooConsumerKey?.trim() || !opts.wooConsumerSecret?.trim()) {
+    throw new Error("WooCommerce REST credentials are required for migration run (brand connector or payload).");
+  }
   const by_entity: Record<string, unknown> = {};
   const unsupported: string[] = [];
   const uniq = sortEntitiesForMigrationOrder([...new Set(opts.entities.map((x) => String(x).trim()).filter(Boolean))]);
   const report = opts.onWizardProgress;
+  const maxCatalog = opts.maxBlogPosts;
 
   for (const e of uniq) {
-    if (ETL_PENDING.has(e)) {
-      void report?.({ phase_banner: entityBannerLine(e, "pending_etl"), entity_phase: e, entity_status: "pending_etl", force: true });
-      unsupported.push(e);
-      continue;
-    }
-    if (e !== "blogs" && e !== "pdfs" && e !== "blog_tags") {
+    if (!SUPPORTED_MIGRATION_ENTITIES.has(e)) {
       void report?.({ phase_banner: entityBannerLine(e, "unsupported"), entity_phase: e, entity_status: "unsupported", force: true });
       unsupported.push(e);
       continue;
+    }
+
+    const needsShopifyAdmin =
+      e === "products" ||
+      e === "categories" ||
+      e === "customers" ||
+      e === "redirects" ||
+      e === "discounts" ||
+      e === "pages" ||
+      e === "pdfs" ||
+      e === "blogs";
+    if (needsShopifyAdmin && (!opts.shopDomain || !opts.shopAccessToken)) {
+      throw new Error(
+        `Shopify must be connected to import ${ENTITY_LABEL[e] ?? e} (Brands → Edit brand → Shopify, with Admin API scopes for products, content, redirects, and discounts as needed).`,
+      );
     }
 
     void report?.({ phase_banner: entityBannerLine(e, "start_supported"), entity_phase: e, entity_status: "running", force: true });
@@ -310,6 +386,196 @@ export async function executeWizardMigrationRun(opts: {
         ...(result.wordpress_posts_source ? { wordpress_posts_source: result.wordpress_posts_source } : {}),
         ...(result.sample_error?.trim() ? { sample_error: result.sample_error.trim() } : {}),
         ...(hint?.trim() ? { hint: hint.trim() } : {}),
+      };
+    } else if (e === "products") {
+      const excluded = opts.excludedByEntity.products ?? new Set<string>();
+      const result = await migrateWooProductsToShopify({
+        server: opts.server,
+        wooConsumerKey: opts.wooConsumerKey,
+        wooConsumerSecret: opts.wooConsumerSecret,
+        shopDomain: opts.shopDomain!,
+        accessToken: opts.shopAccessToken!,
+        excludedIds: excluded,
+        maxItems: maxCatalog,
+        skipIfExistsInShopify: opts.skipIfExistsInShopify,
+        onProgress: (p: WizardEtlProgressPayload) => {
+          void report?.({
+            phase: "products",
+            products: {
+              current: p.current,
+              total: p.total,
+              created: p.created,
+              skipped: p.skipped,
+              failed: p.failed,
+            },
+            force: true,
+          });
+        },
+      });
+      by_entity.products = {
+        summary: result.summary,
+        rows: result.rows,
+        truncated: result.truncated,
+        ...(result.hint?.trim() ? { hint: result.hint.trim() } : {}),
+      };
+    } else if (e === "categories") {
+      const excluded = opts.excludedByEntity.categories ?? new Set<string>();
+      const result = await migrateWooCategoriesToShopify({
+        server: opts.server,
+        wooConsumerKey: opts.wooConsumerKey,
+        wooConsumerSecret: opts.wooConsumerSecret,
+        shopDomain: opts.shopDomain!,
+        accessToken: opts.shopAccessToken!,
+        excludedIds: excluded,
+        maxItems: maxCatalog,
+        skipIfExistsInShopify: opts.skipIfExistsInShopify,
+        onProgress: (p: WizardEtlProgressPayload) => {
+          void report?.({
+            phase: "categories",
+            categories: {
+              current: p.current,
+              total: p.total,
+              created: p.created,
+              skipped: p.skipped,
+              failed: p.failed,
+            },
+            force: true,
+          });
+        },
+      });
+      by_entity.categories = {
+        summary: result.summary,
+        rows: result.rows,
+        truncated: result.truncated,
+        ...(result.hint?.trim() ? { hint: result.hint.trim() } : {}),
+      };
+    } else if (e === "customers") {
+      const excluded = opts.excludedByEntity.customers ?? new Set<string>();
+      const result = await migrateWooCustomersToShopify({
+        server: opts.server,
+        wooConsumerKey: opts.wooConsumerKey,
+        wooConsumerSecret: opts.wooConsumerSecret,
+        shopDomain: opts.shopDomain!,
+        accessToken: opts.shopAccessToken!,
+        excludedIds: excluded,
+        maxItems: maxCatalog,
+        skipIfExistsInShopify: opts.skipIfExistsInShopify,
+        onProgress: (p: WizardEtlProgressPayload) => {
+          void report?.({
+            phase: "customers",
+            customers: {
+              current: p.current,
+              total: p.total,
+              created: p.created,
+              skipped: p.skipped,
+              failed: p.failed,
+            },
+            force: true,
+          });
+        },
+      });
+      by_entity.customers = {
+        summary: result.summary,
+        rows: result.rows,
+        truncated: result.truncated,
+        ...(result.hint?.trim() ? { hint: result.hint.trim() } : {}),
+      };
+    } else if (e === "redirects") {
+      const excluded = opts.excludedByEntity.redirects ?? new Set<string>();
+      const origin = normalizeStorefrontOrigin(opts.targetStoreUrl, opts.shopDomain);
+      if (!origin) {
+        throw new Error(
+          "Redirects need a public target store URL (wizard step 5) or a connected Shopify shop domain to build destination URLs.",
+        );
+      }
+      const result = await migrateWooPermalinkRedirectsToShopify({
+        server: opts.server,
+        wooConsumerKey: opts.wooConsumerKey,
+        wooConsumerSecret: opts.wooConsumerSecret,
+        shopDomain: opts.shopDomain!,
+        accessToken: opts.shopAccessToken!,
+        excludedIds: excluded,
+        maxItems: maxCatalog,
+        targetStoreOrigin: origin,
+        onProgress: (p: WizardEtlProgressPayload) => {
+          void report?.({
+            phase: "redirects",
+            redirects: {
+              current: p.current,
+              total: p.total,
+              created: p.created,
+              skipped: p.skipped,
+              failed: p.failed,
+            },
+            force: true,
+          });
+        },
+      });
+      by_entity.redirects = {
+        summary: result.summary,
+        rows: result.rows,
+        truncated: result.truncated,
+        ...(result.hint?.trim() ? { hint: result.hint.trim() } : {}),
+      };
+    } else if (e === "discounts") {
+      const excluded = opts.excludedByEntity.discounts ?? new Set<string>();
+      const result = await migrateWooCouponsToShopify({
+        server: opts.server,
+        wooConsumerKey: opts.wooConsumerKey,
+        wooConsumerSecret: opts.wooConsumerSecret,
+        shopDomain: opts.shopDomain!,
+        accessToken: opts.shopAccessToken!,
+        excludedIds: excluded,
+        maxItems: maxCatalog,
+        onProgress: (p: WizardEtlProgressPayload) => {
+          void report?.({
+            phase: "discounts",
+            discounts: {
+              current: p.current,
+              total: p.total,
+              created: p.created,
+              skipped: p.skipped,
+              failed: p.failed,
+            },
+            force: true,
+          });
+        },
+      });
+      by_entity.discounts = {
+        summary: result.summary,
+        rows: result.rows,
+        truncated: result.truncated,
+        ...(result.hint?.trim() ? { hint: result.hint.trim() } : {}),
+      };
+    } else if (e === "pages") {
+      const excluded = opts.excludedByEntity.pages ?? new Set<string>();
+      const result = await migrateWordPressPagesToShopify({
+        wpOrigin: opts.server,
+        wpAuthHeader: opts.wpAuthHeader,
+        shopDomain: opts.shopDomain!,
+        accessToken: opts.shopAccessToken!,
+        excludedIds: excluded,
+        maxItems: maxCatalog,
+        skipIfExistsInShopify: opts.skipIfExistsInShopify,
+        onProgress: (p: WizardEtlProgressPayload) => {
+          void report?.({
+            phase: "pages",
+            pages: {
+              current: p.current,
+              total: p.total,
+              created: p.created,
+              skipped: p.skipped,
+              failed: p.failed,
+            },
+            force: true,
+          });
+        },
+      });
+      by_entity.pages = {
+        summary: result.summary,
+        rows: result.rows,
+        truncated: result.truncated,
+        ...(result.hint?.trim() ? { hint: result.hint.trim() } : {}),
       };
     } else if (e === "pdfs") {
       if (!opts.shopDomain || !opts.shopAccessToken) {

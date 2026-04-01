@@ -1826,7 +1826,7 @@ export async function wpShopifyMigrationPreviewItems(
   };
 }
 
-/** WP → Shopify migration wizard — Step 3 / launch: entity-aware run (`wp_shopify_migration_run` artifact). PDFs import to Shopify Files; blog tags are exported from WordPress; other entities reported as pending ETL. */
+/** WP → Shopify migration wizard — Step 3 / launch: entity-aware run (`wp_shopify_migration_run` artifact). Imports products, collections, customers, redirects, discounts, pages, PDFs, blog posts, and blog-tag CSV per selection. */
 export type WpShopifyMigrationRunParams = WpShopifyMigrationWooRestParams & {
   brand_id: string;
   entities: string[];

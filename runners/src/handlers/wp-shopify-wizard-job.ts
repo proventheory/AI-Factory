@@ -12,7 +12,16 @@ function createWizardProgressReporter(pool: Pool | undefined, jobRunId: string |
     const force = payload.force === true;
     const now = Date.now();
     const hasNumericProgress =
-      payload.blogs != null || payload.pdfs != null || payload.blog_tags != null || payload.crawl != null;
+      payload.blogs != null ||
+      payload.pdfs != null ||
+      payload.blog_tags != null ||
+      payload.products != null ||
+      payload.categories != null ||
+      payload.customers != null ||
+      payload.redirects != null ||
+      payload.discounts != null ||
+      payload.pages != null ||
+      payload.crawl != null;
     const minGapMs = hasNumericProgress ? 750 : 2000;
     if (!force && now - lastWrite < minGapMs) return;
     lastWrite = now;
@@ -237,12 +246,19 @@ export async function executeWpShopifyMigrationRunJob(
       excludedByEntity[k] = new Set(Array.isArray(v) ? v.map((x) => String(x)) : []);
     }
 
-    const needsShopifyPdfs = entities.includes("pdfs");
-    const wantsTagRedirects = entities.includes("blog_tags");
-    const needsShopifyBlogs = entities.includes("blogs");
+    const mustHaveShopifyToken =
+      entities.includes("pdfs") ||
+      entities.includes("blogs") ||
+      entities.includes("products") ||
+      entities.includes("categories") ||
+      entities.includes("customers") ||
+      entities.includes("redirects") ||
+      entities.includes("discounts") ||
+      entities.includes("pages");
+    const loadShopifyConnector = mustHaveShopifyToken || entities.includes("blog_tags");
     let shopDomain: string | null = null;
     let shopAccessToken: string | null = null;
-    if (needsShopifyPdfs || wantsTagRedirects || needsShopifyBlogs) {
+    if (loadShopifyConnector) {
       const pre = shopifyPrefetchedFromPayload(payload);
       if (pre) {
         shopDomain = pre.shop_domain;
@@ -252,9 +268,11 @@ export async function executeWpShopifyMigrationRunJob(
         try {
           const sm = await getShopifyShopForBrand(sConn, brandId);
           const tp = await getShopifyAccessTokenForBrand(sConn, brandId);
-          if (needsShopifyPdfs || needsShopifyBlogs) {
+          if (mustHaveShopifyToken) {
             if (!sm || !tp?.access_token) {
-              throw new Error("Shopify must be connected for PDF or blog post import (Brands → Edit brand → Shopify).");
+              throw new Error(
+                "Shopify must be connected for this migration (Brands → Edit brand → Shopify). Catalog, content, PDFs, redirects, and discounts require Admin API access.",
+              );
             }
           }
           shopDomain = sm?.shop_domain ?? null;
@@ -272,6 +290,8 @@ export async function executeWpShopifyMigrationRunJob(
 
     const artifact = await executeWizardMigrationRun({
       server,
+      wooConsumerKey: key,
+      wooConsumerSecret: secret,
       wpAuthHeader: wpAuth,
       shopDomain,
       shopAccessToken,
