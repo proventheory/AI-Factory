@@ -1,7 +1,9 @@
 /**
- * WordPress posts → Shopify blog articles (Admin REST).
+ * WordPress posts → Shopify blog articles (Admin REST + GraphQL for SEO metafields).
  * Requires Shopify scopes: read_content, write_content (and read_online_store_pages if your app template bundles it).
  */
+
+import * as cheerio from "cheerio";
 
 const SHOPIFY_API_VERSION = "2024-10";
 
@@ -32,6 +34,99 @@ export type BlogMigrationResult = {
 
 function stripRendered(html: string): string {
   return html.replace(/<[^>]+>/g, "").trim();
+}
+
+/**
+ * WordPress `*.rendered` fields often include numeric entities (&#038;, &#8217;, …) and occasional tags.
+ * Passing them through to Shopify shows literal entities in titles and SEO fields.
+ */
+function plaintextFromWpRendered(fragment: string): string {
+  const t = fragment.trim();
+  if (!t) return "";
+  try {
+    const $ = cheerio.load(`<div id="wp-plain-root">${t}</div>`);
+    return $("#wp-plain-root").text().replace(/\s+/g, " ").trim();
+  } catch {
+    return stripRendered(t);
+  }
+}
+
+type GraphqlEnvelope<T> = { data?: T; errors?: { message: string }[] };
+
+async function shopifyAdminGraphql<T>(
+  shopDomain: string,
+  accessToken: string,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<T> {
+  const shop = shopHost(shopDomain);
+  const url = `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": accessToken,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  const text = await res.text();
+  let json: GraphqlEnvelope<T>;
+  try {
+    json = JSON.parse(text) as GraphqlEnvelope<T>;
+  } catch {
+    throw new Error(`Shopify GraphQL invalid JSON (${res.status}): ${text.slice(0, 200)}`);
+  }
+  if (json.errors?.length) {
+    throw new Error(json.errors.map((e) => e.message).join("; "));
+  }
+  if (!json.data) throw new Error("Shopify GraphQL returned no data");
+  return json.data;
+}
+
+/** Shopify “Search engine listing” uses global metafields (see shopify.dev SEO tutorial). */
+async function applyShopifyArticleSeoMetafields(
+  shopDomain: string,
+  accessToken: string,
+  articleId: number,
+  titleTag: string,
+  metaDescription: string,
+): Promise<{ ok: boolean; warning?: string }> {
+  const mutation = `
+    mutation ArticleSeo($id: ID!, $article: ArticleUpdateInput!) {
+      articleUpdate(id: $id, article: $article) {
+        userErrors { field message }
+      }
+    }
+  `;
+  const metafields: { namespace: string; key: string; value: string; type: string }[] = [
+    {
+      namespace: "global",
+      key: "description_tag",
+      value: metaDescription.trim().slice(0, 500),
+      type: "single_line_text_field",
+    },
+    {
+      namespace: "global",
+      key: "title_tag",
+      value: titleTag.trim().slice(0, 70),
+      type: "single_line_text_field",
+    },
+  ];
+  try {
+    const data = await shopifyAdminGraphql<{
+      articleUpdate: { userErrors: { field: string[] | null; message: string }[] };
+    }>(shopDomain, accessToken, mutation, {
+      id: `gid://shopify/Article/${articleId}`,
+      article: { metafields },
+    });
+    const errs = data.articleUpdate?.userErrors ?? [];
+    if (errs.length) {
+      return { ok: false, warning: errs.map((e) => e.message).join("; ") };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, warning: (e as Error).message };
+  }
 }
 
 /** Shopify article author is a short string; very long WP display names can be rejected. */
@@ -194,7 +289,23 @@ type WpPostApi = {
   content?: { rendered?: string };
   excerpt?: { rendered?: string };
   _embedded?: WpEmbedded;
+  /** Present when Yoast SEO exposes REST fields; preferred for meta description. */
+  yoast_head_json?: { description?: string; title?: string };
 };
+
+function metaDescriptionFromWordPressPost(post: WpPostApi, titleDecoded: string): string {
+  const yoast = post.yoast_head_json;
+  if (typeof yoast?.description === "string" && yoast.description.trim()) {
+    const y = yoast.description.trim().replace(/\s+/g, " ");
+    if (y.length > 10) return y.slice(0, 320);
+  }
+  const ex = plaintextFromWpRendered(post.excerpt?.rendered ?? "");
+  if (ex.length >= 20) return ex.slice(0, 320);
+  const body = plaintextFromWpRendered((post.content?.rendered ?? "").slice(0, 6000));
+  if (body.length >= 20) return body.slice(0, 320);
+  const fallback = `${titleDecoded}`.trim() || "Blog post";
+  return `${fallback}.`.replace(/\.\.+$/, ".").slice(0, 320);
+}
 
 function tagsFromEmbedded(post: WpPostApi): string {
   const raw = post._embedded?.["wp:term"];
@@ -204,7 +315,8 @@ function tagsFromEmbedded(post: WpPostApi): string {
     if (!Array.isArray(group)) continue;
     for (const t of group) {
       if (t && typeof t === "object" && t.taxonomy === "post_tag" && typeof t.name === "string") {
-        names.push(t.name.trim());
+        const tn = plaintextFromWpRendered(t.name);
+        if (tn) names.push(tn);
       }
     }
   }
@@ -213,7 +325,10 @@ function tagsFromEmbedded(post: WpPostApi): string {
 
 function authorFromEmbedded(post: WpPostApi): string {
   const a = post._embedded?.author?.[0];
-  return typeof a?.name === "string" && a.name.trim() ? a.name.trim() : "WordPress";
+  if (typeof a?.name === "string" && a.name.trim()) {
+    return plaintextFromWpRendered(a.name) || "WordPress";
+  }
+  return "WordPress";
 }
 
 function featuredSrc(post: WpPostApi): string | undefined {
@@ -299,6 +414,9 @@ export function blogMigrationSummaryAndHint(result: BlogMigrationResult): { summ
       ? `Find articles in Shopify Admin → Content → Blog posts → open the “${bh}” blog (not the storefront theme editor).`
       : "Find articles in Shopify Admin → Content → Blog posts and open the blog that received the import.",
   );
+  parts.push(
+    "Post titles decode WordPress HTML entities. Meta descriptions use Yoast SEO (when REST exposes yoast_head_json), else excerpt or opening body text, via Shopify global metafields (description_tag / title_tag).",
+  );
   if (result.wordpress_posts_source === "public_rest") {
     parts.push("Only WordPress posts with status “published” were imported (no app password).");
   } else {
@@ -383,7 +501,7 @@ export async function migrateWordPressPostsToShopify(opts: {
           continue;
         }
         const titleRendered = post.title?.rendered ?? "";
-        const title = stripRendered(titleRendered) || post.slug || id;
+        const title = plaintextFromWpRendered(titleRendered) || post.slug || id;
         const slug = typeof post.slug === "string" ? post.slug.trim().toLowerCase() : "";
         const bodyHtml = typeof post.content?.rendered === "string" ? post.content.rendered : "";
         const summaryHtml =
@@ -494,6 +612,11 @@ export async function migrateWordPressPostsToShopify(opts: {
         }
         row.shopify_article_id = String(aid);
         row.shopify_admin_url = adminArticleUrl(opts.shopDomain, blogId, aid);
+        const metaDesc = metaDescriptionFromWordPressPost(post, title);
+        const seo = await applyShopifyArticleSeoMetafields(opts.shopDomain, opts.accessToken, aid, title, metaDesc);
+        if (!seo.ok && seo.warning?.trim()) {
+          row.note = row.note ? `${row.note} SEO metafields: ${seo.warning}` : `SEO metafields: ${seo.warning}`;
+        }
         rows.push(row);
         created++;
         await new Promise((r) => setTimeout(r, 350));
