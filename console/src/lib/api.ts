@@ -54,7 +54,8 @@ export function formatApiError(err: unknown): string {
       "Vercel could not reach your Control Plane URL (proxy/rewrite to Render failed). " +
       "In Vercel → Project → Settings → Environment Variables: set NEXT_PUBLIC_CONTROL_PLANE_API to your API base (e.g. https://ai-factory-api-staging.onrender.com) with no path suffix, redeploy the console, and confirm the API responds at …/health. " +
       "If the API was asleep, wake it with a browser visit then retry the crawl. " +
-      "Hobby plans have short serverless limits; very long crawls may need a Pro-tier maxDuration or calling the Control Plane from a network that allows long requests."
+      "Hobby plans have short serverless limits; very long crawls may need a Pro-tier maxDuration or calling the Control Plane from a network that allows long requests. " +
+      "If this only happens on the first try and the second succeeds, that is usually Render cold start or the edge proxy timing out before the API wakes—not a bad env var."
     );
   }
   if (msg.includes("ENETUNREACH") || msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
@@ -84,6 +85,25 @@ export function formatApiError(err: unknown): string {
 function isAbortError(e: unknown): boolean {
   if (!e || typeof e !== "object") return false;
   return (e as { name?: string }).name === "AbortError";
+}
+
+/** First hop (browser → Vercel → Render) often fails once while the API spins up or the edge proxy times out; safe to retry once. */
+function isRetryableCrawlProxyError(e: unknown): boolean {
+  if (isAbortError(e)) return false;
+  const msg = String(e instanceof Error ? e.message : e);
+  if (/MaxClientsInSessionMode|max clients reached|Session mode|too many clients|53300/i.test(msg)) return false;
+  const httpStatus = (e as Error & { httpStatus?: number }).httpStatus;
+  if (typeof httpStatus === "number" && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 408) return false;
+  if (typeof httpStatus === "number" && httpStatus >= 502 && httpStatus <= 504) return true;
+  if (/ROUTER_EXTERNAL_TARGET_ERROR|EXTERNAL_TARGET|An error occurred with this application/i.test(msg)) return true;
+  if (
+    /Failed to fetch|NetworkError|ENOTFOUND|ECONNREFUSED|ECONNRESET|Gateway Time-out|Bad Gateway|FUNCTION_INVOCATION_TIMEOUT|upstream connect|socket hang up/i.test(
+      msg,
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** Bounded fetch so pipeline polling cannot hang forever if the proxy or API stalls. */
@@ -1472,7 +1492,8 @@ export async function wpShopifyMigrationCrawl(
   };
 
   pollOpts?.onStatus?.(linkCrawl ? "Running crawl on API (direct, long timeout)…" : "Running crawl on API (direct)…");
-  try {
+
+  const runCrawlRequest = async (): Promise<WpShopifyMigrationCrawlResult> => {
     const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/wp-shopify-migration/crawl_execute`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1493,35 +1514,54 @@ export async function wpShopifyMigrationCrawl(
       throw ex;
     }
     return data as WpShopifyMigrationCrawlResult;
-  } catch (directErr) {
-    const msg = String(directErr instanceof Error ? directErr.message : directErr);
-    const httpStatus = (directErr as Error & { httpStatus?: number }).httpStatus;
-    const poolSaturated =
-      /MaxClientsInSessionMode|max clients reached|Session mode|too many clients|53300/i.test(msg);
-    const clientAborted = isAbortError(directErr);
-    // Vercel / CDN / proxy often returns 502–504 while Render may still be crawling; pipeline fallback only adds failed runs.
-    const gatewayOrProxy =
-      (typeof httpStatus === "number" && httpStatus >= 502 && httpStatus <= 504) ||
-      /Gateway Time-out|Bad Gateway|FUNCTION_INVOCATION_TIMEOUT|invocation failed|timeout waiting|upstream connect|ECONNRESET/i.test(
-        msg,
-      );
-    // Pool-saturated errors: pipeline crawl uses the same DB pool → more failed runs, not a fix.
-    // Client abort (browser/proxy timeout): the API may still be crawling; enqueuing a second job duplicates work.
-    if (poolSaturated || clientAborted || gatewayOrProxy) {
+  };
+
+  let directErr: unknown;
+  try {
+    return await runCrawlRequest();
+  } catch (firstErr) {
+    if (!isRetryableCrawlProxyError(firstErr)) {
+      directErr = firstErr;
+    } else {
       pollOpts?.onStatus?.(
-        poolSaturated
-          ? "Crawl API hit a database connection limit — not queueing a pipeline run (would make it worse). Lower DATABASE_POOL_MAX / use direct Postgres URL on Control Plane, then retry."
-          : gatewayOrProxy
-            ? "Proxy or gateway closed the long crawl request — not queueing a pipeline run (avoids duplicate failed runs). Wait and use Refetch; crawl may still complete on the Control Plane."
-            : "Request timed out — not auto-queueing a pipeline crawl (avoids duplicate runs). Wait and use Refetch, or raise the client timeout.",
+        "First request to Control Plane failed (common when Render was asleep or Vercel’s proxy timed out). Retrying once in 3s…",
       );
-      throw directErr instanceof Error ? directErr : new Error(msg);
+      await new Promise((r) => setTimeout(r, 3000));
+      try {
+        return await runCrawlRequest();
+      } catch (secondErr) {
+        directErr = secondErr;
+      }
     }
-    // Runner fallback removed: POST /crawl created many failed Pipeline Runs (same initiative) and confused operators.
-    // Step 1 is API-only; fix crawl_execute / proxy max duration / DB pool instead.
-    pollOpts?.onStatus?.("Crawl API request failed (no runner fallback).");
+  }
+
+  const msg = String(directErr instanceof Error ? directErr.message : directErr);
+  const httpStatus = (directErr as Error & { httpStatus?: number }).httpStatus;
+  const poolSaturated =
+    /MaxClientsInSessionMode|max clients reached|Session mode|too many clients|53300/i.test(msg);
+  const clientAborted = isAbortError(directErr);
+  // Vercel / CDN / proxy often returns 502–504 while Render may still be crawling; pipeline fallback only adds failed runs.
+  const gatewayOrProxy =
+    (typeof httpStatus === "number" && httpStatus >= 502 && httpStatus <= 504) ||
+    /Gateway Time-out|Bad Gateway|FUNCTION_INVOCATION_TIMEOUT|invocation failed|timeout waiting|upstream connect|ECONNRESET/i.test(
+      msg,
+    );
+  // Pool-saturated errors: pipeline crawl uses the same DB pool → more failed runs, not a fix.
+  // Client abort (browser/proxy timeout): the API may still be crawling; enqueuing a second job duplicates work.
+  if (poolSaturated || clientAborted || gatewayOrProxy) {
+    pollOpts?.onStatus?.(
+      poolSaturated
+        ? "Crawl API hit a database connection limit — not queueing a pipeline run (would make it worse). Lower DATABASE_POOL_MAX / use direct Postgres URL on Control Plane, then retry."
+        : gatewayOrProxy
+          ? "Proxy or gateway closed the long crawl request — not queueing a pipeline run (avoids duplicate failed runs). Wait and use Refetch; crawl may still complete on the Control Plane."
+          : "Request timed out — not auto-queueing a pipeline crawl (avoids duplicate runs). Wait and use Refetch, or raise the client timeout.",
+    );
     throw directErr instanceof Error ? directErr : new Error(msg);
   }
+  // Runner fallback removed: POST /crawl created many failed Pipeline Runs (same initiative) and confused operators.
+  // Step 1 is API-only; fix crawl_execute / proxy max duration / DB pool instead.
+  pollOpts?.onStatus?.("Crawl API request failed (no runner fallback).");
+  throw directErr instanceof Error ? directErr : new Error(msg);
 }
 
 /** WP → Shopify migration wizard — Step 2: Google Search Console report via control plane (no pipeline run; avoids noisy failed runs when the UI already got data). */
