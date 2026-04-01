@@ -289,11 +289,73 @@ type WpPostApi = {
   content?: { rendered?: string };
   excerpt?: { rendered?: string };
   _embedded?: WpEmbedded;
-  /** Present when Yoast SEO exposes REST fields; preferred for meta description. */
+  /** Optional; used only if public HTML + excerpt/body do not yield a description. */
   yoast_head_json?: { description?: string; title?: string };
 };
 
-function metaDescriptionFromWordPressPost(post: WpPostApi, titleDecoded: string): string {
+function wordpressHostnameKey(originOrUrl: string): string | null {
+  try {
+    const u = new URL(originOrUrl.includes("://") ? originOrUrl : `https://${originOrUrl}`);
+    const h = u.hostname.toLowerCase();
+    return h.startsWith("www.") ? h.slice(4) : h;
+  } catch {
+    return null;
+  }
+}
+
+/** Only fetch URLs on the same host as the WordPress site (mitigate SSRF). */
+function isPublicPostUrlOnWordPressHost(wpOrigin: string, postUrl: string): boolean {
+  try {
+    const want = wordpressHostnameKey(wpOrigin);
+    const u = new URL(postUrl);
+    if (!want || (u.protocol !== "http:" && u.protocol !== "https:")) return false;
+    const got = u.hostname.toLowerCase();
+    const gotKey = got.startsWith("www.") ? got.slice(4) : got;
+    return gotKey === want;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read meta description from the live post HTML — same sources as “View source” / DevTools:
+ * meta[name=description], og:description, twitter:description.
+ */
+async function metaDescriptionFromPublicPostHtml(postUrl: string, wpOrigin: string): Promise<string | null> {
+  if (!isPublicPostUrlOnWordPressHost(wpOrigin, postUrl)) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 18_000);
+  try {
+    const res = await fetch(postUrl, {
+      method: "GET",
+      redirect: "follow",
+      signal: ctrl.signal,
+      headers: {
+        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "AI-Factory-WpShopifyMigration/1.0",
+      },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    if (html.length > 2_500_000) return null;
+    const $ = cheerio.load(html);
+    const raw =
+      $('meta[name="description"]').attr("content")?.trim() ||
+      $('meta[property="og:description"]').attr("content")?.trim() ||
+      $('meta[name="twitter:description"]').attr("content")?.trim();
+    if (!raw) return null;
+    const decoded = plaintextFromWpRendered(raw) || raw.replace(/\s+/g, " ").trim();
+    if (decoded.length < 8) return null;
+    return decoded.slice(0, 500);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** REST-only fallbacks when the public HTML page has no usable meta tags (drafts, cache, bot blocks, etc.). */
+function metaDescriptionFallbackFromRest(post: WpPostApi, titleDecoded: string): string {
   const yoast = post.yoast_head_json;
   if (typeof yoast?.description === "string" && yoast.description.trim()) {
     const y = yoast.description.trim().replace(/\s+/g, " ");
@@ -305,6 +367,15 @@ function metaDescriptionFromWordPressPost(post: WpPostApi, titleDecoded: string)
   if (body.length >= 20) return body.slice(0, 320);
   const fallback = `${titleDecoded}`.trim() || "Blog post";
   return `${fallback}.`.replace(/\.\.+$/, ".").slice(0, 320);
+}
+
+async function resolveMetaDescriptionForShopify(post: WpPostApi, titleDecoded: string, wpOrigin: string): Promise<string> {
+  const link = typeof post.link === "string" ? post.link.trim() : "";
+  if (link) {
+    const fromPage = await metaDescriptionFromPublicPostHtml(link, wpOrigin);
+    if (fromPage && fromPage.length >= 10) return fromPage.slice(0, 320);
+  }
+  return metaDescriptionFallbackFromRest(post, titleDecoded);
 }
 
 function tagsFromEmbedded(post: WpPostApi): string {
@@ -415,7 +486,7 @@ export function blogMigrationSummaryAndHint(result: BlogMigrationResult): { summ
       : "Find articles in Shopify Admin → Content → Blog posts and open the blog that received the import.",
   );
   parts.push(
-    "Post titles decode WordPress HTML entities. Meta descriptions use Yoast SEO (when REST exposes yoast_head_json), else excerpt or opening body text, via Shopify global metafields (description_tag / title_tag).",
+    "Post titles decode WordPress HTML entities. Meta descriptions are taken from the live post URL’s HTML (meta name=description, og:description, twitter:description—what you see in DevTools), then REST excerpt/body or Yoast JSON if the page fetch misses, via Shopify global metafields (description_tag / title_tag).",
   );
   if (result.wordpress_posts_source === "public_rest") {
     parts.push("Only WordPress posts with status “published” were imported (no app password).");
@@ -612,7 +683,7 @@ export async function migrateWordPressPostsToShopify(opts: {
         }
         row.shopify_article_id = String(aid);
         row.shopify_admin_url = adminArticleUrl(opts.shopDomain, blogId, aid);
-        const metaDesc = metaDescriptionFromWordPressPost(post, title);
+        const metaDesc = await resolveMetaDescriptionForShopify(post, title, opts.wpOrigin);
         const seo = await applyShopifyArticleSeoMetafields(opts.shopDomain, opts.accessToken, aid, title, metaDesc);
         if (!seo.ok && seo.warning?.trim()) {
           row.note = row.note ? `${row.note} SEO metafields: ${seo.warning}` : `SEO metafields: ${seo.warning}`;
