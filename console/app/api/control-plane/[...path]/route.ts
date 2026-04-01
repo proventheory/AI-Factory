@@ -35,21 +35,6 @@ function controlPlaneUpstreamBase(): string | null {
 async function proxy(req: NextRequest, pathSegments: string[]) {
   const base = controlPlaneUpstreamBase();
 
-  // #region agent log
-  fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a63a04" },
-    body: JSON.stringify({
-      sessionId: "a63a04",
-      hypothesisId: "H1",
-      location: "api/control-plane/[...path]/route.ts:proxy",
-      message: "control-plane proxy",
-      data: { hasBase: Boolean(base), segments: pathSegments.length, method: req.method },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-
   if (!base) {
     return NextResponse.json(
       {
@@ -79,46 +64,13 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
   try {
     upstream = await fetch(target, init);
   } catch (e) {
-    // #region agent log
-    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a63a04" },
-      body: JSON.stringify({
-        sessionId: "a63a04",
-        hypothesisId: "H2",
-        location: "api/control-plane/[...path]/route.ts:proxy",
-        message: "upstream fetch error",
-        data: { err: String(e) },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    return NextResponse.json({ error: "Upstream Control Plane unreachable" }, { status: 502 });
-  }
-
-  // #region agent log
-  fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a63a04" },
-    body: JSON.stringify({
-      sessionId: "a63a04",
-      hypothesisId: "H3",
-      location: "api/control-plane/[...path]/route.ts:proxy",
-      message: "upstream status",
-      data: {
-        status: upstream.status,
-        host: (() => {
-          try {
-            return new URL(target).hostname;
-          } catch {
-            return "";
-          }
-        })(),
+    return NextResponse.json(
+      {
+        error: `Upstream Control Plane unreachable: ${String((e as Error).message || e)}`,
       },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
+      { status: 502 },
+    );
+  }
 
   const outHeaders = new Headers();
   upstream.headers.forEach((value, key) => {

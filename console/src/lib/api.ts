@@ -46,6 +46,17 @@ export function controlPlaneSupportsShopifyAdminToken(health: ControlPlaneHealth
 /** User-friendly message when Control Plane is unreachable (e.g. wrong API URL on Vercel). */
 export function formatApiError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
+  if (
+    /ROUTER_EXTERNAL_TARGET_ERROR|EXTERNAL_TARGET/i.test(msg) ||
+    /An error occurred with this application/i.test(msg)
+  ) {
+    return (
+      "Vercel could not reach your Control Plane URL (proxy/rewrite to Render failed). " +
+      "In Vercel → Project → Settings → Environment Variables: set NEXT_PUBLIC_CONTROL_PLANE_API to your API base (e.g. https://ai-factory-api-staging.onrender.com) with no path suffix, redeploy the console, and confirm the API responds at …/health. " +
+      "If the API was asleep, wake it with a browser visit then retry the crawl. " +
+      "Hobby plans have short serverless limits; very long crawls may need a Pro-tier maxDuration or calling the Control Plane from a network that allows long requests."
+    );
+  }
   if (msg.includes("ENETUNREACH") || msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
     return "Cannot reach the Control Plane API. On Vercel, set NEXT_PUBLIC_CONTROL_PLANE_API or CONTROL_PLANE_PROXY_URL to your Control Plane HTTPS origin (no trailing slash) and redeploy. The console proxies the browser via /api/control-plane (build-time rewrite or runtime route). For local dev, run the control plane and keep the default http://localhost:3001 or match it in .env.local.";
   }
