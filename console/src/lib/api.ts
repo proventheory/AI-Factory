@@ -2012,6 +2012,46 @@ export async function wpShopifyMigrationResolvePdfUrls(
   return parsePdfImportArtifact(meta);
 }
 
+/** List Shopify product or collection handles (Admin REST, read-only). For redirect map: keep rows only when Woo slug matches an existing handle. */
+export async function wpShopifyMigrationShopifyHandles(params: {
+  brand_id: string;
+  entity: "products" | "collections";
+  environment?: string;
+}): Promise<{ handles: string[]; count: number }> {
+  const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/wp-shopify-migration/shopify_handles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      brand_id: params.brand_id,
+      entity: params.entity,
+      ...(params.environment ? { environment: params.environment } : {}),
+    }),
+    timeoutMs: 180_000,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ handles: string[]; count: number }>;
+}
+
+export type WpShopifyShopifyBlogRow = { id: number; handle: string; title: string };
+
+/** List blogs on the connected Shopify store (read-only). Used to infer /blogs/{handle}/ for redirects without re-running blog migration. */
+export async function wpShopifyMigrationShopifyBlogs(params: {
+  brand_id: string;
+  environment?: string;
+}): Promise<{ blogs: WpShopifyShopifyBlogRow[]; count: number }> {
+  const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/wp-shopify-migration/shopify_blogs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      brand_id: params.brand_id,
+      ...(params.environment ? { environment: params.environment } : {}),
+    }),
+    timeoutMs: 60_000,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ blogs: WpShopifyShopifyBlogRow[]; count: number }>;
+}
+
 export type EmailTemplateRow = {
   id: string;
   type: string;

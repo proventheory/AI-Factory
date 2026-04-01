@@ -4,7 +4,16 @@
 
 import type { Request, Response } from "express";
 import { withTransaction } from "../../db.js";
-import { hasShopifyCredentialsForBrand } from "../../shopify-brand-connector.js";
+import {
+  getShopifyAccessTokenForBrand,
+  getShopifyShopForBrand,
+  hasShopifyCredentialsForBrand,
+} from "../../shopify-brand-connector.js";
+import {
+  listShopifyBlogs,
+  listShopifyCollectionHandles,
+  listShopifyProductHandles,
+} from "../../wp-shopify-migration-shopify-list-handles.js";
 import {
   enqueueWpShopifyWizardJob,
   enqueueWpShopifyWizardMigrationRun,
@@ -31,21 +40,6 @@ export async function wpShopifyMigrationCrawlExecute(req: Request, res: Response
     const max_urls = Math.min(5000, Math.max(1, Number(body.max_urls) || 2000));
     const crawl_delay_ms = Number.isFinite(Number(body.crawl_delay_ms)) ? Math.max(0, Number(body.crawl_delay_ms)) : 500;
     const fetch_page_details = Boolean(body.fetch_page_details);
-
-    // #region agent log
-    fetch("http://127.0.0.1:7336/ingest/209875a1-5a0b-4fdf-a788-90bc785ce66f", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a63a04" },
-      body: JSON.stringify({
-        sessionId: "a63a04",
-        location: "wp-shopify-migration.controller.ts:crawl_execute",
-        message: "crawl_execute start",
-        data: { use_link_crawl, max_urls, source_host: source_url.replace(/^https?:\/\//i, "").split("/")[0] },
-        timestamp: Date.now(),
-        hypothesisId: "H-crawl-api",
-      }),
-    }).catch(() => {});
-    // #endregion
 
     const result = await runMigrationCrawl({
       source_url,
@@ -88,6 +82,90 @@ export async function wpShopifyMigrationSyncGoalMetadata(req: Request, res: Resp
         : {}),
     });
     res.json({ ok: true, initiative_id: out.initiative_id });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+/**
+ * List product or collection handles from Shopify Admin (read-only). Used by the console redirect map to add rows
+ * only when Woo slug matches an existing Shopify handle (avoid suggesting imports for items already on Shopify).
+ * POST body: { brand_id, entity: "products" | "collections" }
+ */
+export async function wpShopifyMigrationShopifyHandles(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const brand_id = String(body.brand_id ?? "").trim();
+    const entity = String(body.entity ?? "").trim();
+    if (!brand_id) {
+      res.status(400).json({ error: "brand_id is required" });
+      return;
+    }
+    if (entity !== "products" && entity !== "collections") {
+      res.status(400).json({ error: 'entity must be "products" or "collections"' });
+      return;
+    }
+    const creds = await withTransaction(
+      async (
+        client,
+      ): Promise<{ error: string } | { shop_domain: string; access_token: string }> => {
+        const has = await hasShopifyCredentialsForBrand(client, brand_id);
+        if (!has) {
+          return { error: "Shopify is not connected for this brand. Connect in Brands → Edit brand → Shopify." };
+        }
+        const shop = await getShopifyShopForBrand(client, brand_id);
+        const tok = await getShopifyAccessTokenForBrand(client, brand_id);
+        if (!shop?.shop_domain || !tok?.access_token) {
+          return { error: "Shopify credentials incomplete for this brand." };
+        }
+        return { shop_domain: shop.shop_domain, access_token: tok.access_token };
+      },
+    );
+    if ("error" in creds) {
+      res.status(400).json({ error: creds.error });
+      return;
+    }
+    const handles =
+      entity === "products"
+        ? await listShopifyProductHandles(creds.shop_domain, creds.access_token)
+        : await listShopifyCollectionHandles(creds.shop_domain, creds.access_token);
+    res.json({ handles, count: handles.length });
+  } catch (e) {
+    res.status(500).json({ error: String((e as Error).message) });
+  }
+}
+
+/** List Shopify blogs (read-only). Lets the console build /blogs/{handle}/… redirects without a fresh WP migration artifact. POST body: { brand_id } */
+export async function wpShopifyMigrationShopifyBlogs(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const brand_id = String(body.brand_id ?? "").trim();
+    if (!brand_id) {
+      res.status(400).json({ error: "brand_id is required" });
+      return;
+    }
+    const creds = await withTransaction(
+      async (
+        client,
+      ): Promise<{ error: string } | { shop_domain: string; access_token: string }> => {
+        const has = await hasShopifyCredentialsForBrand(client, brand_id);
+        if (!has) {
+          return { error: "Shopify is not connected for this brand. Connect in Brands → Edit brand → Shopify." };
+        }
+        const shop = await getShopifyShopForBrand(client, brand_id);
+        const tok = await getShopifyAccessTokenForBrand(client, brand_id);
+        if (!shop?.shop_domain || !tok?.access_token) {
+          return { error: "Shopify credentials incomplete for this brand." };
+        }
+        return { shop_domain: shop.shop_domain, access_token: tok.access_token };
+      },
+    );
+    if ("error" in creds) {
+      res.status(400).json({ error: creds.error });
+      return;
+    }
+    const blogs = await listShopifyBlogs(creds.shop_domain, creds.access_token);
+    res.json({ blogs, count: blogs.length });
   } catch (e) {
     res.status(500).json({ error: String((e as Error).message) });
   }

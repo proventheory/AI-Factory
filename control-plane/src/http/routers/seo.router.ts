@@ -22,6 +22,8 @@ import {
   wpShopifyMigrationRun,
   wpShopifyMigrationMigratePdfs,
   wpShopifyMigrationResolvePdfUrls,
+  wpShopifyMigrationShopifyBlogs,
+  wpShopifyMigrationShopifyHandles,
   wpShopifyMigrationWizardJob,
 } from "../controllers/wp-shopify-migration.controller.js";
 
@@ -36,6 +38,8 @@ router.post("/v1/wp-shopify-migration/preview_items", wpShopifyMigrationPreviewI
 router.post("/v1/wp-shopify-migration/run", wpShopifyMigrationRun);
 router.post("/v1/wp-shopify-migration/migrate_pdfs", wpShopifyMigrationMigratePdfs);
 router.post("/v1/wp-shopify-migration/resolve_pdf_urls", wpShopifyMigrationResolvePdfUrls);
+router.post("/v1/wp-shopify-migration/shopify_handles", wpShopifyMigrationShopifyHandles);
+router.post("/v1/wp-shopify-migration/shopify_blogs", wpShopifyMigrationShopifyBlogs);
 router.post("/v1/wp-shopify-migration/wizard_job", wpShopifyMigrationWizardJob);
 router.post("/v1/products/from_url", productsFromUrlHandler);
 router.post("/v1/seo/gsc_report", seoGscReport);
