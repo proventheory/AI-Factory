@@ -1,7 +1,8 @@
 /**
  * WooCommerce / WordPress → Shopify Admin REST (products, collections, customers, redirects, discounts, pages).
- * Requires Shopify scopes: write_products, read_products, write_customers, read_customers, write_content, read_content,
- * write_online_store_navigation (redirects), write_discounts (coupons), as applicable.
+ * Requires Shopify scopes: write_products, read_products (incl. product metafields for Yoast/Rank Math SEO),
+ * write_customers, read_customers, write_content, read_content, write_online_store_navigation (redirects),
+ * write_discounts (coupons), as applicable.
  */
 
 const SHOPIFY_API_VERSION = "2024-10";
@@ -57,6 +58,157 @@ async function wooFetchJson(
   const totalHdr = res.headers.get("x-wp-total");
   const total = totalHdr ? Math.max(0, parseInt(totalHdr, 10)) : data.length;
   return { data: Array.isArray(data) ? data : [], total };
+}
+
+/** Single product (for full `meta_data` when list response is trimmed). */
+async function wooFetchProduct(
+  wcBase: string,
+  authHeader: string,
+  productId: string,
+): Promise<Record<string, unknown> | null> {
+  const url = `${wcBase.replace(/\/$/, "")}/products/${encodeURIComponent(productId)}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { Authorization: authHeader, Accept: "application/json" },
+  });
+  if (!res.ok) return null;
+  const j = (await res.json()) as Record<string, unknown>;
+  return j && typeof j === "object" ? j : null;
+}
+
+function metaValueToPlainString(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+  return String(value).trim();
+}
+
+/** First non-empty value among keys, in priority order (Yoast before Rank Math before AIOSEO). */
+function wooMetaFirstNonEmpty(o: Record<string, unknown>, keysInPriorityOrder: string[]): string | null {
+  const meta = o.meta_data;
+  if (!Array.isArray(meta)) return null;
+  for (const key of keysInPriorityOrder) {
+    for (const row of meta) {
+      const m = row as Record<string, unknown>;
+      const k = typeof m.key === "string" ? m.key : "";
+      if (k !== key) continue;
+      const s = metaValueToPlainString(m.value);
+      if (s) return s;
+    }
+  }
+  return null;
+}
+
+function sanitizeSeoPlaintext(raw: string): string {
+  const t = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return t;
+}
+
+function truncateUtf16(s: string, maxChars: number): string {
+  if (s.length <= maxChars) return s;
+  return `${s.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+/**
+ * Yoast SEO / Rank Math product meta from Woo `meta_data` (REST).
+ * Empty Yoast title → omit (Shopify falls back to product title).
+ */
+const SEO_TITLE_META_KEYS = ["_yoast_wpseo_title", "rank_math_title", "_aioseo_title"];
+const SEO_DESC_META_KEYS = ["_yoast_wpseo_metadesc", "rank_math_description", "_aioseo_description"];
+
+function extractWooProductSeo(o: Record<string, unknown>): { titleTag?: string; descriptionTag?: string } {
+  const titleRaw = wooMetaFirstNonEmpty(o, SEO_TITLE_META_KEYS);
+  const descRaw = wooMetaFirstNonEmpty(o, SEO_DESC_META_KEYS);
+
+  const titleTag = titleRaw ? truncateUtf16(sanitizeSeoPlaintext(titleRaw), 70) : undefined;
+  const descriptionTag = descRaw ? truncateUtf16(sanitizeSeoPlaintext(descRaw), 320) : undefined;
+
+  return {
+    ...(titleTag ? { titleTag } : {}),
+    ...(descriptionTag ? { descriptionTag } : {}),
+  };
+}
+
+async function extractWooProductSeoWithFallback(
+  wcBase: string,
+  authHeader: string,
+  productId: string,
+  o: Record<string, unknown>,
+): Promise<{ titleTag?: string; descriptionTag?: string }> {
+  let seo = extractWooProductSeo(o);
+  if (seo.titleTag || seo.descriptionTag) return seo;
+  const full = await wooFetchProduct(wcBase, authHeader, productId);
+  if (full) seo = extractWooProductSeo(full);
+  return seo;
+}
+
+/**
+ * Shopify “Search engine listing” uses global metafields `title_tag` + `description_tag` (single_line_text_field).
+ * @see https://shopify.dev/tutorials/manage-seo-data-with-admin-api
+ */
+async function upsertProductGlobalSeoMetafields(
+  shopDomain: string,
+  accessToken: string,
+  productId: number,
+  titleTag: string | undefined,
+  descriptionTag: string | undefined,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const pairs: { key: string; value: string }[] = [];
+  if (titleTag?.trim()) pairs.push({ key: "title_tag", value: titleTag.trim() });
+  if (descriptionTag?.trim()) pairs.push({ key: "description_tag", value: descriptionTag.trim() });
+  if (pairs.length === 0) return { ok: true };
+
+  const listRes = await shopifyAdminJson<{ metafields?: { id?: number; namespace?: string; key?: string }[] }>(
+    shopDomain,
+    accessToken,
+    "GET",
+    `/products/${productId}/metafields.json?limit=250`,
+  );
+  if (!listRes.ok) {
+    return { ok: false, message: `list metafields ${listRes.status}: ${listRes.text.slice(0, 200)}` };
+  }
+  const byKey = new Map<string, number>();
+  for (const m of listRes.data?.metafields ?? []) {
+    if (m.namespace === "global" && typeof m.key === "string" && typeof m.id === "number") {
+      byKey.set(m.key, m.id);
+    }
+  }
+
+  for (const { key, value } of pairs) {
+    const mid = byKey.get(key);
+    if (mid != null) {
+      const r = await shopifyAdminJson(
+        shopDomain,
+        accessToken,
+        "PUT",
+        `/metafields/${mid}.json`,
+        { metafield: { id: mid, value, type: "single_line_text_field" } },
+      );
+      if (!r.ok) {
+        return { ok: false, message: `${key} PUT ${r.status}: ${r.text.slice(0, 200)}` };
+      }
+    } else {
+      const r = await shopifyAdminJson(shopDomain, accessToken, "POST", `/products/${productId}/metafields.json`, {
+        metafield: {
+          namespace: "global",
+          key,
+          value,
+          type: "single_line_text_field",
+        },
+      });
+      if (!r.ok) {
+        return { ok: false, message: `${key} POST ${r.status}: ${r.text.slice(0, 200)}` };
+      }
+    }
+  }
+  return { ok: true };
 }
 
 export type EtlRow = {
@@ -371,12 +523,26 @@ export async function migrateWooProductsToShopify(opts: {
       if (opts.skipIfExistsInShopify) {
         const existing = await shopifyProductIdByHandle(opts.shopDomain, opts.accessToken, handle);
         if (existing != null) {
+          const seo = await extractWooProductSeoWithFallback(wcBase, authHeader, id, o);
+          let note = "Already existed in Shopify (skipped)";
+          if (seo.titleTag || seo.descriptionTag) {
+            const seoRes = await upsertProductGlobalSeoMetafields(
+              opts.shopDomain,
+              opts.accessToken,
+              existing,
+              seo.titleTag,
+              seo.descriptionTag,
+            );
+            note = seoRes.ok
+              ? "Already existed — updated Shopify SEO metafields from Woo (Yoast / Rank Math / AIOSEO)."
+              : `Already existed — SEO metafield update failed: ${seoRes.message}`;
+          }
           rows.push({
             source_id: id,
             title,
             shopify_id: String(existing),
             shopify_admin_url: adminProductUrl(opts.shopDomain, existing),
-            note: "Already existed in Shopify (skipped)",
+            note,
           });
           skipped++;
           opts.onProgress?.({ current: rows.length, total: wpTotal, source_id: id, created, skipped, failed });
@@ -416,11 +582,26 @@ export async function migrateWooProductsToShopify(opts: {
         failed++;
       } else {
         const pid = r.data.product.id;
+        const seo = await extractWooProductSeoWithFallback(wcBase, authHeader, id, o);
+        let note: string | undefined;
+        if (seo.titleTag || seo.descriptionTag) {
+          const seoRes = await upsertProductGlobalSeoMetafields(
+            opts.shopDomain,
+            opts.accessToken,
+            pid,
+            seo.titleTag,
+            seo.descriptionTag,
+          );
+          note = seoRes.ok
+            ? "SEO title/description from Woo (Yoast / Rank Math / AIOSEO) set on global metafields."
+            : `Created; SEO metafields warning: ${seoRes.message}`;
+        }
         rows.push({
           source_id: id,
           title,
           shopify_id: String(pid),
           shopify_admin_url: adminProductUrl(opts.shopDomain, pid),
+          ...(note ? { note } : {}),
         });
         created++;
       }
