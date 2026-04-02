@@ -128,12 +128,25 @@ const WOO_HYDRATE_KINDS = new Set([
   "pdf_resolve",
 ]);
 
+/** Entities whose migration job needs Shopify Admin on the runner — prefetch token on API so runners without SHOPIFY_CONNECTOR_ENCRYPTION_KEY still work. */
+const MIGRATION_ENTITIES_NEEDING_SHOPIFY_PREFETCH = new Set([
+  "pdfs",
+  "blog_tags",
+  "blogs",
+  "products",
+  "categories",
+  "customers",
+  "redirects",
+  "discounts",
+  "pages",
+]);
+
 function wizardPayloadNeedsShopifyPrefetch(payload: WpShopifyWizardJobPayload): boolean {
   if (payload.kind === "pdf_import" || payload.kind === "pdf_resolve") return true;
   if (payload.kind === "migration_run_placeholder") {
     const raw = Array.isArray(payload.entities) ? payload.entities : [];
     const entities = raw.map((e) => String(e).trim()).filter(Boolean);
-    return entities.some((e) => e === "pdfs" || e === "blog_tags" || e === "blogs");
+    return entities.some((e) => MIGRATION_ENTITIES_NEEDING_SHOPIFY_PREFETCH.has(e));
   }
   return false;
 }
@@ -206,7 +219,7 @@ export type WpShopifyWizardJobPayload = Record<string, unknown> & {
   /** Set only by the control plane at enqueue time; runner uses this so it does not call back for OAuth. */
   _prefetched_google_access_token?: string;
   _prefetched_google_expires_in?: number;
-  /** Decrypted on the API at enqueue; avoids requiring SHOPIFY_CONNECTOR_ENCRYPTION_KEY on the runner for PDF/blog/tag steps. */
+  /** Decrypted on the API at enqueue; avoids requiring SHOPIFY_CONNECTOR_ENCRYPTION_KEY on the runner (PDF, blog, catalog ETL, etc.). */
   _prefetched_shopify_access_token?: string;
   _prefetched_shopify_shop_domain?: string;
 };
