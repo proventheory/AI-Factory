@@ -149,6 +149,65 @@ async function extractWooProductSeoWithFallback(
   return seo;
 }
 
+/** WooCommerce `tags: [{ id, name, slug }]` → Shopify comma-separated `tags` (commas inside names flattened). */
+function wooProductTagsToShopifyCsv(o: Record<string, unknown>): string | undefined {
+  const raw = o.tags;
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const names = new Set<string>();
+  for (const t of raw) {
+    if (typeof t === "string") {
+      const safe = t.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+      if (safe) names.add(safe);
+      continue;
+    }
+    const row = t as Record<string, unknown>;
+    const name =
+      typeof row.name === "string"
+        ? row.name.trim()
+        : typeof row.slug === "string"
+          ? row.slug.replace(/-/g, " ").trim()
+          : "";
+    if (!name) continue;
+    const safe = name.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+    if (safe) names.add(safe);
+  }
+  if (names.size === 0) return undefined;
+  return [...names].join(", ");
+}
+
+/** List responses sometimes omit tag objects; single-product GET includes them. */
+async function ensureWooProductTagsOnDoc(
+  wcBase: string,
+  authHeader: string,
+  productId: string,
+  o: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const tags = o.tags;
+  if (Array.isArray(tags) && tags.length > 0) return o;
+  const full = await wooFetchProduct(wcBase, authHeader, productId);
+  if (full && Array.isArray(full.tags) && full.tags.length > 0) return full;
+  return o;
+}
+
+async function updateShopifyProductTags(
+  shopDomain: string,
+  accessToken: string,
+  productId: number,
+  tagsCsv: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const r = await shopifyAdminJson(
+    shopDomain,
+    accessToken,
+    "PUT",
+    `/products/${productId}.json`,
+    { product: { id: productId, tags: tagsCsv } },
+  );
+  if (!r.ok) {
+    return { ok: false, message: `tags ${r.status}: ${r.text.slice(0, 200)}` };
+  }
+  return { ok: true };
+}
+
 /**
  * Shopify “Search engine listing” uses global metafields `title_tag` + `description_tag` (single_line_text_field).
  * @see https://shopify.dev/tutorials/manage-seo-data-with-admin-api
@@ -402,6 +461,8 @@ function buildShopifyProductBodyFromWoo(
     .filter((x): x is { src: string } => Boolean(x))
     .slice(0, 10);
 
+  const tagsCsv = wooProductTagsToShopifyCsv(o);
+
   if (type === "variable" && variations.length > 0) {
     const optionNames = new Set<string>();
     for (const v of variations) {
@@ -450,6 +511,7 @@ function buildShopifyProductBodyFromWoo(
         variants: shopifyVariants,
         options,
         ...(images.length ? { images } : {}),
+        ...(tagsCsv ? { tags: tagsCsv } : {}),
       },
     };
   }
@@ -470,6 +532,7 @@ function buildShopifyProductBodyFromWoo(
       status,
       variants: [variant],
       ...(images.length ? { images } : {}),
+      ...(tagsCsv ? { tags: tagsCsv } : {}),
     },
   };
 }
@@ -524,7 +587,9 @@ export async function migrateWooProductsToShopify(opts: {
         const existing = await shopifyProductIdByHandle(opts.shopDomain, opts.accessToken, handle);
         if (existing != null) {
           const seo = await extractWooProductSeoWithFallback(wcBase, authHeader, id, o);
-          let note = "Already existed in Shopify (skipped)";
+          const oTags = await ensureWooProductTagsOnDoc(wcBase, authHeader, id, o);
+          const tagsCsv = wooProductTagsToShopifyCsv(oTags);
+          const noteParts: string[] = [];
           if (seo.titleTag || seo.descriptionTag) {
             const seoRes = await upsertProductGlobalSeoMetafields(
               opts.shopDomain,
@@ -533,10 +598,18 @@ export async function migrateWooProductsToShopify(opts: {
               seo.titleTag,
               seo.descriptionTag,
             );
-            note = seoRes.ok
-              ? "Already existed — updated Shopify SEO metafields from Woo (Yoast / Rank Math / AIOSEO)."
-              : `Already existed — SEO metafield update failed: ${seoRes.message}`;
+            noteParts.push(
+              seoRes.ok
+                ? "SEO metafields from Woo (Yoast / Rank Math / AIOSEO)."
+                : `SEO update failed: ${seoRes.message}`,
+            );
           }
+          if (tagsCsv) {
+            const tagRes = await updateShopifyProductTags(opts.shopDomain, opts.accessToken, existing, tagsCsv);
+            noteParts.push(tagRes.ok ? "Tags synced from Woo." : `Tags: ${tagRes.message}`);
+          }
+          const note =
+            noteParts.length > 0 ? `Already existed — ${noteParts.join(" ")}` : "Already existed in Shopify (skipped)";
           rows.push({
             source_id: id,
             title,
@@ -559,7 +632,8 @@ export async function migrateWooProductsToShopify(opts: {
         }
       }
 
-      const body = buildShopifyProductBodyFromWoo(o, variations);
+      const oForBuild = await ensureWooProductTagsOnDoc(wcBase, authHeader, id, o);
+      const body = buildShopifyProductBodyFromWoo(oForBuild, variations);
       if ("error" in body) {
         rows.push({ source_id: id, title, error: (body as { error: string }).error });
         failed++;
