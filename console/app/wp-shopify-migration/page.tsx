@@ -591,6 +591,7 @@ type MigrationRunBrowserCache = {
   message?: string;
   parallel_migration_jobs?: boolean;
   blog_migration?: NonNullable<WpShopifyMigrationRunResult["blog_migration"]>;
+  product_migration?: NonNullable<WpShopifyMigrationRunResult["product_migration"]>;
   blog_tag_redirect_csv?: string;
   blog_tag_redirect_csv_rows?: number;
 };
@@ -605,6 +606,7 @@ function migrationRunResultFromCache(o: MigrationRunBrowserCache): WpShopifyMigr
     message: o.message,
     parallel_migration_jobs: o.parallel_migration_jobs,
     blog_migration: o.blog_migration,
+    product_migration: o.product_migration,
     blog_tag_redirect_csv: o.blog_tag_redirect_csv,
     blog_tag_redirect_csv_rows: o.blog_tag_redirect_csv_rows,
   };
@@ -618,6 +620,7 @@ function migrationRunResultToCache(r: WpShopifyMigrationRunResult): MigrationRun
     message: r.message,
     parallel_migration_jobs: r.parallel_migration_jobs,
     blog_migration: r.blog_migration,
+    product_migration: r.product_migration,
     blog_tag_redirect_csv: r.blog_tag_redirect_csv,
     blog_tag_redirect_csv_rows: r.blog_tag_redirect_csv_rows,
   };
@@ -3865,6 +3868,57 @@ export default function WpShopifyMigrationWizardPage() {
                         <p className="text-xs text-fg-muted">Import runs on the pipeline runner; keep this tab open until it finishes.</p>
                       </div>
                     ) : null}
+                  </div>
+                )}
+
+                {migrationRunResult?.product_migration && migrationRunResult.product_migration.rows.length > 0 && (
+                  <div className="mt-4 max-w-4xl">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted mb-2">Products import — last run</p>
+                    <p className="text-body-small text-fg-muted mb-2">
+                      Created {migrationRunResult.product_migration.summary.created}, skipped {migrationRunResult.product_migration.summary.skipped}, failed{" "}
+                      {migrationRunResult.product_migration.summary.failed}
+                      {migrationRunResult.product_migration.truncated ? " · Batch limit reached—run again to import more." : ""}
+                    </p>
+                    {migrationRunResult.product_migration.hint ? (
+                      <p className="text-body-small text-state-warning mb-2">{migrationRunResult.product_migration.hint}</p>
+                    ) : null}
+                    <div className="max-h-[min(40vh,360px)] overflow-auto rounded-lg border border-border shadow-inner">
+                      <table className="w-full min-w-[640px] border-collapse text-body-small">
+                        <thead className="sticky top-0 z-10 border-b border-border bg-fg-muted/10">
+                          <tr className="text-left">
+                            <th className="px-3 py-2 text-xs font-semibold uppercase text-fg-muted">Woo ID</th>
+                            <th className="px-3 py-2 text-xs font-semibold uppercase text-fg-muted">Title</th>
+                            <th className="px-3 py-2 text-xs font-semibold uppercase text-fg-muted">Shopify</th>
+                            <th className="px-3 py-2 text-xs font-semibold uppercase text-fg-muted">Note / error</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {migrationRunResult.product_migration.rows.map((r) => (
+                            <tr
+                              key={r.source_id}
+                              className={`border-b border-border/80 ${r.error ? "bg-state-dangerMuted/10" : ""}`}
+                            >
+                              <td className="px-3 py-2 font-mono text-xs">{r.source_id}</td>
+                              <td className="px-3 py-2 max-w-[200px] truncate" title={r.title}>
+                                {r.title ?? "—"}
+                              </td>
+                              <td className="px-3 py-2">
+                                {r.shopify_admin_url ? (
+                                  <a href={r.shopify_admin_url} target="_blank" rel="noreferrer" className="text-link hover:underline">
+                                    Open
+                                  </a>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td className={`px-3 py-2 ${r.error ? "text-state-danger" : "text-fg-muted"}`}>
+                                {r.error ?? r.note ?? "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
 

@@ -1854,6 +1854,57 @@ export type WpShopifyBlogMigrationRow = {
   error?: string;
 };
 
+/** Woo → Shopify ETL row (products, categories, etc.) from `wp_shopify_migration_run` artifact. */
+export type WpShopifyWooEtlRow = {
+  source_id: string;
+  title?: string;
+  shopify_id?: string;
+  shopify_admin_url?: string;
+  note?: string;
+  error?: string;
+};
+
+export type WpShopifyWooEtlMigrationBlock = {
+  summary: { created: number; skipped: number; failed: number };
+  rows: WpShopifyWooEtlRow[];
+  truncated?: boolean;
+  hint?: string;
+};
+
+function parseWooEtlMigrationBlock(v: unknown): WpShopifyWooEtlMigrationBlock | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const b = v as Record<string, unknown>;
+  const rowsRaw = b.rows;
+  const sum = b.summary;
+  if (!Array.isArray(rowsRaw) || !sum || typeof sum !== "object" || Array.isArray(sum)) return undefined;
+  const s = sum as Record<string, unknown>;
+  const rows: WpShopifyWooEtlRow[] = rowsRaw
+    .map((raw) => {
+      const o = raw as Record<string, unknown>;
+      const source_id = o.source_id != null ? String(o.source_id) : "";
+      if (!source_id) return null;
+      return {
+        source_id,
+        ...(typeof o.title === "string" ? { title: o.title } : {}),
+        ...(typeof o.shopify_id === "string" ? { shopify_id: o.shopify_id } : {}),
+        ...(typeof o.shopify_admin_url === "string" ? { shopify_admin_url: o.shopify_admin_url } : {}),
+        ...(typeof o.note === "string" ? { note: o.note } : {}),
+        ...(typeof o.error === "string" ? { error: o.error } : {}),
+      } satisfies WpShopifyWooEtlRow;
+    })
+    .filter((x): x is WpShopifyWooEtlRow => x != null);
+  return {
+    summary: {
+      created: Number(s.created) || 0,
+      skipped: Number(s.skipped) || 0,
+      failed: Number(s.failed) || 0,
+    },
+    rows,
+    ...(b.truncated === true ? { truncated: true } : {}),
+    ...(typeof b.hint === "string" ? { hint: b.hint } : {}),
+  };
+}
+
 export type WpShopifyMigrationRunResult = {
   run_id: string;
   /** Set when API queued blogs/tags/ETL and PDFs as two parallel root jobs (two runners can work at once). */
@@ -1874,6 +1925,8 @@ export type WpShopifyMigrationRunResult = {
     /** public_rest = no WP app password (published only); application_password = full wp/v2 access */
     wordpress_posts_source?: "application_password" | "public_rest";
   };
+  /** When “products” entity ran: per-Woo-ID outcomes (retry failed rows after fixing data / Shopify errors). */
+  product_migration?: WpShopifyWooEtlMigrationBlock;
 };
 
 export async function wpShopifyMigrationRun(
@@ -1928,6 +1981,7 @@ export async function wpShopifyMigrationRun(
           ...(wordpressPostsSource ? { wordpress_posts_source: wordpressPostsSource } : {}),
         }
       : undefined;
+  const product_migration = parseWooEtlMigrationBlock(byEntity?.products);
   return {
     run_id: enq.run_id,
     ...(enq.parallel_migration_jobs === true ? { parallel_migration_jobs: true as const } : {}),
@@ -1937,6 +1991,7 @@ export async function wpShopifyMigrationRun(
     ...(blogCsv ? { blog_tag_redirect_csv: blogCsv } : {}),
     ...(blogCsvRows != null ? { blog_tag_redirect_csv_rows: blogCsvRows } : {}),
     ...(blogMigration ? { blog_migration: blogMigration } : {}),
+    ...(product_migration ? { product_migration } : {}),
   };
 }
 
