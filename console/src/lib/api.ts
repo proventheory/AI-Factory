@@ -1491,7 +1491,27 @@ export async function wpShopifyMigrationCrawl(
     fetch_page_details: rest.fetch_page_details,
   };
 
-  pollOpts?.onStatus?.(linkCrawl ? "Running crawl on API (direct, long timeout)…" : "Running crawl on API (direct)…");
+  /** Light GET through the same proxy as crawl — wakes Render and warms Vercel→CP path before a long POST. */
+  const bestEffortWakeControlPlane = async (): Promise<void> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        pollOpts?.onStatus?.("Control Plane slow to wake (common on Render). Retrying /health in 3s…");
+        await new Promise((r) => setTimeout(r, 3000));
+      } else {
+        pollOpts?.onStatus?.("Checking Control Plane (/health) before crawl…");
+      }
+      try {
+        const res = await fetchWithTimeout(`${controlPlaneApiBase()}/health`, {
+          method: "GET",
+          timeoutMs: 25_000,
+          cache: "no-store",
+        });
+        if (res.ok) return;
+      } catch {
+        /* try again or fall through */
+      }
+    }
+  };
 
   const runCrawlRequest = async (): Promise<WpShopifyMigrationCrawlResult> => {
     const res = await fetchWithTimeout(`${controlPlaneApiBase()}/v1/wp-shopify-migration/crawl_execute`, {
@@ -1518,6 +1538,8 @@ export async function wpShopifyMigrationCrawl(
 
   let directErr: unknown;
   try {
+    await bestEffortWakeControlPlane();
+    pollOpts?.onStatus?.(linkCrawl ? "Running crawl on API (direct, long timeout)…" : "Running crawl on API (direct)…");
     return await runCrawlRequest();
   } catch (firstErr) {
     if (!isRetryableCrawlProxyError(firstErr)) {
